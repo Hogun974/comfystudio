@@ -101,6 +101,22 @@ DOSSIER_DONNEES = os.environ.get("STUDIO_DONNEES") or ICI_DATA
 # disparaitre, aux yeux de leur proprietaire, les conversations, les comptes et
 # les cles de toutes les installations existantes.
 DOSSIER_CONV = os.environ.get("STUDIO_DONNEES") or os.path.join(ICI_DATA, "conversations")
+# L'input de ComfyUI n'est qu'un CACHE pour le studio : les fichiers joints en
+# repartent vers la machine qui calcule. Quand cette machine-ci n'a pas de
+# ComfyUI, ce dossier n'existe pas et n'est pas inscriptible — joindre une image
+# echouait alors sur « Permission denied ». On se rabat sur le dossier de
+# donnees, que le studio possede par construction.
+def _entree_utilisable(dossier):
+    try:
+        os.makedirs(dossier, exist_ok=True)
+        return os.access(dossier, os.W_OK)
+    except OSError:
+        return False
+
+
+if not _entree_utilisable(DOSSIER_ENTREE):
+    DOSSIER_ENTREE = os.path.join(DOSSIER_DONNEES, "entrees")
+
 CONVERSATIONS = {}          # id -> conversation
 COURANTE = {}               # proprietaire -> id de sa conversation active
 ENTREES = {}                # nom de fichier televerse -> proprietaire
@@ -3246,9 +3262,31 @@ def chemin_agent(ident, nom):
     return os.path.join(SORTIES_AGENT, ident, os.path.basename(nom))
 
 
+def output_comfy_a_nous():
+    """Vrai si l'on peut ecrire dans l'output du ComfyUI de cette machine.
+
+    Sur un studio sans carte, ce dossier appartient a une image Docker qui n'est
+    pas montee, ou a personne : on ne peut pas y deposer un resultat, et il n'y
+    a de toute facon aucun ComfyUI pour le relire.
+    """
+    dossier = os.path.join(BASE_COMFY, "output")
+    try:
+        os.makedirs(dossier, exist_ok=True)
+        return os.access(dossier, os.W_OK)
+    except OSError:
+        return False
+
+
 async def lire_sortie(info):
     """Les octets d'une sortie, qu'elle soit sur cette machine ou ailleurs."""
     ident = info.get("noeud") or noeud_local()["id"]
+    # Le depot du studio passe avant tout le reste : un resultat venu d'un
+    # fournisseur y est pose sous l'identifiant local, et le chercher dans un
+    # ComfyUI qui n'existe pas rendrait « introuvable » un fichier qu'on a.
+    depot = chemin_agent(ident, info["filename"])
+    if os.path.exists(depot):
+        with open(depot, "rb") as f:
+            return f.read()
     if est_agent(ident):
         # l'agent a depose le fichier chez nous : il est deja local
         chemin = chemin_agent(ident, info["filename"])
@@ -3877,7 +3915,13 @@ async def produire_distant(choix, plan, texte, entree, intention, tid, conv):
     # fournisseur distant n'a aucune raison d'atterrir ailleurs, sinon la moitie
     # des images d'une personne serait dans son dossier et l'autre a cote.
     sous = os.path.dirname(prefixe_sortie(conv, intention, "", ""))
-    dossier = os.path.join(BASE_COMFY, "output", *sous.split("/"))
+    # Sans ComfyUI sur cette machine, son output n'existe pas : le resultat
+    # atterrit dans le depot du studio, la meme ou arrivent ceux des machines a
+    # agent. Le lire fonctionne pareil ; c'est verifie a la lecture.
+    if output_comfy_a_nous():
+        dossier = os.path.join(BASE_COMFY, "output", *sous.split("/"))
+    else:
+        dossier = os.path.dirname(chemin_agent(noeud_local()["id"], nom))
     os.makedirs(dossier, exist_ok=True)
     with open(os.path.join(dossier, nom), "wb") as f:
         f.write(octets)
@@ -4776,13 +4820,14 @@ async def api_fichier(req):
         return web.json_response({"erreur": "inconnu"}, status=404)
     if noeud(ident) is None or (ident, sous, nom) not in mes_fichiers(qui(req)):
         return web.json_response({"erreur": "inconnu"}, status=404)
-    if est_agent(ident):
-        # produit ailleurs, mais depose ici : on le sert directement, sans
-        # relais, puisque le noeud n'est de toute facon pas joignable.
-        chemin = chemin_agent(ident, nom)
-        if not os.path.exists(chemin):
-            return web.json_response({"erreur": "inconnu"}, status=404)
+    # Depose ici — par un agent, ou par un fournisseur distant quand cette
+    # machine n'a pas de ComfyUI : on sert du disque, sans relais.
+    chemin = chemin_agent(ident, nom)
+    if os.path.exists(chemin):
         return web.FileResponse(chemin)
+    if est_agent(ident):
+        # un agent ne se relaie pas : le studio n'a pas son adresse
+        return web.json_response({"erreur": "inconnu"}, status=404)
     entrants = {}
     if "Range" in req.headers:
         entrants["Range"] = req.headers["Range"]
