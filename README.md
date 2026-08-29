@@ -43,6 +43,8 @@ des **planches de BD** et des **objets 3D** — en local, sur plusieurs machines
 - [Quand une machine tombe](#quand-une-machine-tombe)
 - [Déplacer le studio sur une machine sans carte](#déplacer-le-studio-sur-une-machine-sans-carte)
 - [Plusieurs machines, de puissances différentes](#plusieurs-machines-de-puissances-différentes)
+- [Retrouver ce qu'on a produit](#retrouver-ce-quon-a-produit)
+- [Le modèle de langage peut venir d'une autre machine](#le-modèle-de-langage-peut-venir-dune-autre-machine)
 - [Comptes](#comptes)
 - [Garder le même personnage](#garder-le-même-personnage)
 - [Fluidifier une vidéo, ou la passer au ralenti](#fluidifier-une-vidéo-ou-la-passer-au-ralenti)
@@ -205,6 +207,7 @@ Le lanceur vérifie que ComfyUI répond avant de démarrer et te le dit sinon.
 | « une petite vidéo d'un renard qui court » | vidéo, Wan 2.2 5B |
 | « anime cette image » *(avec une image jointe)* | vidéo, Wan 2.2 14B |
 | « une musique de piano mélancolique » | audio, ACE-Step |
+| « rends-la plus acoustique » *(avec un morceau joint)* | retouche du morceau, sa durée est conservée |
 | « décris cette image » *(avec une image jointe)* | lecture par qwen2.5vl |
 | « une planche de manga en 4 cases : … » | planche BD, cases assemblées en un passage |
 | « un modèle 3D d'un casque de chevalier » | image de référence puis Hunyuan3D, fichier .glb |
@@ -850,6 +853,49 @@ pannes silencieuses — toutes corrigées :
 Vérifié de bout en bout : détourage exécuté sur le NAS en 30 s, fichier de
 1,4 Mo transmis, résultat rapatrié et conforme.
 
+
+## Retrouver ce qu'on a produit
+
+Une sortie ne se retrouvait qu'en remontant la conversation qui l'avait
+produite. Passé une vingtaine d'échanges c'est fastidieux ; passé trois
+semaines, c'est perdu.
+
+Le bouton **médiathèque**, dans la barre du haut, ouvre tout ce que vous avez
+produit, rangé par famille — images, vidéos, musiques, objets 3D. Sous chaque
+pièce : télécharger, voir en grand, et **reprendre**, qui la joint à la demande
+suivante pour la retravailler.
+
+La liste est lue dans vos **conversations**, jamais sur le disque : elles seules
+savent à qui appartient un fichier et ce qui avait été demandé. Un balayage du
+disque rendrait des noms sans histoire — et franchirait la frontière entre
+utilisateurs, que le contrôle de propriété existe précisément pour tenir.
+
+## Le modèle de langage peut venir d'une autre machine
+
+Le studio appelle un Ollama, dont l'adresse est un réglage. Sur une machine sans
+carte, cet Ollama est ailleurs — et si cette machine-là s'éteint, plus
+d'analyse.
+
+Chaque agent **annonce le modèle de langage qu'il porte**, et le studio bascule
+dessus quand le sien ne répond plus. Il ne peut pas l'appeler directement — une
+machine à agent n'a pas d'adresse — alors il **dépose la question** et l'agent
+vient la chercher : exactement le chemin des rendus, et rien de plus à exposer.
+
+Trois précautions, chacune pour une faute constatée :
+
+- **un fil séparé dans l'agent.** Sa boucle de travail reste bloquée pendant un
+  rendu, parfois plusieurs minutes : une question posée au milieu d'une vidéo
+  aurait attendu la fin du rendu ;
+- **on substitue un modèle que la machine porte vraiment.** Le studio ne connaît
+  que le nom du sien ; le demander tel quel ferait échouer la bascule au moment
+  précis où l'on en dépend ;
+- **on n'essaie une autre machine que si la sienne ne répond pas.** Un modèle
+  distant est plus lent à charger, et la machine qui le porte a peut-être mieux
+  à faire.
+
+Dans `/admin`, le pli d'une machine porte un bouton **« poser une question pour
+vérifier »**. Une voie de secours qu'on n'essaie jamais n'en est pas une : on
+découvre qu'elle est bouchée le jour où l'on en a besoin.
 
 ## Comptes
 
