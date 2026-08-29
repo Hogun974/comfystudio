@@ -125,7 +125,7 @@ _PID = re.compile(r"[0-9a-f]{32}")
 # ── file d'attente : le GPU ne fait qu'une chose a la fois ────────────
 FILE_ATTENTE = None         # asyncio.Queue, creee au demarrage
 ATTENTE = []                # tids en attente, dans l'ordre
-EN_COURS = {"tid": None}
+EN_COURS = {"tid": None, "tache": None}
 FICHIER_FILE = os.path.join(DOSSIER_CONV, "_file.json")
 EN_FILE = {}                # tid -> de quoi refaire la demande apres un arret
 
@@ -4637,14 +4637,29 @@ async def travailleur():
             FILE_ATTENTE.task_done()
             continue
         EN_COURS["tid"] = tid
+        # Une tache nommee plutot qu'un simple await : c'est le seul moyen
+        # d'arreter un travail qui n'a pas encore atteint ComfyUI — analyse,
+        # ecriture des paroles, attente d'un fournisseur.
+        travail = asyncio.create_task(
+            executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
+                     job.get("taille"), job.get("priorite", ""), job.get("noeud")))
+        EN_COURS["tache"] = travail
         try:
-            await executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
-                           job.get("taille"), job.get("priorite", ""),
-                           job.get("noeud"))
+            await travail
+        except asyncio.CancelledError:
+            # Un « except » a elle seule : CancelledError n'est pas une
+            # Exception, elle traverserait le filet ci-dessous et tuerait la
+            # file entiere au premier retrait.
+            conv = CONVERSATIONS.get((TACHES.get(tid) or {}).get("conversation"))
+            if conv:
+                enregistrer_tour(conv, tid, (TACHES.get(tid) or {}).get("demande", ""),
+                                 {}, None, None, [], "erreur", "interrompue")
+            journal(tid, "interrompue", etat="erreur")
         except Exception as e:                       # filet : la file ne doit jamais mourir
             journal(tid, f"ERREUR inattendue : {e}", etat="erreur")
         finally:
             EN_COURS["tid"] = None
+            EN_COURS["tache"] = None
             FILE_ATTENTE.task_done()
             purger_taches()
 
@@ -4830,18 +4845,29 @@ async def api_file_annuler(req):
 
     if EN_COURS["tid"] == tid:
         t["annulee"] = True
-        ident = t.get("noeud") or noeud_local()["id"]
-        if est_agent(ident):
-            # Le studio n'a pas l'adresse d'une machine a agent : c'est elle qui
-            # appelle. On ne peut donc pas l'arreter en cours de rendu. Le dire,
-            # plutot que de laisser croire a un arret qui n'a pas lieu.
-            journal(tid, f"{noeud(ident).get('titre', ident)} calcule deja : "
-                         f"le rendu ira a son terme, le resultat sera ecarte")
-            return web.json_response({"ok": True, "quoi": "ecartee"})
-        # ComfyUI finit l'etape en cours avant de rendre la main : ce n'est pas
-        # un arret net, et le dire evite de croire que rien ne s'est passe.
-        await interrompre_comfy(ident)
-        journal(tid, "interruption demandee — le calcul en cours s'arrete")
+        ident = t.get("noeud")
+        # D'abord la carte, si on peut l'atteindre : annuler la tache du studio
+        # sans cela laisserait un rendu dont plus personne ne veut occuper le
+        # GPU jusqu'au bout.
+        # Sans machine retenue, le travail en est a l'analyse ou a l'ecriture :
+        # il n'y a rien a interrompre dans ComfyUI, seulement ici.
+        if ident and not est_agent(ident):
+            await interrompre_comfy(ident)
+        # Puis le vrai levier : la tache du studio. Elle porte tout ce que
+        # ComfyUI ne fait pas — l'analyse, les paroles, l'attente d'un
+        # fournisseur — et c'est la qu'une demande pouvait tourner sans fin.
+        tache = EN_COURS.get("tache")
+        if tache is not None and not tache.done():
+            tache.cancel()
+        if ident and est_agent(ident):
+            # La machine a agent, elle, ne s'arrete pas : le studio n'a pas son
+            # adresse, c'est elle qui appelle. Son rendu ira a son terme et son
+            # resultat sera ecarte. Le dire, plutot que de laisser croire a un
+            # arret qui n'a pas lieu.
+            journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} termine son "
+                         f"rendu de son cote : le resultat sera ecarte")
+        else:
+            journal(tid, "demande interrompue")
         return web.json_response({"ok": True, "quoi": "interrompue"})
 
     return web.json_response({"erreur": "cette demande est deja terminee"},
