@@ -5625,6 +5625,28 @@ async def api_noeud_fichier(req):
     return web.json_response({"ok": True, "octets": taille})
 
 
+async def api_noeud_progres(req):
+    """Ou en est le rendu d'une machine a agent.
+
+    ComfyUI n'annonce la progression que sur sa websocket, et le studio n'a
+    acces qu'a la sienne. Sans ce relais, un rendu parti ailleurs affichait
+    « en cours » sans jamais avancer — le cas ordinaire, desormais, puisque la
+    machine du studio n'a plus de carte.
+    """
+    x = noeud_du_jeton(req.headers.get("X-Jeton"))
+    if not x:
+        return web.json_response({"erreur": "jeton inconnu"}, status=401)
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    if d.get("tid") == EN_COURS["tid"]:
+        PROGRES.update(fait=int(d.get("fait") or 0),
+                       total=int(d.get("total") or 0),
+                       quoi=x.get("titre") or x["id"])
+    return web.json_response({"ok": True})
+
+
 async def api_noeud_resultat(req):
     """Fin de travail : l'agent rend l'etat et la liste des fichiers deposes."""
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
@@ -5833,6 +5855,7 @@ def app():
     # l'agent d'un noeud : il appelle, on ne l'appelle jamais
     a.router.add_post("/api/noeud/annonce", api_noeud_annonce)
     a.router.add_get("/api/noeud/travail", api_noeud_travail)
+    a.router.add_post("/api/noeud/progres", api_noeud_progres)
     a.router.add_post("/api/noeud/fichier", api_noeud_fichier)
     a.router.add_post("/api/noeud/resultat", api_noeud_resultat)
     a.router.add_get("/api/noeud/agent", api_agent_source)

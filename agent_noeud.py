@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import ssl
+import threading
 import sys
 import time
 import urllib.error
@@ -159,8 +160,13 @@ def deposer_entrees(comfy, entrees, graphe):
     return None
 
 
-def executer(comfy, graphe):
-    """Soumet le graphe et attend la fin. Rend (fichiers, secondes, erreur)."""
+def executer(comfy, graphe, dire=None):
+    """Soumet le graphe et attend la fin. Rend (fichiers, secondes, erreur).
+
+    « dire » recoit la progression a chaque tour de boucle : c'est ce qui rend
+    la barre de la file vivante quand le rendu se fait ailleurs que sur la
+    machine du studio.
+    """
     st, d = appeler(f"{comfy}/prompt", corps={"prompt": graphe, "client_id": "agent"},
                     secondes=120)
     if st != 200 or not isinstance(d, dict) or "prompt_id" not in d:
@@ -186,6 +192,8 @@ def executer(comfy, graphe):
             return sorties, time.time() - t0, None
         if time.time() - t0 > 3600:
             return [], time.time() - t0, "delai depasse"
+        if dire and PROGRES["total"]:
+            dire(PROGRES["fait"], PROGRES["total"])
         time.sleep(2)
 
 
@@ -196,6 +204,121 @@ def lire_sortie(comfy, f):
                                 "type": f.get("type", "output")})
     st, octets = appeler(f"{comfy}/view?{q}", secondes=300)
     return octets if st == 200 and isinstance(octets, (bytes, bytearray)) else None
+
+
+# ══════════════════════════ progression ═══════════════════════════════
+# Rempli par le fil d'ecoute, lu par la boucle. Un dictionnaire suffit : une
+# seule ecriture, une seule lecture, et une valeur perimee ne coute qu'un
+# pourcentage legerement en retard.
+PROGRES = {"fait": 0, "total": 0}
+
+
+def _trame(sock):
+    """Lit une trame websocket du serveur. Rend (opcode, donnees) ou None."""
+    def lire(k):
+        bout = b""
+        while len(bout) < k:
+            m = sock.recv(k - len(bout))
+            if not m:
+                return None
+            bout += m
+        return bout
+
+    tete = lire(2)
+    if not tete:
+        return None
+    opcode = tete[0] & 0x0F
+    taille = tete[1] & 0x7F
+    masque = tete[1] & 0x80
+    if taille == 126:
+        t = lire(2)
+        taille = int.from_bytes(t, "big") if t else 0
+    elif taille == 127:
+        t = lire(8)
+        taille = int.from_bytes(t, "big") if t else 0
+    cle = lire(4) if masque else b""
+    corps = lire(taille) if taille else b""
+    if corps is None:
+        return None
+    if masque and cle:
+        corps = bytes(o ^ cle[i % 4] for i, o in enumerate(corps))
+    return opcode, corps
+
+
+def ecouter_progression(comfy):
+    """Relaie la progression annoncee par ComfyUI. Se rattrape toute seule.
+
+    Ecrit a la main parce que l'agent doit rester un fichier unique, sans
+    dependance a installer sur une machine qu'on ne maitrise pas.
+    """
+    import base64
+    import socket
+    from urllib.parse import urlparse
+
+    u = urlparse(comfy)
+    if u.scheme not in ("http", "https"):
+        return
+    attente = 2
+    while True:
+        sock = None
+        try:
+            port = u.port or (443 if u.scheme == "https" else 80)
+            sock = socket.create_connection((u.hostname, port), timeout=10)
+            if u.scheme == "https":
+                sock = ssl.create_default_context().wrap_socket(
+                    sock, server_hostname=u.hostname)
+            cle = base64.b64encode(os.urandom(16)).decode()
+            sock.sendall((
+                f"GET /ws?clientId=agent HTTP/1.1\r\n"
+                f"Host: {u.hostname}:{port}\r\n"
+                f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {cle}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+            ).encode())
+            entete = b""
+            while b"\r\n\r\n" not in entete:
+                m = sock.recv(1024)
+                if not m:
+                    raise OSError("connexion fermee pendant la poignee de main")
+                entete += m
+            if b"101" not in entete.split(b"\r\n", 1)[0]:
+                raise OSError("websocket refusee par ComfyUI")
+            sock.settimeout(120)
+            attente = 2
+            while True:
+                t = _trame(sock)
+                if t is None:
+                    break
+                opcode, corps = t
+                if opcode == 0x9:      # ping : la reponse doit etre masquee
+                    cle4 = os.urandom(4)
+                    charge = bytes(o ^ cle4[i % 4] for i, o in enumerate(corps))
+                    sock.sendall(bytes([0x8A, 0x80 | len(charge)]) + cle4 + charge)
+                    continue
+                if opcode == 0x8:      # fermeture
+                    break
+                if opcode != 0x1:      # on ne lit que le texte
+                    continue
+                try:
+                    d = json.loads(corps.decode("utf-8", "replace"))
+                except ValueError:
+                    continue
+                genre, data = d.get("type"), d.get("data") or {}
+                if genre == "progress":
+                    PROGRES.update(fait=int(data.get("value") or 0),
+                                   total=int(data.get("max") or 0))
+                elif genre in ("execution_success", "execution_error",
+                               "execution_interrupted"):
+                    PROGRES.update(fait=0, total=0)
+        except Exception:
+            PROGRES.update(fait=0, total=0)
+        finally:
+            try:
+                if sock:
+                    sock.close()
+            except OSError:
+                pass
+        time.sleep(attente)
+        attente = min(attente * 2, 30)
 
 
 # ══════════════════════════ menage ════════════════════════════════════
@@ -301,6 +424,9 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT):
     reclame_modeles = True
     connu = False
     dernier_menage = 0.0
+    # Un fil a part, en arriere-plan : la progression ne doit jamais retarder la
+    # demande de travail, et son echec ne coute qu'un pourcentage.
+    threading.Thread(target=ecouter_progression, args=(comfy,), daemon=True).start()
     while True:
         try:
             maintenant = time.time()
@@ -366,7 +492,19 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT):
             if erreur:
                 fichiers, secondes = [], 0
             else:
-                fichiers, secondes, erreur = executer(comfy, travail["graphe"])
+                dernier = [0.0]
+
+                def dire(fait, total):
+                    # Une annonce toutes les deux secondes au plus : le studio
+                    # n'a pas besoin de plus, et une machine lente ne doit pas
+                    # passer son temps a poster des pourcentages.
+                    if time.time() - dernier[0] < 2:
+                        return
+                    dernier[0] = time.time()
+                    appeler(f"{studio}/api/noeud/progres", jeton,
+                            {"tid": tid, "fait": fait, "total": total}, secondes=10)
+
+                fichiers, secondes, erreur = executer(comfy, travail["graphe"], dire)
 
             # 3. deposer les fichiers produits, puis rendre le resultat
             deposes = []
