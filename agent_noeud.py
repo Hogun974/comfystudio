@@ -615,9 +615,14 @@ def main():
            "comfy": os.environ.get("COMFY_URL") or cfg.get("comfy",
                                                           "http://127.0.0.1:8188"),
            "sorties": os.environ.get("COMFY_SORTIES") or cfg.get("sorties", ""),
+           # En conteneur il n'y a pas de fichier de reglages qui survive : tout
+           # doit pouvoir se dire par l'environnement, sinon le delai n'est pas
+           # reglable du tout la ou il sert le plus.
+           "garder_heures": float(os.environ.get("COMFY_GARDER_HEURES")
+                                  or cfg.get("garder_heures", GARDE_DEFAUT)),
            "ollama": os.environ.get("OLLAMA_URL")
                      or cfg.get("ollama", "http://127.0.0.1:11434"),
-           "garder_heures": cfg.get("garder_heures", GARDE_DEFAUT)}
+           }
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     a.add_argument("--studio", default=cfg.get("studio", ""),
                    help="adresse du studio, par exemple http://192.0.2.10:8199")

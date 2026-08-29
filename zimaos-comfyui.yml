@@ -95,6 +95,28 @@ services:
       # n'existe pas. On passe donc par la passerelle de l'hote, ce qui ne
       # depend ni du nom du conteneur ni de l'adresse LAN de la machine.
       COMFY_URL: "http://host.docker.internal:8188"
+      # Le meme dossier que ComfyUI, vu par l'agent. Sans lui, l'agent depose
+      # bien chaque fichier chez le studio mais ne peut jamais effacer sa
+      # copie : le disque du NAS se remplit en silence, et l'agent l'annonce
+      # au demarrage — « dossier inconnu ».
+      COMFY_SORTIES: "/sorties"
+      # Delai avant d'effacer une sortie DEJA deposee chez le studio. Un delai
+      # et non une suppression immediate : il laisse un recours si la copie
+      # arrivee au studio se revelait mauvaise.
+      COMFY_GARDER_HEURES: "24"
+      # Le modele de langage de cette machine, prete au studio quand le sien ne
+      # repond plus. 127.0.0.1 designerait le conteneur lui-meme : on passe par
+      # la passerelle de l'hote. Laisser tel quel s'il n'y a pas d'Ollama ici —
+      # l'agent le constate et le dit, sans rien casser.
+      OLLAMA_URL: "http://host.docker.internal:11434"
+    volumes:
+      # En ecriture : l'agent efface ici ce dont le studio a deja une copie. Il
+      # n'efface QUE ce qu'il a lui-meme depose, d'apres le registre qu'il
+      # tient — ce dossier contient aussi le travail fait a la main dans
+      # l'interface de ComfyUI, qui ne lui appartient pas.
+      - type: bind
+        source: /DATA/AppData/comfyui/output
+        target: /sorties
     # Aucun « $ » ici, et pas de shell : CasaOS resout les variables au moment
     # de l'import, et « $$STUDIO_URL » arrivait vide dans le conteneur. Python
     # lit donc l'environnement lui-meme, ce qui ne peut pas etre interprete au
@@ -116,6 +138,19 @@ services:
           description:
             en_us: Token issued by ComfyStudio administration
             fr_fr: Jeton delivre par l'administration de ComfyStudio
+        - container: COMFY_GARDER_HEURES
+          description:
+            en_us: Hours before deleting an output already sent to the studio
+            fr_fr: Heures avant d'effacer une sortie deja deposee au studio
+        - container: OLLAMA_URL
+          description:
+            en_us: Local language model, lent to the studio if its own is down
+            fr_fr: Modele de langage local, prete au studio si le sien tombe
+      volumes:
+        - container: /sorties
+          description:
+            en_us: ComfyUI outputs, cleaned once the studio has a copy
+            fr_fr: Sorties de ComfyUI, nettoyees une fois le studio servi
 
 x-casaos:
   architectures:
