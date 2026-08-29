@@ -5072,6 +5072,57 @@ def mes_fichiers(pid):
     permis |= {(defaut, "", nom) for nom, p in ENTREES.items() if p == pid}
     return permis
 
+EXT_3D = {".glb", ".gltf", ".obj", ".ply", ".stl", ".fbx"}
+
+
+def famille_sortie(nom):
+    """La famille d'une sortie, d'apres son extension.
+
+    D'apres l'extension et non l'intention : « video_image » produit une video,
+    « personnage » une image, et un maillage arrive parfois d'un fournisseur qui
+    ne dit pas ce qu'il envoie.
+    """
+    ext = os.path.splitext(nom or "")[1].lower()
+    if ext in EXT_3D:
+        return "objet3d"
+    return famille_du_fichier(nom) or "autre"
+
+
+async def api_mediatheque(req):
+    """Tout ce que cet utilisateur a produit, range par famille.
+
+    Lu dans les conversations et non sur le disque : elles seules savent a qui
+    appartient un fichier, sur quelle machine il vit et ce qui avait ete
+    demande. Un balayage du disque rendrait des noms sans histoire, et
+    franchirait la frontiere entre utilisateurs.
+    """
+    pid = qui(req)
+    items = []
+    for conv in CONVERSATIONS.values():
+        if conv.get("proprietaire") != pid:
+            continue
+        for tour in conv.get("tours", []):
+            for f in (tour.get("fichiers") or []):
+                nom = f.get("filename") or ""
+                items.append({
+                    "filename": nom, "subfolder": f.get("subfolder", ""),
+                    "type": f.get("type", "output"), "noeud": f.get("noeud"),
+                    "famille": famille_sortie(nom),
+                    "demande": (tour.get("demande") or "")[:120],
+                    "moteur": tour.get("modele"),
+                    "heure": tour.get("heure"),
+                    "conversation": conv["id"],
+                    "titre": (conv.get("titre") or "")[:60],
+                })
+    # Les plus recents d'abord : c'est ce qu'on vient chercher neuf fois sur dix.
+    items.reverse()
+    compte = {}
+    for it in items:
+        compte[it["famille"]] = compte.get(it["famille"], 0) + 1
+    return web.json_response({"fichiers": items[:600], "compte": compte,
+                              "total": len(items)})
+
+
 async def api_fichier(req):
     """Relais vers ComfyUI/view. On propage le statut et l'en-tete Range :
     sans lui, impossible de naviguer dans une video, et le fichier entier
@@ -5924,6 +5975,7 @@ def app():
     a.router.add_post("/api/conversation/{cid}/activer", api_activer)
     a.router.add_delete("/api/conversation/{cid}", api_supprimer)
     a.router.add_get("/api/fichier", api_fichier)
+    a.router.add_get("/api/mediatheque", api_mediatheque)
     a.router.add_post("/api/avis", api_avis)
     a.router.add_get("/api/admin/avis", api_admin_avis)
     a.router.add_get("/api/admin/aiguilleur", api_admin_aiguilleur)

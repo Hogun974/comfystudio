@@ -194,6 +194,33 @@ main{flex:1;overflow-y:auto;min-width:0}
   border:1px solid #fff4;color:#fff;border-radius:9px;padding:6px 11px;
   font:13px var(--mono);cursor:pointer}
 .plein .fermer:hover{background:#0009}
+/* La mediatheque prend tout l'ecran : on vient y chercher quelque chose, pas
+   jeter un oeil en passant. */
+#mediatheque{position:fixed;inset:0;z-index:50;background:var(--nuit);
+  display:flex;flex-direction:column}
+#mediatheque[hidden]{display:none}
+#mediatheque > header{display:flex;align-items:center;gap:12px;padding:12px 18px;
+  border-bottom:1px solid var(--trait);background:var(--plan);flex:none}
+#mediatheque > header > b{font:600 14px var(--sans)}
+#mediatheque > header > button:last-child{margin-left:auto;background:transparent;
+  border:1px solid var(--trait);border-radius:8px;padding:4px 10px;cursor:pointer;
+  color:var(--encre-douce);font:12px var(--mono)}
+.onglets-media{display:flex;gap:5px;overflow-x:auto}
+.onglets-media button{background:transparent;border:1px solid var(--trait);
+  border-radius:8px;padding:4px 10px;font:11.5px var(--mono);cursor:pointer;
+  color:var(--encre-douce);white-space:nowrap}
+.onglets-media button.ouvert{border-color:var(--braise);color:var(--braise)}
+.onglets-media button:disabled{opacity:.35;cursor:default}
+#grilleMedia{flex:1;overflow:auto;padding:16px 18px 40px;display:grid;gap:16px;
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr));align-content:start}
+.media{margin:0;background:var(--plan);border:1px solid var(--trait);
+  border-radius:11px;padding:10px;display:flex;flex-direction:column;gap:7px}
+.media img,.media video{width:100%;border-radius:7px;display:block}
+.media audio{width:100%}
+.media .cube{font-size:38px;text-align:center;color:var(--encre-pale);padding:18px 0}
+.media figcaption{font:12.5px var(--serif);display:flex;flex-direction:column;gap:2px}
+.media figcaption small{font:10.5px var(--mono);color:var(--encre-pale)}
+.vide-media{color:var(--encre-pale);font-style:italic}
 .actions-sortie{display:flex;gap:7px;margin-top:7px}
 .actions-sortie a,.actions-sortie button{font:11px var(--mono);
   color:var(--encre-douce);background:transparent;text-decoration:none;
@@ -346,6 +373,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     <span id="etatFile"></span>
     <span id="jaugeModeles"><b>connexion…</b></span>
     <span class="nuages" id="nuages"></span>
+    <button type="button" class="lien-admin" id="ouvrirMedia"
+            title="tout ce que tu as produit">médiathèque</button>
     <span class="compte" id="compte"></span>
     <a class="lien-admin" id="lienAdmin" href="/admin" style="display:none"
        title="administration : machines, comptes, cles">admin</a>
@@ -357,6 +386,14 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 </header>
 
 <div id="panneauFile"></div>
+<div id="mediatheque" hidden>
+  <header>
+    <b>médiathèque</b>
+    <span class="onglets-media" id="famillesMedia"></span>
+    <button type="button" id="fermerMedia" aria-label="fermer">✕</button>
+  </header>
+  <div id="grilleMedia"></div>
+</div>
 <div class="voile" id="voile"></div>
 <div class="corps">
   <aside>
@@ -929,6 +966,120 @@ function formulaireEntree() {
   };
 }
 peindreCompte();
+
+/* ── la mediatheque ───────────────────────────────────────────────────
+   Une sortie ne se retrouvait qu'en remontant la conversation qui l'avait
+   produite. Passe vingt echanges c'est fastidieux, passe trois semaines c'est
+   perdu. */
+const FAMILLES_MEDIA = [["image", "images"], ["video", "vidéos"],
+                        ["audio", "musiques"], ["objet3d", "objets 3D"]];
+let familleVue = "image", mediaCharge = null;
+
+async function ouvrirMediatheque() {
+  document.querySelector("#mediatheque").hidden = false;
+  if (!mediaCharge) {
+    try {
+      mediaCharge = await (await fetch("/api/mediatheque",
+                                       { credentials: "same-origin" })).json();
+    } catch (e) { mediaCharge = { fichiers: [], compte: {} }; }
+  }
+  peindreFamilles();
+  peindreGrille();
+}
+
+function peindreFamilles() {
+  const z = document.querySelector("#famillesMedia");
+  z.innerHTML = "";
+  for (const [cle, nom] of FAMILLES_MEDIA) {
+    const combien = (mediaCharge.compte || {})[cle] || 0;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = `${nom} (${combien})`;
+    b.className = cle === familleVue ? "ouvert" : "";
+    b.disabled = !combien;
+    b.onclick = () => { familleVue = cle; peindreFamilles(); peindreGrille(); };
+    z.appendChild(b);
+  }
+}
+
+function peindreGrille() {
+  const g = document.querySelector("#grilleMedia");
+  g.innerHTML = "";
+  const liste = (mediaCharge.fichiers || []).filter(f => f.famille === familleVue);
+  if (!liste.length) {
+    g.innerHTML = '<p class="vide-media">rien de ce type pour l\'instant</p>';
+    return;
+  }
+  for (const f of liste) {
+    const carte = document.createElement("figure");
+    carte.className = "media";
+    let el;
+    if (f.famille === "video") { el = document.createElement("video"); el.controls = true; }
+    else if (f.famille === "audio") { el = document.createElement("audio"); el.controls = true; }
+    else if (f.famille === "image") { el = document.createElement("img"); el.loading = "lazy"; el.alt = f.demande; }
+    else { el = document.createElement("div"); el.className = "cube"; el.textContent = "▣"; }
+    if (el.tagName !== "DIV") el.src = url(f);
+    if (el.tagName === "IMG") { el.style.cursor = "zoom-in"; el.onclick = () => plein(f); }
+    carte.appendChild(el);
+
+    const legende = document.createElement("figcaption");
+    legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
+                      + `<small>${ech(f.moteur || "")} · ${ech(f.heure || "")}</small>`;
+    carte.appendChild(legende);
+
+    const actions = document.createElement("div");
+    actions.className = "actions-sortie";
+    const tele = document.createElement("a");
+    tele.href = url(f); tele.download = f.filename; tele.textContent = "télécharger";
+    actions.appendChild(tele);
+    if (f.famille === "image" || f.famille === "video") {
+      const gros = document.createElement("button");
+      gros.type = "button"; gros.textContent = "plein écran";
+      gros.onclick = () => plein(f);
+      actions.appendChild(gros);
+    }
+    if (f.famille !== "objet3d") {
+      const rep = document.createElement("button");
+      rep.type = "button"; rep.textContent = "reprendre";
+      rep.title = "joindre ce fichier pour le retravailler";
+      rep.onclick = async () => {
+        rep.disabled = true;
+        try {
+          const r = await fetch("/api/reprendre", {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: f.filename,
+                                   subfolder: f.subfolder || "", noeud: f.noeud }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.image) throw new Error(d.erreur || "reprise impossible");
+          imageJointe = d.image;
+          $("#nomimg").textContent = f.filename;
+          $("#jointe").style.display = "";
+          fermerMediatheque();
+          $("#txt").focus();
+        } catch (err) { $("#alerte").textContent = err.message; }
+        finally { rep.disabled = false; }
+      };
+      actions.appendChild(rep);
+    }
+    carte.appendChild(actions);
+    g.appendChild(carte);
+  }
+}
+
+function fermerMediatheque() {
+  document.querySelector("#mediatheque").hidden = true;
+}
+
+document.querySelector("#ouvrirMedia").onclick = () => {
+  mediaCharge = null;      // toujours frais : on vient d'en produire
+  ouvrirMediatheque();
+};
+document.querySelector("#fermerMedia").onclick = fermerMediatheque;
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !document.querySelector("#mediatheque").hidden)
+    fermerMediatheque();
+});
 
 /* ── la file, au survol et au clic ─────────────────────────────────────
    Le compteur disait « 3 demandes » sans dire lesquelles : impossible de
