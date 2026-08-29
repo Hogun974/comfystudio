@@ -4867,6 +4867,11 @@ async def travailleur():
         finally:
             EN_COURS["tid"] = None
             EN_COURS["tache"] = None
+            # La progression d'une machine a agent n'a personne pour la remettre
+            # a zero : le studio ecoute SA websocket, pas la sienne. Sans cette
+            # ligne, la barre du travail suivant demarrait la ou le precedent
+            # s'etait arrete.
+            PROGRES.update(fait=0, total=0, quoi="")
             FILE_ATTENTE.task_done()
             purger_taches()
 

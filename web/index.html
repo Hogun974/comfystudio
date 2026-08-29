@@ -1054,6 +1054,19 @@ function peindreGrille() {
           if (!r.ok || !d.image) throw new Error(d.erreur || "reprise impossible");
           imageJointe = d.image;
           $("#nomimg").textContent = f.filename;
+          // La vignette avec : une piece jointe sans apercu ne dit pas laquelle
+          // on vient de reprendre, et on en reprend souvent plusieurs de suite.
+          const zone = $("#apercu-zone");
+          zone.innerHTML = "";
+          if (f.famille === "image") {
+            const i = document.createElement("img");
+            i.src = url(f); i.alt = f.filename; zone.appendChild(i);
+          } else if (f.famille === "video") {
+            const v = document.createElement("video");
+            v.src = url(f); v.muted = true; zone.appendChild(v);
+          } else {
+            zone.innerHTML = '<span class="genre">♪</span>';
+          }
           $("#jointe").style.display = "";
           fermerMediatheque();
           $("#txt").focus();
