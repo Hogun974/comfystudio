@@ -126,6 +126,66 @@ _PID = re.compile(r"[0-9a-f]{32}")
 FILE_ATTENTE = None         # asyncio.Queue, creee au demarrage
 ATTENTE = []                # tids en attente, dans l'ordre
 EN_COURS = {"tid": None}
+FICHIER_FILE = os.path.join(DOSSIER_CONV, "_file.json")
+EN_FILE = {}                # tid -> de quoi refaire la demande apres un arret
+
+
+def sauver_file():
+    """Ecrit ce qui reste a faire. Appele a chaque entree et a chaque sortie :
+    une file qui ne se sauve qu'a l'arret ne survit pas a une coupure."""
+    tmp = FICHIER_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump([EN_FILE[t] for t in ATTENTE if t in EN_FILE], f,
+                      ensure_ascii=False, indent=1)
+        os.replace(tmp, FICHIER_FILE)
+    except OSError as e:
+        print(f"  file d'attente non enregistree : {e}", flush=True)
+
+
+async def reprendre_file():
+    """Remet en file ce qui attendait avant l'arret.
+
+    Appele apres le chargement des conversations : sans elles, on ne saurait pas
+    a quel echange rattacher la demande.
+    """
+    try:
+        with open(FICHIER_FILE, encoding="utf-8") as f:
+            restes = json.load(f)
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        print(f"  file d'attente illisible ({e}) — on repart a vide", flush=True)
+        return
+    repris = 0
+    for r in restes if isinstance(restes, list) else []:
+        conv = CONVERSATIONS.get(r.get("conversation"))
+        if not conv or not isinstance(r.get("tid"), str):
+            continue
+        tid = r["tid"]
+        TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": r.get("texte", ""),
+                       "conversation": conv["id"], "proprietaire": r.get("proprietaire"),
+                       "image": r.get("image")}
+        # Le tour existe deja dans la conversation, mais il a ete marque
+        # « interrompu » au demarrage : on le remet en cours, sinon la demande
+        # s'afficherait en echec pendant qu'elle calcule.
+        for t in conv.get("tours", []):
+            if t.get("id") == tid:
+                t["etat"] = "en cours"
+                t.pop("erreur", None)
+        sauver(conv)
+        EN_FILE[tid] = r
+        ATTENTE.append(tid)
+        await FILE_ATTENTE.put({"tid": tid, "texte": r.get("texte", ""), "conv": conv,
+                                "image": r.get("image"), "modele": r.get("modele"),
+                                "taille": r.get("taille"),
+                                "priorite": r.get("priorite", ""),
+                                "noeud": r.get("noeud")})
+        repris += 1
+    if repris:
+        print(f"  {repris} demande(s) reprise(s) de la file d'avant l'arret",
+              flush=True)
+    sauver_file()
 
 # Derniere progression annoncee par ComfyUI, pour le travail en cours. Remplie
 # par ecouter_comfy(), lue par /api/file. « total » a zero signifie « on ne
@@ -4571,6 +4631,8 @@ async def travailleur():
         # travail dort dans la file asyncio, qui ne se laisse pas fouiller. Sans
         # cette lecture, une demande « retiree » etait calculee quand meme et son
         # resultat surgissait bien plus tard.
+        EN_FILE.pop(tid, None)
+        sauver_file()
         if (TACHES.get(tid) or {}).get("annulee"):
             FILE_ATTENTE.task_done()
             continue
@@ -4653,6 +4715,10 @@ async def api_generer(req):
     if devant:
         journal(tid, f"en file d'attente — {devant} demande(s) devant")
     ATTENTE.append(tid)
+    EN_FILE[tid] = {"tid": tid, "texte": texte, "conversation": conv["id"],
+                    "proprietaire": pid, "image": image, "modele": modele,
+                    "taille": taille, "priorite": priorite, "noeud": machine}
+    sauver_file()
     await FILE_ATTENTE.put({"tid": tid, "texte": texte, "conv": conv, "taille": taille,
                             "image": image, "modele": modele, "priorite": priorite,
                             "noeud": machine})
@@ -4753,6 +4819,8 @@ async def api_file_annuler(req):
         # legitimes au moment ou le travailleur les sort de la file.
         t["annulee"] = True
         t["etat"] = "erreur"
+        EN_FILE.pop(tid, None)
+        sauver_file()
         conv = CONVERSATIONS.get(t.get("conversation"))
         if conv:
             enregistrer_tour(conv, tid, t.get("demande", ""), {}, None, None, [],
@@ -5576,6 +5644,7 @@ async def demarrer_file(a):
     global FILE_ATTENTE
     FILE_ATTENTE = asyncio.Queue()
     a["travailleur"] = asyncio.create_task(travailleur())
+    await reprendre_file()
     a["veilleur"] = asyncio.create_task(veiller_noeuds())
     a["ecoute"] = asyncio.create_task(ecouter_comfy())
 

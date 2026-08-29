@@ -31,6 +31,9 @@ import urllib.request
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(ICI, "agent_noeud.json")
+DEPOSEES = os.path.join(ICI, "sorties_deposees.json")
+GARDE_DEFAUT = 24           # heures avant d'effacer une sortie deja au studio
+PURGE_TOUS_LES = 600        # secondes entre deux passages de menage
 PAUSE_COURTE = 3            # entre deux demandes de travail
 PAUSE_LONGUE = 20           # apres une erreur : on n'insiste pas
 CONTEXTE = ssl.create_default_context()
@@ -195,6 +198,66 @@ def lire_sortie(comfy, f):
     return octets if st == 200 and isinstance(octets, (bytes, bytearray)) else None
 
 
+# ══════════════════════════ menage ════════════════════════════════════
+def _registre():
+    try:
+        with open(DEPOSEES, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+
+def noter_depot(sorties, f, quand):
+    """Retient qu'on a envoye ce fichier au studio, et quand.
+
+    Le registre est la garantie qu'on n'effacera pas le travail personnel du
+    proprietaire de la machine : on ne supprime que ce qui y figure.
+    """
+    if not sorties:
+        return
+    chemin = os.path.join(sorties, f.get("subfolder", ""), f["filename"])
+    d = _registre()
+    d.append({"chemin": chemin, "quand": quand})
+    try:
+        with open(DEPOSEES, "w", encoding="utf-8") as g:
+            json.dump(d[-5000:], g, ensure_ascii=False)
+    except OSError as e:
+        print(f"  registre des depots non ecrit : {e}", flush=True)
+
+
+def faire_le_menage(garde_h):
+    """Efface les sorties deja au studio et assez vieilles. Rend le compte."""
+    limite = time.time() - garde_h * 3600
+    d = _registre()
+    if not d:
+        return 0
+    restant, efface = [], 0
+    for e in d:
+        if e.get("quand", 0) > limite:
+            restant.append(e)
+            continue
+        try:
+            os.remove(e["chemin"])
+            efface += 1
+        except FileNotFoundError:
+            # Deja parti — a la main, ou par un menage precedent. On oublie
+            # l'entree : la garder ferait retenter la suppression sans fin.
+            efface += 0
+        except OSError as err:
+            # Un fichier qu'on n'arrive pas a effacer reste au registre : on
+            # reessaiera, plutot que de le perdre de vue en le rayant.
+            print(f"  suppression impossible ({err}) — on garde la trace",
+                  flush=True)
+            restant.append(e)
+    try:
+        with open(DEPOSEES, "w", encoding="utf-8") as g:
+            json.dump(restant, g, ensure_ascii=False)
+    except OSError:
+        pass
+    return efface
+
+
 # ══════════════════════════ mise a jour ═══════════════════════════════
 def se_mettre_a_jour(studio):
     """Recupere la derniere version du script depuis le studio.
@@ -226,7 +289,7 @@ def se_mettre_a_jour(studio):
 
 
 # ══════════════════════════ boucle ════════════════════════════════════
-def boucle(studio, jeton, comfy):
+def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT):
     print(f"  studio  : {studio}", flush=True)
     print(f"  ComfyUI : {comfy}", flush=True)
     print("  en service — ctrl+C pour arreter\n", flush=True)
@@ -237,9 +300,18 @@ def boucle(studio, jeton, comfy):
     # d'autant.
     reclame_modeles = True
     connu = False
+    dernier_menage = 0.0
     while True:
         try:
             maintenant = time.time()
+            # Le menage passe entre deux travaux, pas pendant : effacer sous les
+            # pieds d'un rendu en cours n'apporterait rien de bon.
+            if sorties and maintenant - dernier_menage > PURGE_TOUS_LES:
+                dernier_menage = maintenant
+                partis = faire_le_menage(garder)
+                if partis:
+                    print(f"  {partis} sortie(s) effacee(s) ici — le studio les a",
+                          flush=True)
             # 1. s'annoncer regulierement : c'est ce qui rend le noeud visible
             if maintenant - derniere_annonce > 10:
                 etat = etat_comfy(comfy)
@@ -310,6 +382,9 @@ def boucle(studio, jeton, comfy):
                     deposes.append({"filename": f["filename"],
                                     "subfolder": f.get("subfolder", ""),
                                     "type": f.get("type", "output")})
+                    # Le studio en a une copie : la notre peut vieillir et
+                    # disparaitre. On ne note QUE ce qui est bien arrive.
+                    noter_depot(sorties, f, time.time())
                 else:
                     erreur = erreur or f"envoi refuse par le studio ({st})"
             appeler(f"{studio}/api/noeud/resultat", jeton,
@@ -333,7 +408,9 @@ def main():
     cfg = {"studio": os.environ.get("STUDIO_URL") or cfg.get("studio", ""),
            "jeton": os.environ.get("STUDIO_JETON") or cfg.get("jeton", ""),
            "comfy": os.environ.get("COMFY_URL") or cfg.get("comfy",
-                                                          "http://127.0.0.1:8188")}
+                                                          "http://127.0.0.1:8188"),
+           "sorties": os.environ.get("COMFY_SORTIES") or cfg.get("sorties", ""),
+           "garder_heures": cfg.get("garder_heures", GARDE_DEFAUT)}
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     a.add_argument("--studio", default=cfg.get("studio", ""),
                    help="adresse du studio, par exemple http://192.0.2.10:8199")
@@ -341,6 +418,13 @@ def main():
                    help="jeton delivre par l'administration du studio")
     a.add_argument("--comfy", default=cfg.get("comfy"),
                    help="adresse du ComfyUI local")
+    a.add_argument("--sorties", default=cfg.get("sorties", ""),
+                   help="dossier output de ComfyUI, pour effacer ce qui est deja "
+                        "au studio (sans lui, aucun menage)")
+    a.add_argument("--garder-heures", type=float, dest="garder",
+                   default=cfg.get("garder_heures", GARDE_DEFAUT),
+                   help=f"heures avant d'effacer une sortie deja deposee "
+                        f"(defaut {GARDE_DEFAUT})")
     a.add_argument("--maj", action="store_true",
                    help="se remplacer par la derniere version servie par le studio")
     args = a.parse_args()
@@ -355,13 +439,26 @@ def main():
         print("  Il manque le jeton : --jeton XXXX (cree dans /admin du studio)")
         return 1
 
-    if (studio, args.jeton, args.comfy) != (cfg.get("studio"), cfg.get("jeton"),
-                                            cfg.get("comfy")):
-        ecrire_config({"studio": studio, "jeton": args.jeton, "comfy": args.comfy})
+    sorties = os.path.abspath(args.sorties) if args.sorties else ""
+    if sorties and not os.path.isdir(sorties):
+        # Refuser tout de suite : un chemin faux ferait croire au menage sans
+        # que rien ne soit jamais efface.
+        print(f"  dossier de sorties introuvable : {sorties}")
+        return 1
+    ecrire_config({"studio": studio, "jeton": args.jeton, "comfy": args.comfy,
+                   "sorties": sorties, "garder_heures": args.garder})
     print("=" * 60)
     print("  Agent ComfyStudio")
     print("=" * 60)
-    boucle(studio, args.jeton, args.comfy.rstrip("/"))
+    if sorties:
+        print(f"  Sorties   : {sorties} — effacees {args.garder:.0f} h apres depot")
+    else:
+        # Le dire une fois, au demarrage : un disque qui se remplit en silence
+        # est plus penible qu'un dossier suppose, mais effacer au hasard le
+        # serait bien davantage.
+        print("  Sorties   : dossier inconnu — rien ne sera efface ici "
+              "(--sorties CHEMIN pour l'activer)")
+    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder)
     return 0
 
 
