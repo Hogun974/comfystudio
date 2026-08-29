@@ -4189,6 +4189,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 raise RuntimeError(f"{CATALOGUE[cle]['titre']} reclame {besoin} Go de "
                                    f"VRAM : {detail}.")
         ident = cible["id"]
+        # Retenu sur la tache : sans cela, interrompre un rendu frappait a la
+        # porte de la machine du studio, qui n'est pas forcement celle qui
+        # calcule — et ne l'est plus du tout sur un studio sans carte.
+        TACHES[tid]["noeud"] = ident
         if len(NOEUDS) > 1:
             journal(tid, f"machine retenue : {cible.get('titre', ident)}")
         if not tient_vraiment(cle, ident):
@@ -4563,6 +4567,13 @@ async def travailleur():
         tid = job["tid"]
         if tid in ATTENTE:
             ATTENTE.remove(tid)
+        # Retirer de ATTENTE ne suffit pas : cette liste sert l'affichage, le
+        # travail dort dans la file asyncio, qui ne se laisse pas fouiller. Sans
+        # cette lecture, une demande « retiree » etait calculee quand meme et son
+        # resultat surgissait bien plus tard.
+        if (TACHES.get(tid) or {}).get("annulee"):
+            FILE_ATTENTE.task_done()
+            continue
         EN_COURS["tid"] = tid
         try:
             await executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
@@ -4574,6 +4585,32 @@ async def travailleur():
             EN_COURS["tid"] = None
             FILE_ATTENTE.task_done()
             purger_taches()
+
+async def api_reprendre(req):
+    """Remet une sortie deja produite dans le cache d'entree, et rend son nom.
+
+    La page s'en sert pour « agrandir » : le fichier devient une piece jointe
+    ordinaire, et toute la suite — envoi vers la machine qui calcule, controle
+    de propriete — fonctionne sans rien savoir de son passe.
+    """
+    pid = qui(req)
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    nom = d.get("filename") or ""
+    sous = d.get("subfolder") or ""
+    ident = d.get("noeud") or noeud_local()["id"]
+    # La meme autorisation que pour l'affichage : ni plus, ni moins.
+    if noeud(ident) is None or (ident, sous, nom) not in mes_fichiers(pid):
+        return web.json_response({"erreur": "inconnu"}, status=404)
+    try:
+        copie = await recuperer_sortie({"filename": nom, "subfolder": sous,
+                                        "noeud": ident}, pid)
+    except Exception as e:
+        return web.json_response({"erreur": str(e)}, status=502)
+    return web.json_response({"image": copie})
+
 
 async def api_generer(req):
     d = await req.json()
@@ -4708,8 +4745,13 @@ async def api_file_annuler(req):
         # existe, et permettrait de sonder la file d'un autre.
         return web.json_response({"erreur": "demande inconnue"}, status=404)
 
-    if tid in ATTENTE:
-        ATTENTE.remove(tid)
+    if tid in ATTENTE or (t.get("etat") or "en attente") == "en attente":
+        if tid in ATTENTE:
+            ATTENTE.remove(tid)
+        # La marque, et non l'etat : une tache peut etre en erreur pour dix
+        # autres raisons, et confondre les deux ferait sauter des travaux
+        # legitimes au moment ou le travailleur les sort de la file.
+        t["annulee"] = True
         t["etat"] = "erreur"
         conv = CONVERSATIONS.get(t.get("conversation"))
         if conv:
@@ -4719,9 +4761,18 @@ async def api_file_annuler(req):
         return web.json_response({"ok": True, "quoi": "retiree"})
 
     if EN_COURS["tid"] == tid:
+        t["annulee"] = True
+        ident = t.get("noeud") or noeud_local()["id"]
+        if est_agent(ident):
+            # Le studio n'a pas l'adresse d'une machine a agent : c'est elle qui
+            # appelle. On ne peut donc pas l'arreter en cours de rendu. Le dire,
+            # plutot que de laisser croire a un arret qui n'a pas lieu.
+            journal(tid, f"{noeud(ident).get('titre', ident)} calcule deja : "
+                         f"le rendu ira a son terme, le resultat sera ecarte")
+            return web.json_response({"ok": True, "quoi": "ecartee"})
         # ComfyUI finit l'etape en cours avant de rendre la main : ce n'est pas
         # un arret net, et le dire evite de croire que rien ne s'est passe.
-        await interrompre_comfy()
+        await interrompre_comfy(ident)
         journal(tid, "interruption demandee — le calcul en cours s'arrete")
         return web.json_response({"ok": True, "quoi": "interrompue"})
 
@@ -4729,12 +4780,18 @@ async def api_file_annuler(req):
                              status=409)
 
 
-async def interrompre_comfy():
-    """Demande a ComfyUI d'abandonner ce qu'il calcule."""
+async def interrompre_comfy(ident=None):
+    """Demande a un ComfyUI joignable d'abandonner ce qu'il calcule.
+
+    L'adresse vient du noeud qui execute, et non plus systematiquement de la
+    machine du studio : celle-ci n'a pas toujours de ComfyUI, et frapper a sa
+    porte n'arretait alors rien du tout.
+    """
     try:
+        base = url_de(ident) if ident else url_locale()
         to = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(timeout=to) as s:
-            await s.post(f"{url_locale()}/interrupt")
+            await s.post(f"{base}/interrupt")
     except Exception as e:
         print(f"interruption impossible : {e}", flush=True)
 
@@ -5553,6 +5610,7 @@ def app():
     a.router.add_post("/api/generer", api_generer)
     a.router.add_get("/api/etat/{tid}", api_etat)
     a.router.add_get("/api/file", api_file)
+    a.router.add_post("/api/reprendre", api_reprendre)
     a.router.add_delete("/api/file/{tid}", api_file_annuler)
     a.router.add_get("/api/conversations", api_conversations)
     a.router.add_post("/api/conversations", api_nouvelle)

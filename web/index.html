@@ -186,6 +186,13 @@ main{flex:1;overflow-y:auto;min-width:0}
   border:1px solid var(--trait);background:var(--creux)}
 .sortie audio{width:100%;margin-top:4px}
 .sortie a{color:var(--braise)}
+.actions-sortie{display:flex;gap:7px;margin-top:7px}
+.actions-sortie a,.actions-sortie button{font:11px var(--mono);
+  color:var(--encre-douce);background:transparent;text-decoration:none;
+  border:1px solid var(--trait);border-radius:7px;padding:3px 9px;cursor:pointer}
+.actions-sortie a:hover,.actions-sortie button:hover{border-color:var(--braise);
+  color:var(--braise)}
+.actions-sortie button:disabled{opacity:.4;cursor:default}
 .lecture{font-size:15px;white-space:pre-wrap;color:var(--encre-douce);
   border-left:2px solid var(--trait-vif);padding-left:14px}
 .echec{color:var(--rouge);font:13.5px var(--sans)}
@@ -467,6 +474,51 @@ function bloque(titre, contenu) {
   d.querySelector(".corps-detail").textContent = contenu;
   return d;
 }
+/* Ce qu'on peut faire d'une sortie, la ou on la regarde. Sans ces boutons il
+   fallait un clic droit — inexistant sur telephone — et, pour agrandir, passer
+   par le disque puis rejoindre le fichier a la main. */
+function actionsSortie(f) {
+  const zone = document.createElement("div");
+  zone.className = "actions-sortie";
+
+  const tele = document.createElement("a");
+  tele.href = url(f);
+  tele.download = f.filename;
+  tele.textContent = "télécharger";
+  // Un lien ordinaire, pas du script : le navigateur sait deja nommer le
+  // fichier, reprendre un transfert coupe et le ranger ou il faut.
+  zone.appendChild(tele);
+
+  if (EXT_IMG.test(f.filename)) {
+    const gros = document.createElement("button");
+    gros.type = "button";
+    gros.textContent = "agrandir";
+    gros.title = "repartir de CETTE image pour la passer en 4×";
+    gros.onclick = async () => {
+      gros.disabled = true;
+      try {
+        // On reprend cette sortie-la, et non « la derniere » : agrandir une
+        // image d'il y a trois echanges est precisement ce qui manquait.
+        const r = await fetch("/api/reprendre", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: f.filename, subfolder: f.subfolder || "",
+                                 noeud: f.noeud }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.image) throw new Error(d.erreur || "reprise impossible");
+        imageJointe = d.image;
+        $("#txt").value = "agrandis cette image";
+        ajuster();
+        $("#go").click();
+      } catch (err) {
+        $("#alerte").textContent = err.message;
+      } finally { gros.disabled = false; }
+    };
+    zone.appendChild(gros);
+  }
+  return zone;
+}
+
 function garnirReponse(bloc, t, cid) {
   // une conversation rechargee peut contenir une question restee en suspens
   if (t.etat === "question" && (t.questions || []).length) {
@@ -509,6 +561,7 @@ function garnirReponse(bloc, t, cid) {
     // Le nom sert a retrouver le fichier, pas a lire l'image : infobulle.
     el.title = f.filename;
     sortie.appendChild(el);
+    if (el.tagName !== "A") sortie.appendChild(actionsSortie(f));
   });
   if (rate) {
     const e = document.createElement("div");
