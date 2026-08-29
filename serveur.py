@@ -1884,6 +1884,48 @@ def llm_distant_possible(texte, pid=None):
 # pid -> {"llm": False} : refus explicite du cloud pour CE navigateur. Absent
 # veut dire « comme le reglage general », qui reste la reference.
 NUAGE = {}
+FICHIER_NUAGE = os.path.join(DOSSIER_CONV, "_nuage.json")
+
+
+def charger_nuage():
+    """Relit les interrupteurs poses par chacun.
+
+    Un fichier illisible ne doit pas empecher le studio de demarrer : on repart
+    sur les reglages generaux, ce qui est exactement le comportement d'avant.
+    """
+    try:
+        with open(FICHIER_NUAGE, encoding="utf-8") as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        print(f"  interrupteurs du nuage illisibles ({e}) — reglages generaux",
+              flush=True)
+        return
+    if isinstance(d, dict):
+        NUAGE.update({k: v for k, v in d.items() if isinstance(v, dict)})
+
+
+def sauver_nuage():
+    """N'ecrit que ce qui s'ecarte du reglage general.
+
+    Enregistrer les positions qui coincident avec le defaut ferait grossir le
+    fichier sans rien apprendre, et surtout figerait ces gens-la : changer le
+    reglage general dans /admin ne les toucherait plus.
+    """
+    utile = {}
+    for pid, choix in NUAGE.items():
+        garde = {m: v for m, v in choix.items()
+                 if v != (CHOIX.get(m, "local") != "local")}
+        if garde:
+            utile[pid] = garde
+    tmp = FICHIER_NUAGE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(utile, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, FICHIER_NUAGE)
+    except OSError as e:
+        print(f"  interrupteurs du nuage non enregistres : {e}", flush=True)
 
 
 def fournisseur_dispo(modalite):
@@ -1936,6 +1978,7 @@ async def api_nuage(req):
         if modalite not in CHOIX:
             return web.json_response({"erreur": "modalite inconnue"}, status=400)
         NUAGE.setdefault(pid, {})[modalite] = bool(d.get("actif", True))
+        sauver_nuage()
 
     etat = []
     for modalite, libelle, _ in MODALITES:
@@ -4056,6 +4099,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             plan["raison"] = "cle absente : repli sur le moteur local"
             loin = ""
         if loin:
+            # Le dire AVANT l'appel : c'est la seule trace qui distingue « parti
+            # au loin » de « reste ici », et son absence a rendu un aiguillage
+            # muet impossible a diagnostiquer autrement qu'en lisant le code.
+            journal(tid, f"confie a {MOTEURS_DISTANTS[loin]['titre']}…")
             try:
                 sorties = await produire_distant(loin, plan, texte, image,
                                                  intention, tid, conv)
@@ -5496,6 +5543,7 @@ if __name__ == "__main__":
     charger_registre()
     charger_comptes()
     charger_cles()
+    charger_nuage()
     relever_vram()
     print(f"  Ecriture  : {choisir_modele_ecriture()}")
     print("  Aiguilleur: "

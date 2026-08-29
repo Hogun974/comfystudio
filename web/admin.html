@@ -66,7 +66,46 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
   border-radius:7px;user-select:all}
 .jeton .avert{color:var(--encre-douce);font-size:13px}
 .vide{color:var(--encre-pale);font-style:italic;padding:18px 10px}
+/* Le tableau defile dans sa carte, jamais la page : sur telephone, cinq
+   colonnes et deux boutons par ligne emportaient tout vers la droite et
+   coupaient les cartes. */
+.tableau{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;
+  padding:0 4px}
+.tableau table{min-width:560px}
+body{overflow-x:hidden}
+/* Les descriptions des fournisseurs sont longues : sans borne, la premiere
+   colonne poussait les autres hors de vue. */
+td .detail{display:block;max-width:34ch}
+@media (max-width:640px){
+  header{flex-wrap:wrap;gap:8px 12px;padding:11px 14px}
+  header .lien{margin-left:0}
+  header .lien:first-of-type{margin-left:auto}
+  main{padding:18px 12px 48px}
+  .carte{padding:14px 13px;margin:12px 0}
+  h2{margin:22px 0 10px}
+  /* Un champ a 150 px de large forcait la rangee a deborder a deux par
+     ligne : on les laisse prendre la largeur disponible et pas plus. */
+  input{min-width:0;width:100%}
+  .rangee > input{flex:1 1 100%}
+}
 .alerte{color:var(--rouge);font:13px var(--sans);min-height:20px;margin:8px 0}
+/* La barre defile plutot que de se replier : sur un ecran etroit, cinq onglets
+   sur trois lignes mangeaient la moitie de la hauteur utile. */
+.onglets{display:flex;gap:4px;overflow-x:auto;margin:0 0 18px;
+  border-bottom:1px solid var(--trait);scrollbar-width:none}
+.onglets::-webkit-scrollbar{display:none}
+.onglets button{flex:0 0 auto;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:9px 14px;cursor:pointer;
+  font:13px var(--mono);color:var(--encre-douce);white-space:nowrap}
+.onglets button:hover{color:var(--braise-vive)}
+.onglets button[aria-selected="true"]{color:var(--braise);
+  border-bottom-color:var(--braise)}
+.volet{display:none}
+.volet.actif{display:block}
+.volet > .carte:first-child{margin-top:0}
+@media (max-width:640px){
+  .onglets button{padding:9px 11px;font-size:12px}
+}
 #entree{max-width:460px;margin:70px auto;text-align:center}
 </style>
 </head>
@@ -93,14 +132,22 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
   </div>
 
   <div id="console" style="display:none">
+    <nav class="onglets" role="tablist" aria-label="catégories">
+      <button type="button" role="tab" id="o-machines" data-volet="machines" aria-controls="v-machines">machines</button>
+      <button type="button" role="tab" id="o-avis" data-volet="avis" aria-controls="v-avis">retours</button>
+      <button type="button" role="tab" id="o-cles" data-volet="cles" aria-controls="v-cles">clés d'API</button>
+      <button type="button" role="tab" id="o-comptes" data-volet="comptes" aria-controls="v-comptes">comptes</button>
+      <button type="button" role="tab" id="o-aiguilleur" data-volet="aiguilleur" aria-controls="v-aiguilleur">aiguilleur</button>
+    </nav>
+    <section class="volet" id="v-machines" role="tabpanel" aria-labelledby="o-machines">
     <h2>machines</h2>
     <p class="aide">Une machine à agent appelle le studio toutes les dix
       secondes. Le studio ne l'appelle jamais : elle peut donc être derrière une
       box, sur un portable, ou sur un réseau qu'on ne maîtrise pas.</p>
-    <table>
+    <div class="tableau"><table>
       <thead><tr><th>machine</th><th>carte</th><th>moteurs</th><th>vue</th><th>file</th><th></th></tr></thead>
       <tbody id="liste"></tbody>
-    </table>
+    </table></div>
 
     <div class="carte">
       <h2 style="margin-top:0">ajouter une machine</h2>
@@ -115,19 +162,24 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
     </div>
 
 
+    <div id="livraison"></div>
+    </section>
+    <section class="volet" id="v-avis" role="tabpanel" aria-labelledby="o-avis">
     <div class="carte">
       <h2 style="margin-top:0">retours des utilisateurs</h2>
       <p class="aide">Chaque réponse peut être notée d'un pouce dans l'interface.
         Un pouce en bas garde la demande, le moteur choisi, les réglages et les
         paroles : de quoi refaire le cas sans redemander à personne.</p>
       <div class="rangee" id="compteAvis"></div>
-      <table>
+      <div class="tableau"><table>
         <thead><tr><th>quand</th><th>avis</th><th>demande</th><th>moteur</th><th>ce qui n'allait pas</th></tr></thead>
         <tbody id="listeAvis"></tbody>
-      </table>
+      </table></div>
     </div>
 
 
+    </section>
+    <section class="volet" id="v-cles" role="tabpanel" aria-labelledby="o-cles">
     <div class="carte">
       <h2 style="margin-top:0">clés d'API</h2>
       <p class="aide">Le studio tourne entièrement en local et continue de le
@@ -140,14 +192,16 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
         vérifié dans le code, pas ici.</p>
       <div class="rangee" id="choixModalites"></div>
       <div class="alerte" id="etatChoix"></div>
-      <table>
+      <div class="tableau"><table>
         <thead><tr><th>fournisseur</th><th>modèle</th><th>clé</th><th></th></tr></thead>
         <tbody id="listeCles"></tbody>
-      </table>
+      </table></div>
       <div class="alerte" id="alerteCles"></div>
     </div>
 
 
+    </section>
+    <section class="volet" id="v-comptes" role="tabpanel" aria-labelledby="o-comptes">
     <div class="carte">
       <h2 style="margin-top:0">comptes</h2>
       <p class="aide">Sans compte, chaque navigateur garde son espace prive,
@@ -159,10 +213,10 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
         <b>l'utilisateur devra changer lui-même</b> : le mot de passe n'est
         jamais conservé, seule une empreinte l'est, et personne — pas même
         l'administrateur — ne peut le relire.</p>
-      <table>
+      <div class="tableau"><table>
         <thead><tr><th>compte</th><th>rôle</th><th>créé</th><th>dernière entrée</th><th></th></tr></thead>
         <tbody id="listeComptes"></tbody>
-      </table>
+      </table></div>
       <div class="rangee" style="margin-top:10px">
         <input id="nouveauCompte" placeholder="nom" maxlength="24" autocomplete="off">
         <input id="nouveauMdp" type="password" placeholder="mot de passe" autocomplete="new-password">
@@ -172,6 +226,8 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
       <div class="alerte" id="alerteComptes"></div>
     </div>
 
+    </section>
+    <section class="volet" id="v-aiguilleur" role="tabpanel" aria-labelledby="o-aiguilleur">
     <div class="carte">
       <h2 style="margin-top:0">aiguilleur</h2>
       <p class="aide">Un classifieur décide seul des demandes qui ne réclament
@@ -185,7 +241,7 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
       <div class="alerte" id="alerteAig"></div>
     </div>
 
-    <div id="livraison"></div>
+    </section>
   </div>
 </main>
 
@@ -542,6 +598,48 @@ document.querySelector("#entrainerAig").onclick = async e => {
   else { $("#console").style.display = ""; rafraichir(); rafraichirAvis(); rafraichirCles(); rafraichirComptes(); rafraichirAiguilleur(); }
   setInterval(() => { if ($("#console").style.display !== "none") rafraichir(); }, 5000);
 })();
+
+/* ── les onglets ──────────────────────────────────────────────────────
+   L'onglet choisi va dans l'adresse : un lien peut donc viser UN reglage, et
+   le bouton « precedent » du navigateur fait ce qu'on attend. Il est aussi
+   retenu d'une visite a l'autre, parce qu'on revient presque toujours au meme
+   endroit. */
+const VOLETS = [...document.querySelectorAll(".volet")].map(v => v.id.slice(2));
+
+function montrer(cle, ecrire = true) {
+  if (!VOLETS.includes(cle)) cle = VOLETS[0];
+  for (const c of VOLETS) {
+    document.querySelector("#v-" + c).classList.toggle("actif", c === cle);
+    const b = document.querySelector("#o-" + c);
+    b.setAttribute("aria-selected", c === cle ? "true" : "false");
+    // tabindex : les fleches du clavier ne doivent traverser que la barre,
+    // pas s'arreter sur chaque onglet en tabulant.
+    b.tabIndex = c === cle ? 0 : -1;
+  }
+  if (ecrire) {
+    try { localStorage.setItem("adminVolet", cle); } catch (e) {}
+    if (location.hash.slice(1) !== cle) history.replaceState(null, "", "#" + cle);
+  }
+}
+
+document.querySelectorAll(".onglets button").forEach(b => {
+  b.onclick = () => montrer(b.dataset.volet);
+});
+document.querySelector(".onglets").addEventListener("keydown", e => {
+  const i = VOLETS.indexOf(document.querySelector('[aria-selected="true"]').dataset.volet);
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    e.preventDefault();
+    const j = (i + (e.key === "ArrowRight" ? 1 : VOLETS.length - 1)) % VOLETS.length;
+    montrer(VOLETS[j]);
+    document.querySelector("#o-" + VOLETS[j]).focus();
+  }
+});
+addEventListener("hashchange", () => montrer(location.hash.slice(1), false));
+
+let depart = location.hash.slice(1);
+if (!depart) { try { depart = localStorage.getItem("adminVolet") || ""; } catch (e) {} }
+montrer(depart || VOLETS[0], false);
+
 </script>
 </body>
 </html>
