@@ -28,7 +28,7 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--nuit);color:var(--encre);
+body{margin:0;overflow-x:hidden;background:var(--nuit);color:var(--encre);
   font:15.5px/1.65 var(--serif);display:flex;flex-direction:column;
   -webkit-font-smoothing:antialiased}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:99;opacity:.035;
@@ -311,7 +311,16 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   body.ouvert aside{transform:none}
   body.ouvert .voile{display:block}
   footer .outils{flex-wrap:wrap}
-  header .jauge{gap:8px}
+  header{flex-wrap:wrap;row-gap:8px;padding:10px 12px}
+  /* La jauge se replie au lieu d'elargir la page. « min-width:0 » est ce qui
+     autorise vraiment le repli : sans lui, un enfant de flex refuse de passer
+     sous sa largeur de contenu et pousse tout dehors. */
+  header .jauge{gap:8px;row-gap:6px;flex-wrap:wrap;min-width:0;
+    justify-content:flex-end}
+  header .marque{flex:0 0 auto}
+  .compte{flex-wrap:wrap;min-width:0}
+  .compte b{max-width:12ch;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
