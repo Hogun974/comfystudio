@@ -8,6 +8,7 @@ REM
 REM   noeud.bat                              tout, en posant les questions
 REM   noeud.bat --verifier                   diagnostic, sans rien lancer
 REM   noeud.bat --studio URL --jeton XXXX    sans aucune question
+REM   noeud.bat --sorties CHEMIN             output de ComfyUI, pour le menage
 REM   noeud.bat --fond                       laisse tourner en tache de fond
 REM
 REM Ce fichier est volontairement en ASCII strict : cmd.exe le lit dans la page
@@ -18,6 +19,7 @@ cd /d "%~dp0"
 
 set "STUDIO="
 set "JETON="
+set "SORTIES="
 set "VERIFIER=0"
 set "FOND=0"
 if not defined COMFY_URL set "COMFY_URL=http://127.0.0.1:8188"
@@ -32,6 +34,7 @@ REM bloc entier avant de l'executer, et shift y perd son effet.
 if /i "%~1"=="--studio" goto :a_studio
 if /i "%~1"=="--jeton" goto :a_jeton
 if /i "%~1"=="--comfy" goto :a_comfy
+if /i "%~1"=="--sorties" goto :a_sorties
 if /i "%~1"=="--verifier" goto :a_verifier
 if /i "%~1"=="--fond" goto :a_fond
 echo   argument inconnu : %~1
@@ -51,6 +54,12 @@ goto :args
 
 :a_comfy
 set "COMFY_URL=%~2"
+shift
+shift
+goto :args
+
+:a_sorties
+set "SORTIES=%~2"
 shift
 shift
 goto :args
@@ -264,7 +273,7 @@ echo ----------
 REM Le jeton passe par le fichier de reglages, pas par la ligne de commande :
 REM celle d'un processus est lisible par tout le monde sur la machine, ce qui
 REM annulait le masquage de la saisie.
-"%PY%" -c "import json,io,os;f=os.environ['CONFIG'];c=json.load(io.open(f,encoding='utf-8')) if os.path.exists(f) else {};c.update(studio=os.environ['STUDIO'],jeton=os.environ['JETON'],comfy=os.environ['COMFY_URL']);json.dump(c,io.open(f,'w',encoding='utf-8'),indent=1)"
+"%PY%" -c "import json,io,os;f=os.environ['CONFIG'];c=json.load(io.open(f,encoding='utf-8')) if os.path.exists(f) else {};c.update(studio=os.environ['STUDIO'],jeton=os.environ['JETON'],comfy=os.environ['COMFY_URL']);c.update(sorties=os.environ['SORTIES']) if os.environ.get('SORTIES') else None;json.dump(c,io.open(f,'w',encoding='utf-8'),indent=1)"
 if "%FOND%"=="1" (
   start "Agent ComfyStudio" /min "%PY%" "%AGENT%"
   echo   [ok] agent lance dans une fenetre reduite

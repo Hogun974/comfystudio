@@ -23,6 +23,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --studio)   STUDIO="${2:-}"; shift 2 ;;
     --jeton)    JETON="${2:-}"; shift 2 ;;
+    --sorties)  SORTIES="${2:-}"; shift 2 ;;
     --comfy)    COMFY_URL="${2:-}"; shift 2 ;;
     --verifier) VERIFIER=1; shift ;;
     --fond)     FOND=1; shift ;;
@@ -204,11 +205,13 @@ if [ -z "$JETON" ]; then
 # celle d'un processus est lisible par tout le monde sur la machine, ce qui
 # annulait le masquage de la saisie.
 ecrire_reglages() {
-  "$PY" - "$CONFIG" "$STUDIO" "$JETON" "$COMFY_URL" <<'PYFIN'
+  "$PY" - "$CONFIG" "$STUDIO" "$JETON" "$COMFY_URL" "${SORTIES:-}" <<'PYFIN'
 import json, io, os, sys
-p, studio, jeton, comfy = sys.argv[1:5]
+p, studio, jeton, comfy, sorties = sys.argv[1:6]
 c = json.load(io.open(p, encoding="utf-8")) if os.path.exists(p) else {}
 c.update(studio=studio, jeton=jeton, comfy=comfy)
+if sorties:
+    c["sorties"] = sorties
 json.dump(c, io.open(p, "w", encoding="utf-8"), indent=1)
 PYFIN
 }
