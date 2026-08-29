@@ -368,6 +368,26 @@ async function detailMachine(ident, ou) {
   bloc("modèle de langage", d.llm
         ? `prêté au studio — ${(d.llm_modeles || []).join(", ")}`
         : "aucun joignable sur cette machine", "mono");
+  if (d.llm) {
+    // Une voie de secours qu'on n'essaie jamais n'est pas une voie de secours :
+    // on decouvre qu'elle est bouchee le jour ou l'on en a besoin.
+    const essai = document.createElement("div");
+    essai.className = "pli-ligne";
+    const b2 = document.createElement("button");
+    b2.type = "button"; b2.textContent = "poser une question pour vérifier";
+    const dit = document.createElement("span");
+    dit.className = "detail"; dit.style.marginLeft = "9px";
+    b2.onclick = async () => {
+      b2.disabled = true; dit.textContent = "en cours…";
+      const r = await api("/api/admin/noeuds/" + encodeURIComponent(ident) + "/llm", "POST", {});
+      b2.disabled = false;
+      dit.textContent = !r.ok ? (r.d && r.d.erreur) || "essai impossible"
+        : r.d.erreur ? `${r.d.modele} : ${r.d.erreur}`
+        : `${r.d.modele} a répondu « ${r.d.reponse} » en ${r.d.secondes} s`;
+    };
+    essai.append(b2, dit);
+    z.appendChild(essai);
+  }
   bloc("inventaire", d.inventaire_connu
         ? `relevé il y a ${d.releve_il_y_a} s` : "inconnu — rien ne sera envoyé ici", "mono");
   bloc(`${d.prets.length} moteurs prêts`,

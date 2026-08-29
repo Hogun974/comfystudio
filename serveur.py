@@ -1123,32 +1123,38 @@ def noeuds_a_llm():
     return [i for _, i in sorted(bons, reverse=True)]
 
 
-async def demander_a_un_noeud(corps, tid=None, secondes=900):
-    """Fait poser la question par une machine a agent. Rend le texte, ou "".
+async def poser_a(ident, corps, tid=None, secondes=900):
+    """Pose une question au modele de langage d'UNE machine.
 
     Le studio depose, l'agent vient chercher : le meme chemin que les rendus,
     parce que c'est le seul qui existe — une machine a agent n'a pas d'adresse.
+    Rend (reponse, erreur) : l'un des deux est toujours vide.
     """
+    qid = uuid.uuid4().hex
+    futur = asyncio.get_event_loop().create_future()
+    REPONSES[qid] = futur
+    QUESTIONS.setdefault(ident, []).append({"qid": qid, "corps": corps})
+    titre = (noeud(ident) or {}).get("titre", ident)
+    journal(tid, f"question confiee a {titre}…")
+    try:
+        rep_ = await asyncio.wait_for(futur, timeout=secondes)
+    except asyncio.TimeoutError:
+        return "", "n'a pas repondu a temps"
+    finally:
+        REPONSES.pop(qid, None)
+        QUESTIONS[ident] = [q for q in QUESTIONS.get(ident, []) if q["qid"] != qid]
+    return (rep_.get("reponse") or ""), (rep_.get("erreur") or "")
+
+
+async def demander_a_un_noeud(corps, tid=None, secondes=900):
+    """La premiere machine qui sait repondre. Rend le texte, ou ""."""
     for ident in noeuds_a_llm():
-        qid = uuid.uuid4().hex
-        futur = asyncio.get_event_loop().create_future()
-        REPONSES[qid] = futur
-        QUESTIONS.setdefault(ident, []).append({"qid": qid, "corps": corps})
-        titre = (noeud(ident) or {}).get("titre", ident)
-        journal(tid, f"question confiee a {titre}…")
-        try:
-            rep_ = await asyncio.wait_for(futur, timeout=secondes)
-        except asyncio.TimeoutError:
-            journal(tid, f"{titre} n'a pas repondu a temps")
+        reponse, erreur = await poser_a(ident, corps, tid, secondes)
+        if erreur:
+            journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} : {erreur}")
             continue
-        finally:
-            REPONSES.pop(qid, None)
-            QUESTIONS[ident] = [q for q in QUESTIONS.get(ident, [])
-                                if q["qid"] != qid]
-        if rep_.get("erreur"):
-            journal(tid, f"{titre} : {rep_['erreur']}")
-            continue
-        return rep_.get("reponse") or ""
+        if reponse:
+            return reponse
     return ""
 
 
@@ -5886,6 +5892,35 @@ async def api_admin_noeud_detail(req):
     })
 
 
+async def api_admin_essai_llm(req):
+    """Pose une vraie question au modele d'une machine, et rend ce qu'elle dit.
+
+    Par le MEME chemin que la bascule automatique, et non par une variante de
+    test : une voie de secours qu'on verifie autrement que par son usage reel
+    peut passer l'essai et echouer le jour venu.
+    """
+    if not admin_ok(req):
+        return web.json_response({"erreur": "acces refuse"}, status=403)
+    ident = req.match_info["ident"]
+    if noeud(ident) is None:
+        return web.json_response({"erreur": "machine inconnue"}, status=404)
+    e = ETAT_NOEUDS.get(ident) or {}
+    if not e.get("repond"):
+        return web.json_response({"erreur": "cette machine ne repond pas"},
+                                 status=409)
+    modeles = e.get("llm_modeles") or []
+    corps = {"model": modeles[0] if modeles else MODELE_LLM,
+             "prompt": "Reponds en un seul mot : quelle est la couleur du ciel "
+                       "par temps clair ?",
+             "stream": False, "keep_alive": 0, "options": {"temperature": 0}}
+    debut = time.time()
+    reponse, erreur = await poser_a(ident, corps, secondes=180)
+    return web.json_response({"modele": corps["model"],
+                              "reponse": (reponse or "").strip()[:400],
+                              "erreur": erreur,
+                              "secondes": round(time.time() - debut, 1)})
+
+
 async def api_admin_creer(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
@@ -6051,6 +6086,7 @@ def app():
     a.router.add_post("/api/admin/entrer", api_admin_entrer)
     a.router.add_get("/api/admin/noeuds", api_admin_noeuds)
     a.router.add_get("/api/admin/noeuds/{ident}/detail", api_admin_noeud_detail)
+    a.router.add_post("/api/admin/noeuds/{ident}/llm", api_admin_essai_llm)
     a.router.add_post("/api/admin/noeuds", api_admin_creer)
     a.router.add_post("/api/admin/noeuds/{ident}/jeton", api_admin_rejeton)
     a.router.add_delete("/api/admin/noeuds/{ident}", api_admin_supprimer)
