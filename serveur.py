@@ -5702,6 +5702,47 @@ async def api_admin_noeuds(req):
                               "silence_max": SILENCE_MAX})
 
 
+async def api_admin_noeud_detail(req):
+    """Ce qu'une machine porte, et ce qui lui manque.
+
+    On separe « la carte est trop petite » de « le modele n'est pas la » : le
+    second se resout en telechargeant, le premier jamais. Les confondre envoyait
+    chercher au mauvais endroit.
+    """
+    if not admin_ok(req):
+        return web.json_response({"erreur": "acces refuse"}, status=403)
+    ident = req.match_info["ident"]
+    x = noeud(ident)
+    if x is None:
+        return web.json_response({"erreur": "machine inconnue"}, status=404)
+    e = ETAT_NOEUDS.get(ident) or {}
+    dispo = _vram_utile(ident)
+    prets, absents, trop_gros = [], [], []
+    for cle, m in CATALOGUE.items():
+        fiche = {"cle": cle, "titre": m.get("titre", cle),
+                 "vram": m.get("vram", 0), "type": m.get("type")}
+        if m.get("vram", 0) > dispo:
+            trop_gros.append(fiche)
+        elif manquants(cle, ident):
+            fiche["fichiers"] = [nom for _, nom, _, _ in manquants(cle, ident)]
+            absents.append(fiche)
+        else:
+            prets.append(fiche)
+    connu = MODELES_NOEUD.get(ident) or {}
+    dossiers = {k: sorted(v) for k, v in (connu.get("dossiers") or {}).items() if v}
+    return web.json_response({
+        "id": ident, "titre": x.get("titre", ident), "agent": bool(x.get("agent")),
+        "carte": e.get("carte"), "vram": e.get("vram"), "ram": e.get("ram"),
+        "vram_utile": round(dispo, 1),
+        "vu_il_y_a": round(time.time() - e["vu"]) if e.get("vu") else None,
+        "inventaire_connu": _inventaire_connu(ident),
+        "releve_il_y_a": (round(time.time() - connu["quand"])
+                          if connu.get("quand") else None),
+        "prets": prets, "absents": absents, "trop_gros": trop_gros,
+        "dossiers": dossiers,
+    })
+
+
 async def api_admin_creer(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
@@ -5864,6 +5905,7 @@ def app():
     a.router.add_get("/admin", page_admin)
     a.router.add_post("/api/admin/entrer", api_admin_entrer)
     a.router.add_get("/api/admin/noeuds", api_admin_noeuds)
+    a.router.add_get("/api/admin/noeuds/{ident}/detail", api_admin_noeud_detail)
     a.router.add_post("/api/admin/noeuds", api_admin_creer)
     a.router.add_post("/api/admin/noeuds/{ident}/jeton", api_admin_rejeton)
     a.router.add_delete("/api/admin/noeuds/{ident}", api_admin_supprimer)

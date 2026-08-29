@@ -66,6 +66,16 @@ input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:
   border-radius:7px;user-select:all}
 .jeton .avert{color:var(--encre-douce);font-size:13px}
 .vide{color:var(--encre-pale);font-style:italic;padding:18px 10px}
+tr.ouvrable{cursor:pointer}
+tr.ouvrable:hover td{background:var(--relief)}
+tr.pli td{padding:0;border-top:0}
+tr.pli:not(.ouvert){display:none}
+.pli-corps{padding:12px 10px 18px;display:flex;flex-direction:column;gap:9px}
+.pli-ligne b{display:block;font:600 10.5px var(--mono);color:var(--encre-pale);
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
+.pli-val{white-space:pre-wrap;font-size:13.5px}
+.pli-val.mono{font:12px var(--mono);color:var(--encre-douce)}
+.apercu{max-width:min(100%,340px);border-radius:8px;display:block}
 /* Le tableau defile dans sa carte, jamais la page : sur telephone, cinq
    colonnes et deux boutons par ligne emportaient tout vers la droite et
    coupaient les cartes. */
@@ -308,16 +318,108 @@ async function rafraichirAvis() {
   }
   for (const a of d.avis) {
     const tr = document.createElement("tr");
-    if (a.avis === -1) tr.className = "perdu";
+    tr.className = (a.avis === -1 ? "perdu " : "") + "ouvrable";
     tr.innerHTML = `<td class="detail">${ech(a.quand)}</td>
       <td>${a.avis === 1 ? "\u{1F44D}" : "\u{1F44E}"}</td>
       <td>${ech(coupe(a.demande, 90))}<div class="ident">${ech(a.tour)}</div></td>
       <td class="detail">${ech(a.moteur) || "\u2014"}</td>
       <td class="detail">${ech(coupe(a.note, 70))}</td>`;
     corps.appendChild(tr);
+    // Le pli sur sa propre rangee : glisse dans une cellule, il etirerait la
+    // colonne et casserait l'alignement du tableau.
+    const pli = document.createElement("tr");
+    pli.className = "pli";
+    pli.innerHTML = `<td colspan="5"></td>`;
+    corps.appendChild(pli);
+    tr.onclick = () => {
+      const ouvert = pli.classList.toggle("ouvert");
+      if (ouvert && !pli.dataset.rempli) {
+        pli.querySelector("td").appendChild(detailAvis(a));
+        pli.dataset.rempli = "1";
+      }
+    };
   }
 }
 
+
+/* Ce qu'une machine porte vraiment. On distingue « la carte est trop petite »
+   de « le modele n'est pas la » : le second se resout en telechargeant, le
+   premier jamais, et les confondre envoie chercher au mauvais endroit. */
+async function detailMachine(ident, ou) {
+  ou.innerHTML = '<div class="pli-corps"><span class="detail">lecture…</span></div>';
+  const { ok, d } = await api("/api/admin/noeuds/" + encodeURIComponent(ident) + "/detail");
+  if (!ok || !d) { ou.innerHTML = '<div class="pli-corps">détail indisponible</div>'; return; }
+  const z = document.createElement("div");
+  z.className = "pli-corps";
+  const bloc = (titre, contenu, cls) => {
+    if (!contenu) return;
+    const b = document.createElement("div");
+    b.className = "pli-ligne";
+    b.innerHTML = `<b>${ech(titre)}</b>`;
+    const v = document.createElement("div");
+    v.className = "pli-val " + (cls || "");
+    v.textContent = contenu;
+    b.appendChild(v); z.appendChild(b);
+  };
+  bloc("carte", d.carte || "aucune", "mono");
+  bloc("mémoire", `${d.vram ?? "?"} Go de carte, ${d.ram ?? "?"} Go de RAM `
+                + `— ${d.vram_utile} Go utilisables avec le débordement`, "mono");
+  if (d.agent) bloc("vue", d.vu_il_y_a === null ? "jamais" : `il y a ${d.vu_il_y_a} s`, "mono");
+  bloc("inventaire", d.inventaire_connu
+        ? `relevé il y a ${d.releve_il_y_a} s` : "inconnu — rien ne sera envoyé ici", "mono");
+  bloc(`${d.prets.length} moteurs prêts`,
+       d.prets.map(m => m.titre).join(" · ") || "aucun");
+  bloc(`${d.absents.length} moteurs dont le modèle manque ici`,
+       d.absents.map(m => `${m.titre} → ${(m.fichiers || []).join(", ")}`).join("\n"), "mono");
+  bloc(`${d.trop_gros.length} moteurs trop lourds pour cette carte`,
+       d.trop_gros.map(m => `${m.titre} (${m.vram} Go)`).join(" · "), "mono");
+  for (const [dossier, fichiers] of Object.entries(d.dossiers || {}))
+    bloc(`${dossier} (${fichiers.length})`, fichiers.join("\n"), "mono");
+  ou.innerHTML = "";
+  ou.appendChild(z);
+}
+
+/* Ce qu'un pouce en bas doit permettre de comprendre : non pas ce qui a ete
+   demande — on l'a deja — mais ce que le studio en a FAIT. */
+function detailAvis(a) {
+  const z = document.createElement("div");
+  z.className = "pli-corps";
+  const ligne = (titre, valeur, mono) => {
+    if (!valeur) return;
+    const d = document.createElement("div");
+    d.className = "pli-ligne";
+    d.innerHTML = `<b>${ech(titre)}</b>`;
+    const v = document.createElement("div");
+    v.className = mono ? "pli-val mono" : "pli-val";
+    v.textContent = valeur;
+    d.appendChild(v);
+    z.appendChild(d);
+  };
+  ligne("demande", a.demande);
+  ligne("prompt envoyé", a.prompt);
+  ligne("raison du choix", a.raison);
+  ligne("moteur", a.moteur, true);
+  ligne("type", a.type, true);
+  if (a.parametres && Object.keys(a.parametres).length)
+    ligne("réglages", JSON.stringify(a.parametres), true);
+  ligne("paroles", a.paroles);
+  ligne("erreur", a.erreur);
+  ligne("ce qui n'allait pas", a.note);
+  for (const f of a.fichiers || []) {
+    const u = "/api/fichier?filename=" + encodeURIComponent(f.filename)
+            + "&subfolder=" + encodeURIComponent(f.subfolder || "")
+            + "&type=" + (f.type || "output")
+            + (f.noeud ? "&noeud=" + encodeURIComponent(f.noeud) : "");
+    let el;
+    if (/\.(mp4|webm|mkv|mov)$/i.test(f.filename)) { el = document.createElement("video"); el.controls = true; }
+    else if (/\.(mp3|wav|flac|ogg|opus|m4a)$/i.test(f.filename)) { el = document.createElement("audio"); el.controls = true; }
+    else { el = document.createElement("img"); el.alt = f.filename; }
+    el.src = u;
+    el.className = "apercu";
+    z.appendChild(el);
+  }
+  return z;
+}
 
 /* Les cles ne reviennent jamais du serveur : on n'affiche qu'un indice.
    Le champ est donc toujours vide au chargement, et le rester veut dire
@@ -510,7 +612,7 @@ async function rafraichir() {
   corps.innerHTML = "";
   for (const n of d.noeuds) {
     const tr = document.createElement("tr");
-    if (!n.repond) tr.className = "perdu";
+    tr.className = (n.repond ? "" : "perdu ") + "ouvrable";
     const pastille = n.repond ? "vif" : (n.agent ? "mort" : "");
     const carte = n.carte ? n.carte.replace(/^cuda:\d+\s*/, "") : "—";
     const vram = n.vram ? ` · ${n.vram} Go` : "";
@@ -524,6 +626,16 @@ async function rafraichir() {
       <td class="detail">${n.agent ? delai(n.vu_il_y_a) : "locale"}</td>
       <td class="detail">${n.en_travail || 0}</td>
       <td></td>`;
+    const pli = document.createElement("tr");
+    pli.className = "pli";
+    pli.innerHTML = `<td colspan="6"></td>`;
+    tr.onclick = e => {
+      // Les boutons de la ligne (nouveau jeton, retirer) ne doivent pas ouvrir
+      // le pli au passage.
+      if (e.target.closest("button")) return;
+      const ouvert = pli.classList.toggle("ouvert");
+      if (ouvert) detailMachine(n.id, pli.querySelector("td"));
+    };
     if (n.agent) {
       const actions = tr.lastElementChild;
       const neuf = document.createElement("button");
@@ -544,6 +656,7 @@ async function rafraichir() {
       actions.append(neuf, sup);
     }
     corps.appendChild(tr);
+    corps.appendChild(pli);
   }
   if (!d.noeuds.length) {
     corps.innerHTML = '<tr><td colspan="6" class="vide">aucune machine</td></tr>';
