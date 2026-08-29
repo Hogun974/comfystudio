@@ -295,10 +295,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 .jointe button{background:transparent;border:1px solid var(--trait-vif);border-radius:6px;
   color:var(--encre-douce);font:11px var(--mono);padding:4px 9px;cursor:pointer}
 .alerte{margin-top:9px;color:var(--rouge);font:13px var(--sans)}
-.pistes{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
-.pistes button{font:12px var(--serif);color:var(--encre-pale);background:transparent;
-  border:1px dashed var(--trait-vif);border-radius:20px;padding:4px 12px;cursor:pointer}
-.pistes button:hover{color:var(--braise);border-color:var(--braise);border-style:solid}
+
 .tiroir-bouton{display:none;background:transparent;border:1px solid var(--trait-vif);
   border-radius:8px;color:var(--encre-douce);font:14px var(--mono);cursor:pointer;
   padding:4px 10px;margin-right:10px}
@@ -409,7 +406,6 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       <button id="retirer">retirer</button>
     </div>
     <div class="alerte" id="alerte" role="alert"></div>
-    <div class="pistes" id="pistes"></div>
   </div>
 </footer>
 
@@ -418,12 +414,6 @@ const $ = s => document.querySelector(s);
 let imageJointe = null, apercuURL = null, convActive = null;
 const suivis = new Map();           // tid -> {bloc, minuteur}
 
-const PISTES = [
-  "un phare battu par la tempête, très cinématographique",
-  "une guerrière manga en armure de cuir, fiche personnage",
-  "une pancarte en bois gravée « Bienvenue »",
-  "une musique de piano mélancolique et lente, 40 secondes",
-];
 const TITRES = {};
 const ech = s => String(s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const EXT_IMG = /\.(png|jpe?g|webp|bmp|gif)$/i;
@@ -986,12 +976,11 @@ document.querySelector("#plier").onclick = e => {
 };
 peindreActifs();
 
-PISTES.forEach(p => {
-  const b = document.createElement("button");
-  b.textContent = p;
-  b.onclick = () => { $("#txt").value = p; $("#txt").focus(); ajuster(); };
-  $("#pistes").appendChild(b);
-});
+/* Le champ grandit en tapant. La fonction existait, mais plus rien ne
+   l'appelait a la frappe : elle ne jouait qu'a l'ouverture d'une conversation,
+   et le champ restait sur une ligne quelle que soit la longueur du texte. */
+$("#txt").addEventListener("input", ajuster);
+ajuster();
 
 setInterval(async () => {
   try {
