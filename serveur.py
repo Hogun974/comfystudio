@@ -1135,7 +1135,11 @@ async def poser_a(ident, corps, tid=None, secondes=900):
     REPONSES[qid] = futur
     QUESTIONS.setdefault(ident, []).append({"qid": qid, "corps": corps})
     titre = (noeud(ident) or {}).get("titre", ident)
-    journal(tid, f"question confiee a {titre}…")
+    # journal() ecrit dans le fil d'une demande : l'essai depuis
+    # l'administration n'en a pas, et lui en inventer une la ferait apparaitre
+    # dans la conversation de quelqu'un.
+    if tid:
+        journal(tid, f"question confiee a {titre}…")
     try:
         rep_ = await asyncio.wait_for(futur, timeout=secondes)
     except asyncio.TimeoutError:
