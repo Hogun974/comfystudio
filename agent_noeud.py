@@ -206,6 +206,44 @@ def lire_sortie(comfy, f):
     return octets if st == 200 and isinstance(octets, (bytes, bytearray)) else None
 
 
+# ══════════════════════════ modele de langage ═════════════════════════
+def etat_ollama(ollama):
+    """Ce que cette machine sait charger cote langage, ou None."""
+    st, d = appeler(f"{ollama}/api/tags", secondes=8)
+    if st != 200 or not isinstance(d, dict):
+        return None
+    noms = [m.get("name") for m in (d.get("models") or []) if m.get("name")]
+    return {"ok": bool(noms), "modeles": noms[:40]}
+
+
+def servir_le_langage(studio, jeton, ollama):
+    """Vient chercher les questions du studio et rapporte les reponses.
+
+    Un fil a part : la boucle de travail est bloquee pendant un rendu, et une
+    question posee au milieu d'une video attendrait sa fin.
+    """
+    while True:
+        try:
+            st, q = appeler(f"{studio}/api/noeud/question", jeton, secondes=30)
+            if st != 200 or not isinstance(q, dict) or "qid" not in q:
+                time.sleep(PAUSE_COURTE)
+                continue
+            corps = q.get("corps") or {}
+            st2, d = appeler(f"{ollama}/api/generate", corps=corps, secondes=900)
+            if st2 == 200 and isinstance(d, dict):
+                appeler(f"{studio}/api/noeud/reponse", jeton,
+                        {"qid": q["qid"], "reponse": d.get("response", "")},
+                        secondes=60)
+            else:
+                appeler(f"{studio}/api/noeud/reponse", jeton,
+                        {"qid": q["qid"],
+                         "erreur": f"ollama a repondu {st2}"}, secondes=60)
+        except Exception:
+            # Ce fil ne doit jamais emporter l'agent : au pire le studio se
+            # passe de cette machine pour ses questions.
+            time.sleep(PAUSE_LONGUE)
+
+
 # ══════════════════════════ progression ═══════════════════════════════
 # Rempli par le fil d'ecoute, lu par la boucle. Un dictionnaire suffit : une
 # seule ecriture, une seule lecture, et une valeur perimee ne coute qu'un
@@ -412,7 +450,7 @@ def se_mettre_a_jour(studio):
 
 
 # ══════════════════════════ boucle ════════════════════════════════════
-def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT):
+def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama=""):
     print(f"  studio  : {studio}", flush=True)
     print(f"  ComfyUI : {comfy}", flush=True)
     print("  en service — ctrl+C pour arreter\n", flush=True)
@@ -427,6 +465,9 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT):
     # Un fil a part, en arriere-plan : la progression ne doit jamais retarder la
     # demande de travail, et son echec ne coute qu'un pourcentage.
     threading.Thread(target=ecouter_progression, args=(comfy,), daemon=True).start()
+    if ollama:
+        threading.Thread(target=servir_le_langage, args=(studio, jeton, ollama),
+                         daemon=True).start()
     while True:
         try:
             maintenant = time.time()
@@ -448,6 +489,11 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT):
                     time.sleep(PAUSE_LONGUE)
                     continue
                 corps = dict(etat)
+                # Reevalue a chaque annonce : un modele peut etre telecharge ou
+                # retire pendant que l'agent tourne.
+                if ollama:
+                    corps["llm"] = etat_ollama(ollama) or {"ok": False,
+                                                           "modeles": []}
                 # la liste des modeles change rarement : toutes les cinq minutes
                 # Le studio peut reclamer l'inventaire : il vient de redemarrer
                 # et ne connait plus rien de cette machine. Repondre tout de
@@ -548,6 +594,8 @@ def main():
            "comfy": os.environ.get("COMFY_URL") or cfg.get("comfy",
                                                           "http://127.0.0.1:8188"),
            "sorties": os.environ.get("COMFY_SORTIES") or cfg.get("sorties", ""),
+           "ollama": os.environ.get("OLLAMA_URL")
+                     or cfg.get("ollama", "http://127.0.0.1:11434"),
            "garder_heures": cfg.get("garder_heures", GARDE_DEFAUT)}
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     a.add_argument("--studio", default=cfg.get("studio", ""),
@@ -556,6 +604,9 @@ def main():
                    help="jeton delivre par l'administration du studio")
     a.add_argument("--comfy", default=cfg.get("comfy"),
                    help="adresse du ComfyUI local")
+    a.add_argument("--ollama", default=cfg.get("ollama", "http://127.0.0.1:11434"),
+                   help="adresse du modele de langage local, prete au studio "
+                        "quand le sien ne repond plus")
     a.add_argument("--sorties", default=cfg.get("sorties", ""),
                    help="dossier output de ComfyUI, pour effacer ce qui est deja "
                         "au studio (sans lui, aucun menage)")
@@ -584,7 +635,8 @@ def main():
         print(f"  dossier de sorties introuvable : {sorties}")
         return 1
     ecrire_config({"studio": studio, "jeton": args.jeton, "comfy": args.comfy,
-                   "sorties": sorties, "garder_heures": args.garder})
+                   "sorties": sorties, "garder_heures": args.garder,
+                   "ollama": args.ollama})
     print("=" * 60)
     print("  Agent ComfyStudio")
     print("=" * 60)
@@ -596,7 +648,14 @@ def main():
         # serait bien davantage.
         print("  Sorties   : dossier inconnu — rien ne sera efface ici "
               "(--sorties CHEMIN pour l'activer)")
-    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder)
+    lang = etat_ollama(args.ollama.rstrip("/"))
+    if lang:
+        print(f"  Langage   : {args.ollama} — {len(lang['modeles'])} modele(s), "
+              f"pretes au studio si le sien tombe")
+    else:
+        print(f"  Langage   : aucun modele joignable sur {args.ollama}")
+    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder,
+           args.ollama.rstrip("/"))
     return 0
 
 

@@ -365,6 +365,9 @@ async function detailMachine(ident, ou) {
   bloc("mémoire", `${d.vram ?? "?"} Go de carte, ${d.ram ?? "?"} Go de RAM `
                 + `— ${d.vram_utile} Go utilisables avec le débordement`, "mono");
   if (d.agent) bloc("vue", d.vu_il_y_a === null ? "jamais" : `il y a ${d.vu_il_y_a} s`, "mono");
+  bloc("modèle de langage", d.llm
+        ? `prêté au studio — ${(d.llm_modeles || []).join(", ")}`
+        : "aucun joignable sur cette machine", "mono");
   bloc("inventaire", d.inventaire_connu
         ? `relevé il y a ${d.releve_il_y_a} s` : "inconnu — rien ne sera envoyé ici", "mono");
   bloc(`${d.prets.length} moteurs prêts`,

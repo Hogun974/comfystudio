@@ -1093,9 +1093,64 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
     # 900 s : un gros modele qui deborde sur le processeur met plus longtemps
     # que la minute d'un 7B, et une coupure ici rend une chanson muette.
     to = aiohttp.ClientTimeout(total=900)
-    async with aiohttp.ClientSession(timeout=to) as s:
-        async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
-            return (await r.json()).get("response", "")
+    try:
+        async with aiohttp.ClientSession(timeout=to) as s:
+            async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
+                return (await r.json()).get("response", "")
+    except Exception as e:
+        # On n'essaie une autre machine QUE si la sienne ne repond pas : un
+        # modele distant est plus lent a charger, et la machine qui le porte a
+        # peut-etre mieux a faire. Depuis qu'un studio peut vivre sans carte, ce
+        # cas n'a rien d'exceptionnel : il suffit que le PC soit eteint.
+        journal(tid, f"modele local injoignable ({type(e).__name__}) — "
+                     f"on cherche une machine qui en porte un")
+        rendu = await demander_a_un_noeud(corps, tid)
+        if rendu:
+            return rendu
+        raise
+
+def noeuds_a_llm():
+    """Les machines joignables qui portent un modele de langage.
+
+    Les plus grosses d'abord : a defaut de mesurer leur debit, la memoire est le
+    meilleur indice de ce qu'elles peuvent charger sans ramer.
+    """
+    bons = []
+    for x in REGISTRE.values():
+        e = ETAT_NOEUDS.get(x["id"]) or {}
+        if e.get("repond") and e.get("llm") and time.time() - (e.get("vu") or 0) < SILENCE_MAX:
+            bons.append((e.get("vram") or 0, x["id"]))
+    return [i for _, i in sorted(bons, reverse=True)]
+
+
+async def demander_a_un_noeud(corps, tid=None, secondes=900):
+    """Fait poser la question par une machine a agent. Rend le texte, ou "".
+
+    Le studio depose, l'agent vient chercher : le meme chemin que les rendus,
+    parce que c'est le seul qui existe — une machine a agent n'a pas d'adresse.
+    """
+    for ident in noeuds_a_llm():
+        qid = uuid.uuid4().hex
+        futur = asyncio.get_event_loop().create_future()
+        REPONSES[qid] = futur
+        QUESTIONS.setdefault(ident, []).append({"qid": qid, "corps": corps})
+        titre = (noeud(ident) or {}).get("titre", ident)
+        journal(tid, f"question confiee a {titre}…")
+        try:
+            rep_ = await asyncio.wait_for(futur, timeout=secondes)
+        except asyncio.TimeoutError:
+            journal(tid, f"{titre} n'a pas repondu a temps")
+            continue
+        finally:
+            REPONSES.pop(qid, None)
+            QUESTIONS[ident] = [q for q in QUESTIONS.get(ident, [])
+                                if q["qid"] != qid]
+        if rep_.get("erreur"):
+            journal(tid, f"{titre} : {rep_['erreur']}")
+            continue
+        return rep_.get("reponse") or ""
+    return ""
+
 
 async def liberer_modele(modele):
     """Decharge un modele reste chaud. Sans cela, ComfyUI trouve la carte prise."""
@@ -5395,6 +5450,8 @@ COMPTES = None              # rempli par charger_registre, une fois le secret co
 REGISTRE = {}               # id -> {id, titre, jeton, cree}
 SILENCE_MAX = 45            # secondes sans nouvelle avant de declarer perdu
 TRAVAUX = {}                # id de noeud -> liste de travaux en attente
+QUESTIONS = {}              # id de noeud -> questions en attente pour son LLM
+REPONSES = {}               # id de question -> Future portant la reponse
 RESULTATS = {}              # tid -> asyncio.Future portant le resultat
 SORTIES_AGENT = os.path.join(DOSSIER_DONNEES, "sorties")
 
@@ -5629,6 +5686,12 @@ async def api_noeud_annonce(req):
     # Un dictionnaire de listes VIDES est bien forme et ne veut rien dire : il
     # arrive pendant que ComfyUI se releve. L'enregistrer effacait tout ce
     # qu'on savait de la machine, et pour cinq minutes.
+    # Ce que porte la machine cote langage : le studio s'en sert quand le sien
+    # ne repond plus.
+    llm = d.get("llm")
+    if isinstance(llm, dict):
+        ETAT_NOEUDS.setdefault(x["id"], {}).update(
+            llm=bool(llm.get("ok")), llm_modeles=llm.get("modeles") or [])
     if isinstance(dossiers, dict) and any(dossiers.values()):
         MODELES_NOEUD[x["id"]] = {"quand": time.time(),
                                   "dossiers": {k: set(v) for k, v in dossiers.items()}}
@@ -5653,6 +5716,34 @@ async def api_noeud_travail(req):
     # travail, et cette ligne les jetait juste avant de le remettre a l'agent.
     return web.json_response({"tid": travail["tid"], "graphe": travail["graphe"],
                               "entrees": travail.get("entrees") or {}})
+
+
+async def api_noeud_question(req):
+    """L'agent vient chercher une question pour son modele de langage."""
+    x = noeud_du_jeton(req.headers.get("X-Jeton"))
+    if not x:
+        return web.json_response({"erreur": "jeton inconnu"}, status=401)
+    ETAT_NOEUDS.setdefault(x["id"], {}).update(vu=time.time(), repond=True)
+    file = QUESTIONS.get(x["id"]) or []
+    if not file:
+        return web.Response(status=204)
+    return web.json_response(file[0])
+
+
+async def api_noeud_reponse(req):
+    """L'agent rapporte ce que son modele a repondu."""
+    x = noeud_du_jeton(req.headers.get("X-Jeton"))
+    if not x:
+        return web.json_response({"erreur": "jeton inconnu"}, status=401)
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    futur = REPONSES.get(d.get("qid"))
+    if futur and not futur.done():
+        futur.set_result({"reponse": d.get("reponse") or "",
+                          "erreur": d.get("erreur")})
+    return web.json_response({"ok": True})
 
 
 async def api_noeud_fichier(req):
@@ -5786,6 +5877,7 @@ async def api_admin_noeud_detail(req):
         "carte": e.get("carte"), "vram": e.get("vram"), "ram": e.get("ram"),
         "vram_utile": round(dispo, 1),
         "vu_il_y_a": round(time.time() - e["vu"]) if e.get("vu") else None,
+        "llm": bool(e.get("llm")), "llm_modeles": e.get("llm_modeles") or [],
         "inventaire_connu": _inventaire_connu(ident),
         "releve_il_y_a": (round(time.time() - connu["quand"])
                           if connu.get("quand") else None),
@@ -5948,6 +6040,8 @@ def app():
     a.router.add_post("/api/noeud/annonce", api_noeud_annonce)
     a.router.add_get("/api/noeud/travail", api_noeud_travail)
     a.router.add_post("/api/noeud/progres", api_noeud_progres)
+    a.router.add_get("/api/noeud/question", api_noeud_question)
+    a.router.add_post("/api/noeud/reponse", api_noeud_reponse)
     a.router.add_post("/api/noeud/fichier", api_noeud_fichier)
     a.router.add_post("/api/noeud/resultat", api_noeud_resultat)
     a.router.add_get("/api/noeud/agent", api_agent_source)
