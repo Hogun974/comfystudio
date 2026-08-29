@@ -76,9 +76,9 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
 /* Barre de progression : elle ne s'affiche QUE si ComfyUI a annonce un total.
    Une barre qui avance sans rapport avec le calcul est pire qu'aucune barre,
    parce qu'on lui fait confiance. */
-.barre{height:4px;background:var(--creux);border-radius:3px;margin-top:5px;
+.avance{height:4px;background:var(--creux);border-radius:3px;margin-top:5px;
   overflow:hidden}
-.barre i{display:block;height:100%;background:var(--braise);
+.avance i{display:block;height:100%;background:var(--braise);
   transition:width .3s ease}
 .etat-tache{font:10.5px var(--mono);margin-top:3px}
 .etat-tache.attente{color:var(--encre-pale)}
@@ -952,7 +952,7 @@ async function peindreFile() {
       + (pct !== null ? ` — ${pct} %` : "")
       + (t.ou ? " · " + ech(t.ou) : "") + `</span>`
       + (pct !== null
-          ? `<span class="barre"><i style="width:${pct}%"></i></span>` : "")
+          ? `<span class="avance"><i style="width:${pct}%"></i></span>` : "")
       + `</span>`;
     if (t.annulable) {
       const b = document.createElement("button");
