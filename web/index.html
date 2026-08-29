@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComfyStudio</title>
+<style>
+/* ═══ Console d'atelier ═══════════════════════════════════════════════
+   Aucune police distante : l'outil doit fonctionner hors ligne.        */
+:root{
+  --nuit:#15120f; --plan:#1d1915; --creux:#120f0d; --relief:#262019;
+  --trait:#2e2721; --trait-vif:#4a3f34;
+  --encre:#f0e9e0; --encre-douce:#b6a999; --encre-pale:#8e8175;
+  --braise:#e8a33d; --braise-sourde:#3a2a13; --braise-vive:#ffc266;
+  --vert:#8fbf72; --rouge:#e07a55;
+  --serif:Constantia,Georgia,"Times New Roman",serif;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --nuit:#f2ede4; --plan:#fffdf9; --creux:#e8e1d5; --relief:#faf6ef;
+    --trait:#ddd4c5; --trait-vif:#a3927c;
+    --encre:#20180f; --encre-douce:#584c3e; --encre-pale:#6f6151;
+    --braise:#a05d0a; --braise-sourde:#f6e7cd; --braise-vive:#7d4708;
+    --vert:#4a6b34; --rouge:#a2431f;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--nuit);color:var(--encre);
+  font:15.5px/1.65 var(--serif);display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:99;opacity:.035;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>")}
+
+header{display:flex;align-items:center;gap:14px;padding:12px 20px;
+  border-bottom:1px solid var(--trait);background:var(--plan);flex:none}
+.marque{font:600 15px var(--sans);letter-spacing:.02em}
+.marque em{font-style:normal;color:var(--braise)}
+.jauge{margin-left:auto;display:flex;gap:14px;align-items:center;
+  font:11px/1 var(--mono);color:var(--encre-pale);letter-spacing:.03em}
+.jauge b{color:var(--encre-douce);font-weight:400}
+/* Article 13 de l'AGPL : qui utilise le service doit pouvoir obtenir la
+   source. Un lien visible, discret mais present. */
+.jauge .source{color:var(--encre-pale);text-decoration:none;
+  border-bottom:1px dotted var(--trait-vif)}
+.jauge .source:hover{color:var(--braise)}
+/* Interrupteurs de cloud : un par modalite, allumes quand la demande part
+   chez un fournisseur. Eteints, ils restent visibles — savoir qu'on POURRAIT
+   passer au cloud vaut mieux qu'un bouton qui disparait. */
+.nuages{display:flex;gap:4px;align-items:center}
+/* La file, au survol ET au clic : un telephone n'a pas de survol, et c'est la
+   moitie des usages. Position fixe plutot qu'ancree au bouton — ancre, le
+   panneau sortait de l'ecran a droite sur un telephone. */
+.file-vive{cursor:pointer}
+#panneauFile{position:fixed;top:52px;right:12px;left:auto;z-index:40;
+  width:min(420px,calc(100vw - 24px));max-height:min(60vh,420px);overflow:auto;
+  background:var(--plan);border:1px solid var(--trait);border-radius:12px;
+  padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:none}
+#panneauFile.ouvert{display:block}
+#panneauFile h4{margin:0 0 8px;font:600 12px var(--sans);color:var(--encre-douce);
+  text-transform:lowercase;letter-spacing:.4px}
+.tache{display:flex;gap:9px;align-items:flex-start;padding:7px 0;
+  border-top:1px solid var(--trait)}
+.tache:first-of-type{border-top:0}
+.tache .rang{font:11px var(--mono);color:var(--encre-pale);min-width:2.2em}
+.tache .quoi{flex:1;font:12.5px var(--sans);word-break:break-word}
+.tache .quoi small{display:block;font:10.5px var(--mono);color:var(--encre-pale)}
+.tache.autrui .quoi{color:var(--encre-pale);font-style:italic}
+.tache button{background:transparent;border:1px solid var(--trait-vif);
+  border-radius:6px;padding:2px 7px;font:11px var(--mono);color:var(--encre-pale);
+  cursor:pointer}
+.tache button:hover{border-color:var(--rouge);color:var(--rouge)}
+.tache .encours{color:var(--braise);font:10.5px var(--mono)}
+/* Barre de progression : elle ne s'affiche QUE si ComfyUI a annonce un total.
+   Une barre qui avance sans rapport avec le calcul est pire qu'aucune barre,
+   parce qu'on lui fait confiance. */
+.barre{height:4px;background:var(--creux);border-radius:3px;margin-top:5px;
+  overflow:hidden}
+.barre i{display:block;height:100%;background:var(--braise);
+  transition:width .3s ease}
+.etat-tache{font:10.5px var(--mono);margin-top:3px}
+.etat-tache.attente{color:var(--encre-pale)}
+.etat-tache.cours{color:var(--braise)}
+.etat-tache.fini{color:var(--vert)}
+.etat-tache.rate{color:var(--rouge)}
+@media (max-width:640px){
+  /* Sur telephone la barre est etroite : le panneau prend toute la largeur et
+     s'ancre sous l'entete plutot que sur un bouton qui a pu passer a la ligne. */
+  #panneauFile{right:8px;left:8px;width:auto;top:auto;
+    top:calc(env(safe-area-inset-top, 0px) + 52px)}
+}
+.nuages button{background:transparent;border:1px solid var(--trait);
+  border-radius:20px;padding:1px 7px;font:13px/1.4 var(--sans);cursor:pointer;
+  color:var(--encre-pale);transition:color .12s,border-color .12s,opacity .12s}
+.nuages button:hover{border-color:var(--trait-vif);color:var(--encre)}
+.nuages button.allume{color:var(--braise);border-color:var(--braise)}
+.nuages button.eteint{opacity:.45}
+/* Compte : discret, a droite de la barre. Rien ne s'affiche tant qu'aucun
+   compte n'existe sur cette installation. */
+.compte{display:flex;align-items:center;gap:6px;font:11px var(--mono)}
+.compte button{background:transparent;border:1px solid var(--trait);
+  border-radius:7px;padding:2px 8px;font:11px var(--mono);color:var(--encre-douce);
+  cursor:pointer}
+.compte button:hover{border-color:var(--braise);color:var(--braise)}
+.compte b{color:var(--braise);font-weight:400}
+.lien-admin{font:11px var(--mono);color:var(--encre-douce);text-decoration:none;
+  border:1px solid var(--trait);border-radius:7px;padding:2px 8px}
+.lien-admin:hover{border-color:var(--braise);color:var(--braise)}
+.voile-entree{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;
+  align-items:center;justify-content:center;z-index:50}
+.entree{background:var(--plan);border:1px solid var(--trait);border-radius:12px;
+  padding:20px;width:min(320px,90vw);display:flex;flex-direction:column;gap:10px}
+.entree h3{margin:0;font:600 14px var(--sans)}
+.entree input{background:var(--creux);border:1px solid var(--trait);border-radius:7px;
+  padding:8px 10px;color:var(--encre);font:13px var(--sans)}
+.entree input:focus{outline:none;border-color:var(--braise)}
+.entree .rang{display:flex;gap:8px;justify-content:flex-end}
+.entree .mal{color:var(--rouge);font:11px var(--mono);min-height:14px}
+.file-vive{color:var(--braise);border:1px solid var(--braise);border-radius:20px;
+  padding:3px 10px}
+
+.corps{flex:1;display:flex;min-height:0}
+
+/* ── colonne des conversations ───────────────────────────────────── */
+aside{width:236px;flex:none;background:var(--plan);border-right:1px solid var(--trait);
+  display:flex;flex-direction:column;min-height:0}
+.neuve{margin:12px;padding:8px;border:1px dashed var(--trait-vif);border-radius:8px;
+  background:transparent;color:var(--encre-douce);font:12px var(--mono);cursor:pointer}
+.neuve:hover{border-style:solid;border-color:var(--braise);color:var(--braise)}
+.convs{flex:1;overflow-y:auto;padding:0 8px 12px}
+.moteur{border-top:1px solid var(--trait);padding:10px 12px;font:11px var(--mono);
+  color:var(--encre-douce);display:flex;flex-direction:column;gap:7px}
+.moteur .ligne{display:flex;align-items:center;gap:7px}
+.pastille{width:8px;height:8px;border-radius:50%;background:var(--trait-vif);flex:none}
+.pastille.vif{background:#5da271;box-shadow:0 0 6px #5da27188}
+.pastille.mort{background:#a2545d}
+.moteur .detail{color:var(--encre-tres-douce,var(--encre-douce));opacity:.75;font-size:10px}
+.moteur button{flex:1;padding:5px;border:1px solid var(--trait-vif);border-radius:6px;
+  background:transparent;color:var(--encre-douce);font:11px var(--mono);cursor:pointer}
+.moteur button:hover:not(:disabled){border-color:var(--braise);color:var(--braise-vive)}
+.moteur button:disabled{opacity:.35;cursor:default}
+.conv{position:relative;padding:8px 26px 8px 11px;border-radius:7px;cursor:pointer;
+  font-size:13.5px;line-height:1.4;color:var(--encre-douce);margin-bottom:2px}
+.conv:hover{background:var(--relief)}
+.conv.active{background:var(--braise-sourde);color:var(--encre)}
+.conv.active::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:2px;
+  background:var(--braise);border-radius:2px}
+.conv small{display:block;font:10px var(--mono);color:var(--encre-pale);margin-top:2px}
+.conv .jeter{position:absolute;right:5px;top:6px;border:0;background:transparent;
+  color:var(--encre-pale);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;
+  opacity:0;border-radius:4px}
+.conv:hover .jeter{opacity:1}
+.conv .jeter:hover{color:var(--rouge);background:var(--creux)}
+
+/* ── fil ─────────────────────────────────────────────────────────── */
+main{flex:1;overflow-y:auto;min-width:0}
+.fil{max-width:880px;margin:0 auto;padding:26px 22px 30px;
+  display:flex;flex-direction:column;gap:26px}
+.vide{text-align:center;padding:64px 20px;color:var(--encre-pale)}
+.vide h1{font:400 27px/1.3 var(--serif);color:var(--encre-douce);margin:0 0 10px;
+  letter-spacing:-.01em}
+.vide p{margin:0 auto;max-width:44ch;font-size:14.5px}
+
+.demande{align-self:flex-end;max-width:74%;background:var(--braise-sourde);
+  border:1px solid var(--trait-vif);border-radius:12px 12px 3px 12px;
+  padding:11px 15px;font-size:15px}
+.demande .heure{display:block;font:10.5px var(--mono);color:var(--encre-pale);
+  margin-top:5px;letter-spacing:.04em}
+
+.reponse{position:relative;padding-left:20px}
+.reponse::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:3px;
+  border-radius:2px;background:linear-gradient(var(--braise),transparent)}
+.reponse.rate::before{background:var(--rouge)}
+.bandeau-tech{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:11px;
+  font:11px var(--mono);letter-spacing:.02em}
+.puce{border:1px solid var(--trait-vif);border-radius:20px;padding:2px 9px;
+  color:var(--encre-douce);background:var(--creux);white-space:nowrap}
+.puce.moteur{color:var(--braise);border-color:var(--braise)}
+.puce.rate{color:var(--rouge);border-color:var(--rouge)}
+.puce.cours{color:var(--braise-vive);border-color:var(--braise-vive)}
+.puce.fini{color:var(--vert);border-color:var(--vert)}
+.puce.attente{color:var(--encre-pale);border-style:dashed}
+.sortie img,.sortie video{display:block;max-width:100%;border-radius:9px;
+  border:1px solid var(--trait);background:var(--creux)}
+.sortie audio{width:100%;margin-top:4px}
+.sortie a{color:var(--braise)}
+.lecture{font-size:15px;white-space:pre-wrap;color:var(--encre-douce);
+  border-left:2px solid var(--trait-vif);padding-left:14px}
+.echec{color:var(--rouge);font:13.5px var(--sans)}
+.echec button{margin-left:10px;background:transparent;border:1px solid var(--rouge);
+  border-radius:7px;padding:2px 9px;font:11.5px var(--mono);color:var(--rouge);
+  cursor:pointer}
+.echec button:hover{background:var(--rouge);color:var(--plan)}
+.question{border:1px solid var(--braise);border-radius:9px;background:var(--braise-sourde);
+  padding:13px 15px}
+.question p{margin:0 0 4px;font-size:14.5px}
+.question ul{margin:0 0 11px;padding-left:19px}
+.question li{margin:3px 0;font-size:14.5px}
+.question .repondre{display:flex;gap:9px;align-items:flex-end}
+.question input{flex:1;background:var(--creux);border:1px solid var(--trait-vif);
+  border-radius:8px;color:var(--encre);padding:9px 12px;font:14.5px var(--serif)}
+.question input:focus-visible{outline:2px solid var(--braise);outline-offset:1px}
+.question button{background:var(--braise);border:1px solid var(--braise);color:var(--nuit);
+  border-radius:8px;padding:9px 15px;font:12px var(--mono);cursor:pointer;font-weight:600}
+.question button:hover{filter:brightness(1.12)}
+.nomfic{font:10.5px var(--mono);color:var(--encre-pale);margin-top:6px}
+/* Le moteur employe se lit, mais ne se dispute pas la place avec l'image. */
+.signature{font:10.5px var(--mono);color:var(--encre-pale);margin-top:8px;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.signature .sep{opacity:.5}
+.signature .avis{margin-top:0}
+.signature .avis button{padding:1px 7px;font-size:13px}
+/* Avis : discret tant qu'on n'a rien dit, franc une fois le pouce pose. */
+.avis{display:flex;align-items:center;gap:6px;margin-top:12px}
+.avis button{background:transparent;border:1px solid var(--trait);border-radius:7px;
+  padding:3px 9px;font:14px/1.2 var(--sans);color:var(--encre-pale);cursor:pointer;
+  transition:color .12s,border-color .12s}
+.avis button:hover{color:var(--encre);border-color:var(--trait-vif)}
+.avis button.pris.haut{color:var(--vert);border-color:var(--vert)}
+.avis button.pris.bas{color:var(--rouge);border-color:var(--rouge)}
+.avis .merci{font:11px var(--mono);color:var(--encre-pale)}
+.avis-note{display:flex;gap:6px;margin-top:7px}
+.avis-note input{flex:1;background:var(--creux);border:1px solid var(--trait);
+  border-radius:7px;padding:6px 9px;color:var(--encre);font:12.5px var(--sans)}
+.avis-note input:focus{outline:none;border-color:var(--braise)}
+.avis-note button{font:12px var(--mono)}
+details.detail{margin-top:10px}
+details.detail summary{cursor:pointer;font:11px var(--mono);color:var(--encre-pale);
+  letter-spacing:.05em;text-transform:uppercase;list-style:none}
+details.detail summary::-webkit-details-marker{display:none}
+details.detail summary::before{content:"▸ ";color:var(--braise)}
+details.detail[open] summary::before{content:"▾ "}
+details.detail summary:hover{color:var(--encre-douce)}
+.corps-detail{margin-top:9px;padding:11px 13px;background:var(--creux);
+  border:1px solid var(--trait);border-radius:8px;
+  font:11.5px/1.75 var(--mono);color:var(--encre-douce);
+  max-height:230px;overflow:auto;white-space:pre-wrap}
+
+/* La taille ne s'applique qu'aux images : la laisser active pour un moteur
+   audio ou vidéo ferait croire que la consigne est prise en compte. */
+const SANS_TAILLE = ["wan5b", "wan14b", "audio", "audioplus", "edition", "objet3d"];
+function accorderTaille() {
+  const m = $("#forcer").value;
+  const inerte = SANS_TAILLE.includes(m);
+  $("#taille").disabled = inerte;
+  $("#taille").title = inerte
+    ? "sans effet sur ce moteur : la taille vient de la source ou du format"
+    : "";
+}
+$("#forcer").addEventListener("change", accorderTaille);
+accorderTaille();
+
+/* ── saisie ──────────────────────────────────────────────────────── */
+footer{flex:none;border-top:1px solid var(--trait);background:var(--plan)}
+.saisie{max-width:880px;margin:0 auto;padding:14px 22px 17px}
+.champ{display:flex;gap:11px;align-items:flex-end}
+textarea{flex:1;min-height:50px;max-height:190px;resize:none;padding:12px 14px;
+  background:var(--creux);color:var(--encre);border:1px solid var(--trait-vif);
+  border-radius:10px;font:15.5px/1.5 var(--serif)}
+textarea::placeholder{color:var(--encre-pale)}
+textarea:focus-visible{outline:2px solid var(--braise);outline-offset:1px;
+  border-color:var(--braise)}
+.envoyer{flex:none;width:50px;height:50px;border-radius:10px;cursor:pointer;
+  background:var(--braise);border:1px solid var(--braise);color:var(--nuit);
+  font-size:19px;line-height:1;display:grid;place-items:center;
+  transition:transform .12s ease,filter .12s ease}
+.envoyer:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
+.envoyer:disabled{opacity:.4;cursor:default}
+.envoyer:focus-visible{outline:2px solid var(--braise-vive);outline-offset:2px}
+.outils{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:10px}
+/* Barre repliee : deux boutons et, s'il y a lieu, ce qui est actif. */
+.barre{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:9px}
+.barre button{background:transparent;border:1px solid var(--trait);border-radius:8px;
+  padding:4px 10px;font:11.5px var(--mono);color:var(--encre-douce);cursor:pointer}
+.barre button:hover{border-color:var(--braise);color:var(--braise)}
+.barre button.ouvert{border-color:var(--braise);color:var(--braise)}
+.actifs{font:11px var(--mono);color:var(--braise);display:flex;gap:7px;flex-wrap:wrap}
+.actifs .oter{cursor:pointer;border-bottom:1px dotted var(--braise)}
+.outils.replie{display:none}
+.outils select,.outils label.joindre{background:transparent;color:var(--encre-douce);
+  border:1px solid var(--trait-vif);border-radius:7px;padding:5px 11px;
+  font:11.5px var(--mono);cursor:pointer;letter-spacing:.02em}
+.outils label.joindre:hover{border-color:var(--braise);color:var(--braise)}
+.outils select:focus-visible,.outils label.joindre:focus-within{
+  outline:2px solid var(--braise);outline-offset:2px}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.jointe{display:flex;align-items:center;gap:9px;margin-top:9px;padding:6px 9px;
+  background:var(--creux);border:1px solid var(--trait);border-radius:8px}
+.jointe img,.jointe video{height:38px;border-radius:5px;display:block}
+.jointe .genre{font:16px/1 var(--sans)}
+.jointe span{flex:1;font:11.5px var(--mono);color:var(--encre-douce);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jointe button{background:transparent;border:1px solid var(--trait-vif);border-radius:6px;
+  color:var(--encre-douce);font:11px var(--mono);padding:4px 9px;cursor:pointer}
+.alerte{margin-top:9px;color:var(--rouge);font:13px var(--sans)}
+.pistes{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+.pistes button{font:12px var(--serif);color:var(--encre-pale);background:transparent;
+  border:1px dashed var(--trait-vif);border-radius:20px;padding:4px 12px;cursor:pointer}
+.pistes button:hover{color:var(--braise);border-color:var(--braise);border-style:solid}
+.tiroir-bouton{display:none;background:transparent;border:1px solid var(--trait-vif);
+  border-radius:8px;color:var(--encre-douce);font:14px var(--mono);cursor:pointer;
+  padding:4px 10px;margin-right:10px}
+.voile{display:none;position:fixed;inset:0;background:#0008;z-index:8}
+@media (max-width:820px){
+  .tiroir-bouton{display:block}
+  aside{position:fixed;top:0;bottom:0;left:0;z-index:9;width:82vw;max-width:300px;
+    transform:translateX(-102%);transition:transform .22s ease;
+    box-shadow:2px 0 18px #0007}
+  body.ouvert aside{transform:none}
+  body.ouvert .voile{display:block}
+  footer .outils{flex-wrap:wrap}
+  header .jauge{gap:8px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="tiroir-bouton" id="tiroir" aria-label="Afficher les conversations">☰</button>
+  <span class="marque">Comfy<em>Studio</em></span>
+  <div class="jauge">
+    <span id="etatFile"></span>
+    <span id="jaugeModeles"><b>connexion…</b></span>
+    <span class="nuages" id="nuages"></span>
+    <span class="compte" id="compte"></span>
+    <a class="lien-admin" id="lienAdmin" href="/admin" style="display:none"
+       title="administration : machines, comptes, cles">admin</a>
+    <a class="source" href="https://github.com/Hogun974/comfystudio"
+       target="_blank" rel="noopener"
+       title="ComfyStudio est sous licence AGPL-3.0 : le code source vous est
+ dû, le voici">source</a>
+  </div>
+</header>
+
+<div id="panneauFile"></div>
+<div class="voile" id="voile"></div>
+<div class="corps">
+  <aside>
+    <button class="neuve" id="neuve">+ nouvelle conversation</button>
+    <div class="convs" id="convs"></div>
+    <div class="moteur" id="moteur">
+      <div class="ligne"><span class="pastille" id="pastille"></span>
+        <span id="etatMoteur">ComfyUI…</span></div>
+      <div class="detail" id="detailMoteur"></div>
+      <div class="ligne" id="boutonsMoteur" style="display:none">
+        <button id="demarrerComfy">démarrer</button>
+        <button id="arreterComfy">arrêter</button>
+      </div>
+    </div>
+  </aside>
+
+  <main id="zone">
+    <div class="fil" id="fil"></div>
+  </main>
+</div>
+
+<footer>
+  <div class="saisie">
+    <div class="champ">
+      <textarea id="txt" rows="1" aria-label="Décris ce que tu veux"
+        placeholder="un renard dans les hautes herbes au coucher du soleil…"></textarea>
+      <button class="envoyer" id="go" title="Générer (Ctrl+Entrée)" aria-label="Générer">↑</button>
+    </div>
+    <div class="barre">
+      <label class="joindre" for="img" style="border:1px solid var(--trait);
+        border-radius:8px;padding:4px 10px;font:11.5px var(--mono);
+        color:var(--encre-douce);cursor:pointer">joindre un fichier</label>
+      <input type="file" id="img"
+             accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.webm,.mkv,.mov,.mp3,.wav,.flac,.ogg,.opus,.m4a">
+      <button type="button" id="plier" aria-expanded="false">réglages</button>
+      <span class="actifs" id="actifs"></span>
+    </div>
+    <div class="outils replie" id="outils">
+      <select id="forcer" aria-label="Forcer un moteur">
+        <option value="">moteur : automatique</option>
+      </select>
+      <select id="priorite" aria-label="Priorité">
+        <option value="">priorité : équilibre</option>
+        <option value="rapide">rapide — moins d'étapes</option>
+        <option value="soigne">soigné — plus d'étapes</option>
+      </select>
+      <select id="taille" aria-label="Résolution">
+        <option value="">taille : automatique</option>
+        <option value="1920x1080">1920 × 1080 — paysage</option>
+        <option value="1600x900">1600 × 900 — paysage</option>
+        <option value="1280x720">1280 × 720 — paysage</option>
+        <option value="1216x832">1216 × 832 — défaut</option>
+        <option value="1024x1024">1024 × 1024 — carré</option>
+        <option value="832x1216">832 × 1216 — portrait</option>
+        <option value="1080x1350">1080 × 1350 — portrait</option>
+        <option value="768x1344">768 × 1344 — portrait haut</option>
+      </select>
+    </div>
+    <div class="jointe" id="jointe" style="display:none">
+      <span id="apercu-zone"></span>
+      <span id="nomimg"></span>
+      <button id="retirer">retirer</button>
+    </div>
+    <div class="alerte" id="alerte" role="alert"></div>
+    <div class="pistes" id="pistes"></div>
+  </div>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+let imageJointe = null, apercuURL = null, convActive = null;
+const suivis = new Map();           // tid -> {bloc, minuteur}
+
+const PISTES = [
+  "un phare battu par la tempête, très cinématographique",
+  "une guerrière manga en armure de cuir, fiche personnage",
+  "une pancarte en bois gravée « Bienvenue »",
+  "une musique de piano mélancolique et lente, 40 secondes",
+];
+const TITRES = {};
+const ech = s => String(s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const EXT_IMG = /\.(png|jpe?g|webp|bmp|gif)$/i;
+const EXT_VID = /\.(mp4|webm|mkv|mov)$/i;
+const EXT_SON = /\.(mp3|flac|wav|ogg|opus)$/i;
+/* le noeud fait partie de l'adresse : deux machines peuvent produire le meme
+   nom de fichier le meme jour, le compteur de ComfyUI etant propre a chacune */
+const url = f => `/api/fichier?filename=${encodeURIComponent(f.filename)}`
+               + `&subfolder=${encodeURIComponent(f.subfolder || "")}&type=${f.type || "output"}`
+               + (f.noeud ? `&noeud=${encodeURIComponent(f.noeud)}` : "");
+const auBas = () => { const z = $("#zone"); z.scrollTop = z.scrollHeight; };
+
+/* ── fil ─────────────────────────────────────────────────────────── */
+function messageVide() {
+  $("#fil").innerHTML = `<div class="vide">
+    <h1>Dis ce que tu veux voir.</h1>
+    <p>Une image, une vidéo, une musique, une retouche. Le moteur est choisi pour
+       toi, et la conversation garde le fil : « la même mais en hiver » reprend
+       ce qui précède.</p></div>`;
+}
+function ajouterDemande(texte, heure) {
+  $("#fil").querySelector(".vide")?.remove();
+  const d = document.createElement("div");
+  d.className = "demande";
+  d.innerHTML = ech(texte) + `<span class="heure">${ech(heure || new Date()
+      .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }))}</span>`;
+  $("#fil").appendChild(d);
+}
+function ajouterReponse() {
+  const r = document.createElement("div");
+  r.className = "reponse";
+  r.innerHTML = `<div class="bandeau-tech"><span class="puce cours">en cours</span></div>
+                 <div class="sortie"></div>`;
+  $("#fil").appendChild(r);
+  return r;
+}
+function bloque(titre, contenu) {
+  const d = document.createElement("details");
+  d.className = "detail";
+  d.innerHTML = `<summary>${ech(titre)}</summary><div class="corps-detail"></div>`;
+  d.querySelector(".corps-detail").textContent = contenu;
+  return d;
+}
+function garnirReponse(bloc, t, cid) {
+  // une conversation rechargee peut contenir une question restee en suspens
+  if (t.etat === "question" && (t.questions || []).length) {
+    garnirQuestion(bloc, t, cid || convActive);
+    return;
+  }
+  // Un rendu encore en route : on se rebranche dessus. Sans cela, revenir sur
+  // la conversation montrait une reponse vide et definitivement figee.
+  if (t.etat === "en cours" && t.id) {
+    bloc.querySelector(".bandeau-tech").innerHTML =
+      '<span class="puce cours">en cours</span>';
+    suivre(t.id, bloc, cid || convActive);
+    return;
+  }
+  const p = t.plan || {};
+  const rate = t.etat === "erreur";
+  bloc.classList.toggle("rate", rate);
+  const cle = p.modele || t.modele;
+  const par = p.parametres || t.parametres;
+  // Un echec doit sauter aux yeux ; une reussite se voit deja a l'image, et une
+  // pastille verte de plus ne ferait qu'occuper la ligne.
+  bloc.querySelector(".bandeau-tech").innerHTML =
+    rate ? '<span class="puce rate">échec</span>' : "";
+
+  const sortie = bloc.querySelector(".sortie");
+  sortie.innerHTML = "";
+  if (t.description) {
+    const d = document.createElement("div");
+    d.className = "lecture"; d.textContent = t.description;
+    sortie.appendChild(d);
+  }
+  (t.fichiers || []).forEach(f => {
+    const u = url(f); let el;
+    if (EXT_VID.test(f.filename)) { el = document.createElement("video"); el.controls = true; el.loop = true; }
+    else if (EXT_SON.test(f.filename)) { el = document.createElement("audio"); el.controls = true; }
+    else if (EXT_IMG.test(f.filename)) { el = document.createElement("img"); el.alt = f.filename; }
+    else { el = document.createElement("a"); el.href = u; el.download = f.filename;
+           el.textContent = "télécharger " + f.filename; }
+    if (el.tagName !== "A") el.src = u;
+    // Le nom sert a retrouver le fichier, pas a lire l'image : infobulle.
+    el.title = f.filename;
+    sortie.appendChild(el);
+  });
+  if (rate) {
+    const e = document.createElement("div");
+    e.className = "echec"; e.textContent = t.erreur || "la génération a échoué";
+    // Retaper dix lignes parce que le studio a redemarre est une punition
+    // imméritée : le bouton reprend la demande, et le moteur imposé avec.
+    if (t.demande) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "relancer";
+      b.title = "renvoyer exactement la même demande";
+      b.onclick = () => {
+        $("#txt").value = t.demande;
+        if (t.modele && $("#forcer").querySelector(`option[value="${t.modele}"]`))
+          $("#forcer").value = t.modele;
+        ajuster();
+        if (typeof peindreActifs === "function") peindreActifs();
+        $("#go").click();
+      };
+      e.appendChild(b);
+    }
+    sortie.appendChild(e);
+  }
+  bloc.querySelectorAll("details.detail").forEach(d => d.remove());
+  bloc.querySelectorAll(".signature").forEach(d => d.remove());
+
+  // Une ligne de signature : ce qui a servi, en clair, sans encombrer.
+  const sign = document.createElement("div");
+  sign.className = "signature";
+  if (cle) sign.appendChild(Object.assign(document.createElement("span"),
+                                          { textContent: TITRES[cle] || cle }));
+  if (t.id) sign.appendChild(barreAvis(t));
+  bloc.appendChild(sign);
+
+  // Tout le technique dans UN depliant, ferme. Le detail reste disponible pour
+  // qui le cherche, sans etre impose a qui regarde une image.
+  const morceaux = [];
+  if (par && Object.keys(par).length)
+    morceaux.push("réglages : " + Object.entries(par).map(([k, v]) => `${k}=${v}`).join(", "));
+  if (t.raison) morceaux.push("choix : " + t.raison);
+  const prompt = p.prompt || t.prompt;
+  if (prompt) morceaux.push("prompt envoyé :\n" + prompt
+                          + (p.negatif ? "\n\nécarté : " + p.negatif : ""));
+  if (t.paroles) morceaux.push("paroles :\n" + t.paroles);
+  const fics = (t.fichiers || []).map(f => f.filename).join("\n");
+  if (fics) morceaux.push("fichiers :\n" + fics);
+  if (t.etapes && t.etapes.length)
+    morceaux.push("déroulé :\n" + t.etapes.map(e => `${e.t}  ${e.msg}`).join("\n"));
+  if (morceaux.length) bloc.appendChild(bloque("détails", morceaux.join("\n\n")));
+
+/* Le pouce sert a corriger le code : sans mesure, on regle a l'aveugle.
+   Il est donc pose sur l'echange, la ou le resultat est encore sous les yeux,
+   et non dans un formulaire separe que personne n'irait remplir. */
+function barreAvis(t) {
+  const zone = document.createElement("div");
+  const barre = document.createElement("div");
+  barre.className = "avis";
+  const haut = document.createElement("button");
+  haut.type = "button"; haut.textContent = "👍"; haut.title = "bonne réponse";
+  const bas = document.createElement("button");
+  bas.type = "button"; bas.textContent = "👎"; bas.title = "à retravailler";
+  const dit = document.createElement("span");
+  dit.className = "merci";
+  barre.append(haut, bas, dit);
+  zone.appendChild(barre);
+
+  let pose = t.avis || 0;
+  haut.classList.add("haut"); bas.classList.add("bas");
+  const peindre = () => {
+    haut.classList.toggle("pris", pose === 1);
+    bas.classList.toggle("pris", pose === -1);
+    dit.textContent = pose === 1 ? "noté, merci"
+                    : pose === -1 ? "noté — je retravaille" : "";
+  };
+  peindre();
+
+  const envoyer = async (avis, note) => {
+    // Un second clic sur le meme pouce retire l'avis : s'etre trompe de bouton
+    // ne doit pas obliger a choisir l'autre.
+    const vise = (avis === pose && !note) ? 0 : avis;
+    try {
+      const r = await fetch("/api/avis", { method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tid: t.id, avis: vise, note: note || "" }) });
+      if (!r.ok) throw new Error((await r.json()).erreur || r.status);
+      pose = vise; peindre();
+      if (vise !== -1) zone.querySelectorAll(".avis-note").forEach(x => x.remove());
+    } catch (e) { dit.textContent = "avis non enregistré : " + e.message; }
+  };
+
+  haut.onclick = () => { zone.querySelectorAll(".avis-note").forEach(x => x.remove());
+                         envoyer(1, ""); };
+  bas.onclick = () => {
+    // Le pouce part tout de suite : le mot est un bonus, pas un peage.
+    envoyer(-1, "");
+    if (zone.querySelector(".avis-note")) return;
+    const f = document.createElement("div");
+    f.className = "avis-note";
+    const champ = document.createElement("input");
+    champ.type = "text"; champ.maxLength = 2000;
+    champ.placeholder = "ce qui n'allait pas (facultatif)";
+    const ok = document.createElement("button");
+    ok.type = "button"; ok.textContent = "envoyer";
+    ok.onclick = () => { if (champ.value.trim()) envoyer(-1, champ.value.trim()); f.remove(); };
+    champ.onkeydown = ev => { if (ev.key === "Enter") ok.onclick(); };
+    f.append(champ, ok);
+    zone.appendChild(f);
+    champ.focus();
+  };
+  return zone;
+}
+
+}
+
+/* Le studio demande une precision. La reponse relance TOUT l'aiguillage :
+   elle peut changer la nature du travail, pas seulement l'affiner. */
+function garnirQuestion(bloc, t, cid) {
+  bloc.classList.remove("rate");
+  bloc.querySelector(".bandeau-tech").innerHTML =
+    '<span class="puce cours">precision demandee</span>';
+  const sortie = bloc.querySelector(".sortie");
+  sortie.innerHTML = "";
+  const q = document.createElement("div");
+  q.className = "question";
+  q.innerHTML = `<p>Avant de lancer, j'ai besoin de savoir&nbsp;:</p>
+    <ul>${(t.questions || []).map(x => `<li>${ech(x)}</li>`).join("")}</ul>
+    <div class="repondre">
+      <input type="text" placeholder="ta réponse…" aria-label="Réponse à la précision demandée">
+      <button>répondre</button>
+    </div>`;
+  sortie.appendChild(q);
+  const champ = q.querySelector("input"), bouton = q.querySelector("button");
+  const envoyer = async () => {
+    const rep = champ.value.trim();
+    if (!rep) return;
+    bouton.disabled = true; champ.disabled = true;
+    const complet = `${t.demande}\n\nPrécisions : ${rep}`;
+    ajouterDemande(rep);
+    const nouveau = ajouterReponse();
+    auBas();
+    try {
+      const r = await fetch("/api/generer", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texte: complet, conversation: cid,
+                               taille: $("#taille").value,
+                               priorite: $("#priorite").value })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la demande");
+      suivre(d.id, nouveau, cid);
+    } catch (err) {
+      garnirReponse(nouveau, { etat: "erreur", erreur: err.message, fichiers: [] });
+    }
+  };
+  bouton.onclick = envoyer;
+  champ.onkeydown = e => { if (e.key === "Enter") envoyer(); };
+  champ.focus();
+}
+
+/* ── conversations ───────────────────────────────────────────────── */
+async function listerConversations() {
+  try {
+    const d = await (await fetch("/api/conversations")).json();
+    convActive = convActive || d.courante;
+    const box = $("#convs"); box.innerHTML = "";
+    d.conversations.forEach(c => {
+      const el = document.createElement("div");
+      el.className = "conv" + (c.id === convActive ? " active" : "");
+      el.innerHTML = `${ech(c.titre)}<small>${c.tours} échange${c.tours > 1 ? "s" : ""}</small>
+                      <button class="jeter" title="Supprimer">×</button>`;
+      el.onclick = e => { if (!e.target.classList.contains("jeter")) ouvrir(c.id); };
+      el.querySelector(".jeter").onclick = async e => {
+        e.stopPropagation();
+        await fetch("/api/conversation/" + c.id, { method: "DELETE" });
+        if (c.id === convActive) convActive = null;
+        await listerConversations();
+        if (!convActive) { const r = await (await fetch("/api/conversations")).json();
+                           ouvrir(r.courante); }
+      };
+      box.appendChild(el);
+    });
+  } catch (e) { $("#convs").textContent = "liste indisponible"; }
+}
+
+/* Ce qui est tape et pas encore envoye appartient a la conversation, pas a la
+   fenetre : passer voir un rendu ailleurs ne doit pas effacer une phrase en
+   cours d'ecriture. */
+const brouillons = {};
+
+async function ouvrir(cid) {
+  basculerTiroir(false);   // sur telephone, on referme apres avoir choisi
+  if (convActive) brouillons[convActive] = $("#txt").value;
+  // On ne coupe plus les suivis : un rendu lance ailleurs continue d'etre
+  // ecoute, et sa conversation se met a jour quand on y revient.
+  convActive = cid;
+  $("#txt").value = brouillons[cid] || ""; ajuster();
+  $("#go").disabled = false;
+  const c = await (await fetch("/api/conversation/" + cid)).json();
+  $("#fil").innerHTML = "";
+  if (!c.tours || !c.tours.length) messageVide();
+  else c.tours.forEach(t => { ajouterDemande(t.demande, t.heure);
+                              garnirReponse(ajouterReponse(), t, cid); });
+  await listerConversations();
+  auBas();
+}
+
+$("#neuve").onclick = async () => {
+  const c = await (await fetch("/api/conversations", { method: "POST" })).json();
+  await ouvrir(c.id);
+  $("#txt").focus();
+};
+
+/* ── amorçage ────────────────────────────────────────────────────── */
+fetch("/api/modeles").then(r => r.json()).then(ms => {
+  const sel = $("#forcer"); let prets = 0, locaux = ms.length;
+  ms.forEach(m => {
+    TITRES[m.cle] = m.titre;
+    if (m.present && !m.distant) prets++;
+    if (m.distant) locaux--;
+    const o = document.createElement("option");
+    o.value = m.cle; o.textContent = m.titre + (m.present ? "" : " (à télécharger)");
+    sel.appendChild(o);
+  });
+  $("#jaugeModeles").innerHTML = `<b>${prets}/${locaux}</b> moteurs prêts`;
+}).catch(() => { $("#jaugeModeles").innerHTML = "<b>serveur injoignable</b>"; })
+  .finally(async () => {
+    const d = await (await fetch("/api/conversations")).json();
+
+
+    await ouvrir(d.courante);
+  });
+
+/* Les interrupteurs ne s'affichent que pour les modalites reellement
+   joignables : sans cle posee, il n'y a rien a activer. */
+async function peindreNuages() {
+  let d;
+  try {
+    d = await (await fetch("/api/nuage", { credentials: "same-origin" })).json();
+  } catch (e) { return; }
+  const zone = document.querySelector("#nuages");
+  zone.innerHTML = "";
+  for (const m of d.modalites) {
+    if (!m.possible) continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = m.signe;
+    b.className = m.actif ? "allume" : "eteint";
+    b.title = `${m.libelle} : ${m.actif ? m.titre : "cette machine"}`
+            + `\n(cliquer pour ${m.actif ? "revenir en local" : "passer par " + m.titre})`;
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await fetch("/api/nuage", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ modalite: m.modalite, actif: !m.actif }) });
+      } finally { b.disabled = false; }
+      peindreNuages();
+
+    };
+    zone.appendChild(b);
+  }
+}
+peindreNuages();
+
+/* ── comptes ──────────────────────────────────────────────────────────
+   Facultatifs : tant qu'aucun compte n'existe, rien ne s'affiche et le studio
+   se comporte comme avant. Un compte connecte, en revanche, emporte son
+   espace d'un appareil a l'autre. */
+async function peindreCompte() {
+  let d;
+  try {
+    d = await (await fetch("/api/compte", { credentials: "same-origin" })).json();
+  } catch (e) { return; }
+  const zone = document.querySelector("#compte");
+  zone.innerHTML = "";
+  if (!d.comptes_existent && !d.connecte) return;
+  // Connexion obligatoire et personne de connecte : on ouvre le formulaire
+  // plutot que de laisser l'utilisateur ecrire une demande qui sera refusee.
+  if (d.obligatoire && !d.connecte) {
+    document.querySelector("#txt").disabled = true;
+    document.querySelector("#go").disabled = true;
+    document.querySelector("#txt").placeholder = "connecte-toi pour commencer…";
+    if (!document.querySelector(".voile-entree")) formulaireEntree();
+  }
+  document.querySelector("#lienAdmin").style.display = d.admin ? "" : "none";
+  if (d.connecte) {
+    const qui = document.createElement("span");
+    qui.innerHTML = `<b>${ech(d.nom)}</b>${d.admin ? " \u00b7 admin" : ""}`;
+    const sortir = document.createElement("button");
+    sortir.type = "button"; sortir.textContent = "sortir";
+    sortir.onclick = async () => {
+      await fetch("/api/compte/sortir", { method: "POST", credentials: "same-origin" });
+      location.reload();
+    };
+    zone.append(qui, sortir);
+  } else {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = "se connecter";
+    b.onclick = formulaireEntree;
+    zone.appendChild(b);
+  }
+}
+
+function formulaireEntree() {
+  const voile = document.createElement("div");
+  voile.className = "voile-entree";
+  voile.innerHTML = `<form class="entree">
+      <h3>Se connecter</h3>
+      <input name="nom" placeholder="nom" autocomplete="username" autofocus>
+      <input name="mdp" type="password" placeholder="mot de passe" autocomplete="current-password">
+      <div class="mal"></div>
+      <div class="rang"><button type="button" data-annuler>annuler</button>
+                        <button type="submit">entrer</button></div>
+    </form>`;
+  document.body.appendChild(voile);
+  const f = voile.querySelector("form");
+  const fermer = () => voile.remove();
+  voile.querySelector("[data-annuler]").onclick = fermer;
+  voile.onclick = e => { if (e.target === voile) fermer(); };
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const mal = f.querySelector(".mal");
+    mal.textContent = "";
+    try {
+      const r = await fetch("/api/compte/entrer", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nom: f.nom.value, mdp: f.mdp.value }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erreur || "connexion refusée");
+      fermer();
+      // Rechargement plutot qu'une mise a jour partielle : l'identite change,
+      // donc la liste des conversations, les fichiers, tout le contexte.
+      if (d.reprises) alert(`${d.reprises} conversation(s) de ce navigateur `
+                          + `ont été rattachées à ton compte.`);
+      location.reload();
+    } catch (err) {
+      mal.textContent = err.message;
+      // Le formulaire ne se referme pas sur un echec : c'est la seule porte.
+    }
+  };
+}
+peindreCompte();
+
+/* ── la file, au survol et au clic ─────────────────────────────────────
+   Le compteur disait « 3 demandes » sans dire lesquelles : impossible de
+   savoir si l'attente venait d'une video de six minutes lancee par erreur, et
+   impossible de la retirer. */
+let fileOuverte = false, minuteurFile = null;
+
+function fermerFile() {
+  fileOuverte = false;
+  document.querySelector("#panneauFile").classList.remove("ouvert");
+  if (minuteurFile) { clearInterval(minuteurFile); minuteurFile = null; }
+}
+
+async function peindreFile() {
+  const p = document.querySelector("#panneauFile");
+  let d;
+  try {
+    d = await (await fetch("/api/file", { credentials: "same-origin" })).json();
+  } catch (e) { return; }
+  const lignes = d.lignes || [];
+  if (!lignes.length) {
+    p.innerHTML = "<h4>file d'attente</h4>"
+                + '<div class="tache"><span class="quoi">rien en cours</span></div>';
+    return;
+  }
+  p.innerHTML = "<h4>file d'attente"
+    + (d.admin ? " — vue administrateur" : "") + "</h4>";
+  for (const t of lignes) {
+    const el = document.createElement("div");
+    el.className = "tache" + (t.a_moi ? "" : " autrui");
+    const rang = t.en_cours ? "▶" : t.rang;
+    const etats = { "en cours": ["cours", "en cours"], fini: ["fini", "terminé"],
+                    erreur: ["rate", "échec"], question: ["attente", "en attente de précision"] };
+    const [classe, mot] = etats[t.etat] || ["attente", "en attente"];
+    // Le pourcentage vient de ComfyUI ; sans lui on montre l'etat seul.
+    const pct = t.avance && t.avance.total
+      ? Math.round(t.avance.fait * 100 / t.avance.total) : null;
+    el.innerHTML = `<span class="rang">${rang}</span>
+      <span class="quoi">${ech(t.demande)}
+        <small>${ech(t.type)}${t.qui ? " · " + ech(t.qui) : ""}</small>
+        <span class="etat-tache ${classe}">${mot}`
+      + (pct !== null ? ` — ${pct} %` : "")
+      + (t.ou ? " · " + ech(t.ou) : "") + `</span>`
+      + (pct !== null
+          ? `<span class="barre"><i style="width:${pct}%"></i></span>` : "")
+      + `</span>`;
+    if (t.annulable) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = t.en_cours ? "interrompre" : "retirer";
+      b.onclick = async ev => {
+        ev.stopPropagation();
+        b.disabled = true;
+        await fetch("/api/file/" + encodeURIComponent(t.tid),
+                    { method: "DELETE", credentials: "same-origin" });
+        peindreFile();
+      };
+      el.appendChild(b);
+    }
+    p.appendChild(el);
+  }
+}
+
+function ouvrirFile() {
+  if (fileOuverte) return;
+  fileOuverte = true;
+  document.querySelector("#panneauFile").classList.add("ouvert");
+  peindreFile();
+  // Rafraichi tant qu'il est ouvert : une file qui avance sous les yeux est la
+  // seule facon de voir qu'elle avance.
+  minuteurFile = setInterval(peindreFile, 3000);
+}
+
+document.addEventListener("click", e => {
+  const compteur = e.target.closest("#etatFile");
+  const dedans = e.target.closest("#panneauFile");
+  if (compteur) { fileOuverte ? fermerFile() : ouvrirFile(); return; }
+  if (!dedans && fileOuverte) fermerFile();
+});
+document.querySelector("#etatFile").addEventListener("mouseenter", ouvrirFile);
+document.querySelector("#panneauFile").addEventListener("mouseleave", e => {
+  // On ne referme au survol que si l'on n'a pas ouvert au clic : sur une
+  // tablette, un doigt qui frole refermerait le panneau qu'on vient d'ouvrir.
+  if (e.buttons === 0 && window.matchMedia("(hover: hover)").matches) fermerFile();
+});
+
+/* Les reglages restent replies, mais jamais silencieux : ce qui s'ecarte du
+   defaut s'affiche en clair, et se retire d'un clic. Un reglage applique sans
+   etre visible donne le sentiment de ne pas etre ecoute. */
+const REGLAGES = [
+  { sel: "#forcer", nom: "moteur", lire: o => o.textContent },
+  { sel: "#priorite", nom: "", lire: o => o.textContent.split(" — ")[0] },
+  { sel: "#taille", nom: "", lire: o => o.textContent.split(" — ")[0] },
+];
+
+function peindreActifs() {
+  const zone = document.querySelector("#actifs");
+  zone.innerHTML = "";
+  for (const r of REGLAGES) {
+    const el = document.querySelector(r.sel);
+    if (!el || !el.value) continue;
+    const mot = document.createElement("span");
+    mot.className = "oter";
+    mot.textContent = (r.nom ? r.nom + " " : "") + r.lire(el.selectedOptions[0]);
+    mot.title = "cliquer pour revenir à l'automatique";
+    mot.onclick = () => { el.value = ""; peindreActifs(); };
+    zone.appendChild(mot);
+  }
+}
+REGLAGES.forEach(r => {
+  const el = document.querySelector(r.sel);
+  if (el) el.addEventListener("change", peindreActifs);
+});
+document.querySelector("#plier").onclick = e => {
+  const outils = document.querySelector("#outils");
+  const ouvert = outils.classList.toggle("replie") === false;
+  e.target.classList.toggle("ouvert", ouvert);
+  e.target.setAttribute("aria-expanded", String(ouvert));
+};
+peindreActifs();
+
+PISTES.forEach(p => {
+  const b = document.createElement("button");
+  b.textContent = p;
+  b.onclick = () => { $("#txt").value = p; $("#txt").focus(); ajuster(); };
+  $("#pistes").appendChild(b);
+});
+
+setInterval(async () => {
+  try {
+    const f = await (await fetch("/api/file")).json();
+    const n = f.en_attente + (f.occupe ? 1 : 0);
+    const moi = (f.a_moi || 0) + (f.en_cours ? 1 : 0);
+    $("#etatFile").innerHTML = n
+      ? `<span class="file-vive">${n} en file${moi && moi < n ? ` · ${moi} à toi` : ""}</span>`
+      : "";
+  } catch (e) { /* sans effet */ }
+}, 2500);
+
+/* ── tiroir des conversations sur petit ecran ──────────────────────
+   La barre laterale etait simplement masquee sous 820 px : sur telephone,
+   ni la liste des conversations, ni le bouton d'en creer une, ni l'etat du
+   moteur n'etaient atteignables. */
+const basculerTiroir = ouvrir =>
+  document.body.classList.toggle("ouvert",
+    ouvrir === undefined ? !document.body.classList.contains("ouvert") : ouvrir);
+$("#tiroir").onclick = () => basculerTiroir();
+$("#voile").onclick = () => basculerTiroir(false);
+
+$("#img").onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  $("#alerte").textContent = "";
+  try {
+    const fd = new FormData(); fd.append("f", f);
+    const r = await fetch("/api/televerser", { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.image) throw new Error(d.erreur || "échec du téléversement");
+    imageJointe = d.image;
+    if (apercuURL) URL.revokeObjectURL(apercuURL);
+    apercuURL = URL.createObjectURL(f);
+    // Une video dans une balise <img> ne montre rien : chaque famille a son
+    // apercu, et un signe suffit pour un son qu'on ne regarde pas.
+    const zone = $("#apercu-zone");
+    zone.innerHTML = "";
+    if (EXT_VID.test(f.name)) {
+      const v = document.createElement("video");
+      v.src = apercuURL; v.muted = true; zone.appendChild(v);
+    } else if (EXT_SON.test(f.name)) {
+      zone.innerHTML = '<span class="genre">\u266A</span>';
+    } else {
+      const i = document.createElement("img");
+      i.src = apercuURL; i.alt = "aperçu du fichier joint"; zone.appendChild(i);
+    }
+    $("#nomimg").textContent = f.name;
+    $("#jointe").style.display = "flex";
+  } catch (err) { detacher(); $("#alerte").textContent = "Fichier non joint : " + err.message; }
+};
+function detacher() {
+  imageJointe = null;
+  if (apercuURL) { URL.revokeObjectURL(apercuURL); apercuURL = null; }
+  $("#apercu-zone").innerHTML = "";
+  $("#jointe").style.display = "none";
+  $("#img").value = "";
+}
+$("#retirer").onclick = detacher;
+
+$("#go").onclick = async () => {
+  const texte = $("#txt").value.trim();
+  if (!texte && !imageJointe) return;
+  $("#alerte").textContent = "";
+  const monConv = convActive;
+  ajouterDemande(texte);
+  const bloc = ajouterReponse();
+  auBas();
+  $("#txt").value = ""; ajuster();
+  try {
+    const r = await fetch("/api/generer", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texte, image: imageJointe, modele: $("#forcer").value,
+                             taille: $("#taille").value, priorite: $("#priorite").value,
+                             conversation: monConv })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la demande");
+    detacher();
+    // La conversation remonte tout de suite : le tour est deja enregistre cote
+    // serveur, et attendre la fin du rendu laissait croire que rien n'etait
+    // parti.
+    listerConversations();
+    suivre(d.id, bloc, monConv);
+  } catch (err) {
+    garnirReponse(bloc, { etat: "erreur", erreur: err.message, fichiers: [] });
+    $("#alerte").textContent = err.message;
+    auBas();
+  }
+};
+
+/* Le sondage est indexe par tache : plusieurs demandes peuvent courir
+   en parallele, y compris dans des conversations differentes. */
+function suivre(id, bloc, cid) {
+  const ancien = suivis.get(id);
+  if (ancien) { clearInterval(ancien.minuteur); suivis.delete(id); }
+  const minuteur = setInterval(async () => {
+    try {
+      const r = await fetch("/api/etat/" + id);
+      if (!r.ok) throw new Error("tâche inconnue — le serveur a-t-il redémarré ?");
+      const t = await r.json();
+      if (!Array.isArray(t.etapes)) throw new Error("réponse inattendue du serveur");
+      const visible = cid === convActive && document.body.contains(bloc);
+
+      if (visible && t.etat === "en cours") {
+        const derniere = t.etapes[t.etapes.length - 1];
+        const puces = bloc.querySelector(".bandeau-tech");
+        puces.innerHTML = t.position
+          ? `<span class="puce attente">en file — ${t.position} devant</span>`
+          : `<span class="puce cours">${ech((derniere ? derniere.msg : "…").slice(0, 64))}</span>`;
+      }
+      if (t.etat === "question") {
+        clearInterval(minuteur); suivis.delete(id);
+        if (visible) { garnirQuestion(bloc, t, cid); auBas(); }
+        listerConversations();
+        return;
+      }
+      if (t.etat === "fini" || t.etat === "erreur") {
+        clearInterval(minuteur); suivis.delete(id);
+        const derniere = t.etapes[t.etapes.length - 1];
+        if (t.etat === "erreur" && derniere) t.erreur = derniere.msg;
+        if (visible) { garnirReponse(bloc, t); auBas(); }
+        listerConversations();
+      }
+    } catch (err) {
+      clearInterval(minuteur); suivis.delete(id);
+      if (document.body.contains(bloc))
+        garnirReponse(bloc, { etat: "erreur", erreur: err.message, fichiers: [] });
+    }
+  }, 1200);
+  suivis.set(id, { bloc, minuteur });
+}
+</script>
+</body>
+</html>

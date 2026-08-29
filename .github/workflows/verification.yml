@@ -1,0 +1,178 @@
+# Verification automatique de ComfyStudio.
+#
+# Il n'y a pas de suite de tests unitaires dans ce depot, et ce fichier n'essaie
+# pas d'en inventer une. Il verifie ce qui casse REELLEMENT ici, et qui casse
+# silencieusement : un fichier qui ne compile plus, un JSON malforme que
+# personne ne relit, un script shell qu'on ne lance qu'une fois par machine, et
+# surtout l'aiguilleur — dont la justesse peut chuter sans qu'aucune ligne de
+# code n'ait bouge, simplement parce que le corpus a change.
+#
+# Tout est commente en francais, comme le reste du projet.
+
+name: Verification
+
+# Sur chaque poussee et chaque pull request : une erreur decouverte a la fusion
+# coute bien plus cher qu'une erreur decouverte au push.
+on:
+  push:
+  pull_request:
+
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          # Une seule version. Le studio tourne surtout sur le Python embarque
+          # de ComfyUI, pas sur une matrice de versions : mieux vaut une
+          # verification qui passe et qu'on croit qu'une matrice rouge qu'on
+          # apprend a ignorer.
+          python-version: '3.12'
+
+      # Le depot n'a pas de requirements.txt, et c'est voulu : aiohttp est la
+      # SEULE dependance obligatoire. huggingface_hub et av sont facultatifs,
+      # le code retombe sur du HTTPS direct sans eux — on ne les installe donc
+      # pas ici, ce qui verifie au passage que rien ne les exige en douce.
+      - name: Installer aiohttp
+        run: python -m pip install --upgrade pip aiohttp
+
+      # serveur.py fait 250 ko : une faute de syntaxe dans une branche rarement
+      # prise ne se voit qu'au demarrage, c'est-a-dire chez l'utilisateur.
+      # compileall les lit tous, y compris installer.py, qui doit rester lisible
+      # par un Python tres ancien pour pouvoir afficher son message de version.
+      - name: Tous les fichiers Python compilent
+        run: python -m compileall -q .
+
+      # aiguilleur.json est un modele entraine (0,19 Mo) et noeuds.exemple.json
+      # est copie tel quel par l'utilisateur : un JSON casse ne se voit qu'a
+      # l'execution, et se traduit par « aiguilleur absent » ou « registre
+      # illisible » — un message qui ne dit pas ou chercher.
+      # Les .jsonl sont verifies ligne par ligne : ce sont le corpus et les
+      # bancs, et une seule ligne fautive fait echouer l'entrainement plus bas
+      # avec une trace qui ne nomme pas le fichier.
+      - name: Les fichiers JSON sont valides
+        run: |
+          python - <<'PY'
+          import glob, json, sys
+
+          mauvais = 0
+          for chemin in sorted(glob.glob("**/*.json", recursive=True)):
+              try:
+                  with open(chemin, encoding="utf-8") as f:
+                      json.load(f)
+              except Exception as e:
+                  print(f"  INVALIDE  {chemin} — {e}")
+                  mauvais += 1
+              else:
+                  print(f"  ok        {chemin}")
+
+          for chemin in sorted(glob.glob("**/*.jsonl", recursive=True)):
+              fautes = 0
+              with open(chemin, encoding="utf-8") as f:
+                  for n, ligne in enumerate(f, 1):
+                      if not ligne.strip():
+                          continue
+                      try:
+                          json.loads(ligne)
+                      except Exception as e:
+                          print(f"  INVALIDE  {chemin}:{n} — {e}")
+                          fautes += 1
+              mauvais += fautes
+              if not fautes:
+                  print(f"  ok        {chemin}")
+
+          sys.exit(1 if mauvais else 0)
+          PY
+
+      # noeud.sh et installer.sh sont poses sur des machines qu'on ne reverra
+      # pas : une faute de syntaxe s'y decouvre au pire moment, sur le NAS de
+      # quelqu'un d'autre. `sh -n` analyse sans executer — indispensable, ces
+      # scripts installent des choses.
+      # POSIX sh et non bash : ces fichiers doivent tourner sur un NAS ou
+      # /bin/sh est un dash minimal.
+      - name: Les scripts shell passent l'analyse syntaxique
+        run: |
+          echec=0
+          for f in $(find . -name '*.sh' -not -path './.git/*'); do
+            if sh -n "$f"; then
+              echo "  ok        $f"
+            else
+              echo "  SYNTAXE   $f"
+              echec=1
+            fi
+          done
+          exit $echec
+
+      # L'entrainement complet : trois centiemes de seconde, aucune dependance,
+      # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
+      # lira dans le journal de l'action quand un chiffre bougera.
+      # conversations/ n'existe pas ici, donc aucune demande reelle n'est
+      # moissonnee : la CI mesure le corpus du depot, et rien d'autre.
+      - name: Entrainer l'aiguilleur
+        run: python entrainer_aiguilleur.py
+
+      # Le garde-fou qui compte. Les bancs ne sont JAMAIS appris ; leur justesse
+      # est donc la seule mesure honnete de ce qu'un changement de corpus a
+      # fait.
+      #
+      # Seuils retenus : 75 % de justesse globale, 80 % sur les cas tranches
+      # d'office. Mesures actuelles : 94 % / 98 % sur banc_aiguillage.jsonl et
+      # 86 % / 90 % sur banc_neuf.jsonl (les tournures indirectes, le banc dur).
+      # Soit environ onze points de marge sous le banc le plus faible.
+      #
+      # POURQUOI si bas : un banc de 44 cas se deplace de 2,3 points des qu'une
+      # seule demande change de camp. Un seuil colle a 85 % virerait au rouge au
+      # premier exemple ajoute au corpus — et une CI qui rougit pour rien finit
+      # par etre ignoree, ce qui la rend pire qu'absente. Ce seuil ne cherche
+      # pas a defendre les 86 % : il cherche a attraper un effondrement (un
+      # corpus tronque, une classe disparue, un classifieur casse), qui fait
+      # tomber ces chiffres de dizaines de points, pas de deux.
+      #
+      # Les deux chiffres sont verifies separement parce qu'ils disent des
+      # choses differentes : le premier mesure le classifieur, le second mesure
+      # ce qu'on le laisse decider seul — les cas incertains, eux, partent au
+      # modele de langage et ne coutent que du temps.
+      - name: La justesse sur les bancs ne s'est pas effondree
+        run: |
+          python - <<'PY'
+          import sys
+
+          import entrainer_aiguilleur as e
+          from aiguilleur import Aiguilleur
+
+          SEUIL = 0.75          # justesse globale
+          SEUIL_SUR = 0.80      # justesse sur les seuls cas tranches d'office
+
+          aiguilleur = Aiguilleur().apprendre(e.corpus())
+          echec = False
+
+          for nom in e.BANCS:
+              banc = e._lire(nom)
+              if not banc:
+                  # Un banc absent est un echec, pas un succes silencieux :
+                  # sans lui il n'y a plus rien qui mesure quoi que ce soit.
+                  print(f"  BANC ABSENT  {nom}")
+                  echec = True
+                  continue
+              bons, total, bons_surs, surs = e.mesurer(aiguilleur, banc)
+              juste = bons / total
+              juste_sur = bons_surs / max(surs, 1)
+              ok = juste >= SEUIL and juste_sur >= SEUIL_SUR
+              print(f"  {'ok      ' if ok else 'SOUS SEUIL'}  {nom} : "
+                    f"{bons}/{total} justes ({juste:.0%}, seuil {SEUIL:.0%}) — "
+                    f"tranches d'office {bons_surs}/{surs} "
+                    f"({juste_sur:.0%}, seuil {SEUIL_SUR:.0%})")
+              if not ok:
+                  echec = True
+
+          if echec:
+              print("\n  La justesse est tombee sous le seuil. Si c'est voulu, "
+                    "dis dans la pull request ce qu'on gagne en echange, et "
+                    "deplace le seuil ici avec le chiffre qui le justifie.")
+          sys.exit(1 if echec else 0)
+          PY

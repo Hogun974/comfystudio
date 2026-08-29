@@ -1,0 +1,132 @@
+# ComfyStudio en conteneur.
+#
+# Trois facons de s'en servir, sans jamais modifier ce fichier :
+#
+#   docker compose up -d
+#       Le studio seul. ComfyUI et Ollama tournent ailleurs — sur l'hote, ou
+#       sur une autre machine. C'est le montage le plus frequent : la carte
+#       graphique est deja prise par un ComfyUI qu'on ne veut pas deranger.
+#
+#   docker compose --profile complet up -d
+#       Le studio, ComfyUI et Ollama, ensemble. Exige une carte NVIDIA et le
+#       nvidia-container-toolkit sur l'hote (voir plus bas).
+#
+#   docker compose --profile moteur up -d
+#       Le studio et ComfyUI, sans Ollama : pour qui pilote le studio avec une
+#       cle d'API plutot qu'un modele local.
+#
+# Les reglages se font dans un fichier .env a cote de celui-ci — copier
+# .env.exemple en .env et l'ajuster. Aucune raison d'editer ce YAML.
+
+services:
+  comfystudio:
+    build: .
+    image: comfystudio:latest
+    container_name: comfystudio
+    restart: unless-stopped
+    ports:
+      - "${STUDIO_PORT:-8199}:8199"
+    environment:
+      # Par defaut, ComfyUI et Ollama sont cherches sur la machine hote.
+      # AVEC les profils « complet » ou « moteur », il faut les faire pointer
+      # sur les conteneurs voisins — Compose ne sait pas changer une valeur
+      # selon le profil actif. Deux lignes a decommenter dans .env, c'est dit
+      # dans .env.exemple.
+      COMFY_URL: "${COMFY_URL:-http://host.docker.internal:8188}"
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      STUDIO_HOTE: "0.0.0.0"
+      # Connexion obligatoire par defaut : le conteneur publie un port, et une
+      # installation neuve resterait sinon ouverte a qui l'atteint. « libre »
+      # retablit l'ancien comportement, en connaissance de cause.
+      STUDIO_AUTH: "${STUDIO_AUTH:-obligatoire}"
+      # Mot de passe du compte « admin » cree au premier demarrage. Sans lui il
+      # est tire au sort et affiche UNE fois dans le journal du conteneur — ce
+      # qui est facile a manquer. A changer depuis l'interface ensuite.
+      STUDIO_ADMIN_MDP: "${STUDIO_ADMIN_MDP:-}"
+      STUDIO_LLM: "${STUDIO_LLM:-qwen2.5vl:7b}"
+      STUDIO_VISION: "${STUDIO_VISION:-qwen2.5vl:7b}"
+      STUDIO_LLM_ECRITURE: "${STUDIO_LLM_ECRITURE:-}"
+    extra_hosts:
+      # Necessaire sous Linux ; sans effet sous Docker Desktop, qui le fournit.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Conversations, comptes, cles d'API, registre des televersements : sans
+      # ce volume, tout disparait au redemarrage du conteneur.
+      - comfystudio-donnees:/donnees
+      # Si ComfyUI tourne sur la MEME machine mais HORS conteneur, monter son
+      # dossier permet au studio d'y telecharger les modeles manquants et d'y
+      # ecrire les images d'entree. Sans ce montage, le studio le traite comme
+      # une machine distante : tout passe par HTTP, et les modeles s'installent
+      # a la main. L'image pose COMFY_DIR=/comfy, monter le dossier entier
+      # suffit — models/ et input/ en decoulent. A decommenter et adapter :
+      # - /chemin/vers/ComfyUI:/comfy
+
+  # ── ComfyUI, pour les profils « complet » et « moteur » ─────────────────
+  #
+  # Exige le nvidia-container-toolkit sur l'hote, sans quoi la carte n'est pas
+  # visible du conteneur :
+  #   sudo apt install nvidia-container-toolkit
+  #   sudo nvidia-ctk runtime configure --runtime=docker
+  #   sudo systemctl restart docker
+  comfyui:
+    profiles: ["complet", "moteur"]
+    build:
+      context: .
+      dockerfile: Dockerfile.comfyui
+      args:
+        # ATTENTION, mesure du 29 aout 2026 : la roue cu128 ne contient QUE
+        # sm_75 et au-dela. Une GTX 10xx (Pascal, sm_61) rend alors « no kernel
+        # image is available for execution on the device » a la premiere
+        # generation — la carte est vue, le conteneur demarre, et rien ne
+        # fonctionne. cu126 embarque sm_50 a sm_90 et couvre ces cartes.
+        #   cu128  RTX 20xx et plus recentes
+        #   cu126  GTX 10xx / TITAN X (Pascal), et tout ce qui precede la RTX
+        #   cpu    sans carte : demarre et repond, mais genere tres lentement
+        ROUE: "${ROUE:-cu128}"
+    image: comfystudio-comfyui:latest
+    container_name: comfyui
+    restart: unless-stopped
+    ports:
+      - "${COMFY_PORT:-8188}:8188"
+    environment:
+      # Sur une petite carte : --lowvram sous 8 Go, --novram sous 4 Go.
+      COMFY_ARGS: "${COMFY_ARGS:-}"
+    volumes:
+      - comfyui-modeles:/opt/ComfyUI/models
+      - comfyui-entrees:/opt/ComfyUI/input
+      - comfyui-sorties:/opt/ComfyUI/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── Ollama, pour le profil « complet » ──────────────────────────────────
+  #
+  # Inutile si le studio est pilote par une cle d'API : dans ce cas, le profil
+  # « moteur » suffit et l'on economise plusieurs gigaoctets.
+  ollama:
+    profiles: ["complet"]
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-modeles:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  comfystudio-donnees:
+  comfyui-modeles:
+  comfyui-entrees:
+  comfyui-sorties:
+  ollama-modeles:

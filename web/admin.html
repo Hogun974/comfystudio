@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ComfyStudio — machines</title>
+<style>
+:root{
+  --nuit:#15120f; --plan:#1d1915; --creux:#120f0d; --relief:#262019;
+  --trait:#2e2721; --trait-vif:#4a3f34;
+  --encre:#f0e9e0; --encre-douce:#b6a999; --encre-pale:#8e8175;
+  --braise:#e8a33d; --braise-sourde:#3a2a13; --braise-vive:#ffc266;
+  --vert:#8fbf72; --rouge:#e07a55;
+  --serif:Constantia,Georgia,"Times New Roman",serif;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --nuit:#f2ede4; --plan:#fffdf9; --creux:#e8e1d5; --relief:#faf6ef;
+    --trait:#ddd4c5; --trait-vif:#a3927c;
+    --encre:#20180f; --encre-douce:#584c3e; --encre-pale:#6f6151;
+    --braise:#b06d10; --braise-sourde:#f3e3c8; --braise-vive:#8a5308;
+    --vert:#4a7a33; --rouge:#a8412020;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--nuit);color:var(--encre);font:15px/1.6 var(--serif)}
+header{display:flex;align-items:center;gap:14px;padding:14px 22px;
+  background:var(--plan);border-bottom:1px solid var(--trait)}
+.marque{font:600 17px var(--sans);letter-spacing:.2px}
+.marque em{color:var(--braise);font-style:normal}
+header .lien{margin-left:auto;font:12px var(--mono);color:var(--encre-douce);
+  text-decoration:none;border-bottom:1px dotted var(--trait-vif)}
+header .lien:hover{color:var(--braise-vive)}
+main{max-width:960px;margin:0 auto;padding:26px 22px 60px}
+h2{font:600 15px var(--sans);letter-spacing:.3px;margin:30px 0 12px;
+  color:var(--encre-douce);text-transform:lowercase}
+p.aide{color:var(--encre-pale);font-size:14px;margin:0 0 16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font:600 11px var(--mono);color:var(--encre-pale);
+  text-transform:uppercase;letter-spacing:.6px;padding:0 10px 8px;font-weight:600}
+td{padding:11px 10px;border-top:1px solid var(--trait);vertical-align:middle}
+tr.perdu td{color:var(--encre-pale)}
+.pastille{display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:var(--trait-vif);margin-right:8px}
+.pastille.vif{background:var(--vert);box-shadow:0 0 6px var(--vert)}
+.pastille.mort{background:var(--rouge)}
+.ident{font:12px var(--mono);color:var(--encre-douce)}
+.detail{font:11px var(--mono);color:var(--encre-pale)}
+button,input{font:13px var(--sans);color:var(--encre);background:var(--relief);
+  border:1px solid var(--trait-vif);border-radius:7px;padding:7px 11px}
+button{cursor:pointer}
+button:hover:not(:disabled){border-color:var(--braise);color:var(--braise-vive)}
+button:disabled{opacity:.4;cursor:default}
+button.discret{background:transparent;font:11px var(--mono);padding:5px 8px}
+input{min-width:150px}
+input:focus,button:focus-visible{outline:2px solid var(--braise);outline-offset:1px}
+.rangee{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+.carte{background:var(--plan);border:1px solid var(--trait);border-radius:12px;
+  padding:18px 20px;margin:16px 0}
+.jeton{background:var(--creux);border:1px solid var(--braise);border-radius:10px;
+  padding:16px 18px;margin:16px 0}
+.jeton code{display:block;font:13px var(--mono);color:var(--braise-vive);
+  word-break:break-all;margin:10px 0;padding:10px;background:var(--nuit);
+  border-radius:7px;user-select:all}
+.jeton .avert{color:var(--encre-douce);font-size:13px}
+.vide{color:var(--encre-pale);font-style:italic;padding:18px 10px}
+.alerte{color:var(--rouge);font:13px var(--sans);min-height:20px;margin:8px 0}
+#entree{max-width:460px;margin:70px auto;text-align:center}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="marque">Comfy<em>Studio</em></span>
+  <span class="ident">administration des machines</span>
+  <a class="lien" href="/">retour au studio</a>
+  <a class="lien" href="https://github.com/Hogun974/comfystudio" target="_blank"
+     rel="noopener" style="margin-left:12px">source (AGPL-3.0)</a>
+</header>
+
+<main>
+  <div id="entree" style="display:none">
+    <h2>jeton d'administration</h2>
+    <p class="aide">Il est affiché dans la console du studio à son premier
+      démarrage, et conservé dans <code>conversations/_admin.json</code>.</p>
+    <div class="rangee" style="justify-content:center">
+      <input id="jetonAdmin" type="password" placeholder="jeton" autocomplete="off">
+      <button id="entrer">entrer</button>
+    </div>
+    <div class="alerte" id="alerteEntree"></div>
+  </div>
+
+  <div id="console" style="display:none">
+    <h2>machines</h2>
+    <p class="aide">Une machine à agent appelle le studio toutes les dix
+      secondes. Le studio ne l'appelle jamais : elle peut donc être derrière une
+      box, sur un portable, ou sur un réseau qu'on ne maîtrise pas.</p>
+    <table>
+      <thead><tr><th>machine</th><th>carte</th><th>moteurs</th><th>vue</th><th>file</th><th></th></tr></thead>
+      <tbody id="liste"></tbody>
+    </table>
+
+    <div class="carte">
+      <h2 style="margin-top:0">ajouter une machine</h2>
+      <p class="aide">L'identifiant entre dans le nom des fichiers produits :
+        lettres, chiffres, tiret et souligné.</p>
+      <div class="rangee">
+        <input id="nouvelId" placeholder="atelier" maxlength="24">
+        <input id="nouveauTitre" placeholder="PC du salon (RTX 4090)" maxlength="60">
+        <button id="creer">créer et délivrer un jeton</button>
+      </div>
+      <div class="alerte" id="alerte"></div>
+    </div>
+
+
+    <div class="carte">
+      <h2 style="margin-top:0">retours des utilisateurs</h2>
+      <p class="aide">Chaque réponse peut être notée d'un pouce dans l'interface.
+        Un pouce en bas garde la demande, le moteur choisi, les réglages et les
+        paroles : de quoi refaire le cas sans redemander à personne.</p>
+      <div class="rangee" id="compteAvis"></div>
+      <table>
+        <thead><tr><th>quand</th><th>avis</th><th>demande</th><th>moteur</th><th>ce qui n'allait pas</th></tr></thead>
+        <tbody id="listeAvis"></tbody>
+      </table>
+    </div>
+
+
+    <div class="carte">
+      <h2 style="margin-top:0">clés d'API</h2>
+      <p class="aide">Le studio tourne entièrement en local et continue de le
+        faire sans aucune clé. Une clé posée ici n'est qu'une option&nbsp;: si le
+        fournisseur refuse ou tarde, le modèle local reprend la main et le
+        journal de la tâche dit pourquoi. Le nom du modèle est modifiable&nbsp;:
+        les catalogues changent plus vite que ce logiciel.</p>
+      <p class="aide"><b>Contenu adulte&nbsp;:</b> une demande repérée comme telle
+        reste sur cette machine, quel que soit le réglage ci-dessous. C'est
+        vérifié dans le code, pas ici.</p>
+      <div class="rangee" id="choixModalites"></div>
+      <div class="alerte" id="etatChoix"></div>
+      <table>
+        <thead><tr><th>fournisseur</th><th>modèle</th><th>clé</th><th></th></tr></thead>
+        <tbody id="listeCles"></tbody>
+      </table>
+      <div class="alerte" id="alerteCles"></div>
+    </div>
+
+
+    <div class="carte">
+      <h2 style="margin-top:0">comptes</h2>
+      <p class="aide">Sans compte, chaque navigateur garde son espace prive,
+        comme avant. Avec un compte, l'espace suit la personne : même historique
+        sur l'ordinateur et sur le téléphone, et deux adresses du même studio
+        (127.0.0.1 et l'adresse réseau) cessent de donner deux historiques
+        séparés.</p>
+      <p class="aide">Un compte créé ici reçoit un mot de passe que
+        <b>l'utilisateur devra changer lui-même</b> : le mot de passe n'est
+        jamais conservé, seule une empreinte l'est, et personne — pas même
+        l'administrateur — ne peut le relire.</p>
+      <table>
+        <thead><tr><th>compte</th><th>rôle</th><th>créé</th><th>dernière entrée</th><th></th></tr></thead>
+        <tbody id="listeComptes"></tbody>
+      </table>
+      <div class="rangee" style="margin-top:10px">
+        <input id="nouveauCompte" placeholder="nom" maxlength="24" autocomplete="off">
+        <input id="nouveauMdp" type="password" placeholder="mot de passe" autocomplete="new-password">
+        <label class="detail"><input type="checkbox" id="nouveauAdmin"> administrateur</label>
+        <button id="creerCompte">créer</button>
+      </div>
+      <div class="alerte" id="alerteComptes"></div>
+    </div>
+
+    <div class="carte">
+      <h2 style="margin-top:0">aiguilleur</h2>
+      <p class="aide">Un classifieur décide seul des demandes qui ne réclament
+        aucune écriture — agrandir, détourer, fluidifier — sans appeler le
+        moindre modèle de langage. Il apprend aussi des demandes que vous
+        validez d’un pouce, ou dont vous imposez le moteur.</p>
+      <div class="rangee">
+        <button id="entrainerAig">réentraîner</button>
+        <span class="detail" id="etatAig"></span>
+      </div>
+      <div class="alerte" id="alerteAig"></div>
+    </div>
+
+    <div id="livraison"></div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let adresse = location.origin;
+
+async function api(chemin, methode = "GET", corps) {
+  const r = await fetch(chemin, {
+    method: methode,
+    headers: corps ? { "Content-Type": "application/json" } : {},
+    body: corps ? JSON.stringify(corps) : undefined
+  });
+  let d = null;
+  try { d = await r.json(); } catch (e) { /* corps vide */ }
+  return { ok: r.ok, statut: r.status, d };
+}
+
+/* Le jeton n'est montré qu'ici, une seule fois : le serveur ne le renvoie
+   plus jamais ensuite. On donne donc la commande complète, prête à coller. */
+function livrer(n) {
+  $("#livraison").innerHTML = `
+    <div class="jeton">
+      <b>${n.titre}</b> est créée. Voici son jeton — <b>il ne sera plus affiché</b>.
+      <code>${n.jeton}</code>
+      <div class="avert">Sur la machine, une seule commande. Elle vérifie tout,
+        démarre ComfyUI s'il dort, récupère l'agent et se met en service.</div>
+      <div class="avert" style="margin-top:10px">macOS et Linux :</div>
+      <code>curl -fsS ${adresse}/api/noeud/noeud.sh -o noeud.sh
+bash noeud.sh --studio ${adresse} --jeton ${n.jeton}</code>
+      <div class="avert">Windows, dans PowerShell :</div>
+      <code>curl.exe -fsS ${adresse}/api/noeud/noeud.bat -o noeud.bat
+.
+oeud.bat --studio ${adresse} --jeton ${n.jeton}</code>
+      <div class="avert">Les modèles doivent être installés sur cette machine :
+        le studio n'écrit que sur son propre disque. Ajoute
+        <code style="display:inline;padding:2px 5px">--verifier</code> pour un
+        diagnostic sans rien lancer.</div>
+    </div>`;
+}
+
+function delai(s) {
+  if (s === null || s === undefined) return "jamais";
+  if (s < 60) return `il y a ${s} s`;
+  if (s < 3600) return `il y a ${Math.round(s / 60)} min`;
+  return `il y a ${Math.round(s / 3600)} h`;
+}
+
+const ech = t => (t || "").replace(/[<>&]/g,
+  c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+const coupe = (t, n) => { t = t || ""; return t.length > n ? t.slice(0, n) + "\u2026" : t; };
+
+/* Le tableau des retours : c'est la seule mesure de ce qui marche. */
+async function rafraichirAvis() {
+  const { ok, d } = await api("/api/admin/avis");
+  if (!ok || !d) return;
+  $("#compteAvis").innerHTML =
+    `<span class="detail">\u{1F44D} ${d.pouces.haut}\u2003\u{1F44E} ${d.pouces.bas}</span>`;
+  const corps = $("#listeAvis");
+  corps.innerHTML = "";
+  if (!d.avis.length) {
+    corps.innerHTML = '<tr><td colspan="5" class="detail">aucun retour pour l\'instant</td></tr>';
+    return;
+  }
+  for (const a of d.avis) {
+    const tr = document.createElement("tr");
+    if (a.avis === -1) tr.className = "perdu";
+    tr.innerHTML = `<td class="detail">${ech(a.quand)}</td>
+      <td>${a.avis === 1 ? "\u{1F44D}" : "\u{1F44E}"}</td>
+      <td>${ech(coupe(a.demande, 90))}<div class="ident">${ech(a.tour)}</div></td>
+      <td class="detail">${ech(a.moteur) || "\u2014"}</td>
+      <td class="detail">${ech(coupe(a.note, 70))}</td>`;
+    corps.appendChild(tr);
+  }
+}
+
+
+/* Les cles ne reviennent jamais du serveur : on n'affiche qu'un indice.
+   Le champ est donc toujours vide au chargement, et le rester veut dire
+   « ne change rien », pas « efface ». */
+/* Les modeles ne sont pas saisis mais demandes au fournisseur : deux noms par
+   defaut sont devenus caducs en une seule journee, et personne ne peut deviner
+   les identifiants exacts d'un catalogue qui bouge. */
+async function modelesDe(nom) {
+  const { ok, d } = await api("/api/admin/cles/modeles?fournisseur=" + encodeURIComponent(nom));
+  return (ok && d && d.modeles) || [];
+}
+
+/* Les cles ne reviennent jamais du serveur : on n'affiche qu'un indice.
+   Le champ est donc toujours vide au chargement, et le rester veut dire
+   « ne change rien », pas « efface ». */
+async function rafraichirCles() {
+  const { ok, d } = await api("/api/admin/cles");
+  if (!ok || !d) return;
+
+  const envoyer = async charge => {
+    $("#alerteCles").textContent = "";
+    const r = await api("/api/admin/cles", "POST", charge);
+    if (!r.ok) { $("#alerteCles").textContent = (r.d && r.d.erreur) || "refus\u00e9"; return; }
+    rafraichirCles();
+  };
+
+  // Un choix par modalite. La 3D n'a aucun fournisseur distant a ce jour : elle
+  // apparait quand meme, sans quoi son absence passerait pour un oubli.
+  const zone = $("#choixModalites");
+  zone.innerHTML = "";
+  const manque = [];
+  for (const m of d.modalites) {
+    const lab = document.createElement("label");
+    lab.className = "detail";
+    const sel = document.createElement("select");
+    sel.innerHTML = '<option value="local">local</option>' +
+      m.fournisseurs.map(n => `<option value="${n}">${ech(d.fournisseurs[n].titre)}</option>`).join("");
+    sel.value = d.choix[m.cle];
+    sel.disabled = !m.fournisseurs.length;
+    sel.onchange = () => envoyer({ [m.cle]: sel.value });
+    lab.append(m.libelle + "\u00a0", sel);
+    zone.appendChild(lab);
+    const f = d.fournisseurs[d.choix[m.cle]];
+    if (d.choix[m.cle] !== "local" && f && !f.posee && !d.fournisseurs.google.posee)
+      manque.push(m.libelle);
+  }
+  $("#etatChoix").textContent = manque.length
+    ? "\u26a0 pas de cl\u00e9 pour : " + manque.join(", ") + " \u2014 le local est utilis\u00e9" : "";
+
+  const corps = $("#listeCles");
+  corps.innerHTML = "";
+  for (const [nom, f] of Object.entries(d.fournisseurs)) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><b>${ech(f.titre)}</b><div class="ident">${ech(f.aide)}</div></td>
+      <td><select data-modele="${nom}" style="width:17em">
+            <option value="">${ech(f.modele_defaut)} (d\u00e9faut)</option>
+          </select></td>
+      <td><input data-cle="${nom}" type="password" autocomplete="off"
+                 placeholder="${f.posee ? "pos\u00e9e " + ech(f.indice) : "aucune"}"
+                 style="width:13em"></td>
+      <td><button data-poser="${nom}">enregistrer</button>
+          ${f.posee ? `<button data-retirer="${nom}" style="margin-left:6px">retirer</button>` : ""}</td>`;
+    corps.appendChild(tr);
+
+    // Liste chargee apres coup : interroger cinq fournisseurs avant d'afficher
+    // le tableau le ferait attendre pour rien.
+    if (f.posee || d.fournisseurs.google.posee) {
+      const menu = tr.querySelector(`[data-modele="${nom}"]`);
+      modelesDe(nom).then(noms => {
+        for (const x of noms) {
+          const o = document.createElement("option");
+          o.value = x; o.textContent = x;
+          menu.appendChild(o);
+        }
+        if (f.modele && !noms.includes(f.modele)) {
+          const o = document.createElement("option");
+          o.value = f.modele; o.textContent = f.modele + " (absent du catalogue)";
+          menu.appendChild(o);
+        }
+        menu.value = f.modele || "";
+      });
+    }
+  }
+
+  corps.querySelectorAll("[data-poser]").forEach(b => b.onclick = () => {
+    const nom = b.dataset.poser;
+    const cle = corps.querySelector(`[data-cle="${nom}"]`).value.trim();
+    const modele = corps.querySelector(`[data-modele="${nom}"]`).value;
+    // Champ vide : on ne touche pas a la cle en place. C'est ce qui permet de
+    // ne changer que le modele sans avoir a ressaisir la cle.
+    const charge = { fournisseur: nom, modele };
+    if (cle) charge.cle = cle;
+    envoyer(charge);
+  });
+  corps.querySelectorAll("[data-retirer]").forEach(b => b.onclick = () => {
+    if (!confirm(`Retirer la cl\u00e9 ${b.dataset.retirer} ?`)) return;
+    envoyer({ fournisseur: b.dataset.retirer, cle: "" });
+  });
+}
+
+/* Les comptes. Aucun mot de passe ne revient jamais du serveur : les champs
+   sont toujours vides, et le rester veut dire « ne change rien ». */
+async function rafraichirComptes() {
+  const { ok, d } = await api("/api/admin/comptes");
+  if (!ok || !d) return;
+  const corps = $("#listeComptes");
+  corps.innerHTML = "";
+  if (!d.comptes.length) {
+    corps.innerHTML = '<tr><td colspan="5" class="detail">aucun compte \u2014 '
+      + 'le studio reste ouvert \u00e0 tous, chaque navigateur avec son espace</td></tr>';
+  }
+  const envoyer = async (charge, methode = "POST", ou = "/api/admin/comptes") => {
+    $("#alerteComptes").textContent = "";
+    const r = await api(ou, methode, charge);
+    if (!r.ok) { $("#alerteComptes").textContent = (r.d && r.d.erreur) || "refus\u00e9"; return false; }
+    rafraichirComptes();
+    return true;
+  };
+
+  for (const c of d.comptes) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><b>${ech(c.nom)}</b></td>
+      <td class="detail">${c.admin ? "administrateur" : "utilisateur"}</td>
+      <td class="detail">${ech(c.cree)}</td>
+      <td class="detail">${ech(c.vu) || "\u2014"}</td>
+      <td>
+        <button data-role="${ech(c.nom)}">${c.admin ? "retirer l'admin" : "rendre admin"}</button>
+        <button data-mdp="${ech(c.nom)}" style="margin-left:6px">mot de passe</button>
+        <button data-sup="${ech(c.nom)}" style="margin-left:6px">supprimer</button>
+      </td>`;
+    corps.appendChild(tr);
+    tr.querySelector("[data-role]").onclick = () =>
+      envoyer({ nom: c.nom, admin: !c.admin });
+    tr.querySelector("[data-mdp]").onclick = () => {
+      // prompt() et non un champ dans le tableau : un mot de passe qui reste
+      // affiche sur la page finit par etre lu par-dessus une epaule.
+      const m = prompt(`Nouveau mot de passe pour ${c.nom} `
+                     + `(${d.mdp_minimum} caract\u00e8res au moins) :`);
+      if (m) envoyer({ nom: c.nom, mdp: m });
+    };
+    tr.querySelector("[data-sup]").onclick = () => {
+      if (!confirm(`Supprimer le compte ${c.nom} ?\n\n`
+                 + `Ses conversations ne sont PAS effac\u00e9es : elles deviennent `
+                 + `sans propri\u00e9taire et restent sur le disque.`)) return;
+      envoyer(null, "DELETE", "/api/admin/comptes/" + encodeURIComponent(c.nom));
+    };
+  }
+
+  $("#creerCompte").onclick = async () => {
+    const nom = $("#nouveauCompte").value.trim();
+    const mdp = $("#nouveauMdp").value;
+    if (await envoyer({ creer: true, nom, mdp, admin: $("#nouveauAdmin").checked })) {
+      $("#nouveauCompte").value = ""; $("#nouveauMdp").value = "";
+      $("#nouveauAdmin").checked = false;
+    }
+  };
+}
+
+
+/* L'aiguilleur : etat, et reentrainement a la demande. Sans la mesure affichee
+   a cote, on ne saurait pas si un reentrainement a ameliore ou abime. */
+async function rafraichirAiguilleur(rendu) {
+  const zone = $("#etatAig");
+  if (!rendu) {
+    const { ok, d } = await api("/api/admin/aiguilleur");
+    if (!ok || !d) return;
+    rendu = d;
+  }
+  if (rendu.present === false) {
+    zone.textContent = "absent \u2014 tout passe par le mod\u00e8le de langage";
+    return;
+  }
+  const n = rendu.exemples
+    || Object.values(rendu.classes || {}).reduce((a, b) => a + b, 0);
+  const bancs = (rendu.bancs || []).map(b =>
+    `${b.nom.replace(/^banc_|\.jsonl$/g, "")} ${Math.round(b.justes * 100 / b.total)}%`
+    + ` (tranch\u00e9s ${Math.round(b.justes_surs * 100 / Math.max(b.surs, 1))}%)`);
+  zone.innerHTML = `<b>${Object.keys(rendu.classes || {}).length}</b> intentions, `
+    + `<b>${n}</b> exemples, ${rendu.traits} traits`
+    + (bancs.length ? " \u2014 " + bancs.join(" \u00b7 ") : "");
+}
+
+async function rafraichir() {
+  const { ok, statut, d } = await api("/api/admin/noeuds");
+  if (statut === 403) { montrerEntree(); return; }
+  if (!ok || !d) return;
+  const corps = $("#liste");
+  corps.innerHTML = "";
+  for (const n of d.noeuds) {
+    const tr = document.createElement("tr");
+    if (!n.repond) tr.className = "perdu";
+    const pastille = n.repond ? "vif" : (n.agent ? "mort" : "");
+    const carte = n.carte ? n.carte.replace(/^cuda:\d+\s*/, "") : "—";
+    const vram = n.vram ? ` · ${n.vram} Go` : "";
+    tr.innerHTML = `
+      <td><span class="pastille ${pastille}"></span><b>${n.titre || n.id}</b>
+          <div class="ident">${n.id}${n.agent ? "" : " · cette machine"}</div></td>
+      <td>${carte}<span class="detail">${vram}</span></td>
+      <td class="detail">${(n.moteurs || []).length
+        ? `<b>${n.moteurs.length}</b> prêts`
+        : '<span style="color:var(--rouge)">aucun</span>'}</td>
+      <td class="detail">${n.agent ? delai(n.vu_il_y_a) : "locale"}</td>
+      <td class="detail">${n.en_travail || 0}</td>
+      <td></td>`;
+    if (n.agent) {
+      const actions = tr.lastElementChild;
+      const neuf = document.createElement("button");
+      neuf.className = "discret"; neuf.textContent = "nouveau jeton";
+      neuf.onclick = async () => {
+        if (!confirm(`Remplacer le jeton de ${n.titre} ? L'agent en service sera refusé jusqu'à ce qu'on lui donne le nouveau.`)) return;
+        const r = await api(`/api/admin/noeuds/${n.id}/jeton`, "POST", {});
+        if (r.ok) livrer({ ...n, jeton: r.d.jeton });
+      };
+      const sup = document.createElement("button");
+      sup.className = "discret"; sup.textContent = "retirer";
+      sup.style.marginLeft = "6px";
+      sup.onclick = async () => {
+        if (!confirm(`Retirer ${n.titre} ? Son jeton cesse aussitôt de fonctionner.`)) return;
+        await api(`/api/admin/noeuds/${n.id}`, "DELETE");
+        rafraichir();
+      };
+      actions.append(neuf, sup);
+    }
+    corps.appendChild(tr);
+  }
+  if (!d.noeuds.length) {
+    corps.innerHTML = '<tr><td colspan="6" class="vide">aucune machine</td></tr>';
+  }
+}
+
+function montrerEntree() {
+  $("#entree").style.display = "";
+  $("#console").style.display = "none";
+}
+
+$("#entrer").onclick = async () => {
+  const jeton = $("#jetonAdmin").value.trim();
+  const r = await api("/api/admin/entrer", "POST", { jeton });
+  if (!r.ok) { $("#alerteEntree").textContent = "jeton refusé"; return; }
+  $("#entree").style.display = "none";
+  $("#console").style.display = "";
+  rafraichir();
+};
+$("#jetonAdmin").addEventListener("keydown", e => {
+  if (e.key === "Enter") $("#entrer").click();
+});
+
+$("#creer").onclick = async () => {
+  const id = $("#nouvelId").value.trim();
+  const titre = $("#nouveauTitre").value.trim();
+  $("#alerte").textContent = "";
+  if (!id) { $("#alerte").textContent = "il faut un identifiant"; return; }
+  const r = await api("/api/admin/noeuds", "POST", { id, titre });
+  if (!r.ok) { $("#alerte").textContent = (r.d && r.d.erreur) || "création refusée"; return; }
+  $("#nouvelId").value = ""; $("#nouveauTitre").value = "";
+  livrer(r.d);
+  rafraichir();
+};
+
+document.querySelector("#entrainerAig").onclick = async e => {
+  const b = e.target;
+  b.disabled = true;
+  const avant = b.textContent;
+  b.textContent = "entraînement…";
+  $("#alerteAig").textContent = "";
+  const { ok, d } = await api("/api/admin/aiguilleur", "POST");
+  b.disabled = false;
+  b.textContent = avant;
+  if (!ok) { $("#alerteAig").textContent = (d && d.erreur) || "échec"; return; }
+  rafraichirAiguilleur(d);
+};
+
+(async () => {
+  const r = await api("/api/admin/noeuds");
+  if (r.statut === 403) { montrerEntree(); }
+  else { $("#console").style.display = ""; rafraichir(); rafraichirAvis(); rafraichirCles(); rafraichirComptes(); rafraichirAiguilleur(); }
+  setInterval(() => { if ($("#console").style.display !== "none") rafraichir(); }, 5000);
+})();
+</script>
+</body>
+</html>

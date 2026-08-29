@@ -1,0 +1,264 @@
+{"texte": "Il me faudrait une image d'un dragon volant au-dessus d'une ville futuriste, créée entièrement à partir de rien.", "intention": "image", "source": "llm2"}
+{"texte": "Est-ce que tu saurais générer une illustration d'une forêt enchantée avec des lucioles ?", "intention": "image", "source": "llm2"}
+{"texte": "Tu pourrais créer une image d'un chat astronaute flottant dans l'espace ?", "intention": "image", "source": "llm2"}
+{"texte": "Ce serait possible de faire naître une image représentant un château médiéval au coucher du soleil ?", "intention": "image", "source": "llm2"}
+{"texte": "J'aurais besoin d'une image originale montrant un robot en train de peindre un tableau.", "intention": "image", "source": "llm2"}
+{"texte": "Est-ce que tu saurais imaginer une scène de plage tropicale avec des couleurs vives ?", "intention": "image", "source": "llm2"}
+{"texte": "Il me faudrait retoucher un peu la luminosité de cette photo de famille.", "intention": "edition", "source": "llm2"}
+{"texte": "Tu pourrais enlever cette personne qui apparaît en arrière-plan sur mon cliché ?", "intention": "edition", "source": "llm2"}
+{"texte": "Ce serait possible de corriger les couleurs qui paraissent trop ternes sur cette image ?", "intention": "edition", "source": "llm2"}
+{"texte": "J'aurais besoin d'ajouter un chapeau sur cette photo de mon chien.", "intention": "edition", "source": "llm2"}
+{"texte": "Est-ce que tu saurais augmenter le contraste de cette photo prise de nuit ?", "intention": "edition", "source": "llm2"}
+{"texte": "Il me faudrait effacer les rides du visage sur ce portrait, s'il te plaît.", "intention": "edition", "source": "llm2"}
+{"texte": "Il me faudrait agrandir cette photo sans perdre en qualité pour l'imprimer en grand format.", "intention": "agrandir", "source": "llm2"}
+{"texte": "Tu pourrais augmenter la résolution de cette image tout en gardant le même contenu ?", "intention": "agrandir", "source": "llm2"}
+{"texte": "Ce serait possible d'agrandir ce visuel pour qu'il tienne sur une affiche ?", "intention": "agrandir", "source": "llm2"}
+{"texte": "J'aurais besoin que tu agrandisses cette capture d'écran sans qu'elle devienne floue.", "intention": "agrandir", "source": "llm2"}
+{"texte": "Est-ce que tu saurais rendre cette petite image beaucoup plus grande sans altérer les détails ?", "intention": "agrandir", "source": "llm2"}
+{"texte": "Il me faudrait un agrandissement de ce logo pour un panneau publicitaire.", "intention": "agrandir", "source": "llm2"}
+{"texte": "Il me faudrait détourer ce produit pour l'utiliser sur un fond blanc.", "intention": "detourer", "source": "llm2"}
+{"texte": "Tu pourrais enlever l'arrière-plan de cette photo de portrait ?", "intention": "detourer", "source": "llm2"}
+{"texte": "Ce serait possible d'isoler ce personnage du décor sur cette illustration ?", "intention": "detourer", "source": "llm2"}
+{"texte": "J'aurais besoin que tu supprimes le fond de cette image pour la mettre sur mon site.", "intention": "detourer", "source": "llm2"}
+{"texte": "Est-ce que tu saurais extraire uniquement le sujet principal de cette photo ?", "intention": "detourer", "source": "llm2"}
+{"texte": "Il me faudrait retirer tout ce qui entoure cet objet sur l'image.", "intention": "detourer", "source": "llm2"}
+{"texte": "Il me faudrait une courte vidéo montrant un coucher de soleil sur l'océan, créée de toutes pièces.", "intention": "video", "source": "llm2"}
+{"texte": "Tu pourrais générer une vidéo d'une ville futuriste vue du ciel ?", "intention": "video", "source": "llm2"}
+{"texte": "Ce serait possible de créer une vidéo d'un feu de camp qui crépite dans la nuit ?", "intention": "video", "source": "llm2"}
+{"texte": "J'aurais besoin d'une vidéo originale représentant une pluie battante sur une fenêtre.", "intention": "video", "source": "llm2"}
+{"texte": "Est-ce que tu saurais produire une vidéo montrant des vagues s'écrasant contre des rochers ?", "intention": "video", "source": "llm2"}
+{"texte": "Il me faudrait une vidéo d'animation totalement inventée mettant en scène des dauphins.", "intention": "video", "source": "llm2"}
+{"texte": "Il me faudrait animer cette photo de portrait pour qu'elle prenne vie doucement.", "intention": "video_image", "source": "llm2"}
+{"texte": "Tu pourrais donner du mouvement à cette image fixe de paysage ?", "intention": "video_image", "source": "llm2"}
+{"texte": "Ce serait possible de faire bouger légèrement les cheveux sur cette photo ?", "intention": "video_image", "source": "llm2"}
+{"texte": "J'aurais besoin que tu transformes cette image statique en une petite animation.", "intention": "video_image", "source": "llm2"}
+{"texte": "Est-ce que tu saurais faire cligner des yeux le personnage sur cette illustration ?", "intention": "video_image", "source": "llm2"}
+{"texte": "Il me faudrait mettre en mouvement cette photo de nuages pour un effet de vent.", "intention": "video_image", "source": "llm2"}
+{"texte": "Il me faudrait fluidifier cette vidéo qui saccade un peu trop.", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Tu pourrais augmenter le nombre d'images par seconde de cette séquence ?", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Ce serait possible de rendre les mouvements de cette vidéo plus doux et naturels ?", "intention": "fluidifier", "source": "llm2"}
+{"texte": "J'aurais besoin d'un ralenti plus fluide pour cette scène d'action.", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Est-ce que tu saurais lisser les transitions un peu brusques de cette vidéo ?", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Il me faudrait améliorer la fluidité de ce clip filmé avec un vieux téléphone.", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Il me faudrait une musique douce pour accompagner une vidéo de vacances.", "intention": "audio", "source": "llm2"}
+{"texte": "Tu pourrais composer un jingle court pour l'introduction de mon podcast ?", "intention": "audio", "source": "llm2"}
+{"texte": "Ce serait possible de créer un fond sonore relaxant pour de la méditation ?", "intention": "audio", "source": "llm2"}
+{"texte": "J'aurais besoin d'une chanson entraînante pour une publicité en ligne.", "intention": "audio", "source": "llm2"}
+{"texte": "Est-ce que tu saurais générer une bande-son mystérieuse pour un jeu vidéo ?", "intention": "audio", "source": "llm2"}
+{"texte": "Il me faudrait un morceau de musique électronique pour une soirée à thème.", "intention": "audio", "source": "llm2"}
+{"texte": "Il me faudrait une planche de bande dessinée racontant l'histoire d'un super-héros débutant.", "intention": "planche", "source": "llm2"}
+{"texte": "Tu pourrais créer une page complète en plusieurs cases sur une aventure spatiale ?", "intention": "planche", "source": "llm2"}
+{"texte": "Ce serait possible de dessiner une planche avec des vignettes montrant une course-poursuite ?", "intention": "planche", "source": "llm2"}
+{"texte": "J'aurais besoin d'une planche de BD humoristique pour illustrer une blague.", "intention": "planche", "source": "llm2"}
+{"texte": "Est-ce que tu saurais réaliser une page découpée en cases pour une histoire de pirates ?", "intention": "planche", "source": "llm2"}
+{"texte": "Il me faudrait une planche complète avec dialogues pour un manga fantastique.", "intention": "planche", "source": "llm2"}
+{"texte": "Il me faudrait une figurine en trois dimensions représentant un chevalier médiéval.", "intention": "objet3d", "source": "llm2"}
+{"texte": "Tu pourrais créer un maillage 3D d'une voiture de sport ?", "intention": "objet3d", "source": "llm2"}
+{"texte": "Ce serait possible de générer un objet en 3D d'un vase décoratif ?", "intention": "objet3d", "source": "llm2"}
+{"texte": "J'aurais besoin d'un modèle tridimensionnel d'un personnage de jeu vidéo.", "intention": "objet3d", "source": "llm2"}
+{"texte": "Est-ce que tu saurais concevoir une sculpture 3D d'un dragon ?", "intention": "objet3d", "source": "llm2"}
+{"texte": "Il me faudrait un objet 3D imprimable représentant une petite maison.", "intention": "objet3d", "source": "llm2"}
+{"texte": "Il me faudrait que tu décrives ce qui se trouve sur cette photo que je t'envoie.", "intention": "lecture", "source": "llm2"}
+{"texte": "Tu pourrais me dire ce que représente cette image de paysage ?", "intention": "lecture", "source": "llm2"}
+{"texte": "Ce serait possible d'expliquer en détail ce qui apparaît sur cette capture d'écran ?", "intention": "lecture", "source": "llm2"}
+{"texte": "J'aurais besoin que tu m'indiques les éléments visibles sur cette illustration.", "intention": "lecture", "source": "llm2"}
+{"texte": "Est-ce que tu saurais décrire précisément le contenu de cette photo de groupe ?", "intention": "lecture", "source": "llm2"}
+{"texte": "Il me faudrait une description complète de ce que montre cette image ancienne.", "intention": "lecture", "source": "llm2"}
+{"texte": "Je prépare une présentation pour mon patron demain matin, il me faudrait une image d'un renard dans une forêt enneigée", "intention": "image", "source": "llm2"}
+{"texte": "Pour l'anniversaire de ma fille on fait un thème pirates, peux-tu créer une image d'un bateau pirate au coucher du soleil", "intention": "image", "source": "llm2"}
+{"texte": "On lance un nouveau site de recettes de cuisine, j'aurais besoin d'une image d'un plat de pâtes fumant", "intention": "image", "source": "llm2"}
+{"texte": "Mon association organise une collecte de fonds ce week-end, génère une image d'enfants qui plantent des arbres", "intention": "image", "source": "llm2"}
+{"texte": "Je travaille sur un roman de fantasy depuis six mois, crée-moi une image d'un château flottant dans les nuages", "intention": "image", "source": "llm2"}
+{"texte": "On refait la déco du salon avec ma copine, fais une image d'un paysage de montagne minimaliste", "intention": "image", "source": "llm2"}
+{"texte": "J'ai pris cette photo de vacances mais elle est trop sombre, peux-tu corriger la luminosité", "intention": "edition", "source": "llm2"}
+{"texte": "Ma grand-mère m'a donné une vieille photo de famille abîmée, peux-tu enlever les taches et les rayures", "intention": "edition", "source": "llm2"}
+{"texte": "Pour le catalogue de la boutique, cette photo du sac a des couleurs trop ternes, augmente le contraste", "intention": "edition", "source": "llm2"}
+{"texte": "Je monte un book photo pour mon book de mannequin, il faudrait enlever ce bouton disgracieux sur la joue", "intention": "edition", "source": "llm2"}
+{"texte": "On refait le site de l'entreprise, cette photo de bureau a un objet gênant en arrière-plan, peux-tu l'effacer", "intention": "edition", "source": "llm2"}
+{"texte": "J'organise l'album souvenir du mariage de mon frère, cette photo est trop jaune, corrige les couleurs", "intention": "edition", "source": "llm2"}
+{"texte": "Je veux imprimer cette photo en grand format pour l'accrocher au mur du salon, peux-tu l'agrandir sans perdre en qualité", "intention": "agrandir", "source": "llm2"}
+{"texte": "Pour la bannière du site web de mon client, cette image est trop petite, il faut l'agrandir", "intention": "agrandir", "source": "llm2"}
+{"texte": "Mon imprimeur me demande une résolution plus haute pour l'affiche du concert, agrandis cette image", "intention": "agrandir", "source": "llm2"}
+{"texte": "Je prépare un poster pour ma chambre d'étudiant, cette photo est en basse résolution, peux-tu l'agrandir", "intention": "agrandir", "source": "llm2"}
+{"texte": "On veut faire une grande fresque murale au bureau, cette image de logo doit être agrandie sans se pixeliser", "intention": "agrandir", "source": "llm2"}
+{"texte": "Le client du magasin en ligne veut une image plus grande de son produit, agrandis cette photo", "intention": "agrandir", "source": "llm2"}
+{"texte": "Je crée une fiche produit pour ma boutique en ligne, il faut enlever le fond blanc de cette photo de chaussure", "intention": "detourer", "source": "llm2"}
+{"texte": "Pour le montage de l'affiche du festival, isole le musicien de son arrière-plan", "intention": "detourer", "source": "llm2"}
+{"texte": "Ma société vend des vêtements sur Instagram, peux-tu détourer ce mannequin de la photo", "intention": "detourer", "source": "llm2"}
+{"texte": "Je fais un collage pour le carnet de voyage de ma classe, enlève le fond de cette photo de statue", "intention": "detourer", "source": "llm2"}
+{"texte": "Pour la brochure du restaurant, il faudrait isoler ce plat sans le décor autour", "intention": "detourer", "source": "llm2"}
+{"texte": "Mon frère travaille sur un design graphique, il a besoin qu'on détoure ce personnage de l'image", "intention": "detourer", "source": "llm2"}
+{"texte": "Pour la campagne publicitaire de la marque de sport, crée une vidéo d'un coureur au lever du soleil", "intention": "video", "source": "llm2"}
+{"texte": "Mon association prépare un événement caritatif, génère une vidéo de mains qui se rejoignent autour d'un globe", "intention": "video", "source": "llm2"}
+{"texte": "Je monte un teaser pour mon podcast, fais une vidéo abstraite avec des formes colorées en mouvement", "intention": "video", "source": "llm2"}
+{"texte": "Pour le mariage de ma cousine, crée une vidéo romantique d'un couple qui danse sous les étoiles", "intention": "video", "source": "llm2"}
+{"texte": "On lance une chaîne YouTube sur la nature, il me faut une vidéo d'une forêt tropicale avec des animaux", "intention": "video", "source": "llm2"}
+{"texte": "Pour le clip promotionnel de notre startup, génère une vidéo futuriste d'une ville high-tech", "intention": "video", "source": "llm2"}
+{"texte": "J'ai cette vieille photo de mes parents, je voudrais la voir prendre vie avec un léger mouvement de vent dans les cheveux", "intention": "video_image", "source": "llm2"}
+{"texte": "Pour l'expo d'art numérique de l'école, anime cette peinture pour que les nuages bougent doucement", "intention": "video_image", "source": "llm2"}
+{"texte": "Mon oncle a peint ce portrait il y a des années, peux-tu le faire cligner des yeux et sourire", "intention": "video_image", "source": "llm2"}
+{"texte": "Pour le projet scolaire de ma fille, transforme cette illustration de dragon en petite animation", "intention": "video_image", "source": "llm2"}
+{"texte": "On prépare un souvenir numérique pour l'anniversaire de mariage, anime cette photo de couple", "intention": "video_image", "source": "llm2"}
+{"texte": "Pour la vitrine de la boutique en ligne, fais bouger légèrement les vagues sur cette photo de plage", "intention": "video_image", "source": "llm2"}
+{"texte": "J'ai filmé le mariage de ma sœur avec une vieille caméra, la vidéo saccade beaucoup, peux-tu la rendre plus fluide", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Pour le montage du reportage sportif, cette séquence en ralenti manque de fluidité, améliore-la", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Mon drone a capturé ce survol de la vallée mais les mouvements sont saccadés, peux-tu fluidifier ça", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Pour le clip de danse de mon studio, ajoute plus d'images par seconde pour un mouvement plus naturel", "intention": "fluidifier", "source": "llm2"}
+{"texte": "J'ai fait un time-lapse du coucher de soleil mais il saute beaucoup, rends-le plus fluide", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Pour la présentation du jeu vidéo indépendant, cette animation de course est saccadée, peux-tu la fluidifier", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Pour l'ouverture de mon podcast, j'aurais besoin d'un petit jingle entraînant", "intention": "audio", "source": "llm2"}
+{"texte": "Mon neveu se marie le mois prochain, compose une chanson douce pour leur première danse", "intention": "audio", "source": "llm2"}
+{"texte": "Pour la vidéo YouTube sur le voyage au Japon, crée une musique d'ambiance zen en fond sonore", "intention": "audio", "source": "llm2"}
+{"texte": "On monte une pièce de théâtre amateur, il me faut un fond sonore mystérieux pour la scène finale", "intention": "audio", "source": "llm2"}
+{"texte": "Pour l'application mobile qu'on développe, compose un petit son de notification agréable", "intention": "audio", "source": "llm2"}
+{"texte": "Ma fille prépare son spectacle de danse à l'école, crée une musique énergique pour son numéro", "intention": "audio", "source": "llm2"}
+{"texte": "Pour le fanzine que je publie avec des amis, dessine-moi une planche de bande dessinée sur un super-héros urbain", "intention": "planche", "source": "llm2"}
+{"texte": "Mon fils veut raconter ses vacances en dessin, crée une planche de BD avec plusieurs vignettes de son voyage à la mer", "intention": "planche", "source": "llm2"}
+{"texte": "Pour le concours scolaire de bande dessinée, fais une planche avec un chevalier qui affronte un dragon", "intention": "planche", "source": "llm2"}
+{"texte": "On prépare une bande dessinée éducative pour les enfants, crée une planche sur le cycle de l'eau", "intention": "planche", "source": "llm2"}
+{"texte": "Mon association culturelle organise un atelier BD, il me faut une planche humoristique sur la vie de bureau", "intention": "planche", "source": "llm2"}
+{"texte": "Pour illustrer mon roman graphique autobiographique, dessine une planche de plusieurs cases sur mon enfance", "intention": "planche", "source": "llm2"}
+{"texte": "Pour l'impression 3D de mon atelier, j'aurais besoin d'un modèle en trois dimensions d'une théière", "intention": "objet3d", "source": "llm2"}
+{"texte": "Mon fils passionné de jeux vidéo veut créer son propre personnage, génère un objet 3D d'un guerrier médiéval", "intention": "objet3d", "source": "llm2"}
+{"texte": "Pour le projet d'architecture de l'école, crée une figurine 3D d'une maison moderne", "intention": "objet3d", "source": "llm2"}
+{"texte": "On prépare une exposition de sculptures numériques, il me faut un maillage 3D d'un dauphin", "intention": "objet3d", "source": "llm2"}
+{"texte": "Pour ma boutique de figurines collector, génère un modèle 3D d'un robot futuriste", "intention": "objet3d", "source": "llm2"}
+{"texte": "Mon entreprise de jouets veut prototyper un nouveau produit, crée un objet 3D d'une voiture de course", "intention": "objet3d", "source": "llm2"}
+{"texte": "Pour le rapport d'accessibilité du musée, décris-moi cette peinture accrochée dans la salle principale", "intention": "lecture", "source": "llm2"}
+{"texte": "Ma grand-mère malvoyante aimerait savoir ce qu'il y a sur cette photo de famille, peux-tu la décrire", "intention": "lecture", "source": "llm2"}
+{"texte": "Pour le sous-titrage de notre site pour personnes aveugles, explique ce que représente cette image d'illustration", "intention": "lecture", "source": "llm2"}
+{"texte": "Je prépare un article scientifique, décris précisément ce que montre ce graphique de résultats", "intention": "lecture", "source": "llm2"}
+{"texte": "Mon professeur d'histoire de l'art demande une analyse de cette œuvre, décris ce qu'on y voit", "intention": "lecture", "source": "llm2"}
+{"texte": "Pour aider mon collègue malvoyant à comprendre le rapport, décris le contenu de cette capture d'écran", "intention": "lecture", "source": "llm2"}
+{"texte": "Invente-moi un paysage de montagne qui n'existe nulle part", "intention": "image", "source": "llm2"}
+{"texte": "Genere un portrait de personnage fantastique a partir de rien", "intention": "image", "source": "llm2"}
+{"texte": "J'aimerais une illustration originale d'une ville futuriste", "intention": "image", "source": "llm2"}
+{"texte": "Peux-tu imaginer un dessin d'animal hybride jamais vu", "intention": "image", "source": "llm2"}
+{"texte": "Fabrique-moi une scene de foret enchantee complete", "intention": "image", "source": "llm2"}
+{"texte": "Cree un visuel abstrait avec des couleurs vives", "intention": "image", "source": "llm2"}
+{"texte": "Revois la luminosite de cette photo, elle est trop sombre", "intention": "edition", "source": "llm2"}
+{"texte": "Peux-tu ajuster les contrastes sur ce cliche", "intention": "edition", "source": "llm2"}
+{"texte": "Enleve ce bouton sur son visage sur la photo", "intention": "edition", "source": "llm2"}
+{"texte": "Ajoute un chapeau sur la tete du personnage de l'image", "intention": "edition", "source": "llm2"}
+{"texte": "Rehausse les couleurs de ce coucher de soleil", "intention": "edition", "source": "llm2"}
+{"texte": "Corrige les teintes trop jaunes de cette photo", "intention": "edition", "source": "llm2"}
+{"texte": "Rends cette image beaucoup plus grande sans la deformer", "intention": "agrandir", "source": "llm2"}
+{"texte": "Augmente la resolution de cette photo pour l'imprimer en grand format", "intention": "agrandir", "source": "llm2"}
+{"texte": "J'ai besoin de cette image en tres haute definition", "intention": "agrandir", "source": "llm2"}
+{"texte": "Peux-tu doubler la taille de ce visuel sans perte de qualite", "intention": "agrandir", "source": "llm2"}
+{"texte": "Cette photo est trop petite, il me la faut en grand", "intention": "agrandir", "source": "llm2"}
+{"texte": "Fais passer cette icone en format poster net", "intention": "agrandir", "source": "llm2"}
+{"texte": "Isole le sujet de cette photo du reste du decor", "intention": "detourer", "source": "llm2"}
+{"texte": "Enleve le fond de cette image pour ne garder que la personne", "intention": "detourer", "source": "llm2"}
+{"texte": "J'ai besoin de ce produit sur fond transparent", "intention": "detourer", "source": "llm2"}
+{"texte": "Peux-tu separer cet objet de son arriere-plan", "intention": "detourer", "source": "llm2"}
+{"texte": "Retire tout ce qui entoure le chat sur la photo", "intention": "detourer", "source": "llm2"}
+{"texte": "Garde uniquement le personnage sans le paysage derriere", "intention": "detourer", "source": "llm2"}
+{"texte": "Cree une video d'une course de voitures futuristes", "intention": "video", "source": "llm2"}
+{"texte": "Genere un clip de quelques secondes montrant une plage au coucher du soleil", "intention": "video", "source": "llm2"}
+{"texte": "Fabrique-moi une sequence animee d'un dragon qui vole", "intention": "video", "source": "llm2"}
+{"texte": "Invente une courte video d'une ville sous la pluie la nuit", "intention": "video", "source": "llm2"}
+{"texte": "Produis un extrait video d'un robot qui marche dans une usine", "intention": "video", "source": "llm2"}
+{"texte": "J'aimerais une video originale d'un vaisseau spatial en approche", "intention": "video", "source": "llm2"}
+{"texte": "Donne du mouvement a cette photo de portrait", "intention": "video_image", "source": "llm2"}
+{"texte": "Fais bouger les nuages sur cette image de paysage", "intention": "video_image", "source": "llm2"}
+{"texte": "Anime ce dessin de personnage pour qu'il cligne des yeux", "intention": "video_image", "source": "llm2"}
+{"texte": "Transforme cette photo fixe en petite scene animee", "intention": "video_image", "source": "llm2"}
+{"texte": "Fais vivre cette illustration en ajoutant un leger mouvement", "intention": "video_image", "source": "llm2"}
+{"texte": "Donne vie a cette image de mer avec des vagues qui bougent", "intention": "video_image", "source": "llm2"}
+{"texte": "Rends les mouvements de cette video plus naturels", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Ajoute plus d'images par seconde a cet extrait saccade", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Adoucis les transitions de cette sequence video", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Cette video est trop hachee, peux-tu la rendre plus douce", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Ameliore la fluidite des gestes dans ce clip", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Fais en sorte que le ralenti paraisse plus naturel", "intention": "fluidifier", "source": "llm2"}
+{"texte": "Compose une musique douce pour accompagner une meditation", "intention": "audio", "source": "llm2"}
+{"texte": "Cree un jingle court pour une publicite radio", "intention": "audio", "source": "llm2"}
+{"texte": "Genere un fond sonore d'ambiance foret pour une video", "intention": "audio", "source": "llm2"}
+{"texte": "Ecris une chanson entrainante sur le theme de l'ete", "intention": "audio", "source": "llm2"}
+{"texte": "Fabrique une bande son epique pour un jeu video", "intention": "audio", "source": "llm2"}
+{"texte": "J'ai besoin d'un morceau instrumental relaxant pour dormir", "intention": "audio", "source": "llm2"}
+{"texte": "Organise mes croquis en pages avec plusieurs cases", "intention": "planche", "source": "llm2"}
+{"texte": "Mets en forme mes dessins en une suite de vignettes", "intention": "planche", "source": "llm2"}
+{"texte": "Arrange ces illustrations comme une bande dessinee complete", "intention": "planche", "source": "llm2"}
+{"texte": "Structure ces images en plusieurs cases sur une meme page", "intention": "planche", "source": "llm2"}
+{"texte": "Peux-tu presenter mes esquisses sous forme de recit en cases", "intention": "planche", "source": "llm2"}
+{"texte": "Assemble ces scenes en une page avec plusieurs vignettes", "intention": "planche", "source": "llm2"}
+{"texte": "Cree une figurine en trois dimensions de ce personnage", "intention": "objet3d", "source": "llm2"}
+{"texte": "Genere un maillage complet pour cet objet a imprimer", "intention": "objet3d", "source": "llm2"}
+{"texte": "J'ai besoin d'un modele 3D de cette chaise pour un jeu", "intention": "objet3d", "source": "llm2"}
+{"texte": "Fabrique une sculpture numerique de ce dragon", "intention": "objet3d", "source": "llm2"}
+{"texte": "Peux-tu concevoir un objet volumique base sur ce croquis", "intention": "objet3d", "source": "llm2"}
+{"texte": "Cree un modele tridimensionnel de cette voiture ancienne", "intention": "objet3d", "source": "llm2"}
+{"texte": "Dis-moi ce que represente cette image", "intention": "lecture", "source": "llm2"}
+{"texte": "Explique-moi le contenu de cette photo", "intention": "lecture", "source": "llm2"}
+{"texte": "Que vois-tu sur cette illustration", "intention": "lecture", "source": "llm2"}
+{"texte": "Raconte-moi ce qui se passe sur ce visuel", "intention": "lecture", "source": "llm2"}
+{"texte": "Peux-tu detailler les elements presents sur cette photo", "intention": "lecture", "source": "llm2"}
+{"texte": "Decris precisement ce que montre cette image", "intention": "lecture", "source": "llm2"}
+{"texte": "créer image chat", "intention": "image", "source": "llm2"}
+{"texte": "générer un paysage", "intention": "image", "source": "llm2"}
+{"texte": "image d'un dragon", "intention": "image", "source": "llm2"}
+{"texte": "dessine une forêt", "intention": "image", "source": "llm2"}
+{"texte": "image fond d'écran", "intention": "image", "source": "llm2"}
+{"texte": "génère un portrait", "intention": "image", "source": "llm2"}
+{"texte": "retoucher cette photo", "intention": "edition", "source": "llm2"}
+{"texte": "corriger la luminosité", "intention": "edition", "source": "llm2"}
+{"texte": "ajouter un chapeau", "intention": "edition", "source": "llm2"}
+{"texte": "enlever ce bouton", "intention": "edition", "source": "llm2"}
+{"texte": "changer les couleurs", "intention": "edition", "source": "llm2"}
+{"texte": "améliorer le contraste", "intention": "edition", "source": "llm2"}
+{"texte": "agrandir cette image", "intention": "agrandir", "source": "llm2"}
+{"texte": "augmenter la résolution", "intention": "agrandir", "source": "llm2"}
+{"texte": "upscaler la photo", "intention": "agrandir", "source": "llm2"}
+{"texte": "agrandir sans perte", "intention": "agrandir", "source": "llm2"}
+{"texte": "zoomer sur image", "intention": "agrandir", "source": "llm2"}
+{"texte": "augmenter les pixels", "intention": "agrandir", "source": "llm2"}
+{"texte": "détourer ce sujet", "intention": "detourer", "source": "llm2"}
+{"texte": "enlever le fond", "intention": "detourer", "source": "llm2"}
+{"texte": "isoler le personnage", "intention": "detourer", "source": "llm2"}
+{"texte": "supprimer l'arrière-plan", "intention": "detourer", "source": "llm2"}
+{"texte": "extraire le sujet", "intention": "detourer", "source": "llm2"}
+{"texte": "fond transparent stp", "intention": "detourer", "source": "llm2"}
+{"texte": "créer une vidéo", "intention": "video", "source": "llm2"}
+{"texte": "génère un clip", "intention": "video", "source": "llm2"}
+{"texte": "vidéo d'une plage", "intention": "video", "source": "llm2"}
+{"texte": "clip promotionnel court", "intention": "video", "source": "llm2"}
+{"texte": "vidéo animation abstraite", "intention": "video", "source": "llm2"}
+{"texte": "génère un teaser", "intention": "video", "source": "llm2"}
+{"texte": "anime cette photo", "intention": "video_image", "source": "llm2"}
+{"texte": "mets en mouvement", "intention": "video_image", "source": "llm2"}
+{"texte": "fais bouger l'image", "intention": "video_image", "source": "llm2"}
+{"texte": "animation de photo", "intention": "video_image", "source": "llm2"}
+{"texte": "donne vie image", "intention": "video_image", "source": "llm2"}
+{"texte": "photo qui bouge", "intention": "video_image", "source": "llm2"}
+{"texte": "rendre plus fluide", "intention": "fluidifier", "source": "llm2"}
+{"texte": "ralenti cette vidéo", "intention": "fluidifier", "source": "llm2"}
+{"texte": "plus d'images seconde", "intention": "fluidifier", "source": "llm2"}
+{"texte": "fluidifier les mouvements", "intention": "fluidifier", "source": "llm2"}
+{"texte": "smooth cette vidéo", "intention": "fluidifier", "source": "llm2"}
+{"texte": "améliorer la fluidité", "intention": "fluidifier", "source": "llm2"}
+{"texte": "créer une musique", "intention": "audio", "source": "llm2"}
+{"texte": "génère un jingle", "intention": "audio", "source": "llm2"}
+{"texte": "compose une chanson", "intention": "audio", "source": "llm2"}
+{"texte": "fond sonore ambiance", "intention": "audio", "source": "llm2"}
+{"texte": "musique de fond", "intention": "audio", "source": "llm2"}
+{"texte": "créer un son", "intention": "audio", "source": "llm2"}
+{"texte": "planche de BD", "intention": "planche", "source": "llm2"}
+{"texte": "page bande dessinée", "intention": "planche", "source": "llm2"}
+{"texte": "crée des vignettes", "intention": "planche", "source": "llm2"}
+{"texte": "planche avec cases", "intention": "planche", "source": "llm2"}
+{"texte": "BD en plusieurs cases", "intention": "planche", "source": "llm2"}
+{"texte": "storyboard en cases", "intention": "planche", "source": "llm2"}
+{"texte": "figurine en 3D", "intention": "objet3d", "source": "llm2"}
+{"texte": "objet en volume", "intention": "objet3d", "source": "llm2"}
+{"texte": "modèle 3D chat", "intention": "objet3d", "source": "llm2"}
+{"texte": "maillage d'un personnage", "intention": "objet3d", "source": "llm2"}
+{"texte": "crée un objet3D", "intention": "objet3d", "source": "llm2"}
+{"texte": "sculpture numérique 3D", "intention": "objet3d", "source": "llm2"}
+{"texte": "décris cette image", "intention": "lecture", "source": "llm2"}
+{"texte": "que représente ça", "intention": "lecture", "source": "llm2"}
+{"texte": "explique cette photo", "intention": "lecture", "source": "llm2"}
+{"texte": "dis ce que tu vois", "intention": "lecture", "source": "llm2"}
+{"texte": "analyse cette image", "intention": "lecture", "source": "llm2"}
+{"texte": "qu'y a-t-il dessus", "intention": "lecture", "source": "llm2"}

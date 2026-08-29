@@ -1,0 +1,6 @@
+conversations/
+noeuds.json
+__pycache__/
+*.pyc
+.git/
+*.log

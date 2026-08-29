@@ -1,0 +1,83 @@
+name: comfystudio-registry
+# Depot d'images local, a installer AVANT l'application ComfyUI.
+#
+# CasaOS tire toujours ses images d'un depot : il ne regarde jamais les images
+# construites sur place. Ce depot, pose sur la machine meme et ecoutant sur la
+# boucle locale, resout le probleme sans aucune authentification — Docker fait
+# confiance a 127.0.0.1 sans configuration du demon.
+#
+# Une fois installe, y deposer l'image construite :
+#   HOME=/tmp docker tag comfyui:local 127.0.0.1:5050/comfyui:local
+#   HOME=/tmp docker push 127.0.0.1:5050/comfyui:local
+#
+# 5050 et non 5000 : frigate occupe deja le 5000.
+services:
+  registry:
+    image: registry:2
+    container_name: comfystudio-registry
+    restart: unless-stopped
+    network_mode: bridge
+    ports:
+      # Volontairement lie a 127.0.0.1 : ce depot n'a aucune raison d'etre
+      # joignable depuis le reseau, et il n'a pas d'authentification.
+      # En forme longue, « published » ne prend que le NUMERO : l'adresse
+      # d'ecoute a son propre champ. « 127.0.0.1:5050 » y est refuse par le
+      # demon avec « invalid port specification ».
+      - target: 5000
+        published: "5050"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: /DATA/AppData/registry
+        target: /var/lib/registry
+    x-casaos:
+      ports:
+        - container: "5000"
+          description:
+            en_us: Registry API, bound to the loopback only
+            fr_fr: API du depot, liee a la boucle locale uniquement
+      volumes:
+        - container: /var/lib/registry
+          description:
+            en_us: Stored images
+            fr_fr: Images stockees
+
+x-casaos:
+  architectures:
+    - amd64
+  main: registry
+  author: ComfyStudio
+  category: Developer
+  developer: Docker
+  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Portainer/icon.png
+  index: /v2/_catalog
+  port_map: "5050"
+  scheme: http
+  store_app_id: comfystudio-registry
+  thumbnail: ""
+  title:
+    en_us: Local image registry
+    fr_fr: Depot d'images local
+  tagline:
+    en_us: Serves locally built images to ZimaOS
+    fr_fr: Sert a ZimaOS les images construites sur place
+  description:
+    en_us: >
+      A minimal Docker registry, listening on the loopback interface only. It
+      exists because ZimaOS always pulls images from a registry and never looks
+      at locally built ones. Images pushed here need no authentication, which
+      matters on an appliance whose root filesystem is read-only and where root
+      therefore cannot store registry credentials.
+    fr_fr: >
+      Un depot Docker minimal, a l'ecoute de la boucle locale seulement. Il
+      existe parce que ZimaOS tire toujours ses images d'un depot et ne regarde
+      jamais celles construites sur place. Les images qu'il sert ne demandent
+      aucune authentification, ce qui compte sur un systeme dont la racine est
+      en lecture seule et ou root ne peut donc pas enregistrer d'identifiants.
+  tips:
+    before_install:
+      fr_fr: >
+        A installer avant l'application ComfyUI, qui tire son image d'ici.
+      en_us: >
+        Install this before the ComfyUI app, which pulls its image from here.

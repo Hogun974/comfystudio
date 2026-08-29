@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Agent launchd de ComfyStudio (macOS).
+
+  GABARIT : installer_service.sh remplace tous les jetons encadres de doubles
+  arobases, puis depose le resultat dans
+  ~/Library/LaunchAgents/com.comfystudio.plist. Pour une pose a la main,
+  remplace-les toi-meme : launchd n'interprete ni ~ ni $HOME dans un plist,
+  tous les chemins doivent etre absolus et complets.
+
+  C'est un LaunchAgent, pas un LaunchDaemon : il tourne sous le compte de la
+  personne qui l'installe, donc jamais sous root. En echange il ne demarre qu'a
+  l'ouverture de session — voir NOTES.md, section macOS, pour le cas d'un Mac
+  serveur sans session ouverte.
+-->
+<plist version="1.0">
+<dict>
+
+  <!-- L'etiquette EST l'identite du service pour launchd : c'est elle qu'on
+       cite dans « launchctl kickstart » ou « launchctl print », et elle doit
+       correspondre au nom du fichier, sinon « launchctl bootstrap » charge
+       l'agent sous un nom qu'on ne retrouve plus ensuite. -->
+  <key>Label</key>
+  <string>com.comfystudio</string>
+
+  <!-- Chemin ABSOLU de l'interpreteur. launchd ne lance pas de shell et
+       n'herite d'aucun PATH utilisable : ecrire « python3 » ici donne un
+       « No such file or directory » qui ne dit pas lequel manque.
+       -u : sans lui, la sortie du studio est mise en tampon par blocs de 8 Ko
+       et le fichier de journal reste desesperement vide pendant des heures. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>@@PYTHON@@</string>
+    <string>-u</string>
+    <string>@@RACINE@@/serveur.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>@@RACINE@@</string>
+
+  <!-- launchd ne lit aucun fichier d'environnement : contrairement a systemd,
+       tout doit etre ici. Changer une valeur impose donc de decharger puis
+       recharger l'agent (voir NOTES.md).
+       PATH est repris explicitement parce que l'environnement d'un agent est
+       quasi vide : sans lui, le studio ne retrouve ni « lsof » (detection du
+       port de ComfyUI) ni les binaires de Homebrew. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>STUDIO_DONNEES</key>
+    <string>@@DONNEES@@</string>
+    <key>STUDIO_HOTE</key>
+    <string>@@HOTE@@</string>
+    <key>STUDIO_PORT</key>
+    <string>@@PORT@@</string>
+    <key>STUDIO_AUTH</key>
+    <string>@@AUTH@@</string>
+    <key>COMFY_URL</key>
+    <string>@@COMFY_URL@@</string>
+    <key>OLLAMA_URL</key>
+    <string>@@OLLAMA_URL@@</string>
+  </dict>
+
+  <!-- Demarre a l'ouverture de session, et immediatement au chargement. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Equivalent le plus proche de « Restart=on-failure » : relance seulement
+       si le studio s'est termine autrement que par un code 0. Un « KeepAlive
+       true » nu relancerait aussi apres un arret volontaire, et il deviendrait
+       impossible de couper le studio sans decharger l'agent. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <!-- Le garde-fou anti-boucle de launchd. Il n'a PAS d'equivalent de
+       StartLimitBurst : launchd ne renonce jamais, il se contente d'espacer.
+       10 s plutot que les 10 s par defaut rendus explicites : un studio qui
+       plante a l'import (aiohttp absent) sera relance six fois par minute
+       indefiniment. C'est pourquoi l'installeur verifie aiohttp AVANT de poser
+       l'agent — voir NOTES.md. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- launchd envoie SIGTERM puis, passe ce delai, SIGKILL. 20 s laissent aux
+       requetes en cours le temps de se terminer. -->
+  <key>ExitTimeOut</key>
+  <integer>20</integer>
+
+  <!-- « Background » demande a macOS de ne pas brider le processus comme une
+       application interactive inactive. Sans cela, App Nap peut ralentir un
+       studio qui tourne fenetre fermee et faire trainer les requetes sans
+       aucune trace d'erreur. -->
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <!-- launchd n'a pas de journal centralise pour la sortie standard d'un agent
+       (unified logging ne capture pas stdout) : sans ces deux cles, tout ce que
+       le studio affiche part dans /dev/null et un plantage devient muet.
+       La rotation n'existe pas non plus : voir NOTES.md pour newsyslog. -->
+  <key>StandardOutPath</key>
+  <string>@@JOURNAL@@</string>
+  <key>StandardErrorPath</key>
+  <string>@@JOURNAL_ERR@@</string>
+
+</dict>
+</plist>

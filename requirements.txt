@@ -1,0 +1,20 @@
+# Dependances de ComfyStudio.
+#
+#   pip install -r requirements.txt
+#
+# Une seule est indispensable : aiohttp, qui sert l'interface et parle a
+# ComfyUI. Les deux autres apportent une fonction chacune, et leur absence est
+# rattrapee — mais en degradant quelque chose, donc autant les installer.
+
+# Le serveur web et le client HTTP. Sans lui, rien ne demarre.
+aiohttp>=3.9
+
+# Lit la cadence d'une video, pour la fluidifier sans la ralentir. Sans PyAV,
+# le studio suppose 24 images par seconde : une video en 16 im/s ressort alors
+# accelaree, sans message d'erreur.
+av>=12
+
+# Confort pour telecharger les modeles. Le studio sait s'en passer — il tire
+# les fichiers en HTTPS direct, ce qui lui permet de fonctionner la ou pip
+# n'est pas installable (un NAS, une racine en lecture seule).
+huggingface_hub>=0.24

@@ -1,0 +1,44 @@
+{"texte": "Il me faudrait une illustration d'un dragon dans un ciel orageux.", "intention": "image"}
+{"texte": "Est-ce que tu saurais me sortir un visuel de paysage montagneux, style aquarelle ?", "intention": "image"}
+{"texte": "Pour mon projet scolaire, j'aurais besoin d'une représentation d'un robot futuriste.", "intention": "image"}
+{"texte": "Une illustration façon Miyazaki, tu peux ?", "intention": "image"}
+{"texte": "Cette photo manque un peu de peps, tu pourrais ajuster les couleurs ?", "intention": "edition"}
+{"texte": "Il faudrait revoir la luminosité de ce cliché de mariage.", "intention": "edition"}
+{"texte": "J'aimerais retoucher les contrastes sur cette photo de portrait.", "intention": "edition"}
+{"texte": "Petite retouche de teintes", "intention": "edition"}
+{"texte": "Cette icône est vraiment trop petite pour l'impression, il faudrait la rendre plus grande.", "intention": "agrandir"}
+{"texte": "Est-ce que tu saurais faire en sorte que cette image tienne sur une affiche géante sans perdre en qualité ?", "intention": "agrandir"}
+{"texte": "J'ai besoin d'une version haute résolution de ce logo minuscule.", "intention": "agrandir"}
+{"texte": "Plus grand, s'il te plaît", "intention": "agrandir"}
+{"texte": "Le fond de cette photo de produit me dérange, on pourrait l'enlever ?", "intention": "detourer"}
+{"texte": "Il me faudrait isoler ce personnage du reste du décor.", "intention": "detourer"}
+{"texte": "Pour ma fiche produit Amazon, il faudrait un fond blanc à la place de celui-ci.", "intention": "detourer"}
+{"texte": "Suppression du fond", "intention": "detourer"}
+{"texte": "Est-ce que tu saurais me créer une petite séquence animée d'une ville la nuit ?", "intention": "video"}
+{"texte": "Il me faudrait un clip de quelques secondes montrant des vagues sur la plage.", "intention": "video"}
+{"texte": "Pour ma présentation, j'aurais besoin d'une animation d'un logo qui apparaît progressivement.", "intention": "video"}
+{"texte": "Un petit teaser animé, façon Pixar", "intention": "video"}
+{"texte": "J'ai cette vieille cassette, tu saurais en extraire une image fixe précise ?", "intention": "video_image"}
+{"texte": "Il me faudrait transformer cette photo de mon chat en une petite séquence animée.", "intention": "video_image"}
+{"texte": "Est-ce que tu pourrais convertir ce clip en une série de captures ?", "intention": "video_image"}
+{"texte": "De la photo à l'animation, c'est possible ?", "intention": "video_image"}
+{"texte": "Ce clip saccade un peu, tu pourrais arranger ça ?", "intention": "fluidifier"}
+{"texte": "Il me faudrait rendre les mouvements plus naturels dans cette animation.", "intention": "fluidifier"}
+{"texte": "Est-ce que tu saurais améliorer la fréquence d'images de cette vidéo un peu saccadée ?", "intention": "fluidifier"}
+{"texte": "Mouvements plus doux, tu gères ?", "intention": "fluidifier"}
+{"texte": "Il me faudrait une petite musique d'ambiance pour ma vidéo de vacances.", "intention": "audio"}
+{"texte": "Est-ce que tu saurais composer un jingle pour mon podcast ?", "intention": "audio"}
+{"texte": "Pour Halloween, j'aurais besoin d'un fond sonore inquiétant.", "intention": "audio"}
+{"texte": "Une petite mélodie relaxante, façon Enya ?", "intention": "audio"}
+{"texte": "Pour présenter mon travail, il me faudrait un assemblage de plusieurs vignettes sur une seule page.", "intention": "planche"}
+{"texte": "Est-ce que tu saurais organiser mes croquis façon storyboard ?", "intention": "planche"}
+{"texte": "J'aimerais regrouper ces cases de BD sur un même document.", "intention": "planche"}
+{"texte": "Mise en page façon manga", "intention": "planche"}
+{"texte": "Pour mon jeu vidéo, il me faudrait un modèle tridimensionnel de personnage.", "intention": "objet3d"}
+{"texte": "Est-ce que tu saurais concevoir une figurine numérique d'un vaisseau spatial ?", "intention": "objet3d"}
+{"texte": "J'aurais besoin d'une forme en volume pour l'impression sur mon imprimante, façon Prusa.", "intention": "objet3d"}
+{"texte": "Un asset en volume, tu peux ?", "intention": "objet3d"}
+{"texte": "Je voudrais écouter ce fichier avant de l'envoyer au client.", "intention": "lecture"}
+{"texte": "Est-ce que tu saurais me faire entendre ce message vocal ?", "intention": "lecture"}
+{"texte": "Il me faudrait passer ce morceau pour vérifier le rendu final.", "intention": "lecture"}
+{"texte": "Diffusion du fichier, s'il te plaît", "intention": "lecture"}

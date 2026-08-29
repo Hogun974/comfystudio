@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# Met une machine au service d'un ComfyStudio, d'un seul geste.
+#
+# Verifie ce qu'il faut, demarre ComfyUI s'il dort, recupere l'agent aupres du
+# studio, demande le jeton, et se met en service. Concu pour etre le seul
+# fichier a poser sur une machine-noeud :
+#
+#   curl -fsS http://LE-STUDIO:8199/api/noeud/noeud.sh -o noeud.sh
+#   bash noeud.sh
+#
+#   bash noeud.sh --verifier                    diagnostic, sans rien lancer
+#   bash noeud.sh --studio URL --jeton XXXX     sans aucune question
+#   bash noeud.sh --fond                        laisse tourner en tache de fond
+set -uo pipefail
+cd "$(dirname "$0")"
+
+STUDIO=""; JETON=""; VERIFIER=0; FOND=0
+COMFY_URL="${COMFY_URL:-http://127.0.0.1:8188}"
+CONFIG="agent_noeud.json"
+AGENT="agent_noeud.py"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --studio)   STUDIO="${2:-}"; shift 2 ;;
+    --jeton)    JETON="${2:-}"; shift 2 ;;
+    --comfy)    COMFY_URL="${2:-}"; shift 2 ;;
+    --verifier) VERIFIER=1; shift ;;
+    --fond)     FOND=1; shift ;;
+    -h|--help)  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)          echo "  argument inconnu : $1"; exit 1 ;;
+  esac
+done
+
+vert()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
+rouge() { printf '  \033[31m✗\033[0m %s\n' "$1"; }
+gris()  { printf '    \033[2m%s\033[0m\n' "$1"; }
+titre() { printf '\n%s\n%s\n' "$1" "$(printf '%*s' ${#1} '' | tr ' ' '-')"; }
+ENNUIS=0
+souci() { rouge "$1"; ENNUIS=$((ENNUIS + 1)); }
+
+# ══════════════════════════ 1. Python ══════════════════════════════════
+titre "Python"
+# On verifie la VERSION, pas seulement la presence : un Python 2 demarre
+# parfaitement puis echoue sur la premiere f-string de l'agent.
+PY=""
+for py in python3 python3.13 python3.12 python3.11 python3.10 python3.9 python; do
+  if command -v "$py" >/dev/null 2>&1 &&
+     "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null; then
+    PY="$py"; break
+  fi
+done
+if [ -z "$PY" ]; then
+  souci "aucun Python 3.8 ou plus recent"
+  gris "Debian, Ubuntu   sudo apt install python3"
+  gris "Fedora           sudo dnf install python3"
+  gris "Arch             sudo pacman -S python"
+  exit 1
+fi
+vert "$($PY -V 2>&1) — $(command -v "$PY")"
+
+# ══════════════════════════ 2. carte et memoire ════════════════════════
+titre "Materiel"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  CARTE=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)
+  [ -n "$CARTE" ] && vert "carte : $CARTE" || souci "nvidia-smi ne rend aucune carte"
+else
+  souci "nvidia-smi introuvable : pas de carte NVIDIA utilisable"
+  gris "ComfyUI tournera sur le processeur, tres lentement"
+fi
+if [ -r /proc/meminfo ]; then
+  RAM=$(awk '/MemTotal/ {printf "%.0f", $2/1048576}' /proc/meminfo)
+  vert "memoire : ${RAM} Go"
+  [ "$RAM" -lt 16 ] 2>/dev/null && gris "moins de 16 Go : les modeles lourds seront a la peine"
+elif command -v sysctl >/dev/null 2>&1; then
+  vert "memoire : $(( $(sysctl -n hw.memsize) / 1073741824 )) Go"
+fi
+LIBRE=$(df -Pk . 2>/dev/null | awk 'NR==2 {printf "%.0f", $4/1048576}')
+[ -n "$LIBRE" ] && vert "disque : ${LIBRE} Go libres ici"
+
+# ══════════════════════════ 3. ComfyUI ═════════════════════════════════
+titre "ComfyUI"
+joignable() { curl -fsS --max-time 4 "$COMFY_URL/system_stats" >/dev/null 2>&1; }
+
+if joignable; then
+  vert "deja en service sur $COMFY_URL"
+else
+  RACINE="${COMFY_DIR:-}"
+  if [ -z "$RACINE" ]; then
+    for c in ./ComfyUI ../ComfyUI "$HOME/ComfyUI" /opt/ComfyUI /srv/ComfyUI; do
+      [ -f "$c/main.py" ] && RACINE="$c" && break
+    done
+  fi
+  if [ -z "$RACINE" ]; then
+    souci "ComfyUI introuvable"
+    gris "indique-le par COMFY_DIR=/chemin/vers/ComfyUI, ou installe-le"
+  else
+    # le Python de son environnement dedie, sinon celui du systeme
+    PYC="$PY"
+    for v in "$RACINE/venv/bin/python" "$RACINE/.venv/bin/python"; do
+      [ -x "$v" ] && PYC="$v" && break
+    done
+    echo "  ComfyUI trouve dans $RACINE"
+    if [ "$VERIFIER" = 1 ]; then
+      souci "il ne repond pas (mode verification : on ne le demarre pas)"
+    else
+      printf '  Le demarrer maintenant ? [O/n] '
+      read -r rep || rep=""
+      case "${rep:-o}" in
+        [nN]*) souci "ComfyUI arrete : l'agent attendra qu'il reponde" ;;
+        *)
+          # --disable-auto-launch : pas de navigateur qui s'ouvre sur un serveur
+          nohup "$PYC" "$RACINE/main.py" --disable-auto-launch \
+                > comfyui.log 2>&1 &
+          echo "  demarrage (journal : $(pwd)/comfyui.log)"
+          for _ in $(seq 1 60); do
+            joignable && break
+            sleep 2
+          done
+          if joignable; then
+            vert "ComfyUI repond sur $COMFY_URL"
+          else
+            souci "ComfyUI n'a pas repondu en deux minutes — regarde comfyui.log"
+          fi ;;
+      esac
+    fi
+  fi
+fi
+
+if joignable; then
+  MOD=$(curl -fsS --max-time 6 "$COMFY_URL/models/diffusion_models" 2>/dev/null |
+        "$PY" -c "import json,sys;print(len(json.load(sys.stdin)))" 2>/dev/null)
+  gris "modeles de diffusion vus : ${MOD:-0}"
+fi
+
+# ══════════════════════════ 4. le studio ═══════════════════════════════
+titre "Studio"
+if [ -z "$STUDIO" ] && [ -f "$CONFIG" ]; then
+  STUDIO=$("$PY" -c "import json;print(json.load(open('$CONFIG')).get('studio',''))" 2>/dev/null)
+  [ -n "$STUDIO" ] && gris "adresse retenue du dernier lancement"
+fi
+if [ -z "$STUDIO" ] && [ "$VERIFIER" = 0 ]; then
+  printf '  Adresse du studio (ex : http://192.0.2.10:8199) : '
+  read -r STUDIO || STUDIO=""
+fi
+STUDIO="${STUDIO%/}"
+if [ -z "$STUDIO" ]; then
+  souci "aucune adresse de studio"
+elif curl -fsS --max-time 6 "$STUDIO/api/compte" >/dev/null 2>&1; then
+  vert "studio joignable sur $STUDIO"
+else
+  souci "studio injoignable sur $STUDIO"
+  gris "verifie qu'il tourne avec STUDIO_HOTE=0.0.0.0, et le pare-feu"
+fi
+
+# ══════════════════════════ 5. l'agent ═════════════════════════════════
+titre "Agent"
+if [ -n "$STUDIO" ] && curl -fsS --max-time 20 "$STUDIO/api/noeud/agent" -o "$AGENT.neuf" 2>/dev/null; then
+  # On ne remplace qu'apres verification : une page d'erreur du studio
+  # ecraserait sinon un agent qui fonctionnait.
+  if "$PY" -c "import ast,sys;ast.parse(open(sys.argv[1],encoding='utf-8').read())" "$AGENT.neuf" 2>/dev/null; then
+    [ -f "$AGENT" ] && cp "$AGENT" "$AGENT.precedent"
+    mv "$AGENT.neuf" "$AGENT"
+    vert "agent a jour ($(wc -c < "$AGENT") octets)"
+  else
+    rm -f "$AGENT.neuf"
+    souci "ce que le studio a renvoye n'est pas un script valide"
+  fi
+elif [ -f "$AGENT" ]; then
+  rm -f "$AGENT.neuf"
+  gris "telechargement impossible — on garde l'agent deja present"
+else
+  rm -f "$AGENT.neuf"
+  souci "agent absent et non telechargeable"
+fi
+
+if [ -z "$JETON" ] && [ -f "$CONFIG" ]; then
+  JETON=$("$PY" -c "import json;print(json.load(open('$CONFIG')).get('jeton',''))" 2>/dev/null)
+  [ -n "$JETON" ] && vert "jeton retenu du dernier lancement"
+fi
+
+# ══════════════════════════ 6. verdict ═════════════════════════════════
+if [ "$VERIFIER" = 1 ]; then
+  titre "Verdict"
+  [ "$ENNUIS" = 0 ] && vert "tout est pret" || rouge "$ENNUIS point(s) a regler"
+  exit "$ENNUIS"
+fi
+if [ "$ENNUIS" -gt 0 ]; then
+  titre "Verdict"
+  rouge "$ENNUIS point(s) a regler avant de se mettre en service"
+  exit 1
+fi
+
+if [ -z "$JETON" ]; then
+  titre "Jeton"
+  echo "  Il se cree dans $STUDIO/admin, sur la machine du studio."
+  echo "  Il n'est affiche qu'une seule fois, a la creation de la machine."
+  printf '  Jeton : '
+  # -s : le jeton ne s'affiche pas a l'ecran, et ne reste pas dans l'historique
+  read -r -s JETON || JETON=""
+  echo
+  [ -z "$JETON" ] && { rouge "aucun jeton — rien a faire"; exit 1; }
+
+# Le jeton passe par le fichier de reglages, pas par la ligne de commande :
+# celle d'un processus est lisible par tout le monde sur la machine, ce qui
+# annulait le masquage de la saisie.
+ecrire_reglages() {
+  "$PY" - "$CONFIG" "$STUDIO" "$JETON" "$COMFY_URL" <<'PYFIN'
+import json, io, os, sys
+p, studio, jeton, comfy = sys.argv[1:5]
+c = json.load(io.open(p, encoding="utf-8")) if os.path.exists(p) else {}
+c.update(studio=studio, jeton=jeton, comfy=comfy)
+json.dump(c, io.open(p, "w", encoding="utf-8"), indent=1)
+PYFIN
+}
+fi
+
+titre "En service"
+if [ "$FOND" = 1 ]; then
+  ecrire_reglages
+  nohup "$PY" "$AGENT" \
+        > agent.log 2>&1 &
+  sleep 3
+  vert "agent lance en tache de fond (journal : $(pwd)/agent.log)"
+  gris "pour l'arreter : pkill -f $AGENT"
+else
+  ecrire_reglages
+exec "$PY" "$AGENT"
+fi

@@ -1,0 +1,66 @@
+{"texte": "tu peux me faire un dessin d'un chat astronaute", "intention": "image"}
+{"texte": "genere un truc avec une foret magique stp", "intention": "image"}
+{"texte": "jvoudrais un visuel d'une ville futuriste", "intention": "image"}
+{"texte": "fait moi une illustration de dragon svp", "intention": "image"}
+{"texte": "besoin d'un artwork fantaisie rapidos", "intention": "image"}
+{"texte": "cree qqch avec un coucher de soleil sur la mer", "intention": "image"}
+{"texte": "change la couleur du ciel sur cette photo", "intention": "edition"}
+{"texte": "peux tu enlever le bouton la sur son manteau", "intention": "edition"}
+{"texte": "remplace le fond par une plage stp", "intention": "edition"}
+{"texte": "ajoute des lunettes au personnage", "intention": "edition"}
+{"texte": "jveux modif la couleur des cheveux", "intention": "edition"}
+{"texte": "efface la personne a droite sur l image", "intention": "edition"}
+{"texte": "peux tu agrandir cette photo sans la deformer", "intention": "agrandir"}
+{"texte": "jvoudrai une version plus grande de l image", "intention": "agrandir"}
+{"texte": "upscale moi ca stp", "intention": "agrandir"}
+{"texte": "augmente la resolution sans changer le contenu", "intention": "agrandir"}
+{"texte": "rend cette image plus grande sans perte", "intention": "agrandir"}
+{"texte": "faut zoomer sur cette pic sans la casser", "intention": "agrandir"}
+{"texte": "enleve le fond de cette photo stp", "intention": "detourer"}
+{"texte": "jveux isoler juste le sujet sur l image", "intention": "detourer"}
+{"texte": "peux tu detourer la personne du fond blanc", "intention": "detourer"}
+{"texte": "retire l arriere plan de cette pic", "intention": "detourer"}
+{"texte": "faut extraire juste l objet sans le decor", "intention": "detourer"}
+{"texte": "supprime tout sauf le personnage stp", "intention": "detourer"}
+{"texte": "cree une video d'un feu d'artifice", "intention": "video"}
+{"texte": "jveux un clip d'une voiture qui roule en ville", "intention": "video"}
+{"texte": "genere moi une sequence de vagues sur la plage", "intention": "video"}
+{"texte": "fait une petite vid d'un robot qui marche", "intention": "video"}
+{"texte": "besoin d'une video de zero avec un dragon qui vole", "intention": "video"}
+{"texte": "cree un film court d'une foret enchantee", "intention": "video"}
+{"texte": "anime cette photo de mon chat stp", "intention": "video_image"}
+{"texte": "fait bouger le perso sur cette image", "intention": "video_image"}
+{"texte": "jveux que cette photo devienne animee", "intention": "video_image"}
+{"texte": "peux tu donner vie a cette illustration", "intention": "video_image"}
+{"texte": "transforme cette image en petite animation", "intention": "video_image"}
+{"texte": "fait bouger les cheveux sur cette pic stp", "intention": "video_image"}
+{"texte": "rend cette video plus fluide stp", "intention": "fluidifier"}
+{"texte": "jveux un ralenti sur ce clip", "intention": "fluidifier"}
+{"texte": "peux tu ameliorer les fps de la vid", "intention": "fluidifier"}
+{"texte": "cette video saccade, arrange ca", "intention": "fluidifier"}
+{"texte": "fait un slowmo sur ce passage", "intention": "fluidifier"}
+{"texte": "lisse le mouvement de cette video stp", "intention": "fluidifier"}
+{"texte": "cree une musique triste au piano", "intention": "audio"}
+{"texte": "jveux une chanson entrainante pour l'ete", "intention": "audio"}
+{"texte": "genere un beat hip hop stp", "intention": "audio"}
+{"texte": "fait moi un morceau instru relaxant", "intention": "audio"}
+{"texte": "besoin d'une melodie douce pour dormir", "intention": "audio"}
+{"texte": "compose un son epique pour une bande annonce", "intention": "audio"}
+{"texte": "fait moi une planche de bd avec 4 cases", "intention": "planche"}
+{"texte": "jveux une page manga avec plusieurs cases", "intention": "planche"}
+{"texte": "cree une bd courte sur un super heros", "intention": "planche"}
+{"texte": "genere une page comics avec dialogue", "intention": "planche"}
+{"texte": "faut une planche avec 6 vignettes stp", "intention": "planche"}
+{"texte": "dessine une histoire en cases genre bd", "intention": "planche"}
+{"texte": "cree un objet 3d d'une voiture", "intention": "objet3d"}
+{"texte": "jveux un modele 3d d'une chaise", "intention": "objet3d"}
+{"texte": "genere une figurine 3d de dragon", "intention": "objet3d"}
+{"texte": "fait moi un rendu 3d d'un vaisseau spatial", "intention": "objet3d"}
+{"texte": "besoin d'un modele en volume pour impression 3d", "intention": "objet3d"}
+{"texte": "cree une sculpture numerique 3d stp", "intention": "objet3d"}
+{"texte": "dis moi ce qu'il y a sur cette photo", "intention": "lecture"}
+{"texte": "decris moi cette image stp", "intention": "lecture"}
+{"texte": "c'est quoi sur cette pic exactement", "intention": "lecture"}
+{"texte": "explique ce que tu vois sur l'image", "intention": "lecture"}
+{"texte": "jvoudrais savoir ce qui est represente ici", "intention": "lecture"}
+{"texte": "peux tu analyser cette photo et me dire ce que c'est", "intention": "lecture"}

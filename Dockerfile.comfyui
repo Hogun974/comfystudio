@@ -1,0 +1,48 @@
+# ComfyUI en conteneur.
+#
+# Image construite sur python:3.12-slim plutot que sur une base CUDA complete :
+# le pilote et la bibliotheque CUDA viennent de l'hote par le nvidia-container-
+# toolkit, les embarquer ferait une image de plusieurs gigaoctets pour rien.
+#
+#   ROUE=cu128   carte NVIDIA (defaut)
+#   ROUE=cpu     sans carte : ComfyUI demarre et repond, mais genere tres
+#                lentement. Utile pour valider un montage, pas pour produire.
+ARG ROUE=cu128
+
+FROM python:3.12-slim
+
+# git pour cloner ComfyUI ; les bibliotheques graphiques sont exigees par
+# opencv et pillow, que plusieurs noeuds de ComfyUI utilisent.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git libgl1 libglib2.0-0 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+ARG VERSION=master
+RUN git clone --depth 1 --branch "$VERSION" \
+      https://github.com/comfyanonymous/ComfyUI.git
+
+WORKDIR /opt/ComfyUI
+ARG ROUE
+RUN pip install --no-cache-dir torch torchvision torchaudio \
+      --index-url "https://download.pytorch.org/whl/${ROUE}" \
+ && pip install --no-cache-dir -r requirements.txt
+
+# Les modeles pesent des dizaines de gigaoctets : ils vivent dans un volume,
+# jamais dans l'image. Sorties et entrees aussi, pour survivre a une
+# reconstruction.
+VOLUME ["/opt/ComfyUI/models", "/opt/ComfyUI/input", "/opt/ComfyUI/output"]
+EXPOSE 8188
+
+# Sans carte, ComfyUI tente quand meme CUDA et meurt sur « Torch not compiled
+# with CUDA enabled » : il lui faut --cpu. On le fige a la construction, selon
+# la roue installee, plutot que de compter sur celui qui lance le conteneur.
+RUN if [ "$ROUE" = "cpu" ]; then echo "--cpu" > /opt/args_defaut;     else : > /opt/args_defaut; fi
+
+# COMFY_ARGS ajoute des arguments au lancement, sans reconstruire l'image.
+# Utile sur une petite carte : --lowvram sous 8 Go, --novram sous 4 Go.
+ENV COMFY_ARGS=""
+
+# --listen 0.0.0.0 : sans lui, ComfyUI n'ecoute que la boucle locale DU
+# CONTENEUR, et le port publie ne mene nulle part.
+CMD ["sh", "-c", "exec python main.py --listen 0.0.0.0 --disable-auto-launch $(cat /opt/args_defaut) $COMFY_ARGS"]

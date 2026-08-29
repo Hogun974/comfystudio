@@ -1,0 +1,161 @@
+name: comfyui
+# ComfyUI + agent ComfyStudio, pour ZimaOS.
+#
+# A importer depuis l'interface : Applications, « + », « Installer une
+# application personnalisee », puis coller ce fichier. Passer par l'interface
+# plutot que par la ligne de commande est ce qui rend l'application VISIBLE :
+# ZimaOS l'enregistre dans /var/lib/casaos/apps et lui donne sa tuile.
+#
+# Avant d'importer, construire l'image sur la machine :
+#   docker build --build-arg ROUE=cu128 -t comfyui:local \
+#     -f /DATA/AppData/comfyui/build/Dockerfile.comfyui /DATA/AppData/comfyui/build
+services:
+  comfyui:
+    # CasaOS TIRE toujours l'image d'un depot : il ne regarde pas les images
+    # locales. D'ou ce depot pose sur la machine meme, sur la boucle locale —
+    # Docker fait confiance a 127.0.0.1 sans aucune configuration du demon.
+    #
+    #   docker run -d --name comfystudio-registry --restart unless-stopped     #     -p 127.0.0.1:5050:5000 -v /DATA/AppData/registry:/var/lib/registry registry:2
+    #   docker tag comfyui:local 127.0.0.1:5050/comfyui:local
+    #   docker push 127.0.0.1:5050/comfyui:local
+    #
+    # Variante par un Forgejo interne : remplacer par
+    #   image: ton-registre.local/hogun/comfyui:local
+    # Le paquet doit alors etre PUBLIC, ou root doit avoir la session ouverte —
+    # CasaOS tire en tant que root, pas en tant qu'utilisateur :
+    #   sudo docker login ton-registre.local -u TON-COMPTE
+    image: 127.0.0.1:5050/comfyui:local
+    container_name: comfyui
+    restart: unless-stopped
+    network_mode: bridge
+    ports:
+      - target: 8188
+        published: "8188"
+        protocol: tcp
+    environment:
+      # GTX 1060 6 Go : --lowvram deplace ce qui ne tient pas vers les 23 Go
+      # de RAM. Sans lui, un modele SDXL echoue en pleine generation.
+      COMFY_ARGS: "--lowvram"
+    volumes:
+      - type: bind
+        source: /DATA/AppData/comfyui/models
+        target: /opt/ComfyUI/models
+      - type: bind
+        source: /DATA/AppData/comfyui/input
+        target: /opt/ComfyUI/input
+      - type: bind
+        source: /DATA/AppData/comfyui/output
+        target: /opt/ComfyUI/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    x-casaos:
+      ports:
+        - container: "8188"
+          description:
+            en_us: Web interface of ComfyUI
+            fr_fr: Interface web de ComfyUI
+      volumes:
+        - container: /opt/ComfyUI/models
+          description:
+            en_us: Diffusion models
+            fr_fr: Modeles de diffusion
+        - container: /opt/ComfyUI/input
+          description:
+            en_us: Input images
+            fr_fr: Images d'entree
+        - container: /opt/ComfyUI/output
+          description:
+            en_us: Generated files
+            fr_fr: Fichiers produits
+      envs:
+        - container: COMFY_ARGS
+          description:
+            en_us: Extra ComfyUI arguments, --lowvram under 8 GB of VRAM
+            fr_fr: Arguments ComfyUI, --lowvram sous 8 Go de VRAM
+
+  agent:
+    # L'agent va CHERCHER le travail aupres du studio : il n'ouvre aucun port et
+    # n'a besoin d'aucune redirection. Il retelecharge son script a chaque
+    # demarrage, donc redemarrer le conteneur suffit a le mettre a jour.
+    image: python:3.12-slim
+    container_name: comfyui-agent
+    restart: unless-stopped
+    depends_on:
+      - comfyui
+    environment:
+      STUDIO_URL: "http://ADRESSE-DU-STUDIO:8199"   # A REMPLACER
+      STUDIO_JETON: "A_REMPLACER"
+      # PAS « http://comfyui:8188 » : le service ComfyUI est en network_mode
+      # bridge, le reseau historique de Docker, ou la resolution de noms
+      # n'existe pas. On passe donc par la passerelle de l'hote, ce qui ne
+      # depend ni du nom du conteneur ni de l'adresse LAN de la machine.
+      COMFY_URL: "http://host.docker.internal:8188"
+    # Aucun « $ » ici, et pas de shell : CasaOS resout les variables au moment
+    # de l'import, et « $$STUDIO_URL » arrivait vide dans le conteneur. Python
+    # lit donc l'environnement lui-meme, ce qui ne peut pas etre interprete au
+    # passage. L'agent reprend ensuite ces memes variables.
+    extra_hosts:
+      # indispensable sous Linux ; sans effet ailleurs
+      - "host.docker.internal:host-gateway"
+    command:
+      - python
+      - -c
+      - import os,sys,urllib.request;open('/tmp/agent.py','wb').write(urllib.request.urlopen(os.environ['STUDIO_URL']+'/api/noeud/agent',timeout=30).read());os.execv(sys.executable,[sys.executable,'-u','/tmp/agent.py'])
+    x-casaos:
+      envs:
+        - container: STUDIO_URL
+          description:
+            en_us: Address of the ComfyStudio server
+            fr_fr: Adresse du serveur ComfyStudio
+        - container: STUDIO_JETON
+          description:
+            en_us: Token issued by ComfyStudio administration
+            fr_fr: Jeton delivre par l'administration de ComfyStudio
+
+x-casaos:
+  architectures:
+    - amd64
+  main: comfyui
+  author: ComfyStudio
+  category: AI
+  developer: comfyanonymous
+  icon: https://cdn.jsdelivr.net/gh/comfyanonymous/ComfyUI@master/web/favicon.ico
+  index: /
+  port_map: "8188"
+  scheme: http
+  store_app_id: comfyui
+  thumbnail: ""
+  title:
+    en_us: ComfyUI
+    fr_fr: ComfyUI
+  tagline:
+    en_us: Image generation engine, node of a ComfyStudio
+    fr_fr: Moteur de generation d'images, noeud d'un ComfyStudio
+  description:
+    en_us: >
+      ComfyUI runs the image, video and audio models. The companion agent
+      registers this machine as a node of a ComfyStudio server: it calls the
+      server, announces itself with its token, fetches the work assigned to it
+      and sends the produced files back. This machine opens no port towards the
+      outside.
+    fr_fr: >
+      ComfyUI fait tourner les modeles d'image, de video et d'audio. L'agent qui
+      l'accompagne inscrit cette machine comme noeud d'un serveur ComfyStudio :
+      c'est lui qui appelle le serveur, s'annonce avec son jeton, vient chercher
+      le travail qui lui est attribue et renvoie les fichiers produits. Cette
+      machine n'ouvre aucun port vers l'exterieur.
+  tips:
+    before_install:
+      en_us: >
+        Build the image first, and paste the token created in the ComfyStudio
+        administration page. Models must be installed on this machine: the
+        studio only writes to its own disk.
+      fr_fr: >
+        Construire l'image d'abord, et coller le jeton cree dans la page
+        d'administration de ComfyStudio. Les modeles doivent etre installes sur
+        cette machine : le studio n'ecrit que sur son propre disque.

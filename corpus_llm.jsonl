@@ -1,0 +1,501 @@
+{"texte": "Fais-moi un dragon qui crache du feu stp", "intention": "image", "source": "familier"}
+{"texte": "Jveux une pic d'une ville futuriste la nuit", "intention": "image", "source": "familier"}
+{"texte": "Genere un chat astronaute sur la lune", "intention": "image", "source": "familier"}
+{"texte": "Crée un paysage de montagne enneigée vite fait", "intention": "image", "source": "familier"}
+{"texte": "Fais-moi un portrait de guerrier viking", "intention": "image", "source": "familier"}
+{"texte": "Jveux voir un robot géant dans une forêt", "intention": "image", "source": "familier"}
+{"texte": "Enlève le type en arrière plan sur cette pic", "intention": "edition", "source": "familier"}
+{"texte": "Rajoute un chapeau sur ma photo stp", "intention": "edition", "source": "familier"}
+{"texte": "Change la couleur du ciel en orange", "intention": "edition", "source": "familier"}
+{"texte": "Efface la voiture qui traine sur l'image", "intention": "edition", "source": "familier"}
+{"texte": "Mets des lunettes de soleil au chien sur la pic", "intention": "edition", "source": "familier"}
+{"texte": "Remplace le fond par une plage", "intention": "edition", "source": "familier"}
+{"texte": "Jveux cette image en plus haute résolution", "intention": "agrandir", "source": "familier"}
+{"texte": "Peux tu agrandir ma pic sans la flouter", "intention": "agrandir", "source": "familier"}
+{"texte": "Augmente la taille de cette image stp", "intention": "agrandir", "source": "familier"}
+{"texte": "Faut que ce visuel soit en 4k", "intention": "agrandir", "source": "familier"}
+{"texte": "Rends cette pic plus grande sans perdre en qualité", "intention": "agrandir", "source": "familier"}
+{"texte": "Upscale moi ça vite fait", "intention": "agrandir", "source": "familier"}
+{"texte": "Enlève le fond de cette photo stp", "intention": "detourer", "source": "familier"}
+{"texte": "Jveux juste le personnage, sans le décor", "intention": "detourer", "source": "familier"}
+{"texte": "Isole le produit sur fond transparent", "intention": "detourer", "source": "familier"}
+{"texte": "Détoure le logo pour moi", "intention": "detourer", "source": "familier"}
+{"texte": "Sépare le chat du fond svp", "intention": "detourer", "source": "familier"}
+{"texte": "Fais moi un fond transparent pour cette image", "intention": "detourer", "source": "familier"}
+{"texte": "Crée une vid d'un coucher de soleil sur la mer", "intention": "video", "source": "familier"}
+{"texte": "Jveux une vidéo de voitures qui roulent en ville", "intention": "video", "source": "familier"}
+{"texte": "Fais-moi une vid d'un feu de camp qui brule", "intention": "video", "source": "familier"}
+{"texte": "Genere une vidéo d'une cascade dans la jungle", "intention": "video", "source": "familier"}
+{"texte": "Jveux voir une vid de vagues qui s'écrasent", "intention": "video", "source": "familier"}
+{"texte": "Crée moi une vidéo d'un ciel étoilé qui bouge", "intention": "video", "source": "familier"}
+{"texte": "Anime cette photo de mon chien stp", "intention": "video_image", "source": "familier"}
+{"texte": "Fais bouger le perso sur cette image", "intention": "video_image", "source": "familier"}
+{"texte": "Jveux que cette pic prenne vie", "intention": "video_image", "source": "familier"}
+{"texte": "Donne du mouvement à cette photo de paysage", "intention": "video_image", "source": "familier"}
+{"texte": "Fais parler le personnage sur l'image", "intention": "video_image", "source": "familier"}
+{"texte": "Anime moi cette illustration stp", "intention": "video_image", "source": "familier"}
+{"texte": "Rends cette vid plus fluide stp", "intention": "fluidifier", "source": "familier"}
+{"texte": "Jveux plus d'images par seconde sur ma vidéo", "intention": "fluidifier", "source": "familier"}
+{"texte": "Fais un ralenti sur cette vid", "intention": "fluidifier", "source": "familier"}
+{"texte": "Améliore la fluidité de la vidéo svp", "intention": "fluidifier", "source": "familier"}
+{"texte": "Ma vid saccade, peux tu arranger ça", "intention": "fluidifier", "source": "familier"}
+{"texte": "Augmente le fps de cette vidéo stp", "intention": "fluidifier", "source": "familier"}
+{"texte": "Crée moi un instru de rap stp", "intention": "audio", "source": "familier"}
+{"texte": "Jveux une chanson triste pour mon projet", "intention": "audio", "source": "familier"}
+{"texte": "Fais moi un beat qui tue", "intention": "audio", "source": "familier"}
+{"texte": "Genere une musique d'ambiance zen", "intention": "audio", "source": "familier"}
+{"texte": "Jveux un morceau électro rapide", "intention": "audio", "source": "familier"}
+{"texte": "Compose moi une mélodie pour piano", "intention": "audio", "source": "familier"}
+{"texte": "Fais moi une page de manga avec plusieurs cases", "intention": "planche", "source": "familier"}
+{"texte": "Jveux une planche de BD sur un combat", "intention": "planche", "source": "familier"}
+{"texte": "Crée une page manga avec un héros et son ennemi", "intention": "planche", "source": "familier"}
+{"texte": "Fais moi une planche avec 4 cases d'une scène d'action", "intention": "planche", "source": "familier"}
+{"texte": "Genere une page de bd façon comics", "intention": "planche", "source": "familier"}
+{"texte": "Jveux une planche manga avec du dialogue", "intention": "planche", "source": "familier"}
+{"texte": "Fais moi une figurine 3D de mon perso", "intention": "objet3d", "source": "familier"}
+{"texte": "Jveux un modèle 3d d'une épée", "intention": "objet3d", "source": "familier"}
+{"texte": "Crée un objet 3d imprimable d'un robot", "intention": "objet3d", "source": "familier"}
+{"texte": "Genere le maillage 3d d'une voiture", "intention": "objet3d", "source": "familier"}
+{"texte": "Jveux une statuette 3d de mon chat", "intention": "objet3d", "source": "familier"}
+{"texte": "Fais moi un perso en 3d pour mon jeu", "intention": "objet3d", "source": "familier"}
+{"texte": "Dis moi ce qu'il y a sur cette pic", "intention": "lecture", "source": "familier"}
+{"texte": "Décris cette image stp", "intention": "lecture", "source": "familier"}
+{"texte": "Qu'est ce que tu vois sur cette photo", "intention": "lecture", "source": "familier"}
+{"texte": "Explique moi ce qui se passe sur cette pic", "intention": "lecture", "source": "familier"}
+{"texte": "Jveux savoir ce que représente cette image", "intention": "lecture", "source": "familier"}
+{"texte": "Balance moi la description de cette photo", "intention": "lecture", "source": "familier"}
+{"texte": "Pourriez-vous concevoir un paysage de montagnes enneigees au coucher du soleil ?", "intention": "image", "source": "soutenu"}
+{"texte": "J'aimerais que vous imaginiez un dragon endormi sur un tas de tresors.", "intention": "image", "source": "soutenu"}
+{"texte": "Merci de creer une scene de marche medieval anime avec des marchands.", "intention": "image", "source": "soutenu"}
+{"texte": "Pourriez-vous generer un portrait d'une femme aux cheveux argentes dans un style aquarelle ?", "intention": "image", "source": "soutenu"}
+{"texte": "J'aimerais une illustration d'un vaisseau spatial survolant une planete inconnue.", "intention": "image", "source": "soutenu"}
+{"texte": "Veuillez ajouter un chapeau de paille sur le personnage de cette photo.", "intention": "edition", "source": "soutenu"}
+{"texte": "Pourriez-vous retirer la voiture qui se trouve en arriere plan de cette image ?", "intention": "edition", "source": "soutenu"}
+{"texte": "J'aimerais que le ciel bleu de cette photo devienne un ciel etoile.", "intention": "edition", "source": "soutenu"}
+{"texte": "Merci de changer la couleur de la robe pour un rouge plus vif.", "intention": "edition", "source": "soutenu"}
+{"texte": "Pourriez-vous effacer les rides du visage sur ce portrait ?", "intention": "edition", "source": "soutenu"}
+{"texte": "J'aimerais agrandir cette photo de famille sans perdre en qualite.", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Pourriez-vous augmenter la resolution de cette capture d'ecran ?", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Merci de rendre cette image plus grande pour l'impression sur affiche.", "intention": "agrandir", "source": "soutenu"}
+{"texte": "J'aimerais que cette photo de paysage passe en tres haute definition.", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Pourriez-vous etendre les dimensions de ce dessin sans le deformer ?", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Pourriez-vous isoler ce chat du fond de la photo ?", "intention": "detourer", "source": "soutenu"}
+{"texte": "J'aimerais que vous enleviez l'arriere plan de ce portrait pour un fond transparent.", "intention": "detourer", "source": "soutenu"}
+{"texte": "Merci de separer le produit du reste de l'image pour un catalogue en ligne.", "intention": "detourer", "source": "soutenu"}
+{"texte": "Pourriez-vous supprimer le fond blanc de ce logo ?", "intention": "detourer", "source": "soutenu"}
+{"texte": "J'aimerais extraire uniquement le personnage principal de cette illustration.", "intention": "detourer", "source": "soutenu"}
+{"texte": "Pourriez-vous produire une courte video d'un lever de soleil sur l'ocean ?", "intention": "video", "source": "soutenu"}
+{"texte": "J'aimerais une animation d'une ville futuriste avec des voitures volantes.", "intention": "video", "source": "soutenu"}
+{"texte": "Merci de creer un clip d'une foret enchantee avec des lucioles.", "intention": "video", "source": "soutenu"}
+{"texte": "Pourriez-vous imaginer une video d'une bataille entre chevaliers medievaux ?", "intention": "video", "source": "soutenu"}
+{"texte": "J'aimerais generer une sequence animee representant une tempete en mer.", "intention": "video", "source": "soutenu"}
+{"texte": "Pourriez-vous faire bouger ce portrait pour qu'il semble respirer doucement ?", "intention": "video_image", "source": "soutenu"}
+{"texte": "J'aimerais donner vie a cette photo de mon grand pere en le faisant sourire.", "intention": "video_image", "source": "soutenu"}
+{"texte": "Merci d'animer ce dessin de biche pour qu'elle tourne la tete lentement.", "intention": "video_image", "source": "soutenu"}
+{"texte": "Pourriez-vous faire onduler les vagues de cette photo de plage ?", "intention": "video_image", "source": "soutenu"}
+{"texte": "J'aimerais que les nuages de cette image se deplacent doucement.", "intention": "video_image", "source": "soutenu"}
+{"texte": "Pourriez-vous rendre cette video de danse plus fluide, elle semble saccadee ?", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "J'aimerais augmenter le nombre d'images par seconde de cet enregistrement sportif.", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Merci de lisser les mouvements de cette video filmee avec un vieux telephone.", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Pourriez-vous ameliorer la fluidite de ce clip d'animation en le ralentissant legerement ?", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "J'aimerais que cette video de course automobile paraisse plus douce a regarder.", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Pourriez-vous composer une melodie douce au piano pour accompagner un poeme ?", "intention": "audio", "source": "soutenu"}
+{"texte": "J'aimerais un instrumental energique de style electro pour une video sportive.", "intention": "audio", "source": "soutenu"}
+{"texte": "Merci de creer une chanson joyeuse sur le theme de l'amitie.", "intention": "audio", "source": "soutenu"}
+{"texte": "Pourriez-vous produire un beat hip hop avec une basse profonde ?", "intention": "audio", "source": "soutenu"}
+{"texte": "J'aimerais une bande originale orchestrale pour une scene epique.", "intention": "audio", "source": "soutenu"}
+{"texte": "Pourriez-vous realiser une page de bande dessinee avec un heros combattant un monstre ?", "intention": "planche", "source": "soutenu"}
+{"texte": "J'aimerais une planche de manga montrant une scene de duel entre deux ninjas.", "intention": "planche", "source": "soutenu"}
+{"texte": "Merci de concevoir plusieurs cases racontant une aventure spatiale.", "intention": "planche", "source": "soutenu"}
+{"texte": "Pourriez-vous creer une page avec des dialogues entre deux personnages dans un cafe ?", "intention": "planche", "source": "soutenu"}
+{"texte": "J'aimerais une bande dessinee humoristique sur la vie quotidienne d'un chat.", "intention": "planche", "source": "soutenu"}
+{"texte": "Pourriez-vous modeliser une figurine en trois dimensions d'un chevalier en armure ?", "intention": "objet3d", "source": "soutenu"}
+{"texte": "J'aimerais un objet en volume representant une voiture de course.", "intention": "objet3d", "source": "soutenu"}
+{"texte": "Merci de creer un modele tridimensionnel d'un arbre stylise pour un jeu video.", "intention": "objet3d", "source": "soutenu"}
+{"texte": "Pourriez-vous concevoir un maillage en trois dimensions d'une tasse de cafe ?", "intention": "objet3d", "source": "soutenu"}
+{"texte": "J'aimerais une sculpture numerique d'un dragon prete pour l'impression 3D.", "intention": "objet3d", "source": "soutenu"}
+{"texte": "Pourriez-vous me dire ce que represente cette photographie que je vous envoie ?", "intention": "lecture", "source": "soutenu"}
+{"texte": "J'aimerais savoir combien de personnes apparaissent sur cette image.", "intention": "lecture", "source": "soutenu"}
+{"texte": "Merci de decrire les couleurs et les formes presentes sur ce tableau.", "intention": "lecture", "source": "soutenu"}
+{"texte": "Pourriez-vous identifier les objets visibles sur cette capture d'ecran ?", "intention": "lecture", "source": "soutenu"}
+{"texte": "J'aimerais que vous expliquiez ce que fait l'animal sur cette photo.", "intention": "lecture", "source": "soutenu"}
+{"texte": "Pourriez-vous imaginer une planete recouverte de cristaux violets ?", "intention": "image", "source": "soutenu"}
+{"texte": "J'aimerais une image d'un phare battu par les vagues durant la nuit.", "intention": "image", "source": "soutenu"}
+{"texte": "Veuillez remplacer le fond de cette photo par une plage tropicale.", "intention": "edition", "source": "soutenu"}
+{"texte": "Pourriez-vous ajouter des fleurs de cerisier sur les branches de cet arbre en photo ?", "intention": "edition", "source": "soutenu"}
+{"texte": "Merci d'agrandir ce croquis afin qu'il puisse etre imprime en grand format.", "intention": "agrandir", "source": "soutenu"}
+{"texte": "J'aimerais detourer ce vase pour l'inserer dans une autre composition.", "intention": "detourer", "source": "soutenu"}
+{"texte": "Pourriez-vous creer une video d'un feu d'artifice au dessus d'une ville la nuit ?", "intention": "video", "source": "soutenu"}
+{"texte": "J'aimerais que cette statue en photo semble prendre vie et cligner des yeux.", "intention": "video_image", "source": "soutenu"}
+{"texte": "Merci de fluidifier cette video de patinage artistique qui saccade beaucoup.", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Pourriez-vous composer un morceau acoustique a la guitare pour un film independant ?", "intention": "audio", "source": "soutenu"}
+{"texte": "J'aimerais une planche illustree presentant l'origine d'un super heros.", "intention": "planche", "source": "soutenu"}
+{"texte": "Un dragon dans les nuages", "intention": "image", "source": "laconiques"}
+{"texte": "Paysage de montagne enneigée", "intention": "image", "source": "laconiques"}
+{"texte": "Portrait d'une femme mystérieuse", "intention": "image", "source": "laconiques"}
+{"texte": "Chat astronaute dans l'espace", "intention": "image", "source": "laconiques"}
+{"texte": "Forêt enchantée la nuit", "intention": "image", "source": "laconiques"}
+{"texte": "Robot futuriste en métal", "intention": "image", "source": "laconiques"}
+{"texte": "Ajoute un chapeau", "intention": "edition", "source": "laconiques"}
+{"texte": "Enlève la voiture", "intention": "edition", "source": "laconiques"}
+{"texte": "Change la couleur du ciel", "intention": "edition", "source": "laconiques"}
+{"texte": "Retire ce logo", "intention": "edition", "source": "laconiques"}
+{"texte": "Mets des lunettes noires", "intention": "edition", "source": "laconiques"}
+{"texte": "Efface la personne à droite", "intention": "edition", "source": "laconiques"}
+{"texte": "Augmente la résolution", "intention": "agrandir", "source": "laconiques"}
+{"texte": "Agrandis cette photo", "intention": "agrandir", "source": "laconiques"}
+{"texte": "Rends l'image plus grande", "intention": "agrandir", "source": "laconiques"}
+{"texte": "Améliore la définition", "intention": "agrandir", "source": "laconiques"}
+{"texte": "Double la taille", "intention": "agrandir", "source": "laconiques"}
+{"texte": "Upscale cette image", "intention": "agrandir", "source": "laconiques"}
+{"texte": "Enlève le fond", "intention": "detourer", "source": "laconiques"}
+{"texte": "Détoure ce personnage", "intention": "detourer", "source": "laconiques"}
+{"texte": "Fond transparent stp", "intention": "detourer", "source": "laconiques"}
+{"texte": "Isole le produit", "intention": "detourer", "source": "laconiques"}
+{"texte": "Supprime l'arrière-plan", "intention": "detourer", "source": "laconiques"}
+{"texte": "Découpe juste le sujet", "intention": "detourer", "source": "laconiques"}
+{"texte": "Une scène de guerre", "intention": "video", "source": "laconiques"}
+{"texte": "Vidéo d'un coucher de soleil", "intention": "video", "source": "laconiques"}
+{"texte": "Crée une pub animée", "intention": "video", "source": "laconiques"}
+{"texte": "Scène de course-poursuite", "intention": "video", "source": "laconiques"}
+{"texte": "Clip d'un feu d'artifice", "intention": "video", "source": "laconiques"}
+{"texte": "Vidéo de vagues déferlantes", "intention": "video", "source": "laconiques"}
+{"texte": "Anime cette photo", "intention": "video_image", "source": "laconiques"}
+{"texte": "Fais bouger ce portrait", "intention": "video_image", "source": "laconiques"}
+{"texte": "Donne vie à l'image", "intention": "video_image", "source": "laconiques"}
+{"texte": "Fais cligner les yeux", "intention": "video_image", "source": "laconiques"}
+{"texte": "Anime le personnage", "intention": "video_image", "source": "laconiques"}
+{"texte": "Fais bouger les cheveux", "intention": "video_image", "source": "laconiques"}
+{"texte": "Fluidifie cette vidéo", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Augmente les images par seconde", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Rends le mouvement plus doux", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Ajoute du ralenti", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Stabilise les saccades", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Interpole les images", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Compose un instrumental", "intention": "audio", "source": "laconiques"}
+{"texte": "Crée une chanson pop", "intention": "audio", "source": "laconiques"}
+{"texte": "Fais un beat trap", "intention": "audio", "source": "laconiques"}
+{"texte": "Musique de piano triste", "intention": "audio", "source": "laconiques"}
+{"texte": "Compose un morceau électro", "intention": "audio", "source": "laconiques"}
+{"texte": "Génère une mélodie douce", "intention": "audio", "source": "laconiques"}
+{"texte": "Planche de manga action", "intention": "planche", "source": "laconiques"}
+{"texte": "Page de BD comique", "intention": "planche", "source": "laconiques"}
+{"texte": "Crée une planche shonen", "intention": "planche", "source": "laconiques"}
+{"texte": "Bande dessinée en six cases", "intention": "planche", "source": "laconiques"}
+{"texte": "Page manga avec dialogue", "intention": "planche", "source": "laconiques"}
+{"texte": "Planche BD super-héros", "intention": "planche", "source": "laconiques"}
+{"texte": "Figurine 3D d'un guerrier", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Modélise une voiture", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Objet 3D d'un vase", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Crée un maillage 3D", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Sculpte un personnage 3D", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Figurine de dragon 3D", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Que vois-tu ici", "intention": "lecture", "source": "laconiques"}
+{"texte": "Décris cette photo", "intention": "lecture", "source": "laconiques"}
+{"texte": "Qu'y a-t-il sur l'image", "intention": "lecture", "source": "laconiques"}
+{"texte": "Explique ce que tu vois", "intention": "lecture", "source": "laconiques"}
+{"texte": "Décris la scène", "intention": "lecture", "source": "laconiques"}
+{"texte": "Qu'est-ce que ça représente", "intention": "lecture", "source": "laconiques"}
+{"texte": "Pourriez-vous créer une illustration représentant un village médiéval sous la neige ?", "intention": "image", "source": "soutenu"}
+{"texte": "J'aimerais une composition montrant un vaisseau spatial survolant une planète mauve.", "intention": "image", "source": "soutenu"}
+{"texte": "Merci de générer un portrait d'une femme aux cheveux argentés dans un style aquarelle.", "intention": "image", "source": "soutenu"}
+{"texte": "Pouvez-vous imaginer une forêt enchantée peuplée de lucioles ?", "intention": "image", "source": "soutenu"}
+{"texte": "Je souhaiterais une scène de marché oriental animée et colorée.", "intention": "image", "source": "soutenu"}
+{"texte": "Créez-moi un paysage de montagnes au coucher du soleil, s'il vous plaît.", "intention": "image", "source": "soutenu"}
+{"texte": "Pourriez-vous ajouter un chapeau de paille sur ce chien dans la photo ?", "intention": "edition", "source": "soutenu"}
+{"texte": "J'aimerais retirer la voiture qui apparaît en arrière-plan de cette image.", "intention": "edition", "source": "soutenu"}
+{"texte": "Merci de changer la couleur du ciel pour un dégradé orangé au coucher du soleil.", "intention": "edition", "source": "soutenu"}
+{"texte": "Pourriez-vous effacer les taches sur le mur visible derrière les personnes ?", "intention": "edition", "source": "soutenu"}
+{"texte": "J'aimerais remplacer le fond de cette photo par une plage tropicale.", "intention": "edition", "source": "soutenu"}
+{"texte": "Pouvez-vous ajouter des lunettes de soleil au personnage principal de cette illustration ?", "intention": "edition", "source": "soutenu"}
+{"texte": "Pourriez-vous augmenter la définition de cette photo sans en modifier le contenu ?", "intention": "agrandir", "source": "soutenu"}
+{"texte": "J'aimerais que cette image passe en très haute résolution pour l'impression.", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Merci de rendre cette photo plus grande tout en conservant sa netteté.", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Pouvez-vous améliorer la qualité de cette vieille photographie de famille ?", "intention": "agrandir", "source": "soutenu"}
+{"texte": "J'aimerais obtenir une version plus large de ce visuel sans perte de qualité.", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Pourriez-vous rendre cette image plus nette et de plus grande taille ?", "intention": "agrandir", "source": "soutenu"}
+{"texte": "Pourriez-vous enlever l'arrière-plan de cette photo de produit ?", "intention": "detourer", "source": "soutenu"}
+{"texte": "J'aimerais isoler ce chat du reste de la photo avec un fond transparent.", "intention": "detourer", "source": "soutenu"}
+{"texte": "Merci de supprimer le fond de cette image pour ne garder que le logo.", "intention": "detourer", "source": "soutenu"}
+{"texte": "Pouvez-vous détacher ce personnage de son décor d'origine ?", "intention": "detourer", "source": "soutenu"}
+{"texte": "J'aimerais avoir uniquement le sujet principal de cette photo, sans arrière-plan.", "intention": "detourer", "source": "soutenu"}
+{"texte": "Pourriez-vous extraire cette fleur de son environnement pour un fond blanc ?", "intention": "detourer", "source": "soutenu"}
+{"texte": "Pourriez-vous créer une courte vidéo montrant des vagues sur une plage ?", "intention": "video", "source": "soutenu"}
+{"texte": "J'aimerais une séquence animée représentant une course de voitures futuristes.", "intention": "video", "source": "soutenu"}
+{"texte": "Merci de générer un clip montrant un dragon volant au-dessus d'une cité.", "intention": "video", "source": "soutenu"}
+{"texte": "Pouvez-vous produire une vidéo d'une forêt tropicale sous la pluie ?", "intention": "video", "source": "soutenu"}
+{"texte": "J'aimerais une animation de particules de neige tombant la nuit.", "intention": "video", "source": "soutenu"}
+{"texte": "Créez-moi une vidéo d'un feu de camp crépitant dans l'obscurité.", "intention": "video", "source": "soutenu"}
+{"texte": "Pourriez-vous donner vie à cette photo de portrait en la faisant sourire ?", "intention": "video_image", "source": "soutenu"}
+{"texte": "J'aimerais animer cette illustration de vague pour qu'elle bouge doucement.", "intention": "video_image", "source": "soutenu"}
+{"texte": "Merci de faire bouger les cheveux du personnage sur cette image fixe.", "intention": "video_image", "source": "soutenu"}
+{"texte": "Pouvez-vous transformer cette photo de paysage en une scène animée avec des nuages en mouvement ?", "intention": "video_image", "source": "soutenu"}
+{"texte": "J'aimerais que ce dessin d'oiseau prenne vie et batte des ailes.", "intention": "video_image", "source": "soutenu"}
+{"texte": "Pourriez-vous animer cette photo de rivière pour simuler le courant de l'eau ?", "intention": "video_image", "source": "soutenu"}
+{"texte": "Pourriez-vous rendre cette vidéo plus fluide en augmentant le nombre d'images par seconde ?", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "J'aimerais lisser les mouvements de cette séquence filmée en basse fréquence.", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Merci de créer un effet de ralenti fluide sur cette vidéo de sport.", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Pouvez-vous améliorer la fluidité de cette animation qui semble saccadée ?", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "J'aimerais que cette vidéo de danse soit plus douce visuellement.", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Pourriez-vous interpoler des images supplémentaires pour fluidifier ce clip ?", "intention": "fluidifier", "source": "soutenu"}
+{"texte": "Pourriez-vous composer une mélodie douce au piano pour accompagner un poème ?", "intention": "audio", "source": "soutenu"}
+{"texte": "J'aimerais un instrumental de style électronique pour une vidéo de voyage.", "intention": "audio", "source": "soutenu"}
+{"texte": "Merci de créer une chanson entraînante sur le thème de l'amitié.", "intention": "audio", "source": "soutenu"}
+{"texte": "Pouvez-vous générer un beat hip-hop avec une basse profonde ?", "intention": "audio", "source": "soutenu"}
+{"texte": "J'aimerais une bande sonore orchestrale évoquant une bataille épique.", "intention": "audio", "source": "soutenu"}
+{"texte": "Créez-moi un morceau acoustique apaisant pour une séance de méditation.", "intention": "audio", "source": "soutenu"}
+{"texte": "Pourriez-vous réaliser une page de bande dessinée montrant un duel de chevaliers ?", "intention": "planche", "source": "soutenu"}
+{"texte": "J'aimerais une planche de manga représentant une scène d'école animée.", "intention": "planche", "source": "soutenu"}
+{"texte": "Merci de créer plusieurs cases racontant l'arrivée d'un héros dans une ville futuriste.", "intention": "planche", "source": "soutenu"}
+{"texte": "Pouvez-vous concevoir une page complète avec des bulles de dialogue pour une histoire policière ?", "intention": "planche", "source": "soutenu"}
+{"texte": "J'aimerais une série de cases illustrant une aventure en forêt mystérieuse.", "intention": "planche", "source": "soutenu"}
+{"texte": "Créez-moi une planche mettant en scène un combat entre deux super-héros.", "intention": "planche", "source": "soutenu"}
+{"texte": "Pourriez-vous concevoir une figurine en trois dimensions d'un robot articulé ?", "intention": "objet3d", "source": "soutenu"}
+{"texte": "J'aimerais un modèle en volume représentant un dragon miniature.", "intention": "objet3d", "source": "soutenu"}
+{"texte": "Merci de créer un maillage tridimensionnel d'une voiture ancienne.", "intention": "objet3d", "source": "soutenu"}
+{"texte": "Pouvez-vous réaliser une sculpture numérique d'un personnage de jeu vidéo ?", "intention": "objet3d", "source": "soutenu"}
+{"texte": "J'aimerais obtenir un objet en trois dimensions représentant une théière décorative.", "intention": "objet3d", "source": "soutenu"}
+{"texte": "Créez-moi une figurine 3D d'un chat assis, prête à imprimer.", "intention": "objet3d", "source": "soutenu"}
+{"texte": "Pourriez-vous me dire ce que représente cette photographie que je vous envoie ?", "intention": "lecture", "source": "soutenu"}
+{"texte": "J'aimerais savoir quels éléments apparaissent sur cette image de paysage.", "intention": "lecture", "source": "soutenu"}
+{"texte": "Merci de décrire les couleurs et les formes présentes sur ce cliché.", "intention": "lecture", "source": "soutenu"}
+{"texte": "Pouvez-vous identifier les objets visibles sur cette capture d'écran ?", "intention": "lecture", "source": "soutenu"}
+{"texte": "J'aimerais une description détaillée de ce que montre cette illustration.", "intention": "lecture", "source": "soutenu"}
+{"texte": "Pourriez-vous expliquer ce qui se passe dans cette scène représentée sur l'image ?", "intention": "lecture", "source": "soutenu"}
+{"texte": "Genere-moi un artwork de dragon endormi sur un tas d'or, style fantasy", "intention": "image", "source": "anglicismes"}
+{"texte": "Cree un visuel de ville cyberpunk sous la pluie avec des neons partout", "intention": "image", "source": "anglicismes"}
+{"texte": "J'ai besoin d'un thumbnail avec un astronaute flottant devant une planete rouge", "intention": "image", "source": "anglicismes"}
+{"texte": "Fais-moi une illustration d'un chat samourai en armure lacquee", "intention": "image", "source": "anglicismes"}
+{"texte": "Genere un mockup de robot mignon dans un jardin japonais", "intention": "image", "source": "anglicismes"}
+{"texte": "Cree une scene de foret enchantee avec des champignons lumineux", "intention": "image", "source": "anglicismes"}
+{"texte": "Ajoute un chapeau de sorciere au personnage sur cette photo", "intention": "edition", "source": "anglicismes"}
+{"texte": "Enleve la voiture qui est au fond du visuel", "intention": "edition", "source": "anglicismes"}
+{"texte": "Change la couleur du background en bleu nuit sur ce render", "intention": "edition", "source": "anglicismes"}
+{"texte": "Remplace le ciel de cette photo par un coucher de soleil", "intention": "edition", "source": "anglicismes"}
+{"texte": "Retire les rides sur le visage de cette portrait", "intention": "edition", "source": "anglicismes"}
+{"texte": "Rajoute des fleurs dans les cheveux du personnage sur l'image", "intention": "edition", "source": "anglicismes"}
+{"texte": "Upscale cette image en 4K sans toucher au style", "intention": "agrandir", "source": "anglicismes"}
+{"texte": "Augmente la resolution de ce visuel pour l'impression grand format", "intention": "agrandir", "source": "anglicismes"}
+{"texte": "J'ai besoin d'un upscale propre sur cette texture de bois", "intention": "agrandir", "source": "anglicismes"}
+{"texte": "Passe cette illustration en haute definition pour le print", "intention": "agrandir", "source": "anglicismes"}
+{"texte": "Peux-tu upscaler ce vieux scan de manga sans le denaturer", "intention": "agrandir", "source": "anglicismes"}
+{"texte": "Rends cette photo de produit exploitable en tres grande taille", "intention": "agrandir", "source": "anglicismes"}
+{"texte": "Detoure ce portrait pour avoir un fond transparent", "intention": "detourer", "source": "anglicismes"}
+{"texte": "Isole le personnage sur ce visuel pour le mettre en PNG", "intention": "detourer", "source": "anglicismes"}
+{"texte": "Enleve le background de cette photo de chaussure", "intention": "detourer", "source": "anglicismes"}
+{"texte": "J'ai besoin du sujet seul, sans le fond, pour un mockup", "intention": "detourer", "source": "anglicismes"}
+{"texte": "Peux-tu extraire juste le chat de cette image, fond transparent", "intention": "detourer", "source": "anglicismes"}
+{"texte": "Detoure le logo sur ce fond blanc pour l'integrer ailleurs", "intention": "detourer", "source": "anglicismes"}
+{"texte": "Genere une video d'un vaisseau spatial qui traverse une nebuleuse", "intention": "video", "source": "anglicismes"}
+{"texte": "Cree un clip de vagues qui s'ecrasent sur des rochers au coucher du soleil", "intention": "video", "source": "anglicismes"}
+{"texte": "Fais-moi une courte video d'un renard qui court dans la neige", "intention": "video", "source": "anglicismes"}
+{"texte": "Genere un render anime d'une ville futuriste vue du ciel", "intention": "video", "source": "anglicismes"}
+{"texte": "J'aimerais une video de flammes qui dansent dans l'obscurite", "intention": "video", "source": "anglicismes"}
+{"texte": "Cree un clip abstrait de particules colorees pour un intro", "intention": "video", "source": "anglicismes"}
+{"texte": "Anime cette photo de mon chien pour qu'il tourne la tete", "intention": "video_image", "source": "anglicismes"}
+{"texte": "Fais bouger les cheveux du personnage sur ce visuel", "intention": "video_image", "source": "anglicismes"}
+{"texte": "Donne vie a ce portrait, fais-le sourire doucement", "intention": "video_image", "source": "anglicismes"}
+{"texte": "Anime cette illustration de paysage avec des nuages qui defilent", "intention": "video_image", "source": "anglicismes"}
+{"texte": "J'ai ce artwork de guerrier, peux-tu le faire cligner des yeux", "intention": "video_image", "source": "anglicismes"}
+{"texte": "Fais bouger l'eau sur cette image de riviere", "intention": "video_image", "source": "anglicismes"}
+{"texte": "Augmente le fps de cette video pour un rendu plus smooth", "intention": "fluidifier", "source": "anglicismes"}
+{"texte": "Fais un slowmo sur ce clip de saut en skate", "intention": "fluidifier", "source": "anglicismes"}
+{"texte": "J'ai besoin d'interpolation d'images pour fluidifier cette animation", "intention": "fluidifier", "source": "anglicismes"}
+{"texte": "Rends cette video moins saccadee, passe la en 60 fps", "intention": "fluidifier", "source": "anglicismes"}
+{"texte": "Peux-tu ajouter du ralenti sur ce render de course", "intention": "fluidifier", "source": "anglicismes"}
+{"texte": "Lisse le mouvement de cette video filmee en basse fps", "intention": "fluidifier", "source": "anglicismes"}
+{"texte": "Compose un beat lo-fi pour une session de travail", "intention": "audio", "source": "anglicismes"}
+{"texte": "Genere un instrumental orchestral epique pour un trailer", "intention": "audio", "source": "anglicismes"}
+{"texte": "Cree une chanson pop entrainante avec des paroles en francais", "intention": "audio", "source": "anglicismes"}
+{"texte": "J'ai besoin d'un morceau ambient pour une meditation", "intention": "audio", "source": "anglicismes"}
+{"texte": "Fais-moi un beat trap avec une basse bien lourde", "intention": "audio", "source": "anglicismes"}
+{"texte": "Compose une melodie de piano triste pour une scene dramatique", "intention": "audio", "source": "anglicismes"}
+{"texte": "Cree une planche manga avec un combat en trois cases", "intention": "planche", "source": "anglicismes"}
+{"texte": "Fais-moi une page de BD avec un heros qui decouvre un tresor", "intention": "planche", "source": "anglicismes"}
+{"texte": "J'ai besoin d'une page complete avec dialogue pour mon comic", "intention": "planche", "source": "anglicismes"}
+{"texte": "Genere une planche de style franco-belge avec quatre cases", "intention": "planche", "source": "anglicismes"}
+{"texte": "Cree une page manga avec une scene d'action et des onomatopees", "intention": "planche", "source": "anglicismes"}
+{"texte": "Fais-moi une planche avec un dragon attaquant un village, plusieurs cases", "intention": "planche", "source": "anglicismes"}
+{"texte": "Genere un objet3d de figurine de chevalier pour impression 3D", "intention": "objet3d", "source": "anglicismes"}
+{"texte": "J'ai besoin d'un mesh de voiture stylisee pour un jeu video", "intention": "objet3d", "source": "anglicismes"}
+{"texte": "Cree un modele 3D d'epee fantastique avec des runes gravees", "intention": "objet3d", "source": "anglicismes"}
+{"texte": "Genere le maillage d'un vase antique pour du rendu 3D", "intention": "objet3d", "source": "anglicismes"}
+{"texte": "Fais-moi une figurine 3D de mon personnage de jeu prefere", "intention": "objet3d", "source": "anglicismes"}
+{"texte": "J'ai besoin d'un asset 3D de coffre au tresor pour un mockup de jeu", "intention": "objet3d", "source": "anglicismes"}
+{"texte": "Dis-moi ce que tu vois sur cette photo que je te montre", "intention": "lecture", "source": "anglicismes"}
+{"texte": "Decris-moi le contenu de ce visuel en detail", "intention": "lecture", "source": "anglicismes"}
+{"texte": "Qu'est-ce qui apparait sur cette image, peux-tu me le dire", "intention": "lecture", "source": "anglicismes"}
+{"texte": "Explique-moi ce que represente ce render que j'ai upload", "intention": "lecture", "source": "anglicismes"}
+{"texte": "Regarde cette photo et dis-moi ce qui s'y passe", "intention": "lecture", "source": "anglicismes"}
+{"texte": "Peux-tu identifier les objets presents sur cette image", "intention": "lecture", "source": "anglicismes"}
+{"texte": "jveux une image d'un dragon qui vole au dessu d'une ville futuriste", "intention": "image", "source": "fautes"}
+{"texte": "cree moi un chat astronaute sur la lune stp", "intention": "image", "source": "fautes"}
+{"texte": "genere une foret enchantee avec des lucioles la nuit", "intention": "image", "source": "fautes"}
+{"texte": "jaimerai voir un portrait realiste d'une vieille femme ridée", "intention": "image", "source": "fautes"}
+{"texte": "fai une illustration d'un chevalier en armure doré face a un dragon", "intention": "image", "source": "fautes"}
+{"texte": "peux tu generer un paysage de desert avec des dunes rouges", "intention": "image", "source": "fautes"}
+{"texte": "rajoute un chapeau de sorciere sur le personnage de la photo", "intention": "edition", "source": "fautes"}
+{"texte": "enleve la voiture qui est derriere moi sur cette photo stp", "intention": "edition", "source": "fautes"}
+{"texte": "change la couleur du ciel en orange sur cette image", "intention": "edition", "source": "fautes"}
+{"texte": "peux tu retirer les boutons sur mon visage svp", "intention": "edition", "source": "fautes"}
+{"texte": "ajoute des lunettes de soleil au chien sur la photo", "intention": "edition", "source": "fautes"}
+{"texte": "remplace le fond de cette photo par une plage", "intention": "edition", "source": "fautes"}
+{"texte": "jvoudrais agrandir cette photo sans quelle devienne floue", "intention": "agrandir", "source": "fautes"}
+{"texte": "augmente la resolution de cette image svp", "intention": "agrandir", "source": "fautes"}
+{"texte": "peux tu rendre cette photo plus grande en gardant la qualité", "intention": "agrandir", "source": "fautes"}
+{"texte": "jai besoin dune version haute def de cette vieille photo", "intention": "agrandir", "source": "fautes"}
+{"texte": "upscale cette image pour limpression grand format", "intention": "agrandir", "source": "fautes"}
+{"texte": "cette photo est trop petite tu peu l'aggrandir", "intention": "agrandir", "source": "fautes"}
+{"texte": "enleve le fond de cette photo de produit stp", "intention": "detourer", "source": "fautes"}
+{"texte": "jveux isoler le sujet sur fond transparent", "intention": "detourer", "source": "fautes"}
+{"texte": "peux tu detourer ce logo pour l'utiliser sur un tshirt", "intention": "detourer", "source": "fautes"}
+{"texte": "retire l'arriere plan de cette photo de portrait", "intention": "detourer", "source": "fautes"}
+{"texte": "jai besoin du personnage sans fond en png", "intention": "detourer", "source": "fautes"}
+{"texte": "extrait juste le chat de la photo sans le reste", "intention": "detourer", "source": "fautes"}
+{"texte": "cree une video d'un vaisseau spatial qui traverse une galaxie", "intention": "video", "source": "fautes"}
+{"texte": "genere moi une courte video d'une chute d'eau en foret", "intention": "video", "source": "fautes"}
+{"texte": "jveux une video d'un robot qui marche dans une ville en ruine", "intention": "video", "source": "fautes"}
+{"texte": "fai une video de vagues qui s'ecrasent sur des rochers", "intention": "video", "source": "fautes"}
+{"texte": "produit une animation d'un feu de camp la nuit", "intention": "video", "source": "fautes"}
+{"texte": "cree une sequence video d'oiseaux migrateurs au coucher du soleil", "intention": "video", "source": "fautes"}
+{"texte": "anime cette photo de mon chien pour qu'il bouge la tete", "intention": "video_image", "source": "fautes"}
+{"texte": "jveux que le personnage de cette image cligne des yeux", "intention": "video_image", "source": "fautes"}
+{"texte": "donne vie a cette peinture de paysage stp", "intention": "video_image", "source": "fautes"}
+{"texte": "fai bouger les cheveux de la fille sur cette photo", "intention": "video_image", "source": "fautes"}
+{"texte": "transforme cette image fixe en petite animation", "intention": "video_image", "source": "fautes"}
+{"texte": "jaimerai que le nuage sur ma photo se deplace lentement", "intention": "video_image", "source": "fautes"}
+{"texte": "rend cette video plus fluide elle saccade trop", "intention": "fluidifier", "source": "fautes"}
+{"texte": "augmente les images par seconde de ce clip stp", "intention": "fluidifier", "source": "fautes"}
+{"texte": "jveux un ralenti smooth sur cette video de sport", "intention": "fluidifier", "source": "fautes"}
+{"texte": "peux tu ameliorer la fluidite de cette animation", "intention": "fluidifier", "source": "fautes"}
+{"texte": "cette video est saccadée tu peu la rendre plus fluide", "intention": "fluidifier", "source": "fautes"}
+{"texte": "genere plus de frames pour un rendu plus doux", "intention": "fluidifier", "source": "fautes"}
+{"texte": "cree moi un instrumental style lofi pour etudier", "intention": "audio", "source": "fautes"}
+{"texte": "jveux une chanson triste au piano avec des paroles sur la solitude", "intention": "audio", "source": "fautes"}
+{"texte": "genere un beat trap avec une grosse basse", "intention": "audio", "source": "fautes"}
+{"texte": "compose une musique douce pour endormir un bebe", "intention": "audio", "source": "fautes"}
+{"texte": "fai moi un morceau electro energique pour une fete", "intention": "audio", "source": "fautes"}
+{"texte": "jai besoin d'une bande son epique pour une video de fantasy", "intention": "audio", "source": "fautes"}
+{"texte": "dessine moi une planche manga avec un combat entre deux ninjas", "intention": "planche", "source": "fautes"}
+{"texte": "cree une page de bd avec 6 cases sur une aventure en foret", "intention": "planche", "source": "fautes"}
+{"texte": "jveux une planche de comic super heros avec plusieurs vignettes", "intention": "planche", "source": "fautes"}
+{"texte": "fai moi une page manga ou le heros decouvre un tresor", "intention": "planche", "source": "fautes"}
+{"texte": "genere une planche bd humoristique avec un chat et un chien", "intention": "planche", "source": "fautes"}
+{"texte": "produit une page de bande dessinee sur une bataille spatiale", "intention": "planche", "source": "fautes"}
+{"texte": "jveux un modele 3d d'une epee medievale detaillee", "intention": "objet3d", "source": "fautes"}
+{"texte": "cree une figurine 3d de mon personnage de jeu video", "intention": "objet3d", "source": "fautes"}
+{"texte": "genere un maillage 3d d'une voiture de sport", "intention": "objet3d", "source": "fautes"}
+{"texte": "jai besoin d'un objet 3d imprimable d'un dragon miniature", "intention": "objet3d", "source": "fautes"}
+{"texte": "fai moi une statuette 3d d'un robot futuriste", "intention": "objet3d", "source": "fautes"}
+{"texte": "cree un modele tridimensionnel d'une chaise design", "intention": "objet3d", "source": "fautes"}
+{"texte": "dis moi ce que tu vois sur cette photo stp", "intention": "lecture", "source": "fautes"}
+{"texte": "decri moi le contenu de cette image", "intention": "lecture", "source": "fautes"}
+{"texte": "qu'est ce qu'il y a sur cette photo que je t'envoie", "intention": "lecture", "source": "fautes"}
+{"texte": "peux tu m'expliquer ce qui se passe sur cette capture d'ecran", "intention": "lecture", "source": "fautes"}
+{"texte": "analyse cette image et donne moi les details", "intention": "lecture", "source": "fautes"}
+{"texte": "jaimerai savoir ce qui est ecrit sur cette affiche en photo", "intention": "lecture", "source": "fautes"}
+{"texte": "Portrait de vieux marin", "intention": "image", "source": "laconiques"}
+{"texte": "Chat astronaute stylisé", "intention": "image", "source": "laconiques"}
+{"texte": "Ville futuriste la nuit", "intention": "image", "source": "laconiques"}
+{"texte": "Fleur géante fantastique", "intention": "image", "source": "laconiques"}
+{"texte": "Retire les rides", "intention": "edition", "source": "laconiques"}
+{"texte": "Mets des lunettes", "intention": "edition", "source": "laconiques"}
+{"texte": "Supprime l'arrière-plan flou", "intention": "edition", "source": "laconiques"}
+{"texte": "Rends-la plus grande", "intention": "agrandir", "source": "laconiques"}
+{"texte": "Détoure ce portrait", "intention": "detourer", "source": "laconiques"}
+{"texte": "Isole le sujet", "intention": "detourer", "source": "laconiques"}
+{"texte": "Découpe le personnage", "intention": "detourer", "source": "laconiques"}
+{"texte": "Retire l'arrière-plan", "intention": "detourer", "source": "laconiques"}
+{"texte": "Clip de danse robotique", "intention": "video", "source": "laconiques"}
+{"texte": "Scène de bataille épique", "intention": "video", "source": "laconiques"}
+{"texte": "Vidéo d'une forêt magique", "intention": "video", "source": "laconiques"}
+{"texte": "Court métrage de pluie", "intention": "video", "source": "laconiques"}
+{"texte": "Séquence de course automobile", "intention": "video", "source": "laconiques"}
+{"texte": "Fais bouger le personnage", "intention": "video_image", "source": "laconiques"}
+{"texte": "Anime le portrait", "intention": "video_image", "source": "laconiques"}
+{"texte": "Mets ce paysage en mouvement", "intention": "video_image", "source": "laconiques"}
+{"texte": "Stabilise la vidéo", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Plus de fluidité stp", "intention": "fluidifier", "source": "laconiques"}
+{"texte": "Fais un beat hip-hop", "intention": "audio", "source": "laconiques"}
+{"texte": "Musique douce au piano", "intention": "audio", "source": "laconiques"}
+{"texte": "Chanson d'amour triste", "intention": "audio", "source": "laconiques"}
+{"texte": "Compose une mélodie jazz", "intention": "audio", "source": "laconiques"}
+{"texte": "Planche de manga shonen", "intention": "planche", "source": "laconiques"}
+{"texte": "Page de BD action", "intention": "planche", "source": "laconiques"}
+{"texte": "Case de super-héros", "intention": "planche", "source": "laconiques"}
+{"texte": "Planche façon Tintin", "intention": "planche", "source": "laconiques"}
+{"texte": "Page manga romance", "intention": "planche", "source": "laconiques"}
+{"texte": "BD humoristique en cases", "intention": "planche", "source": "laconiques"}
+{"texte": "Objet 3D d'un robot", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Maillage d'un personnage", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Figurine à imprimer", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Sculpture 3D d'un chat", "intention": "objet3d", "source": "laconiques"}
+{"texte": "Explique ce dessin", "intention": "lecture", "source": "laconiques"}
+{"texte": "Que représente cette image", "intention": "lecture", "source": "laconiques"}
+{"texte": "Dis-moi ce que tu vois", "intention": "lecture", "source": "laconiques"}
+{"texte": "Genere une illustration d'un phare battu par les vagues sous un ciel orageux.", "intention": "image", "source": "metier"}
+{"texte": "Peux-tu concevoir une maquette visuelle d'une ville futuriste vue de nuit ?", "intention": "image", "source": "metier"}
+{"texte": "J'aimerais une illustration originale d'un renard assis sur une branche givree.", "intention": "image", "source": "metier"}
+{"texte": "Cree un rendu artistique d'un vaisseau spatial traversant une nebuleuse colorée.", "intention": "image", "source": "metier"}
+{"texte": "Imagine une composition avec un vieux marche provencal baigne de lumiere doree.", "intention": "image", "source": "metier"}
+{"texte": "Fabrique-moi un visuel d'un dragon endormi sur un tas de tresors dores.", "intention": "image", "source": "metier"}
+{"texte": "Ajoute un chapeau de paille au personnage sur cette photo de plage.", "intention": "edition", "source": "metier"}
+{"texte": "Peux-tu retirer le lampadaire qui gene le cadrage de cette photo de rue ?", "intention": "edition", "source": "metier"}
+{"texte": "Change la colorimetrie du ciel pour un coucher de soleil plus orange.", "intention": "edition", "source": "metier"}
+{"texte": "Enleve les fils electriques visibles derriere la maison sur ce cliche.", "intention": "edition", "source": "metier"}
+{"texte": "Remplace le fond de cette photo par une foret automnale.", "intention": "edition", "source": "metier"}
+{"texte": "Ajoute des reflets sur l'eau de ce lac pris en photo hier soir.", "intention": "edition", "source": "metier"}
+{"texte": "Peux-tu augmenter la definition de cette photo de jaquette sans toucher au contenu ?", "intention": "agrandir", "source": "metier"}
+{"texte": "J'ai besoin d'une version plus grande de ce visuel pour l'impression sur affiche.", "intention": "agrandir", "source": "metier"}
+{"texte": "Cette image de croquis est trop petite, peux-tu l'agrandir en gardant les details ?", "intention": "agrandir", "source": "metier"}
+{"texte": "Ameliore la resolution de cette vieille photo de famille scannee.", "intention": "agrandir", "source": "metier"}
+{"texte": "Peux-tu rendre cette texture de bois plus nette pour un usage en grand format ?", "intention": "agrandir", "source": "metier"}
+{"texte": "J'aimerais une version haute definition de cette illustration pour l'impression sur toile.", "intention": "agrandir", "source": "metier"}
+{"texte": "Peux-tu isoler ce chat pour que le fond soit transparent ?", "intention": "detourer", "source": "metier"}
+{"texte": "Enleve l'arriere-plan de cette photo de produit pour le catalogue.", "intention": "detourer", "source": "metier"}
+{"texte": "J'ai besoin du sujet seul sans fond pour l'incruster dans une autre scene.", "intention": "detourer", "source": "metier"}
+{"texte": "Peux-tu extraire ce personnage de sa photo d'origine, sans fond ?", "intention": "detourer", "source": "metier"}
+{"texte": "Retire tout ce qui entoure cette figurine sur l'image, je veux juste l'objet.", "intention": "detourer", "source": "metier"}
+{"texte": "J'aimerais que ce logo soit propre, sans arriere-plan, pour l'utiliser sur la jaquette.", "intention": "detourer", "source": "metier"}
+{"texte": "Cree une courte video d'un feu de camp qui crepite dans la nuit.", "intention": "video", "source": "metier"}
+{"texte": "Genere un clip d'une riviere qui serpente a travers une foret tropicale.", "intention": "video", "source": "metier"}
+{"texte": "J'aimerais une sequence video montrant un orage sur une ville moderne.", "intention": "video", "source": "metier"}
+{"texte": "Produis une video d'un vol d'oiseaux migrateurs au coucher du soleil.", "intention": "video", "source": "metier"}
+{"texte": "Cree une animation completement inventee d'un marche futuriste anime.", "intention": "video", "source": "metier"}
+{"texte": "J'aimerais un storyboard anime d'une course de voitures dans le desert.", "intention": "video", "source": "metier"}
+{"texte": "Peux-tu donner vie a ce portrait pour qu'il cligne des yeux ?", "intention": "video_image", "source": "metier"}
+{"texte": "J'aimerais que ce paysage peint se mette a bouger doucement, comme des nuages qui defilent.", "intention": "video_image", "source": "metier"}
+{"texte": "Anime cette photo de chat pour qu'il tourne la tete vers la camera.", "intention": "video_image", "source": "metier"}
+{"texte": "Fais bouger les cheveux du personnage sur cette illustration statique.", "intention": "video_image", "source": "metier"}
+{"texte": "J'aimerais transformer ce croquis de vague en une animation qui deferle.", "intention": "video_image", "source": "metier"}
+{"texte": "Donne du mouvement a cette affiche pour qu'elle serve d'intro video.", "intention": "video_image", "source": "metier"}
+{"texte": "Cette video de danse saccade, peux-tu la rendre plus fluide ?", "intention": "fluidifier", "source": "metier"}
+{"texte": "J'aimerais augmenter le nombre d'images par seconde de ce clip de sport.", "intention": "fluidifier", "source": "metier"}
+{"texte": "Peux-tu lisser les mouvements de cette sequence filmee en basse cadence ?", "intention": "fluidifier", "source": "metier"}
+{"texte": "Rends ce ralenti plus doux, il saccade trop pour l'instant.", "intention": "fluidifier", "source": "metier"}
+{"texte": "J'ai une video de skate un peu heurtee, peux-tu ameliorer sa fluidite ?", "intention": "fluidifier", "source": "metier"}
+{"texte": "Cette animation manque de fps, peux-tu la fluidifier pour un rendu plus pro ?", "intention": "fluidifier", "source": "metier"}
+{"texte": "Compose-moi un instrumental jazzy pour accompagner un generique de film.", "intention": "audio", "source": "metier"}
+{"texte": "J'aimerais un beat electro entrainant pour une video de sport.", "intention": "audio", "source": "metier"}
+{"texte": "Cree une petite chanson douce sur le theme de l'automne.", "intention": "audio", "source": "metier"}
+{"texte": "Peux-tu composer une musique orchestrale epique pour un trailer ?", "intention": "audio", "source": "metier"}
+{"texte": "J'aimerais un morceau acoustique a la guitare pour illustrer un carnet de voyage.", "intention": "audio", "source": "metier"}
+{"texte": "Genere une bande-son ambiante pour une scene de foret mysterieuse.", "intention": "audio", "source": "metier"}
+{"texte": "Dessine-moi une planche de trois cases racontant l'arrivee d'un heros dans une ville en ruine.", "intention": "planche", "source": "metier"}
+{"texte": "J'ai besoin d'une page de manga avec un combat entre deux samourais.", "intention": "planche", "source": "metier"}
+{"texte": "Cree une planche complete montrant un detective qui interroge un suspect.", "intention": "planche", "source": "metier"}
+{"texte": "Peux-tu realiser une page de BD ou un chat espion infiltre un laboratoire secret ?", "intention": "planche", "source": "metier"}
+{"texte": "J'aimerais un storyboard en cases pour une scene de poursuite en voiture.", "intention": "planche", "source": "metier"}
+{"texte": "Fais-moi une planche avec plusieurs cases illustrant une dispute entre deux freres.", "intention": "planche", "source": "metier"}
+{"texte": "Modelise une figurine en 3D d'un chevalier avec son armure detaillee.", "intention": "objet3d", "source": "metier"}
+{"texte": "J'aimerais un maillage 3D d'une voiture de course stylisee.", "intention": "objet3d", "source": "metier"}
+{"texte": "Cree un objet en volume representant une tasse de cafe avec des motifs graves.", "intention": "objet3d", "source": "metier"}
+{"texte": "Peux-tu concevoir un modele 3D imprimable d'un dragon miniature ?", "intention": "objet3d", "source": "metier"}
+{"texte": "J'ai besoin d'une maquette tridimensionnelle d'un vaisseau spatial pour un jeu video.", "intention": "objet3d", "source": "metier"}
+{"texte": "Genere un rendu 3D d'une chaise design aux lignes courbes.", "intention": "objet3d", "source": "metier"}
+{"texte": "Dis-moi ce que tu vois sur cette photo que je viens de t'envoyer.", "intention": "lecture", "source": "metier"}
+{"texte": "Peux-tu decrire les couleurs et l'ambiance de ce tableau ?", "intention": "lecture", "source": "metier"}
+{"texte": "Explique-moi ce qui se passe sur cette capture d'ecran.", "intention": "lecture", "source": "metier"}
+{"texte": "J'aimerais savoir combien de personnages apparaissent sur cette illustration.", "intention": "lecture", "source": "metier"}
+{"texte": "Peux-tu me detailler le cadrage et la composition de cette photo de paysage ?", "intention": "lecture", "source": "metier"}
+{"texte": "Dis-moi si tu reconnais un monument particulier sur cette image.", "intention": "lecture", "source": "metier"}

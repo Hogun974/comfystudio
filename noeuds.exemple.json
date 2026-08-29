@@ -1,0 +1,12 @@
+[
+  {
+    "id": "local",
+    "titre": "cette machine",
+    "url": "http://127.0.0.1:8188"
+  },
+  {
+    "id": "atelier",
+    "titre": "PC du salon (RTX 4090)",
+    "url": "http://192.0.2.42:8188"
+  }
+]

@@ -1,0 +1,16 @@
+# Les scripts shell doivent garder des fins de ligne UNIX, meme clones depuis
+# Windows : avec des CRLF, bash refuse de les lancer
+#   /usr/bin/env: 'bash\r': No such file or directory
+*.sh    text eol=lf
+installer.sh text eol=lf
+
+# Les fichiers Windows gardent les leurs
+*.bat   text eol=crlf
+
+# Le reste est normalise a l'interieur du depot
+*.py    text
+*.md    text
+*.html  text
+*.json  text
+*.yml   text
+Dockerfile text

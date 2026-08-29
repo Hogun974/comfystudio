@@ -1,0 +1,196 @@
+# Unite systemd de ComfyStudio.
+#
+# Ce fichier est un GABARIT : installer_service.sh remplace tous les jetons
+# encadres de doubles arobases par les chemins reels, puis depose le resultat
+# dans /etc/systemd/system/. Il reste lisible et modifiable a la main : dans ce
+# cas, remplace-les toi-meme avant de copier le fichier — systemd refuse de
+# demarrer une unite dont l'ExecStart n'est pas un chemin absolu, et un jeton
+# oublie donne une erreur qui ne nomme pas la cause.
+#
+# Les reglages propres au site (port, mot de passe admin, URL de ComfyUI) ne
+# sont PAS ici mais dans @@ENV@@ : editer un fichier d'environnement ne demande
+# pas de « systemctl daemon-reload », et le jour d'une mise a jour de
+# ComfyStudio on peut ecraser l'unite sans effacer la configuration de la
+# machine.
+
+[Unit]
+Description=ComfyStudio - pilotage de ComfyUI en langage naturel
+# network-online et non network : le studio interroge ComfyUI et Ollama des le
+# demarrage (releve de la VRAM, choix du modele d'ecriture). Avec le simple
+# « network.target » l'unite part avant que l'adresse soit montee, et le studio
+# annonce « VRAM inconnue - aucun ComfyUI joignable » a chaque redemarrage de la
+# machine, ce qui ressemble a une panne alors que tout va bien.
+Wants=network-online.target
+After=network-online.target
+
+# Si ComfyUI et Ollama tournent sur CETTE machine en tant que services, cite-les
+# ici pour eviter le meme demarrage a vide. On ne met pas Requires= : le studio
+# doit pouvoir demarrer meme si ComfyUI est en panne, son interface sert alors
+# a le diagnostiquer.
+# After=comfyui.service ollama.service
+# Wants=comfyui.service ollama.service
+
+# Ces deux lignes sont dans [Unit] et non dans [Service] : systemd les y a
+# deplacees en version 229 (2016). Sur un systeme plus ancien elles seraient
+# ignorees avec un avertissement, sans casser le reste.
+#
+# Sans limite, un studio qui plante au demarrage (aiohttp absent, port deja
+# pris, dossier de donnees illisible) serait relance toutes les 5 secondes pour
+# l'eternite, remplissant le journal a la vitesse du disque. Au-dela de 5 echecs
+# en 5 minutes, systemd abandonne et laisse l'unite en « failed » : c'est
+# visible, et « systemctl reset-failed comfystudio » relance apres correction.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+# Type=simple et non Type=exec : « exec » ferait echouer « systemctl start »
+# immediatement quand l'interpreteur est introuvable, ce qui serait plus clair,
+# mais il exige systemd 240 (fin 2018) et laisserait de cote RHEL 8 et
+# Ubuntu 18.04. Avec « simple », l'echec se lit dans journalctl au lieu du
+# terminal.
+Type=simple
+
+# JAMAIS root. Le studio expose une interface web qui recoit des televersements,
+# telecharge des modeles et lance des sous-processus : une faille dans aiohttp
+# ou dans le studio lui-meme donnerait la machine entiere.
+User=@@UTILISATEUR@@
+# Le groupe est un jeton separe et non une copie du nom d'utilisateur : le
+# groupe homonyme n'est pas garanti. « adduser -S » de busybox (Alpine, images
+# minimales) range le compte dans « nogroup », et l'unite echouerait sur
+# « Group comfystudio not found » apres une installation annoncee reussie.
+Group=@@GROUPE@@
+
+WorkingDirectory=@@RACINE@@
+
+# Le « - » rend le fichier facultatif : sans lui, une unite dont le fichier
+# d'environnement a ete efface refuse de demarrer avec un message qui parle de
+# l'unite et non du fichier manquant.
+EnvironmentFile=-@@ENV@@
+
+# Ces deux valeurs sont dans l'unite et non dans le fichier d'environnement :
+# elles decrivent l'INSTALLATION, pas le gout de l'administrateur. Les laisser
+# modifiables inviterait a pointer STUDIO_DONNEES ailleurs sans corriger
+# ReadWritePaths plus bas, et le studio echouerait alors sur une erreur de
+# permission incomprehensible.
+Environment=STUDIO_DONNEES=@@DONNEES@@
+Environment=PYTHONUNBUFFERED=1
+
+# -u en plus de PYTHONUNBUFFERED : ceinture et bretelles. Un fichier
+# d'environnement peut redefinir PYTHONUNBUFFERED et faire disparaitre tout le
+# journal du studio jusqu'a son arret.
+ExecStart=@@PYTHON@@ -u @@RACINE@@/serveur.py
+
+# on-failure et non always : si le studio s'arrete proprement (code 0), c'est
+# qu'on le lui a demande. « always » relancerait aussi apres un arret volontaire
+# et rendrait le service impossible a stopper autrement que par systemctl.
+Restart=on-failure
+# 5 s : assez pour qu'un port en TIME_WAIT se libere et qu'Ollama finisse de
+# demarrer, assez court pour qu'un redemarrage passe inapercu cote navigateur.
+RestartSec=5
+
+# Le studio n'installe pas de gestionnaire de SIGTERM : il meurt sur le signal,
+# ce qui est acceptable ici (les conversations sont ecrites au fil de l'eau, il
+# n'y a rien a vider sur disque en fin de course).
+KillSignal=SIGTERM
+TimeoutStopSec=20
+# ATTENTION : par defaut systemd tue tout le groupe de controle a l'arret. Si le
+# studio a lance ComfyUI lui-meme (il sait le faire), ce ComfyUI est son enfant
+# et tombera avec lui a chaque redemarrage du studio. C'est une raison de plus
+# de faire de ComfyUI un service separe et de ne renseigner que COMFY_URL.
+
+# ─────────────────────────── durcissement ────────────────────────────
+# Regle suivie ici : on n'active que ce qui laisse le studio ecrire ses
+# conversations, ses sorties et son registre. Ce qui casse quelque chose est
+# laisse en commentaire AVEC la raison, plutot que promis puis retire en
+# silence.
+
+# Empeche tout binaire setuid appele par le studio de gagner des droits. Sans
+# cela, un « sudo » ou un « mount » suid trouve dans le PATH resterait une porte
+# de sortie depuis le compte de service.
+NoNewPrivileges=yes
+
+# /tmp prive : les fichiers temporaires du studio ne sont plus lisibles par les
+# autres comptes de la machine, et un /tmp piege par un autre service ne peut
+# plus lui faire ouvrir le mauvais fichier.
+PrivateTmp=yes
+
+# « full » et non « strict » : /usr, /boot, /efi et /etc passent en lecture
+# seule. « strict » mettrait TOUT le disque en lecture seule et exigerait de
+# lister chaque chemin ecrit ; or le studio ecrit a plusieurs endroits de son
+# dossier d'installation (sorties/, avis.jsonl, noeuds.json) en plus de son
+# dossier de donnees, et la moindre omission se solde par un plantage au premier
+# televersement, longtemps apres l'installation.
+ProtectSystem=full
+
+# Renseigne par l'installeur : « yes » normalement, « no » si le dossier
+# d'installation ou de donnees vit sous /home — auquel cas ProtectHome rendrait
+# le studio invisible a lui-meme et l'unite echouerait sur « No such file or
+# directory » en designant serveur.py, qui existe pourtant.
+ProtectHome=@@PROTECT_HOME@@
+
+# Les seuls chemins que le studio doit pouvoir ecrire. Cette liste ne durcit
+# rien tant que ProtectSystem vaut « full » (ces chemins sont deja accessibles),
+# mais elle DOCUMENTE l'intention et devient active le jour ou quelqu'un passe a
+# « strict ». Chaque chemin doit exister au demarrage : un chemin absent fait
+# echouer la mise en place de l'espace de noms, d'ou leur creation par
+# l'installeur.
+ReadWritePaths=@@DONNEES@@
+ReadWritePaths=@@RACINE@@/sorties
+
+# Les conversations contiennent les demandes des utilisateurs et les cles
+# d'API. 0077 : ce que le studio cree n'est lisible que par lui, meme si le
+# dossier parent est ouvert.
+UMask=0077
+
+# Aucune capacite. Le studio ecoute sur 8199, au-dessus de 1024 : aucun privilege
+# reseau n'est requis. Si tu descends STUDIO_PORT sous 1024, il faut rendre
+# CAP_NET_BIND_SERVICE ici ET dans AmbientCapabilities — mieux vaut un reverse
+# proxy devant le studio.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Pas de /dev, sauf null, zero, random et consorts. Le studio ne parle a aucun
+# materiel : c'est ComfyUI qui tient le GPU, et il vit dans un autre service.
+# Corollaire assume : un ComfyUI lance PAR le studio n'aurait pas /dev/nvidia* et
+# ne verrait aucune carte. Encore une raison de les separer.
+PrivateDevices=yes
+
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectClock=yes
+# Les deux lignes suivantes demandent systemd 247 (2020). Sur un systeme plus
+# ancien elles sont ignorees avec un avertissement au journal, sans effet sur le
+# service : c'est pourquoi on les laisse plutot que de tester la version.
+ProtectKernelLogs=yes
+ProtectProc=invisible
+
+# On ne met PAS ProcSubset=pid : il masquerait /proc/meminfo, que le studio lit
+# pour choisir le modele d'ecriture qui tient en memoire. Le service
+# demarrerait, puis choisirait systematiquement le plus petit modele — une
+# degradation silencieuse, la pire espece.
+
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+# HTTP vers ComfyUI et Ollama, plus les sockets locales. Tout le reste (netlink,
+# paquets bruts, bluetooth) est refuse.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# EPERM plutot que la mort du processus : un appel systeme refuse remonte en
+# exception Python lisible dans le journal, au lieu d'un « killed by SIGSYS »
+# qui n'apprend rien a personne.
+SystemCallErrorNumber=EPERM
+
+# MemoryDenyWriteExecute reste DESACTIVE, volontairement. CPython s'en passe,
+# mais ctypes et plusieurs roues binaires (celles tirees par huggingface_hub
+# selon les versions) allouent des pages executables et meurent a l'import. Le
+# gain de securite ne vaut pas un service qui tombe apres une mise a jour de pip.
+# MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,37 @@
+# Donnees personnelles : les conversations contiennent les demandes de
+# l'utilisateur et les chemins de ses images. Rien de tout cela ne doit partir
+# dans un depot public.
+conversations/
+utilisateurs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Reglages locaux (chemins machine, port, modeles choisis)
+.env
+config.local.json
+# adresses des machines du reseau : noeuds.exemple.json suffit au depot
+noeuds.json
+
+# Sorties de test
+sorties/
+*.log
+sorties/
+agent_noeud.json
+
+# Retours des utilisateurs : contiennent leurs demandes
+avis.jsonl
+
+# Sauvegardes de conversations : elles contiennent les demandes de
+# l'utilisateur ET les fichiers _cles.json / _admin.json / _noeuds.json.
+# Une seule s'est retrouvee dans un commit, avec de vraies cles d'API dedans.
+conversations_sauvegarde*/
+*_sauvegarde*/
+studio.err
+
+# Paquet Windows : build/ et dist/ contiennent un executable de 45 Mo
+paquet/build/
+paquet/dist/
+
+# Secret des sessions : il vit dans conversations/, deja exclu
