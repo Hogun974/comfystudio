@@ -1210,6 +1210,122 @@ def separer_controle(texte):
 def recomposer(garde, traduit):
     return ", ".join([x for x in garde if x] + [traduit]) if garde else traduit
 
+SYS_ENRICHIR = """Tu ameliores la demande d'un utilisateur pour un studio de
+creation, et tu ne fais que cela : tu ne choisis pas le moteur, tu ne regles
+rien, tu n'expliques rien.
+
+Rends UNE SEULE phrase, ou deux au plus, en francais, qui decrivent ce qui doit
+etre produit. Pas de titre, pas de commentaire, pas de liste, pas de guillemets.
+
+Pars de la demande et AJOUTE ce qu'un auteur aurait a decider de toute facon.
+« un renard dans la neige » devient « un renard roux de trois quarts dans une
+clairiere enneigee au crepuscule, lumiere rasante et doree, souffle visible dans
+l'air froid, sapins flous a l'arriere-plan ».
+
+Deux interdits :
+  - n'invente pas de SUJET. Si la demande parle d'un renard, il n'y a ni loup ni
+    personnage en plus.
+  - ne commente pas la demande, ne dis pas ce que tu fais. Rends la description,
+    rien d'autre.
+
+"""
+
+# Ce qu'il y a a decider n'est pas le meme selon ce qu'on produit : une video a
+# une camera, un maillage a des materiaux. Demander « le cadrage et la lumiere »
+# a une demande de 3D passe a cote de l'essentiel.
+_A_DECIDER = {
+    "image": "Ici : le cadrage, la lumiere, le moment, la matiere, l'arriere-plan.",
+    "video": "Ici : le mouvement du sujet, celui de la camera, la lumiere et le "
+             "decor. Un seul plan, pas de montage ni de changement de scene.",
+    "objet3d": "Ici : la forme d'ensemble, les materiaux et leur etat de surface, "
+               "l'objet seul, vu en entier, sur fond neutre.",
+}
+
+SYS_ENRICHIR_DUR = """
+
+Ta reponse precedente recopiait la demande. Ce n'est pas ce qu'on te demande :
+ajoute au moins dix mots de decor et de precisions concretes."""
+
+# Les etiquettes danbooru de "pony" et "planche" ne sont pas de la prose : les
+# enrichir en francais les casserait.
+_SANS_ENRICHISSEMENT = ("pony", "planche")
+_ENRICHIT = {"image": "image", "edition": "image", "personnage": "image",
+             "video": "video", "video_image": "video", "objet3d": "objet3d"}
+
+
+def _mots(t):
+    return set(re.findall(r"[a-zà-ÿ]{4,}", sans_accents((t or "").lower())))
+
+
+def _enrichi(avant, apres):
+    """Vrai si le resultat apporte vraiment quelque chose.
+
+    Deux mesures, toutes deux necessaires : assez de mots NOUVEAUX, et un texte
+    plus long que la demande. La premiere seule laisserait passer une
+    paraphrase ; la seconde seule, un remplissage qui repete la demande.
+    """
+    if not apres or len(apres.split()) < len(avant.split()) + 5:
+        return False
+    return len(_mots(apres) - _mots(avant)) >= 5
+
+
+def _cadre_technique(plan):
+    """Ce qui va vraiment produire le rendu, dit au modele qui ecrit le prompt.
+
+    Le moteur, la taille et les etapes sont deja choisis a ce moment-la : les
+    taire revenait a faire ecrire a l'aveugle. Une image verticale ne se decrit
+    pas comme une horizontale, et un moteur reconnu pour le texte lisible merite
+    qu'on lui redige le texte a afficher.
+    """
+    m = CATALOGUE.get(plan.get("modele")) or {}
+    if not m:
+        return ""
+    lignes = ["", "Ce qui produira le rendu, pour que tu ecrives en consequence :",
+              f"  - moteur : {m.get('titre', plan.get('modele'))}"
+              + (f" — {m['pour']}" if m.get("pour") else ""),
+              "  - il tourne dans ComfyUI : ta phrase est une consigne de rendu, "
+              "pas une reponse a quelqu'un."]
+    l, h = plan.get("largeur"), plan.get("hauteur")
+    if l and h:
+        forme = ("verticale" if h > l * 1.1 else
+                 "horizontale" if l > h * 1.1 else "carree")
+        lignes.append(f"  - image {forme} de {int(l)}x{int(h)} : compose pour ce "
+                      f"format, n'y fais pas tenir ce qui n'y tient pas.")
+    if not m.get("traduire") and not m.get("multilingue"):
+        lignes.append("  - ce moteur lit le francais : ecris en francais.")
+    return "\n".join(lignes) + "\n"
+
+
+async def enrichir(plan, texte, tid):
+    """Fait du prompt une vraie description, en un appel qui ne fait que cela."""
+    quoi = _ENRICHIT.get(plan.get("intention"))
+    if not quoi:
+        return plan
+    if plan.get("modele") in _SANS_ENRICHISSEMENT:
+        return plan
+    depart = (plan.get("prompt") or texte or "").strip()
+    if not depart:
+        return plan
+    if _enrichi(texte, depart):
+        return plan             # l'aiguilleur a deja fait le travail
+    base = SYS_ENRICHIR + _A_DECIDER[quoi] + _cadre_technique(plan)
+    for systeme in (base, base + SYS_ENRICHIR_DUR):
+        try:
+            brut = await appeler_ollama(depart, None, systeme, json_mode=False,
+                                        temperature=0.4, tid=tid)
+        except Exception as e:
+            journal(tid, f"enrichissement indisponible ({type(e).__name__}) — "
+                         f"demande gardee telle quelle")
+            return plan
+        propose = " ".join((brut or "").split())
+        if latin(propose) and _enrichi(depart, propose):
+            plan["prompt"] = propose
+            journal(tid, f"demande enrichie : {propose[:90]}")
+            return plan
+    journal(tid, "enrichissement sans effet — la demande part telle quelle")
+    return plan
+
+
 async def traduire(plan, tid):
     """Traduit le prompt vers l'anglais pour les seuls moteurs qui l'exigent.
 
@@ -4113,6 +4229,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # couterait un appel complet pour un champ que personne ne lira.
         if plan.get("intention") not in ("lecture", "agrandir", "detourer",
                                          "fluidifier"):
+            # Enrichir AVANT de traduire : traduire une demande de six mots
+            # rendrait six mots anglais, et le moteur n'aurait toujours rien a
+            # se mettre sous la dent.
+            plan = await enrichir(plan, texte, tid)
             plan = await traduire(plan, tid)
         cle = plan["modele"]
 
@@ -5518,7 +5638,32 @@ async def api_noeud_resultat(req):
                             "secondes": d.get("secondes") or 0,
                             "fichiers": d.get("fichiers") or [],
                             "noeud": x["id"]})
+    else:
+        # Personne n'attend plus : le studio a redemarre pendant le rendu. Les
+        # fichiers sont pourtant sur son disque, deposes juste avant cet appel.
+        # Les jeter serait perdre un travail qui a bel et bien ete fait.
+        rattacher_tardif(tid, d, x)
     return web.json_response({"ok": True})
+
+
+def rattacher_tardif(tid, d, x):
+    """Recolle un resultat au tour qui l'attendait, apres un redemarrage."""
+    for conv in CONVERSATIONS.values():
+        for tour in conv.get("tours", []):
+            if tour.get("id") != tid:
+                continue
+            if tour.get("etat") == "fini":
+                return          # deja rattache : rien a refaire
+            fichiers = [dict(f, noeud=x["id"]) for f in (d.get("fichiers") or [])]
+            if d.get("etat") == "fini" and fichiers:
+                tour.update(etat="fini", erreur=None, fichiers=fichiers)
+                print(f"  [{tid[:6]}] rendu de {x['id']} rattache apres "
+                      f"redemarrage — {len(fichiers)} fichier(s)", flush=True)
+            else:
+                tour.update(etat="erreur",
+                            erreur=d.get("erreur") or "rendu perdu au redemarrage")
+            sauver(conv)
+            return
 
 
 # ── ce que voit l'administrateur ──────────────────────────────────────

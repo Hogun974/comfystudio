@@ -186,6 +186,14 @@ main{flex:1;overflow-y:auto;min-width:0}
   border:1px solid var(--trait);background:var(--creux)}
 .sortie audio{width:100%;margin-top:4px}
 .sortie a{color:var(--braise)}
+/* La vue plein ecran : fond opaque, media borne a l'ecran, rien d'autre. */
+.plein{position:fixed;inset:0;z-index:60;background:#000000e6;display:flex;
+  align-items:center;justify-content:center;padding:18px}
+.plein img,.plein video{max-width:100%;max-height:100%;border-radius:6px}
+.plein .fermer{position:absolute;top:12px;right:14px;background:#0006;
+  border:1px solid #fff4;color:#fff;border-radius:9px;padding:6px 11px;
+  font:13px var(--mono);cursor:pointer}
+.plein .fermer:hover{background:#0009}
 .actions-sortie{display:flex;gap:7px;margin-top:7px}
 .actions-sortie a,.actions-sortie button{font:11px var(--mono);
   color:var(--encre-douce);background:transparent;text-decoration:none;
@@ -489,34 +497,46 @@ function actionsSortie(f) {
   // fichier, reprendre un transfert coupe et le ranger ou il faut.
   zone.appendChild(tele);
 
-  if (EXT_IMG.test(f.filename)) {
+  if (EXT_IMG.test(f.filename) || EXT_VID.test(f.filename)) {
     const gros = document.createElement("button");
     gros.type = "button";
-    gros.textContent = "agrandir";
-    gros.title = "repartir de CETTE image pour la passer en 4×";
-    gros.onclick = async () => {
-      gros.disabled = true;
-      try {
-        // On reprend cette sortie-la, et non « la derniere » : agrandir une
-        // image d'il y a trois echanges est precisement ce qui manquait.
-        const r = await fetch("/api/reprendre", {
-          method: "POST", credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: f.filename, subfolder: f.subfolder || "",
-                                 noeud: f.noeud }) });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.image) throw new Error(d.erreur || "reprise impossible");
-        imageJointe = d.image;
-        $("#txt").value = "agrandis cette image";
-        ajuster();
-        $("#go").click();
-      } catch (err) {
-        $("#alerte").textContent = err.message;
-      } finally { gros.disabled = false; }
-    };
+    gros.textContent = "plein écran";
+    gros.onclick = () => plein(f);
     zone.appendChild(gros);
   }
   return zone;
+}
+
+/* Regarder une sortie en grand. Le clic sur l'image elle-meme fait la meme
+   chose : c'est le geste que tout le monde essaie en premier. */
+function plein(f) {
+  const voile = document.createElement("div");
+  voile.className = "plein";
+  const el = document.createElement(EXT_VID.test(f.filename) ? "video" : "img");
+  el.src = url(f);
+  if (el.tagName === "VIDEO") { el.controls = true; el.autoplay = true; }
+  else el.alt = f.filename;
+  const fermer = document.createElement("button");
+  fermer.type = "button"; fermer.className = "fermer";
+  fermer.setAttribute("aria-label", "fermer"); fermer.textContent = "✕";
+  voile.append(el, fermer);
+  document.body.appendChild(voile);
+
+  const partir = () => {
+    voile.remove();
+    document.removeEventListener("keydown", auClavier);
+    // On ne retire l'entree d'historique que si c'est bien la notre : un retour
+    // arriere l'a peut-etre deja consommee.
+    if (location.hash === "#vue") history.back();
+  };
+  const auClavier = e => { if (e.key === "Escape") partir(); };
+  // Une entree d'historique, pour que le bouton retour du telephone ferme
+  // l'image au lieu de quitter la page.
+  history.pushState({ vue: 1 }, "", "#vue");
+  addEventListener("popstate", partir, { once: true });
+  document.addEventListener("keydown", auClavier);
+  voile.onclick = e => { if (e.target !== el) partir(); };
+  fermer.onclick = partir;
 }
 
 function garnirReponse(bloc, t, cid) {
@@ -561,6 +581,7 @@ function garnirReponse(bloc, t, cid) {
     // Le nom sert a retrouver le fichier, pas a lire l'image : infobulle.
     el.title = f.filename;
     sortie.appendChild(el);
+    if (el.tagName === "IMG") { el.style.cursor = "zoom-in"; el.onclick = () => plein(f); }
     if (el.tagName !== "A") sortie.appendChild(actionsSortie(f));
   });
   if (rate) {
