@@ -4,6 +4,16 @@ Ce dossier ne contient que de quoi **faire tourner ComfyStudio en tâche de fond
 Il n'installe ni ComfyUI, ni Ollama, ni les modèles : c'est le travail de
 `installer.sh` / `installer.py`, à la racine du dépôt, qu'il faut lancer avant.
 
+Sous Windows il n'y a rien ici pour le studio lui-même — on le lance en Docker
+ou par `LANCER ComfyStudio.bat`. En revanche `noeud_windows.ps1` remet **l'agent
+de nœud** en service, ce qui est le besoin réel : une machine à carte qui ne
+revient pas après un redémarrage est perdue en silence.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File service\noeud_windows.ps1 -Dossier D:\NoeudPC
+powershell -ExecutionPolicy Bypass -File service\noeud_windows.ps1 -Desinstaller
+```
+
 ```sh
 sudo sh service/installer_service.sh          # Linux, systemd
 sh      service/installer_service.sh          # macOS, SANS sudo
@@ -16,6 +26,7 @@ sudo sh service/installer_service.sh --desinstaller
 | `comfystudio.service` | gabarit d'unité systemd |
 | `com.comfystudio.plist` | gabarit d'agent launchd (macOS) |
 | `installer_service.sh` | détecte le système, remplit le gabarit, l'installe |
+| `noeud_windows.ps1` | met l'agent de **nœud** en service sur Windows (tâche planifiée) |
 | `NOTES.md` | ce fichier |
 
 Les deux gabarits contiennent des jetons `@@NOM@@` que l'installeur remplace par
