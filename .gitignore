@@ -35,3 +35,4 @@ paquet/build/
 paquet/dist/
 
 # Secret des sessions : il vit dans conversations/, deja exclu
+aiguilleur.local.json

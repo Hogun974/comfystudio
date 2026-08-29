@@ -19,7 +19,7 @@ import time
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 
-from aiguilleur import Aiguilleur, MARGE_SURE          # noqa: E402
+from aiguilleur import Aiguilleur, MARGE_SURE, MODELE, MODELE_LOCAL  # noqa: E402
 import corpus_aiguillage                                # noqa: E402
 
 CORPUS = [
@@ -113,11 +113,13 @@ def corpus():
         combien = min(POIDS_REEL, plafond - deja)
         ajoutes[x["intention"]] = deja + combien
         tout += [x] * combien
-    if reels:
+    if ajoutes:
         print(f"  {len(reels)} demandes reelles recoltees, "
               f"{sum(ajoutes.values())} exemplaires retenus "
               f"(plafond : {PART_REELLE:.0%} par classe)")
-    return tout
+    # Le drapeau voyage avec la liste : c'est lui qui decide du fichier ecrit,
+    # donc de ce qui peut etre publie.
+    return tout, bool(ajoutes)
 
 
 def mesurer(a, banc):
@@ -140,7 +142,7 @@ def mesurer(a, banc):
 
 
 if __name__ == "__main__":
-    exemples = corpus()
+    exemples, du_reel = corpus()
     par = {}
     for x in exemples:
         par[x["intention"]] = par.get(x["intention"], 0) + 1
@@ -150,9 +152,14 @@ if __name__ == "__main__":
     t0 = time.time()
     a = Aiguilleur().apprendre(exemples)
     print(f"\n  entraine en {time.time() - t0:.2f} s — {a.vocabulaire} traits")
-    a.ecrire()
-    print(f"  ecrit : aiguilleur.json "
-          f"({os.path.getsize(os.path.join(ICI, 'aiguilleur.json')) / 1e6:.2f} Mo)")
+    # Des qu'une demande reelle est entree dans le melange, le modele ne peut
+    # plus etre celui qu'on publie : il part a cote, dans un fichier ignore par
+    # git, et le studio le prefere puisqu'il connait cette installation.
+    ou = MODELE_LOCAL if du_reel else MODELE
+    a.ecrire(ou)
+    print(f"  ecrit : {os.path.basename(ou)} "
+          f"({os.path.getsize(ou) / 1e6:.2f} Mo)"
+          + ("  — garde ici, hors du depot" if du_reel else ""))
 
     for nom in BANCS:
         banc = _lire(nom)

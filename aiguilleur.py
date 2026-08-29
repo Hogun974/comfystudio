@@ -34,6 +34,10 @@ import unicodedata
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 MODELE = os.path.join(ICI, "aiguilleur.json")
+# Entraine avec les demandes reelles de CETTE installation. Ignore par git :
+# un modele bayesien ne garde pas les phrases, mais il garde les mots — assez
+# pour qu'un depot public n'ait pas a les porter.
+MODELE_LOCAL = os.path.join(ICI, "aiguilleur.local.json")
 
 # En dessous de cette marge entre les deux meilleures hypotheses, on ne tranche
 # pas : la demande part au modele de langage. Mieux vaut un appel de plus qu'une
@@ -140,13 +144,19 @@ class Aiguilleur:
         return Aiguilleur(d["poids"], d["classes"], d["total"], d["vocabulaire"])
 
 
-def charger(chemin=MODELE):
+def charger(chemin=None):
     """L'aiguilleur entraine, ou None s'il n'a pas ete construit.
+
+    Le modele local d'abord : il a vu les demandes de cette installation, il est
+    donc meilleur ici. Celui du depot ensuite, qui suffit a une installation
+    neuve.
 
     Rendre None plutot que lever : le studio doit fonctionner sans lui, comme
     avant, et se contenter du modele de langage.
     """
-    try:
-        return Aiguilleur.lire(chemin)
-    except Exception:
-        return None
+    for essai in ([chemin] if chemin else [MODELE_LOCAL, MODELE]):
+        try:
+            return Aiguilleur.lire(essai)
+        except Exception:
+            continue
+    return None
