@@ -427,6 +427,16 @@ const url = f => `/api/fichier?filename=${encodeURIComponent(f.filename)}`
                + (f.noeud ? `&noeud=${encodeURIComponent(f.noeud)}` : "");
 const auBas = () => { const z = $("#zone"); z.scrollTop = z.scrollHeight; };
 
+/* Le champ grandit avec ce qu'on ecrit, jusqu'a la hauteur maximale fixee en
+   CSS — au-dela il defile. « auto » d'abord : sans cette remise a zero, le
+   champ ne saurait que grandir, jamais retrecir. */
+function ajuster() {
+  const t = $("#txt");
+  if (!t) return;
+  t.style.height = "auto";
+  t.style.height = t.scrollHeight + "px";
+}
+
 /* ── fil ─────────────────────────────────────────────────────────── */
 function messageVide() {
   $("#fil").innerHTML = `<div class="vide">
@@ -740,6 +750,9 @@ async function peindreNuages() {
   } catch (e) { return; }
   const zone = document.querySelector("#nuages");
   zone.innerHTML = "";
+  // Sans session, /api/nuage rend un 401 dont le corps n'a pas de « modalites ».
+  // Boucler dessus levait une erreur avant meme l'affichage du formulaire.
+  if (!Array.isArray(d.modalites)) return;
   for (const m of d.modalites) {
     if (!m.possible) continue;
     const b = document.createElement("button");
