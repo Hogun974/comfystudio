@@ -207,6 +207,14 @@ def lire_sortie(comfy, f):
 
 
 # ══════════════════════════ modele de langage ═════════════════════════
+# Dans un conteneur, 127.0.0.1 designe le conteneur lui-meme : les services de
+# la machine sont a un saut de la, et Docker nomme ce saut. On essaie donc les
+# adresses usuelles avant de conclure qu'il n'y a pas de modele — sans quoi un
+# agent en conteneur se declare muet a cote d'un Ollama qui tourne.
+VOISINS_OLLAMA = ("http://host.docker.internal:11434",
+                  "http://172.17.0.1:11434")
+
+
 def etat_ollama(ollama):
     """Ce que cette machine sait charger cote langage, ou None."""
     st, d = appeler(f"{ollama}/api/tags", secondes=8)
@@ -214,6 +222,19 @@ def etat_ollama(ollama):
         return None
     noms = [m.get("name") for m in (d.get("models") or []) if m.get("name")]
     return {"ok": bool(noms), "modeles": noms[:40]}
+
+
+def trouver_ollama(prefere):
+    """L'adresse ou un modele repond vraiment, ou "" s'il n'y en a aucun.
+
+    Le reglage d'abord — s'il a ete pose, c'est qu'on sait ou l'on va. Les
+    voisins de conteneur ensuite, et seulement en dernier recours : les essayer
+    d'emblee masquerait une faute de frappe dans le reglage.
+    """
+    for adresse in (prefere,) + VOISINS_OLLAMA:
+        if adresse and etat_ollama(adresse.rstrip("/")):
+            return adresse.rstrip("/")
+    return ""
 
 
 def servir_le_langage(studio, jeton, ollama):
@@ -648,14 +669,15 @@ def main():
         # serait bien davantage.
         print("  Sorties   : dossier inconnu — rien ne sera efface ici "
               "(--sorties CHEMIN pour l'activer)")
-    lang = etat_ollama(args.ollama.rstrip("/"))
-    if lang:
-        print(f"  Langage   : {args.ollama} — {len(lang['modeles'])} modele(s), "
+    ollama = trouver_ollama(args.ollama)
+    if ollama:
+        lang = etat_ollama(ollama) or {"modeles": []}
+        print(f"  Langage   : {ollama} — {len(lang['modeles'])} modele(s), "
               f"pretes au studio si le sien tombe")
     else:
-        print(f"  Langage   : aucun modele joignable sur {args.ollama}")
-    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder,
-           args.ollama.rstrip("/"))
+        print(f"  Langage   : aucun modele joignable (essaye {args.ollama} "
+              f"puis les voisins de conteneur)")
+    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder, ollama)
     return 0
 
 
