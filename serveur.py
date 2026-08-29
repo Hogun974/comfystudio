@@ -1123,6 +1123,22 @@ def noeuds_a_llm():
     return [i for _, i in sorted(bons, reverse=True)]
 
 
+def _modele_du_noeud(ident, voulu):
+    """Le modele a demander a cette machine, parmi ceux qu'elle porte.
+
+    Le nom exact d'abord, puis la meme famille — « qwen2.5vl:3b » vaut mieux que
+    rien quand on esperait le 7b — puis, faute de mieux, le premier annonce.
+    """
+    dispo = (ETAT_NOEUDS.get(ident) or {}).get("llm_modeles") or []
+    if not dispo:
+        return voulu
+    if voulu in dispo:
+        return voulu
+    famille = (voulu or "").split(":")[0]
+    proche = [m for m in dispo if m.split(":")[0] == famille]
+    return (proche or dispo)[0]
+
+
 async def poser_a(ident, corps, tid=None, secondes=900):
     """Pose une question au modele de langage d'UNE machine.
 
@@ -1130,6 +1146,12 @@ async def poser_a(ident, corps, tid=None, secondes=900):
     parce que c'est le seul qui existe — une machine a agent n'a pas d'adresse.
     Rend (reponse, erreur) : l'un des deux est toujours vide.
     """
+    # Le nom du modele vient du studio, qui ne connait que le SIEN : demander
+    # « qwen2.5vl:7b » a une machine qui ne l'a pas ferait echouer la voie de
+    # secours au moment precis ou l'on en depend. On substitue donc ce que la
+    # machine annonce vraiment porter.
+    corps = dict(corps)
+    corps["model"] = _modele_du_noeud(ident, corps.get("model"))
     qid = uuid.uuid4().hex
     futur = asyncio.get_event_loop().create_future()
     REPONSES[qid] = futur
@@ -5912,8 +5934,7 @@ async def api_admin_essai_llm(req):
     if not e.get("repond"):
         return web.json_response({"erreur": "cette machine ne repond pas"},
                                  status=409)
-    modeles = e.get("llm_modeles") or []
-    corps = {"model": modeles[0] if modeles else MODELE_LLM,
+    corps = {"model": MODELE_LLM,
              "prompt": "Reponds en un seul mot : quelle est la couleur du ciel "
                        "par temps clair ?",
              "stream": False, "keep_alive": 0, "options": {"temperature": 0}}
