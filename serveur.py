@@ -630,7 +630,12 @@ def choisir_noeud(cle):
 def manquants_partout(cle):
     """Absent de TOUS les noeuds joignables : c'est ce qui justifie un
     telechargement, pas l'absence sur une machine en particulier."""
-    joignables = [x["id"] for x in NOEUDS if ETAT_NOEUDS.get(x["id"], {}).get("repond")]
+    # tous_les_noeuds() et non NOEUDS : ce dernier ne contient que les machines
+    # declarees dans noeuds.json, jamais celles qui arrivent par un agent. Sur un
+    # studio sans carte, la liste etait donc vide et TOUT paraissait a
+    # telecharger — « 0/17 moteurs prets » alors que deux machines etaient pretes.
+    joignables = [x["id"] for x in tous_les_noeuds()
+                  if ETAT_NOEUDS.get(x["id"], {}).get("repond")]
     if not joignables:
         return manquants(cle)
     return [] if any(not manquants(cle, i) for i in joignables) else manquants(cle)
