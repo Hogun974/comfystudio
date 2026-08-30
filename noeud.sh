@@ -11,10 +11,17 @@
 #   bash noeud.sh --verifier                    diagnostic, sans rien lancer
 #   bash noeud.sh --studio URL --jeton XXXX     sans aucune question
 #   bash noeud.sh --fond                        laisse tourner en tache de fond
+#   bash noeud.sh --empreinte SHA256            n'installe que cet agent-la
+#
+# Ce script telecharge du code Python et l'execute. En HTTP simple, quiconque
+# s'intercale sur le reseau choisit ce code. --empreinte (ou AGENT_EMPREINTE)
+# n'aide que si le sha256 a ete releve AILLEURS que sur ce meme lien : par
+# « sha256sum agent_noeud.py » sur l'hote du studio, en SSH.
 set -uo pipefail
 cd "$(dirname "$0")"
 
 STUDIO=""; JETON=""; VERIFIER=0; FOND=0
+EMPREINTE="${AGENT_EMPREINTE:-}"
 COMFY_URL="${COMFY_URL:-http://127.0.0.1:8188}"
 CONFIG="agent_noeud.json"
 AGENT="agent_noeud.py"
@@ -27,7 +34,8 @@ while [ $# -gt 0 ]; do
     --comfy)    COMFY_URL="${2:-}"; shift 2 ;;
     --verifier) VERIFIER=1; shift ;;
     --fond)     FOND=1; shift ;;
-    -h|--help)  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --empreinte) EMPREINTE="${2:-}"; shift 2 ;;
+    -h|--help)  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)          echo "  argument inconnu : $1"; exit 1 ;;
   esac
 done
@@ -157,11 +165,23 @@ fi
 titre "Agent"
 if [ -n "$STUDIO" ] && curl -fsS --max-time 20 "$STUDIO/api/noeud/agent" -o "$AGENT.neuf" 2>/dev/null; then
   # On ne remplace qu'apres verification : une page d'erreur du studio
-  # ecraserait sinon un agent qui fonctionnait.
-  if "$PY" -c "import ast,sys;ast.parse(open(sys.argv[1],encoding='utf-8').read())" "$AGENT.neuf" 2>/dev/null; then
+  # ecraserait sinon un agent qui fonctionnait. Le meme appel rend l'empreinte
+  # du fichier recu et sort en 2 si elle n'est pas celle qu'on attendait.
+  VERIF="import ast,hashlib,sys
+o=open(sys.argv[1],'rb').read()
+ast.parse(o.decode('utf-8'))
+e=hashlib.sha256(o).hexdigest()
+print(e)
+attendue=(sys.argv[2] if len(sys.argv)>2 else '').strip().lower()
+sys.exit(2 if attendue and attendue!=e else 0)"
+  EMP=$("$PY" -c "$VERIF" "$AGENT.neuf" "$EMPREINTE" 2>/dev/null) && RC=0 || RC=$?
+  if [ "$RC" = 0 ]; then
     [ -f "$AGENT" ] && cp "$AGENT" "$AGENT.precedent"
     mv "$AGENT.neuf" "$AGENT"
-    vert "agent a jour ($(wc -c < "$AGENT") octets)"
+    vert "agent a jour ($(wc -c < "$AGENT") octets, sha256 $EMP)"
+  elif [ "$RC" = 2 ]; then
+    rm -f "$AGENT.neuf"
+    souci "empreinte inattendue : $EMP au lieu de $EMPREINTE — rien remplace"
   else
     rm -f "$AGENT.neuf"
     souci "ce que le studio a renvoye n'est pas un script valide"

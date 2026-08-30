@@ -9,6 +9,7 @@ les fichiers produits.
 
     python agent_noeud.py --studio http://192.0.2.10:8199 --jeton XXXX
     python agent_noeud.py --maj          # se remplace par la derniere version
+    python agent_noeud.py --maj --empreinte SHA256   # ... si c'est bien celui-la
 
 Le studio et le jeton sont retenus dans agent_noeud.json, a cote de ce fichier :
 les lancements suivants n'ont plus besoin d'arguments. En conteneur, ou il n'y a
@@ -20,6 +21,7 @@ tourner ComfyUI a forcement un Python.
 """
 import base64
 import argparse
+import hashlib
 import json
 import os
 import ssl
@@ -534,15 +536,29 @@ def faire_le_menage(garde_h, sorties=""):
 
 
 # ══════════════════════════ mise a jour ═══════════════════════════════
-def se_mettre_a_jour(studio):
+def se_mettre_a_jour(studio, empreinte=""):
     """Recupere la derniere version du script depuis le studio.
 
     Le studio sert l'agent : mettre a jour une machine revient a relancer ce
     script avec --maj, sans depot a cloner ni fichier a recopier a la main.
+
+    C'est aussi du code telecharge puis execute. En HTTP simple, celui qui
+    s'intercale sur le reseau decide de ce code : --empreinte impose le sha256
+    attendu, et n'a de valeur que releve AILLEURS que sur ce meme lien — par
+    « sha256sum agent_noeud.py » sur l'hote du studio, en SSH. L'empreinte
+    installee est affichee dans tous les cas, pour pouvoir la comparer d'une
+    machine a l'autre.
     """
     st, octets = appeler(f"{studio}/api/noeud/agent", secondes=60)
     if st != 200 or not isinstance(octets, (bytes, bytearray)):
         print(f"  mise a jour impossible : {st} {str(octets)[:120]}")
+        return 1
+    recue = hashlib.sha256(octets).hexdigest()
+    attendue = (empreinte or "").strip().lower()
+    if attendue and attendue != recue:
+        print("  EMPREINTE INATTENDUE — rien n'a ete remplace")
+        print(f"    recue    : {recue}")
+        print(f"    attendue : {attendue}")
         return 1
     moi = os.path.abspath(__file__)
     if octets == open(moi, "rb").read():
@@ -558,8 +574,8 @@ def se_mettre_a_jour(studio):
     except OSError as e:
         print(f"  ecriture impossible : {e}")
         return 1
-    print(f"  mis a jour ({len(octets)} octets). L'ancienne version est dans "
-          f"{os.path.basename(moi)}.precedent")
+    print(f"  mis a jour ({len(octets)} octets, sha256 {recue}). L'ancienne "
+          f"version est dans {os.path.basename(moi)}.precedent")
     return 0
 
 
@@ -745,6 +761,9 @@ def main():
                         f"(defaut {GARDE_DEFAUT})")
     a.add_argument("--maj", action="store_true",
                    help="se remplacer par la derniere version servie par le studio")
+    a.add_argument("--empreinte", default=os.environ.get("AGENT_EMPREINTE", ""),
+                   help="sha256 attendu de l'agent telecharge par --maj ; "
+                        "a relever sur l'hote du studio, pas sur ce lien HTTP")
     args = a.parse_args()
 
     studio = args.studio.rstrip("/")
@@ -752,7 +771,7 @@ def main():
         print("  Il manque l'adresse du studio : --studio http://...:8199")
         return 1
     if args.maj:
-        return se_mettre_a_jour(studio)
+        return se_mettre_a_jour(studio, args.empreinte)
     if not args.jeton:
         print("  Il manque le jeton : --jeton XXXX (cree dans /admin du studio)")
         return 1

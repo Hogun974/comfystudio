@@ -7,11 +7,20 @@
 #
 #   ./maj_noeud.sh http://192.0.2.10:8199            met a jour l agent
 #   ./maj_noeud.sh http://192.0.2.10:8199 JETON      installe puis demarre
+#   ./maj_noeud.sh http://192.0.2.10:8199 JETON EMPREINTE
+#
+# Ce script telecharge du code Python et l'execute. En HTTP simple, quiconque
+# s'intercale sur le reseau — ARP, DNS, un Wi-Fi partage — choisit le code qui
+# tournera sur cette machine. Le troisieme argument, ou AGENT_EMPREINTE, est le
+# sha256 attendu de l'agent : il n'est utile que s'il a ete releve AILLEURS que
+# sur ce meme lien HTTP, par exemple par « sha256sum agent_noeud.py » sur l'hote
+# du studio, en SSH. L'empreinte installee est de toute façon affichee.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 STUDIO="${1:-}"
 JETON="${2:-}"
+EMPREINTE="${3:-${AGENT_EMPREINTE:-}}"
 AGENT="agent_noeud.py"
 
 if [ -z "$STUDIO" ] && [ -f agent_noeud.json ]; then
@@ -56,8 +65,23 @@ else
 fi
 
 # On ne remplace qu'apres avoir verifie que le fichier est du Python valide :
-# une reponse d'erreur du studio ecraserait sinon un agent qui marchait.
-if ! "$PY" -c "import ast,sys;ast.parse(open(sys.argv[1],encoding='utf-8').read())" "$AGENT.neuf"; then
+# une reponse d'erreur du studio ecraserait sinon un agent qui marchait. Le
+# meme appel rend l'empreinte et sort en 2 si elle n'est pas celle attendue.
+VERIF="import ast,hashlib,sys
+o=open(sys.argv[1],'rb').read()
+ast.parse(o.decode('utf-8'))
+e=hashlib.sha256(o).hexdigest()
+print(e)
+attendue=(sys.argv[2] if len(sys.argv)>2 else '').strip().lower()
+sys.exit(2 if attendue and attendue!=e else 0)"
+EMP=$("$PY" -c "$VERIF" "$AGENT.neuf" "$EMPREINTE" 2>/dev/null) && RC=0 || RC=$?
+if [ "$RC" = 2 ]; then
+  echo "  EMPREINTE INATTENDUE — rien n'a ete remplace"
+  echo "    recue   : $EMP"
+  echo "    attendue: $EMPREINTE"
+  rm -f "$AGENT.neuf"
+  exit 1
+elif [ "$RC" != 0 ]; then
   echo "  ce que le studio a renvoye n'est pas un script valide — rien n'a ete remplace"
   rm -f "$AGENT.neuf"
   exit 1
@@ -65,7 +89,7 @@ fi
 [ -f "$AGENT" ] && cp "$AGENT" "$AGENT.precedent"
 mv "$AGENT.neuf" "$AGENT"
 chmod +x "$AGENT"
-echo "  agent a jour"
+echo "  agent a jour — sha256 $EMP"
 
 if [ -n "$JETON" ]; then
   exec "$PY" "$AGENT" --studio "$STUDIO" --jeton "$JETON"

@@ -10,6 +10,12 @@ REM   noeud.bat --verifier                   diagnostic, sans rien lancer
 REM   noeud.bat --studio URL --jeton XXXX    sans aucune question
 REM   noeud.bat --sorties CHEMIN             output de ComfyUI, pour le menage
 REM   noeud.bat --fond                       laisse tourner en tache de fond
+REM   noeud.bat --empreinte SHA256           n'installe que cet agent-la
+REM
+REM Ce fichier telecharge du code Python et l'execute. En HTTP simple, quiconque
+REM s'intercale sur le reseau choisit ce code. --empreinte (ou AGENT_EMPREINTE)
+REM n'aide que si le sha256 a ete releve AILLEURS que sur ce meme lien, par
+REM "sha256sum agent_noeud.py" sur l'hote du studio.
 REM
 REM Ce fichier est volontairement en ASCII strict : cmd.exe le lit dans la page
 REM de codes de la console, ou tout accent devient illisible.
@@ -22,6 +28,7 @@ set "JETON="
 set "SORTIES="
 set "VERIFIER=0"
 set "FOND=0"
+if not defined EMPREINTE set "EMPREINTE=%AGENT_EMPREINTE%"
 if not defined COMFY_URL set "COMFY_URL=http://127.0.0.1:8188"
 set "CONFIG=agent_noeud.json"
 set "AGENT=agent_noeud.py"
@@ -37,6 +44,7 @@ if /i "%~1"=="--comfy" goto :a_comfy
 if /i "%~1"=="--sorties" goto :a_sorties
 if /i "%~1"=="--verifier" goto :a_verifier
 if /i "%~1"=="--fond" goto :a_fond
+if /i "%~1"=="--empreinte" goto :a_empreinte
 echo   argument inconnu : %~1
 exit /b 1
 
@@ -48,6 +56,12 @@ goto :args
 
 :a_jeton
 set "JETON=%~2"
+shift
+shift
+goto :args
+
+:a_empreinte
+set "EMPREINTE=%~2"
 shift
 shift
 goto :args
@@ -211,15 +225,25 @@ if exist "%AGENT%.neuf" del "%AGENT%.neuf"
 if defined STUDIO powershell -NoProfile -Command "try{ Invoke-WebRequest -UseBasicParsing -TimeoutSec 20 '%STUDIO%/api/noeud/agent' -OutFile '%AGENT%.neuf'; exit 0 } catch { exit 1 }" >nul 2>nul
 if exist "%AGENT%.neuf" (
   REM On ne remplace qu'apres verification : une page d'erreur du studio
-  REM ecraserait sinon un agent qui fonctionnait.
-  "%PY%" -c "import ast;ast.parse(open('%AGENT%.neuf',encoding='utf-8').read())" >nul 2>nul
-  if errorlevel 1 (
+  REM ecraserait sinon un agent qui fonctionnait. Le sha256 n'est imprime que
+  REM si le fichier est du Python analysable : une variable vide dit les deux
+  REM echecs a la fois, et "for /f" ne rapporte pas le code de sortie de ce
+  REM qu'il lance.
+  set "VERIF=import ast,hashlib,sys;o=open(sys.argv[1],'rb').read();ast.parse(o.decode('utf-8'));print(hashlib.sha256(o).hexdigest())"
+  set "EMP="
+  for /f "delims=" %%h in ('""%PY%" -c "!VERIF!" "%AGENT%.neuf"" 2^>nul') do set "EMP=%%h"
+  REM Un motif "else if" enchaine aurait saute l'installation quand aucune
+  REM empreinte n'est exigee : le "else" se serait rattache au second "if".
+  set "REFUS="
+  if not defined EMP set "REFUS=ce que le studio a renvoye n'est pas un script valide"
+  if defined EMP if defined EMPREINTE if /i not "!EMP!"=="%EMPREINTE%" set "REFUS=empreinte inattendue : !EMP! au lieu de %EMPREINTE% - rien remplace"
+  if defined REFUS (
     del "%AGENT%.neuf"
-    call :souci "ce que le studio a renvoye n'est pas un script valide"
+    call :souci "!REFUS!"
   ) else (
     if exist "%AGENT%" copy /y "%AGENT%" "%AGENT%.precedent" >nul
     move /y "%AGENT%.neuf" "%AGENT%" >nul
-    echo   [ok] agent a jour
+    echo   [ok] agent a jour - sha256 !EMP!
   )
 ) else (
   if exist "%AGENT%" (

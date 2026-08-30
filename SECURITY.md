@@ -184,6 +184,25 @@ fichiers dont **l'extension est filtrée** — images, vidéos, sons, maillages,
 d'autre, parce que le studio les sert ensuite sur sa propre origine — et **chaque
 dépôt est plafonné à 2 Go**.
 
+**L'agent est du code téléchargé puis exécuté, en HTTP simple.** `noeud.sh`,
+`noeud.bat`, `maj_noeud.sh`, `maj_noeud.bat` et `agent_noeud.py --maj` vont
+chercher `agent_noeud.py` sur `/api/noeud/agent`, une route délibérément
+ouverte — c'est ce qui permet d'installer une machine neuve qui n'a encore
+aucun jeton. Conséquence : **qui peut s'intercaler sur le réseau choisit le code
+qui tournera sur chaque machine à agent**, et l'obtient sur toutes à la fois à
+la prochaine mise à jour. C'est le même réseau que celui du reste de ce
+document : on n'en répond pas, et il n'y a rien dans le studio pour le
+compenser.
+
+Les scripts refusent d'installer ce qui n'est pas du Python analysable, et
+affichent le sha256 de ce qu'ils ont posé. On peut leur imposer l'empreinte
+attendue — `--empreinte`, troisième argument, ou `AGENT_EMPREINTE` — auquel cas
+rien d'autre ne sera installé. **Cette empreinte ne vaut que relevée ailleurs
+que sur ce lien HTTP** : `sha256sum agent_noeud.py` sur l'hôte du studio, par
+SSH. Servie par le studio, elle serait réécrite par le même attaquant que le
+fichier, et ne protégerait de rien. Contre un réseau hostile, la seule vraie
+réponse reste le reverse proxy TLS de plus haut, et `--studio https://…`.
+
 ### Ce que le studio ne filtre pas
 
 Le studio ne censure pas les demandes. **Une seule limite est codée en dur** :
