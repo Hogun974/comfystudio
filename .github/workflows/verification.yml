@@ -161,7 +161,12 @@ jobs:
           SEUIL = 0.75          # justesse globale
           SEUIL_SUR = 0.80      # justesse sur les seuls cas tranches d'office
 
-          aiguilleur = Aiguilleur().apprendre(e.corpus())
+          # corpus() rend (exemples, du_reel) depuis qu'un entrainement melant des
+          # demandes reelles ecrit dans un fichier separe. Ne pas le lire faisait
+          # passer un tuple a apprendre() : la verification etait ROUGE a chaque
+          # commit depuis, et personne ne regardait.
+          exemples, _ = e.corpus()
+          aiguilleur = Aiguilleur().apprendre(exemples)
           echec = False
 
           for nom in e.BANCS:
