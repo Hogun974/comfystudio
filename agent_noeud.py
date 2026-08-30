@@ -32,7 +32,7 @@ import urllib.request
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(ICI, "agent_noeud.json")
-DEPOSEES = os.path.join(ICI, "sorties_deposees.json")
+DEPOSEES = "sorties_deposees.json"
 GARDE_DEFAUT = 24           # heures avant d'effacer une sortie deja au studio
 PURGE_TOUS_LES = 600        # secondes entre deux passages de menage
 PAUSE_COURTE = 3            # entre deux demandes de travail
@@ -381,9 +381,21 @@ def ecouter_progression(comfy):
 
 
 # ══════════════════════════ menage ════════════════════════════════════
-def _registre():
+def _registre_chemin(sorties):
+    """Ou vit le registre des depots.
+
+    DANS le dossier des sorties quand on le connait : c'est le seul endroit
+    persistant dont un agent en conteneur soit sur — son script, ses reglages et
+    son /tmp repartent a zero a chaque demarrage. Ecrit a cote du script, le
+    registre serait perdu a chaque redemarrage, et le menage n'effacerait jamais
+    rien sans que personne ne s'en apercoive.
+    """
+    return os.path.join(sorties or ICI, "." + DEPOSEES if sorties else DEPOSEES)
+
+
+def _registre(sorties=""):
     try:
-        with open(DEPOSEES, encoding="utf-8") as f:
+        with open(_registre_chemin(sorties), encoding="utf-8") as f:
             d = json.load(f)
         return d if isinstance(d, list) else []
     except Exception:
@@ -399,19 +411,19 @@ def noter_depot(sorties, f, quand):
     if not sorties:
         return
     chemin = os.path.join(sorties, f.get("subfolder", ""), f["filename"])
-    d = _registre()
+    d = _registre(sorties)
     d.append({"chemin": chemin, "quand": quand})
     try:
-        with open(DEPOSEES, "w", encoding="utf-8") as g:
+        with open(_registre_chemin(sorties), "w", encoding="utf-8") as g:
             json.dump(d[-5000:], g, ensure_ascii=False)
     except OSError as e:
         print(f"  registre des depots non ecrit : {e}", flush=True)
 
 
-def faire_le_menage(garde_h):
+def faire_le_menage(garde_h, sorties=""):
     """Efface les sorties deja au studio et assez vieilles. Rend le compte."""
     limite = time.time() - garde_h * 3600
-    d = _registre()
+    d = _registre(sorties)
     if not d:
         return 0
     restant, efface = [], 0
@@ -433,7 +445,7 @@ def faire_le_menage(garde_h):
                   flush=True)
             restant.append(e)
     try:
-        with open(DEPOSEES, "w", encoding="utf-8") as g:
+        with open(_registre_chemin(sorties), "w", encoding="utf-8") as g:
             json.dump(restant, g, ensure_ascii=False)
     except OSError:
         pass
@@ -496,7 +508,7 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama=""):
             # pieds d'un rendu en cours n'apporterait rien de bon.
             if sorties and maintenant - dernier_menage > PURGE_TOUS_LES:
                 dernier_menage = maintenant
-                partis = faire_le_menage(garder)
+                partis = faire_le_menage(garder, sorties)
                 if partis:
                     print(f"  {partis} sortie(s) effacee(s) ici — le studio les a",
                           flush=True)
