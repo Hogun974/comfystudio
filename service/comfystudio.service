@@ -115,11 +115,11 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 
 # « full » et non « strict » : /usr, /boot, /efi et /etc passent en lecture
-# seule. « strict » mettrait TOUT le disque en lecture seule et exigerait de
-# lister chaque chemin ecrit ; or le studio ecrit a plusieurs endroits de son
-# dossier d'installation (sorties/, avis.jsonl, noeuds.json) en plus de son
-# dossier de donnees, et la moindre omission se solde par un plantage au premier
-# televersement, longtemps apres l'installation.
+# seule. Le studio ne disperse plus ses ecritures — sorties/, avis.jsonl et
+# noeuds.json ont rejoint STUDIO_DONNEES — mais « strict » resterait faux :
+# l'administration telecharge les modeles dans le dossier « models » de
+# ComfyUI, qui vit ailleurs et que l'unite ne connait pas. Sous « strict »,
+# le premier modele demande echouerait sur une erreur de permission.
 ProtectSystem=full
 
 # Renseigne par l'installeur : « yes » normalement, « no » si le dossier
@@ -128,14 +128,18 @@ ProtectSystem=full
 # directory » en designant serveur.py, qui existe pourtant.
 ProtectHome=@@PROTECT_HOME@@
 
-# Les seuls chemins que le studio doit pouvoir ecrire. Cette liste ne durcit
-# rien tant que ProtectSystem vaut « full » (ces chemins sont deja accessibles),
-# mais elle DOCUMENTE l'intention et devient active le jour ou quelqu'un passe a
-# « strict ». Chaque chemin doit exister au demarrage : un chemin absent fait
-# echouer la mise en place de l'espace de noms, d'ou leur creation par
-# l'installeur.
+# Le seul chemin que le studio doit pouvoir ecrire. Cette ligne ne durcit rien
+# tant que ProtectSystem vaut « full » (le chemin est deja accessible), mais
+# elle DOCUMENTE l'intention et devient active le jour ou quelqu'un passe a
+# « strict ». Il doit exister au demarrage : un chemin absent fait echouer la
+# mise en place de l'espace de noms, d'ou sa creation par l'installeur.
+#
+# Une seule ligne desormais : conversations, comptes, cles, file d'attente
+# (_file.json), interrupteurs du nuage (_nuage.json), registre des noeuds,
+# avis.jsonl, sorties/ et entrees/ vivent tous sous STUDIO_DONNEES. Y ajouter
+# « @@RACINE@@/sorties » rouvrirait le dossier du code en ecriture, pour un
+# chemin que le studio n'ouvre plus.
 ReadWritePaths=@@DONNEES@@
-ReadWritePaths=@@RACINE@@/sorties
 
 # Les conversations contiennent les demandes des utilisateurs et les cles
 # d'API. 0077 : ce que le studio cree n'est lisible que par lui, meme si le

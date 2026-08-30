@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
@@ -204,13 +205,51 @@ def tolerance(ram):
     return 0.0
 
 
-def moteurs_possibles(vram, ram):
+# Modeles dont la licence n'est PAS libre. Cle : (sous-dossier, nom), donc le
+# fichier reellement telecharge et non le moteur, parce que plusieurs moteurs
+# partagent souvent un meme fichier. La table vit ici et non dans catalogue.py
+# parce qu'elle repond a une question d'installeur - que faut-il faire accepter
+# avant de telecharger - et non a « de quoi ce moteur a besoin ».
+LICENCES = {
+    ("checkpoints", "sam3.1_multiplex_fp16.safetensors"):
+        "SAM License (Meta), 1,75 Go : l'usage commercial est autorise, mais la "
+        "redistribution doit se faire aux memes termes et la retro-ingenierie "
+        "est interdite. Meta peut en changer les termes unilateralement. Ce "
+        "n'est pas une licence libre : l'AGPL-3.0 du studio ne la couvre pas, "
+        "et ce modele est un telechargement que tu choisis, pas une dependance "
+        "du logiciel.",
+}
+
+
+def licences(cle):
+    """Les licences non libres qu'exige ce moteur, sans doublon."""
+    return sorted({LICENCES[(s, n)] for s, n, _, _ in CATALOGUE[cle]["fichiers"]
+                   if (s, n) in LICENCES})
+
+
+def dire_licence(cle, retrait="    "):
+    """Le texte de la licence, plie pour rester lisible dans un terminal."""
+    for texte in licences(cle):
+        for bout in textwrap.wrap(texte, 68):
+            print(f"{retrait}{bout}")
+
+
+def moteurs_possibles(vram, ram, avec_licence=False):
     """Trois categories : ce qui tient sur la carte, ce qui deborde en RAM sans
-    cesser de fonctionner, et ce qui ne passe pas."""
+    cesser de fonctionner, et ce qui ne passe pas.
+
+    Un moteur sous licence non libre est laisse DEHORS par defaut. Cette
+    fonction dresse aussi la liste que modeles.sh telecharge sans poser de
+    question sur une machine-noeud, et une licence ne s'accepte pas a la place
+    de quelqu'un. avec_licence=True pour l'affichage, qui doit au contraire
+    montrer que le moteur existe et a quel prix.
+    """
     tenable = utilisable(vram)
     marge = tenable + tolerance(ram)
     tiennent, debordent, refuses = [], [], []
     for cle, m in CATALOGUE.items():
+        if licences(cle) and not avec_licence:
+            continue
         besoin = m.get("vram", 0)
         if besoin <= tenable:
             tiennent.append(cle)
@@ -222,12 +261,17 @@ def moteurs_possibles(vram, ram):
 
 
 def afficher_moteurs(vram, ram):
-    tiennent, debordent, refuses = moteurs_possibles(vram, ram)
+    # avec_licence=True : montrer le moteur meme s'il ne partira jamais dans un
+    # telechargement automatique. L'omettre ici ferait croire que la carte ne
+    # le tient pas.
+    tiennent, debordent, refuses = moteurs_possibles(vram, ram, avec_licence=True)
 
     def ligne(cle, note=""):
         m = CATALOGUE[cle]
         etat = "deja la" if not manquants(cle) else f"~{POIDS.get(cle, 0):.0f} Go a prendre"
-        print(f"  {cle:10s} {m['vram']:4.1f} Go  {m['titre']:24s} {etat}{note}")
+        if licences(cle):
+            note += "  (licence a accepter)"
+        print(f"  {cle:16s} {m['vram']:4.1f} Go  {m['titre']:30s} {etat}{note}")
 
     titre("Moteurs que cette machine peut faire tourner")
     if not tiennent and not debordent:
@@ -242,12 +286,22 @@ def afficher_moteurs(vram, ram):
     if refuses:
         print()
         for cle, besoin in refuses:
-            print(f"  ecarte     {cle:10s} demande {besoin} Go, la carte en offre "
+            print(f"  ecarte     {cle:16s} demande {besoin} Go, la carte en offre "
                   f"{utilisable(vram):.1f}")
     if ram and ram < 32:
         print(f"\n  {ram} Go de RAM : aucune marge de debordement. 32 Go la rendent "
               f"confortable,")
         print("  64 Go la rendent presque invisible.")
+    # Nommer la licence ICI, pendant que quelqu'un lit l'ecran : le diagnostic
+    # est la seule etape que tous les chemins d'installation traversent.
+    lies = [c for c in tiennent + debordent if licences(c)]
+    if lies:
+        print()
+        for cle in lies:
+            print(f"  {cle} exige un modele sous licence particuliere :")
+            dire_licence(cle)
+        print(f"  Jamais pris automatiquement. Pour le demander : "
+              f"--modeles {','.join(lies)}")
     return tiennent + debordent
 
 
@@ -632,7 +686,12 @@ def telecharger(cles, oui, avec_hub=True):
         print("  Ces fichiers n'ont pas de source automatique (depot sous licence "
               "ou modele a installer a la main) :")
         for cle, (sous, nom, _, _) in sans_source:
-            print(f"    {cle:10s} {sous}/{nom}")
+            print(f"    {cle:16s} {sous}/{nom}")
+    # Redit ici, et pas seulement au diagnostic : --modeles court-circuite
+    # l'affichage, et c'est la derniere marche avant l'ecriture sur disque.
+    for cle in sorted({c for c, _ in faisables if licences(c)}):
+        print(f"  {cle} : modele sous licence non libre.")
+        dire_licence(cle)
     if not faisables or not demander("Lancer le telechargement ?", oui):
         return
     base = racine_modeles()
@@ -831,7 +890,9 @@ def menu_moteurs(possibles, oui):
     for i, cle in enumerate(absents, 1):
         m = CATALOGUE[cle]
         etoile = " <-- propose" if cle in conseil else ""
-        print(f"    {i:2d}) {cle:10s} {m['vram']:4.1f} Go  "
+        if licences(cle):
+            etoile += "  (licence a accepter)"
+        print(f"    {i:2d}) {cle:16s} {m['vram']:4.1f} Go  "
               f"~{POIDS.get(cle, 0):.0f} Go a prendre  {m['titre']}{etoile}")
     if conseil:
         total = poids(conseil)      # union : deux moteurs partagent des fichiers
@@ -845,7 +906,15 @@ def menu_moteurs(possibles, oui):
     if rep in ("rien", "aucun", "non", "n"):
         return []
     if rep in ("tout", "tous", "t"):
-        return absents
+        # « tout » repond a « prends ce que ma carte tient », pas a « j'accepte
+        # n'importe quelle licence ». Ce qui en exige une se demande par son
+        # numero, apres avoir lu de quoi il s'agit.
+        libres = [c for c in absents if not licences(c)]
+        for cle in absents:
+            if licences(cle):
+                print(f"  {cle} laisse de cote : licence a accepter, "
+                      f"designe-le par son numero pour le prendre")
+        return libres
     if not rep:
         return conseil
     choisis = []
@@ -944,7 +1013,13 @@ def main():
 
     cles = []
     if args.tout:
-        cles = tiennent
+        # Meme regle que le menu : « tout ce que la machine tient » ne vaut pas
+        # acceptation d'une licence non libre.
+        cles = [c for c in tiennent if not licences(c)]
+        for c in tiennent:
+            if licences(c):
+                print(f"  {c} laisse de cote : licence a accepter "
+                      f"(--modeles {c} pour le prendre)")
     elif args.modeles:
         for c in args.modeles.split(","):
             c = c.strip()

@@ -35,4 +35,10 @@ paquet/build/
 paquet/dist/
 
 # Secret des sessions : il vit dans conversations/, deja exclu
+
+
+# Le modele d'aiguillage entraine avec les demandes reelles de CETTE
+# installation. Un modele bayesien ne garde pas les phrases, mais il garde
+# les mots et leurs comptes : c'est peu, et deja trop pour un depot public.
+# Le modele du depot, aiguilleur.json, ne contient que le corpus.
 aiguilleur.local.json

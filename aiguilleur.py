@@ -30,14 +30,25 @@ import json
 import math
 import os
 import re
+import sys
 import unicodedata
 
 ICI = os.path.dirname(os.path.abspath(__file__))
+# Ou ECRIRE, par opposition a ou lire le code. Gele par PyInstaller, ICI pointe
+# sur un dossier temporaire efface a l'arret : un modele local pose a cote de
+# l'executable n'y etait jamais lu, et le bouton « reentrainer » y ecrivait pour
+# rien — pire, faute d'y trouver les conversations, il ecrasait la copie
+# EMBARQUEE du modele publie. Meme distinction que ICI_DATA dans serveur.py.
+ICI_DATA = (os.path.dirname(os.path.abspath(sys.executable))
+            if getattr(sys, "frozen", False) else ICI)
+# Le modele PUBLIE est du code : il voyage avec le paquet.
 MODELE = os.path.join(ICI, "aiguilleur.json")
-# Entraine avec les demandes reelles de CETTE installation. Ignore par git :
-# un modele bayesien ne garde pas les phrases, mais il garde les mots — assez
-# pour qu'un depot public n'ait pas a les porter.
-MODELE_LOCAL = os.path.join(ICI, "aiguilleur.local.json")
+# Le modele LOCAL est une donnee : il vit a cote de l'executable, comme les
+# conversations et les cles. Entraine avec les demandes reelles de CETTE
+# installation, et ignore par git — un modele bayesien ne garde pas les
+# phrases, mais il garde les mots, assez pour qu'un depot public n'ait pas a
+# les porter.
+MODELE_LOCAL = os.path.join(ICI_DATA, "aiguilleur.local.json")
 
 # En dessous de cette marge entre les deux meilleures hypotheses, on ne tranche
 # pas : la demande part au modele de langage. Mieux vaut un appel de plus qu'une

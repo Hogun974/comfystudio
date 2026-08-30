@@ -250,7 +250,7 @@ if [ "$SYSTEME" = "Darwin" ]; then
   JOURNAL_ERR="$DOSSIER_JOURNAL/studio.err"
   PLIST="$HOME/Library/LaunchAgents/$ETIQUETTE.plist"
 
-  mkdir -p "$DONNEES" "$DOSSIER_JOURNAL" "$HOME/Library/LaunchAgents" "$RACINE/sorties"
+  mkdir -p "$DONNEES" "$DOSSIER_JOURNAL" "$HOME/Library/LaunchAgents"
   # 700 : les conversations contiennent les demandes et les cles d'API. Sur un
   # Mac partage, le ~/Library d'un autre compte reste lisible par defaut.
   chmod 700 "$DONNEES"
@@ -405,24 +405,34 @@ vert "groupe       : $GROUPE"
 
 # ══════════════════════════ dossiers ══════════════════════════
 titre "Dossiers"
-mkdir -p "$DONNEES" "$RACINE/sorties"
-chown -R "$UTILISATEUR:$GROUPE" "$DONNEES" "$RACINE/sorties"
+# Un seul dossier a creer, et un seul a donner au service : sorties/, entrees/,
+# avis.jsonl, noeuds.json et la file d'attente sont tous calcules a partir de
+# STUDIO_DONNEES depuis que le studio a rassemble ses ecritures. Creer
+# "$RACINE/sorties" et "$RACINE/avis.jsonl" comme avant rendrait le dossier du
+# code inscriptible par le service pour des fichiers que plus rien ne lit.
+mkdir -p "$DONNEES"
+chown -R "$UTILISATEUR:$GROUPE" "$DONNEES"
 # 700 : conversations, comptes et cles d'API. Personne d'autre n'a a les lire.
 chmod 700 "$DONNEES"
 vert "donnees      : $DONNEES"
-vert "sorties      : $RACINE/sorties"
+gris "  sorties/, entrees/, avis.jsonl et noeuds.json y sont crees par le studio"
 
-# Le studio ajoute une ligne a avis.jsonl a chaque generation, DANS son dossier
-# d'installation. Le dossier restant la propriete de root, il ne pourrait pas
-# creer le fichier ; l'echec est rattrape en silence et le journal des avis se
-# perdrait sans que rien ne l'annonce. On cree le fichier et on le lui donne,
-# sans rendre le code lui-meme accessible en ecriture.
-[ -e "$RACINE/avis.jsonl" ] || : > "$RACINE/avis.jsonl"
-chown "$UTILISATEUR:$GROUPE" "$RACINE/avis.jsonl"
-vert "avis.jsonl   : accessible en ecriture au service"
-
-# noeuds.json n'est que LU par le studio : il reste la propriete de
-# l'administrateur, volontairement. C'est une configuration, pas une donnee.
+# noeuds.json a suivi les autres : il se lit maintenant dans $DONNEES, et non
+# plus dans le dossier d'installation. Un fichier laisse a l'ancien endroit
+# n'est plus lu du tout, et le studio se rabat sur son seul noeud local sans
+# rien dire - une machine declaree disparait alors en silence.
+if [ -e "$RACINE/noeuds.json" ] && [ ! -e "$DONNEES/noeuds.json" ]; then
+  jaune "noeuds.json est reste dans $RACINE, ou le studio ne le lit plus"
+  gris "  copie-le : cp \"$RACINE/noeuds.json\" \"$DONNEES/\" puis chown"
+fi
+# Meme histoire pour ce qu'une installation d'avant le regroupement a laisse
+# derriere elle. On ne deplace rien d'autorite - c'est une installation, pas
+# une migration - mais se taire laisserait croire ces sorties effacees.
+for reste in "$RACINE/sorties" "$RACINE/avis.jsonl"; do
+  [ -e "$reste" ] || continue
+  jaune "$reste date d'avant le regroupement des donnees"
+  gris "  le studio ecrit desormais dans $DONNEES - deplace-le si tu y tiens"
+done
 
 # ProtectHome=yes rend /home, /root et /run/user inaccessibles au service. Si
 # l'installation, les donnees ou l'interpreteur vivent la-dessous, l'unite

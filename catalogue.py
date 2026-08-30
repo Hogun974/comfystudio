@@ -162,6 +162,12 @@ CATALOGUE = {
 # exemple) : additionner leurs poids surestimerait le telechargement.
 # On compte donc toujours l union des fichiers reellement manquants.
 TAILLES = {
+    # Mesurees sur disque, comme les autres. Sans elles, poids() annonçait
+    # « ~16 Go » pour la retouche d'une zone nommee au lieu de 17,75 : on
+    # promettait moins que ce qu'on allait telecharger.
+    ('checkpoints', 'sam3.1_multiplex_fp16.safetensors'): 1.75,
+    ('background_removal', 'birefnet.safetensors'): 0.44,
+    ('upscale_models', '4x-UltraSharp.pth'): 0.07,
     ('checkpoints', 'RealVisXL_V5.0.safetensors'): 6.94,
     ('checkpoints', 'hunyuan3d-dit-v2_fp16.safetensors'): 4.93,
     ('checkpoints', 'ponyDiffusionV6XL.safetensors'): 6.94,

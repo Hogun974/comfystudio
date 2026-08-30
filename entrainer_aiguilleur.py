@@ -19,6 +19,7 @@ import time
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 
+import aiguilleur as _aiguilleur
 from aiguilleur import Aiguilleur, MARGE_SURE, MODELE, MODELE_LOCAL  # noqa: E402
 import corpus_aiguillage                                # noqa: E402
 
@@ -55,7 +56,7 @@ def moissonner(dossier=None):
     et produire quand meme quelque chose ; l'apprendre reviendrait a lui
     enseigner ses propres erreurs.
     """
-    dossier = dossier or os.path.join(ICI, "conversations")
+    dossier = dossier or os.path.join(_aiguilleur.ICI_DATA, "conversations")
     if not os.path.isdir(dossier):
         return []
     connues = set(corpus_aiguillage.__dict__.get("_CLASSES", []) or

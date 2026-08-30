@@ -80,31 +80,44 @@ Faire tourner le studio sous un compte macOS *dédié* impose un `LaunchDaemon`
 
 ---
 
-## 2. Où le studio écrit, et pourquoi c'est à deux endroits
+## 2. Où le studio écrit — un seul endroit, depuis le 30 août 2026
 
 C'est le point qui décide de tout le durcissement, donc il mérite d'être écrit
-noir sur blanc. `serveur.py` écrit :
+noir sur blanc. Tout ce que `serveur.py` écrit vit désormais sous
+`STUDIO_DONNEES` :
 
-| Chemin | Contenu | Réglable |
-|---|---|---|
-| `STUDIO_DONNEES` | conversations, comptes, clés d'API, registre des nœuds | oui |
-| `<installation>/sorties/` | images et vidéos rapatriées des nœuds distants | **non** |
-| `<installation>/avis.jsonl` | journal des générations | **non** |
+| Fichier ou dossier | Contenu |
+|---|---|
+| `<données>/*.json` | conversations, comptes, clés d'API, session |
+| `<données>/_file.json` | file d'attente, relue au redémarrage |
+| `<données>/_nuage.json` | interrupteurs des fournisseurs distants |
+| `<données>/noeuds.json` | registre des machines |
+| `<données>/avis.jsonl` | journal des générations |
+| `<données>/sorties/` | images et vidéos rapatriées des nœuds distants |
+| `<données>/entrees/` | fichiers joints, quand l'`input` de ComfyUI est absent |
 
-Les deux derniers sont calculés à partir de l'emplacement de `serveur.py` et
-**ne suivent pas `STUDIO_DONNEES`**. Conséquences :
+Avant, `sorties/`, `avis.jsonl` et `noeuds.json` étaient calculés depuis
+l'emplacement de `serveur.py` et **ne suivaient pas** `STUDIO_DONNEES` ;
+l'unité et l'installeur devaient donc ouvrir en écriture un morceau du dossier
+d'installation. Ce n'est plus le cas. Conséquences :
 
-- `ProtectSystem=strict` est inutilisable tel quel : il faudrait lister ces
-  chemins un par un, et toute omission ne se voit qu'au premier téléversement,
-  des semaines après l'installation. L'unité utilise donc `ProtectSystem=full`
-  (`/usr`, `/boot`, `/efi`, `/etc` en lecture seule), et `ReadWritePaths`
-  documente l'intention pour le jour où ces chemins deviendront configurables.
-- L'installeur crée `sorties/` et `avis.jsonl` et les donne au compte de
-  service, **sans rendre le code inscriptible**. `avis.jsonl` compte : le studio
-  rattrape en silence l'échec d'écriture, et le journal des avis se perdrait
-  sans qu'aucun message ne l'annonce.
-- `noeuds.json` reste la propriété de l'administrateur : il est seulement *lu*.
-  C'est une configuration, pas une donnée.
+- `ReadWritePaths` ne porte plus qu'**une** ligne, `STUDIO_DONNEES`. Une
+  seconde ligne vers `<installation>/sorties` rouvrirait le dossier du code en
+  écriture pour un chemin que le studio n'ouvre plus.
+- L'installeur ne crée plus `sorties/` ni `avis.jsonl` dans le dossier
+  d'installation. Il **signale** ceux qu'une installation antérieure y a
+  laissés, sans les déplacer : une réinstallation n'est pas une migration, et
+  déplacer d'autorité les sorties de quelqu'un serait pire que de se taire.
+- `noeuds.json` a suivi les autres et se lit maintenant dans `STUDIO_DONNEES`.
+  **C'est le piège de ce déplacement** : un `noeuds.json` laissé à l'ancien
+  endroit n'est plus lu du tout, `_lire_noeuds()` se rabat sur le seul nœud
+  local, et les machines déclarées disparaissent sans un mot. L'installeur
+  prévient quand il en trouve un.
+- `ProtectSystem=strict` reste malgré tout hors de portée, mais pour une
+  **autre** raison qu'avant : l'administration télécharge les modèles dans le
+  dossier `models` de ComfyUI, qui vit ailleurs et que l'unité ne connaît pas.
+  Sous `strict`, le premier modèle demandé échouerait sur une erreur de
+  permission. L'unité garde donc `ProtectSystem=full`.
 
 Défauts retenus : `/var/lib/comfystudio` sur Linux,
 `~/Library/Application Support/ComfyStudio` sur macOS, en mode `700` — les

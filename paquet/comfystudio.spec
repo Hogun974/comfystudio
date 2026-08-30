@@ -50,6 +50,12 @@ DONNEES = [
     _f("web/admin.html", "web"),
     # Le classifieur d'intention, lu par aiguilleur.charger() au demarrage.
     # Absent, le studio marche encore mais tout passe par le modele de langage.
+    #
+    # Le SECOND modele, aiguilleur.local.json, n'est PAS ici et ne doit pas y
+    # entrer : entraine avec les demandes reelles de cette installation, il en
+    # porte le vocabulaire. charger() le prefere quand il existe, mais gele il
+    # n'existe jamais a cote de aiguilleur.py (les deux chemins sortent de ICI,
+    # donc du _MEIxxx temporaire) et le repli sur celui-ci est verifie.
     _f("aiguilleur.json"),
     _f("noeuds.exemple.json"),
 ]

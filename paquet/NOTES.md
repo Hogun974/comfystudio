@@ -128,6 +128,50 @@ des matières de l'exe (`CArchiveReader`) : `web\index.html`, `web\admin.html`,
 `noeud.bat`, `modeles.sh`, `maj_noeud.sh`, `maj_noeud.bat`, `installer.py`,
 `installation.py`, `zimaos-comfyui.yml`, `zimaos-registry.yml`, `catalogue.py`.
 
+## L'aiguilleur a deux fichiers, l'exe n'en embarque qu'un
+
+Depuis le 29 août, `aiguilleur.py` connaît deux modèles : `aiguilleur.json`,
+publié et suivi par git, et `aiguilleur.local.json`, entraîné avec les demandes
+réelles de l'installation et ignoré par git. `charger()` prend le local en
+priorité. **Seul `aiguilleur.json` est dans la spec, et c'est voulu** : le local
+porte le vocabulaire des utilisateurs de cette machine, il n'a rien à faire dans
+un exe qu'on distribue.
+
+Rien ne casse dans un cas comme dans l'autre — vérifié, pas supposé, en
+exerçant `charger()` dans les cinq états possibles :
+
+| État du disque | `charger()` rend |
+|---|---|
+| aucun des deux fichiers | `None` — le studio se rabat sur le modèle de langage |
+| `aiguilleur.json` seul | le modèle publié |
+| les deux | le **local**, comme voulu |
+| local tronqué ou vide | le publié, sans lever |
+
+La boucle de `charger()` avale toute exception et passe au suivant : un
+`aiguilleur.local.json` à moitié écrit dégrade au lieu de tuer le démarrage.
+
+### Ce que l'exe ne peut pas faire, et qu'il ne dit pas
+
+`aiguilleur.py` calcule ses deux chemins depuis `ICI`, jamais depuis `ICI_DATA`
+— correct pour **lire** le modèle embarqué, puisque c'est une ressource du
+paquet. Mais gelé, `ICI` vaut le `_MEIxxxxxx` temporaire, et il en découle deux
+choses mesurées sur une reproduction de cette disposition :
+
+- un `aiguilleur.local.json` posé **à côté de l'exe** n'est jamais lu. L'exe se
+  sert toujours du modèle publié qu'il porte.
+- le bouton « réentraîner » de l'administration (`_mesurer_aiguilleur`, ligne
+  4494) écrit dans `_MEIxxxxxx\`, effacé à la fermeture. Pire : son
+  `moissonner()` cherche les conversations dans `_MEIxxxxxx\conversations`, qui
+  n'existe pas ; il ne récolte donc jamais rien, `du_reel` reste faux, et c'est
+  `aiguilleur.json` — la copie embarquée, dans le temporaire — qu'il écrase. Le
+  bouton rend de belles mesures et **ne change rien**.
+
+C'est exactement la faute qu'`ICI_DATA` a corrigée dans `serveur.py`, restée en
+place ailleurs. La corriger demande de toucher à `aiguilleur.py` et
+à `entrainer_aiguilleur.py` (chemins d'écriture et dossier moissonné tirés de
+l'emplacement de l'exe, pas du paquet) : ce n'est pas un travail de
+paquetage, et rien ici ne peut le rattraper.
+
 ## Pièges rencontrés à la construction
 
 ### Les modules voisins ne sont pas trouvés
@@ -208,5 +252,9 @@ Conséquence à connaître maintenant que l'exe écrit à côté de lui :
   au lieu d'un fichier) supprime l'extraction — mais ce n'est plus « un seul
   exécutable ».
 - Rien n'a été vérifié au-delà du démarrage et de la persistance : générer une
-  image, piloter un nœud distant ou réentraîner l'aiguilleur depuis l'exe
-  restent à essayer.
+  image ou piloter un nœud distant depuis l'exe restent à essayer.
+  Réentraîner l'aiguilleur, en revanche, ne marche pas — voir plus haut.
+- La spec embarque **20** fichiers de données aujourd'hui (les 15 de la
+  vérification ci-dessus, plus les cinq `.jsonl` de corpus). Rejouée hors
+  PyInstaller, elle les trouve tous, et sa liste couvre encore l'intégralité de
+  `SCRIPTS_NOEUD` — y compris `modeles.sh`, ajouté depuis.
