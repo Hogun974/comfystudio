@@ -1866,8 +1866,16 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     # Reconnues a l'ecrit, avant tout appel : ces tournures ne laissent aucun
     # doute, et le catalogue suffit ensuite a choisir le cote du masque.
     if a_une_image == "image" and not modele_force:
-        for reconnait, quoi in ((veut_retoucher_fond, "retoucher_fond"),
-                                (veut_retoucher_sujet, "retoucher_sujet")):
+        # La zone nommee passe devant : « enleve le chien » vise le chien, pas
+        # « le sujet » que BiRefNet aurait devine. On ne la propose que si une
+        # machine peut la servir — le modele de selection est un telechargement
+        # optionnel.
+        ordre = []
+        if not manquants_partout("retoucher_zone"):
+            ordre.append((veut_zone_nommee, "retoucher_zone"))
+        ordre += [(veut_retoucher_fond, "retoucher_fond"),
+                  (veut_retoucher_sujet, "retoucher_sujet")]
+        for reconnait, quoi in ordre:
             if reconnait(texte):
                 journal(tid, f"« {quoi.replace('_', ' ')} » reconnu a la "
                              f"formulation — la zone hors masque sera intacte")
@@ -2774,7 +2782,8 @@ def g_edition(consigne, image, seed, prefixe, par=None):
      "18":{"class_type":"SaveImage","inputs":{"images":["17",0],"filename_prefix":prefixe}},
     }
 
-def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True, par=None):
+def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True,
+                    par=None, cible="", region=False):
     """Retouche la seule zone designee, et recolle le reste a l'identique.
 
     « sur_le_sujet » choisit ce qu'on remplace : le sujet detoure (enlever,
@@ -2790,6 +2799,14 @@ def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True, par=No
     etapes = int(par.get("etapes", REGLAGES["edition"]["etapes"]))
     # Le masque du sujet, puis son inverse quand c'est le fond qu'on change.
     masque = ["7", 0] if sur_le_sujet else ["8", 0]
+    # Une cible nommee remplace BiRefNet par SAM 3.1, qui sait viser « le ciel »
+    # ou « le panneau » et pas seulement « le sujet ».
+    if cible:
+        masque = ["32", 0]
+    # 24 pour remplacer un OBJET — sinon il reste un fantome au bord — mais 0
+    # pour refaire une REGION : a 24, le masque du ciel mange 9,33 % de l'image
+    # sur les arbres. La distinction ne se lit pas dans l'image, elle se demande.
+    expand = 0 if region else 24
     g = {
      "1":{"class_type":"UNETLoader","inputs":{"unet_name":"flux-2-klein-4b.safetensors","weight_dtype":"default"}},
      "2":{"class_type":"CLIPLoader","inputs":{"clip_name":"qwen_3_4b.safetensors","type":"flux2","device":"default"}},
@@ -2813,7 +2830,7 @@ def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True, par=No
      "7":{"class_type":"ThresholdMask","inputs":{"mask":["51",0],"value":0.5}},
      "8":{"class_type":"InvertMask","inputs":{"mask":["7",0]}},
      # 24 mesure : a 0 il reste un fantome du sujet au bord de la zone.
-     "9":{"class_type":"GrowMask","inputs":{"mask":masque,"expand":24,
+     "9":{"class_type":"GrowMask","inputs":{"mask":masque,"expand":expand,
           "tapered_corners":True}},
      # ── masque DOUX, pour le recollage seulement ───────────────────────
      # FeatherMask ne convient pas : il degrade depuis les bords de l'IMAGE, pas
@@ -2846,6 +2863,23 @@ def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True, par=No
      "24":{"class_type":"SaveImage","inputs":{"images":["23",0],
            "filename_prefix":prefixe}},
     }
+    if cible:
+        # SAM 3.1 rend deja un masque binaire strict : pas de ThresholdMask ici,
+        # contrairement a BiRefNet dont le masque vaut ~0,0015 loin du sujet.
+        for mort in ("50", "51", "7", "8"):
+            g.pop(mort, None)
+        g["30"] = {"class_type":"CheckpointLoaderSimple",
+                   "inputs":{"ckpt_name":"sam3.1_multiplex_fp16.safetensors"}}
+        # Le CLIP doit venir de CE checkpoint : celui du moteur d'images leve
+        # une erreur franche. La cible est en anglais, 32 jetons au plus —
+        # au-dela, l'encodeur tronque sans le dire.
+        g["31"] = {"class_type":"CLIPTextEncode","inputs":{"text":cible,"clip":["30",1]}}
+        # 0,70 et non 0,50 : les vraies detections ne bougent pas d'un centieme
+        # entre 0,30 et 0,95, et le charabia meurt a 0,70.
+        g["32"] = {"class_type":"SAM3_Detect",
+                   "inputs":{"model":["30",0],"image":["5",0],
+                             "conditioning":["31",0],"threshold":0.70,
+                             "refine_iterations":2,"individual_masks":False}}
     return g
 
 
@@ -3135,6 +3169,34 @@ def veut_retoucher_sujet(texte):
     return bool(_SUJET.search(t)) and not _FOND.search(t)
 
 
+# « seulement », « juste », « uniquement » : le mot qui dit qu'on vise une zone
+# et pas l'image entiere. C'est le signal le plus sur qu'on ait.
+_SEULEMENT = re.compile(r"\b(seulement|uniquement|juste|que)\b", re.I)
+
+
+def veut_zone_nommee(texte):
+    """Vrai si la demande vise une zone DESIGNEE, et non « le sujet » ou « le fond ».
+
+    Deux chemins : le mot « seulement » associe a un verbe de remplacement, ou
+    un ordre de suppression qui NOMME sa cible. « enleve le chien » nomme sa
+    cible ; « enleve le sujet » ne nomme rien de plus que ce que BiRefNet sait
+    deja trouver.
+    """
+    t = sans_accents(texte or "")
+    if _FOND.search(t):
+        return False        # le fond a son propre chemin, sans modele en plus
+    if _SEULEMENT.search(t) and re.search(r"\b(chang|remplac|refai|met[st]?)\w*", t, re.I):
+        return True
+    m = _SUJET.search(t)
+    if not m:
+        return False
+    apres = t[m.end():].strip()
+    # « enleve le sujet » ou « efface la personne » : rien de plus precis que ce
+    # que le detourage sait faire, et il ne coute aucun modele supplementaire.
+    return bool(apres) and not re.match(
+        r"^(le|la|l.|les)?\s*(sujet|personnage|personne|fond|arriere)", apres, re.I)
+
+
 SYS_ZONE = """Tu decris ce qu'il faut VOIR dans une zone d'image, et rien d'autre.
 
 On va effacer une zone d'une photo et la redessiner. Le modele qui la redessine
@@ -3154,6 +3216,61 @@ guillemets.
 
 Deux interdits : ne dis jamais ce qu'il faut ENLEVER — la zone sera vide, il n'y
 a plus rien a enlever — et ne decris pas le reste de l'image, seulement la zone."""
+
+
+SYS_CIBLE = """Tu prepares une retouche d'image. Tu rends TROIS lignes, rien d'autre.
+
+Ligne 1 — CIBLE : ce qu'il faut selectionner dans l'image, EN ANGLAIS, en trois
+mots au plus, avec l'article. « the sky », « the car », « the road sign ».
+L'anglais n'est pas negociable : l'outil de selection ne comprend que lui, et se
+trompe en silence sinon.
+
+Ligne 2 — un seul mot : OBJET si la cible est une chose delimitee (une voiture,
+un panneau, un chien), REGION si c'est une etendue (le ciel, le sol, la mer, un
+mur).
+
+Ligne 3 — DESCRIPTION, en francais, de ce qu'il faut VOIR a la place une fois la
+zone refaite. Pas de verbe d'action : la zone sera vide, il n'y a plus rien a
+enlever. « un ciel d'orage, nuages sombres, lumiere basse ».
+
+Exemple, pour « remplace le ciel par un ciel d'orage » :
+the sky
+REGION
+un ciel d'orage, nuages sombres et lourds, lumiere basse"""
+
+
+async def preparer_cible(texte, tid):
+    """Rend (cible anglaise, region ?, description) ou ("", False, "").
+
+    Les trois se decident ensemble : la categorie depend de la cible, et la
+    description doit parler de la meme zone. Les separer en trois appels
+    multiplierait les occasions de les voir diverger.
+    """
+    try:
+        brut = await appeler_ollama(texte, None, SYS_CIBLE, json_mode=False,
+                                    temperature=0.2, tid=tid,
+                                    modele=choisir_modele_ecriture())
+    except Exception as e:
+        journal(tid, f"preparation de la cible indisponible ({type(e).__name__})")
+        return "", False, ""
+    lignes = [l.strip() for l in (brut or "").splitlines() if l.strip()]
+    if len(lignes) < 3:
+        journal(tid, f"cible mal formee ({len(lignes)} ligne(s) rendues sur 3)")
+        return "", False, ""
+    cible, genre, desc = lignes[0], lignes[1].upper(), " ".join(lignes[2:])
+    # Trois controles, un par ligne. Une cible hors alphabet latin, une
+    # categorie inventee ou une description qui donne un ordre valent mieux
+    # d'etre refusees que payees quinze secondes de carte.
+    if not cible or not latin(cible) or len(cible.split()) > 6:
+        journal(tid, "cible inutilisable — la selection viserait n'importe quoi")
+        return "", False, ""
+    if "REGION" not in genre and "OBJET" not in genre:
+        journal(tid, f"categorie inattendue : {genre[:20]}")
+        return "", False, ""
+    if not desc or not latin(desc) or _SUJET.search(sans_accents(desc)):
+        journal(tid, "description rejetee : elle donne encore un ordre")
+        return "", False, ""
+    return cible, "REGION" in genre, desc
 
 
 async def decrire_zone(texte, tid):
@@ -4731,6 +4848,25 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                          f"{(images0 - 1) * mult + 1} a {fps:.0f} im/s"
                          + (" (ralenti : deux fois plus long)" if ralenti
                             else " (meme duree, plus fluide)"))
+        elif intention == "retoucher_zone":
+            if not image:
+                raise RuntimeError(
+                    "aucune image a retoucher : depose une image, ou demande-le "
+                    "juste apres en avoir produit une.")
+            cible, region, zone = await preparer_cible(texte, tid)
+            if not cible:
+                raise RuntimeError(
+                    "je n'arrive pas a determiner quoi selectionner. Nomme la "
+                    "zone et ce qu'elle doit devenir — par exemple « remplace le "
+                    "ciel par un ciel d'orage ».")
+            plan["prompt"] = zone
+            journal(tid, f"zone visee : « {cible} » "
+                         f"({'etendue' if region else 'objet'}) — a la place : {zone[:60]}")
+            g = g_retouche_zone(zone, image, seed,
+                                prefixe_sortie(conv, intention, horod, "retouche"),
+                                par=par, cible=cible, region=region)
+            journal(tid, "retouche localisee — hors du masque, l'image est "
+                         "recollee a l'identique")
         elif intention in ("retoucher_fond", "retoucher_sujet"):
             if not image:
                 raise RuntimeError(

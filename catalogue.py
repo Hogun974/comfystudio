@@ -98,6 +98,24 @@ CATALOGUE = {
            ("text_encoders","qwen_3_4b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/text_encoders/qwen_3_4b.safetensors"),
            ("vae","flux2-vae.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/vae/flux2-vae.safetensors"),
            ("background_removal","birefnet.safetensors","Comfy-Org/BiRefNet","background_removal/birefnet.safetensors")]),
+ # SAM 3.1 vise une zone par son NOM, la ou BiRefNet ne connait que « le
+ # sujet » et « le fond ». Mesure : IoU 0,905 sur « the sky » contre une
+ # reference independante, 0,983 sur « the car » compare a BiRefNet, et le
+ # masque coute 1,2 s — autant que BiRefNet.
+ #
+ # LICENCE : « SAM License » de Meta. L'usage commercial est autorise, mais
+ # ce n'est PAS un modele libre — redistribution aux memes termes,
+ # retro-ingenierie interdite, clauses ITAR, et Meta peut modifier les
+ # termes unilateralement. Le studio est sous AGPL-3.0 : ce modele est un
+ # telechargement optionnel de l'utilisateur, pas une dependance du logiciel.
+ "retoucher_zone": dict(titre="Retouche d'une zone nommee (klein + SAM 3.1)",
+   famille="flux2", type="retoucher_zone", duree="15 s", vram=8.0,
+   traduire=True,
+   pour="refaire une partie precise d'une image designee par son nom — le ciel, une voiture, un panneau — en laissant tout le reste intact",
+ fichiers=[("diffusion_models","flux-2-klein-4b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/diffusion_models/flux-2-klein-4b.safetensors"),
+           ("text_encoders","qwen_3_4b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/text_encoders/qwen_3_4b.safetensors"),
+           ("vae","flux2-vae.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/vae/flux2-vae.safetensors"),
+           ("checkpoints","sam3.1_multiplex_fp16.safetensors","Comfy-Org/sam3.1","checkpoints/sam3.1_multiplex_fp16.safetensors")]),
  "detourer": dict(titre="Detourage (BiRefNet)", famille="birefnet",
    type="detourer", duree="5 s", vram=1.0, multilingue=True,
    pour="isoler le sujet d'une image et rendre le fond transparent",
