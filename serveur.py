@@ -108,11 +108,22 @@ DOSSIER_CONV = os.environ.get("STUDIO_DONNEES") or os.path.join(ICI_DATA, "conve
 # echouait alors sur « Permission denied ». On se rabat sur le dossier de
 # donnees, que le studio possede par construction.
 def _entree_utilisable(dossier):
-    try:
-        os.makedirs(dossier, exist_ok=True)
+    """Peut-on ecrire ici — sans rien creer pour le savoir.
+
+    La version precedente faisait un makedirs avant de repondre : sur une
+    machine sans ComfyUI, elle FABRIQUAIT l'arborescence, se declarait
+    satisfaite, et le repli ne se declenchait jamais. L'executable Windows
+    semait ainsi un faux arbre ComfyUI a cote de lui a chaque demarrage — l'un
+    d'eux a fini dans le depot, invisible a git, qui ne suit pas les dossiers
+    vides.
+
+    On teste le dossier s'il existe, sinon son parent : c'est lui qui dira si
+    l'on aurait le droit de creer.
+    """
+    if os.path.isdir(dossier):
         return os.access(dossier, os.W_OK)
-    except OSError:
-        return False
+    parent = os.path.dirname(dossier.rstrip(os.sep)) or "."
+    return os.path.isdir(parent) and os.access(parent, os.W_OK)
 
 
 if not _entree_utilisable(DOSSIER_ENTREE):
@@ -4652,9 +4663,12 @@ def _mesurer_aiguilleur():
     # rendait une erreur 500 a chaque clic.
     exemples, du_reel = entrainer.corpus()
     neuf = _aiguilleur.Aiguilleur().apprendre(exemples)
-    # Et le meme choix de fichier que la ligne de commande : entraine sur des
-    # demandes reelles, le modele ne peut pas etre celui qu'on publie.
-    neuf.ecrire(_aiguilleur.MODELE_LOCAL if du_reel else _aiguilleur.MODELE)
+    # TOUJOURS le modele local, meme sans demande reelle : ce bouton entraine
+    # POUR cette installation, il n'a aucune raison de toucher au modele publie.
+    # Gele par PyInstaller, ce dernier vit d'ailleurs dans un dossier temporaire
+    # efface a l'arret : y ecrire degradait le modele en memoire — 7 890 traits
+    # tombes a 7 680 — au profit d'un fichier que personne ne relirait.
+    neuf.ecrire(_aiguilleur.MODELE_LOCAL)
     bancs = []
     for nom in entrainer.BANCS:
         banc = entrainer._lire(nom)

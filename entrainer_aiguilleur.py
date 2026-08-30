@@ -86,6 +86,13 @@ def moissonner(dossier=None):
     return recolte
 
 
+# Mis a vrai par « --sans-reel ». C'est ainsi qu'on regenere le modele PUBLIE :
+# sans une seule demande d'utilisateur dedans. Un drapeau de module plutot qu'un
+# parametre, parce que corpus() est appele de trois endroits et qu'un seul
+# oublie ferait publier ce qu'on cherche justement a retenir.
+SANS_REEL = False
+
+
 def corpus():
     """Tous les exemples, sans doublon. L'ordre des fichiers ne compte pas."""
     if not os.path.exists(os.path.join(ICI, "corpus_aiguillage.jsonl")):
@@ -101,7 +108,7 @@ def corpus():
     for x in tout:
         fabriques[x["intention"]] = fabriques.get(x["intention"], 0) + 1
 
-    reels, ajoutes = moissonner(), {}
+    reels, ajoutes = ([] if SANS_REEL else moissonner()), {}
     for x in reels:
         cle = x["texte"].strip().lower()
         if cle in vus:
@@ -143,6 +150,10 @@ def mesurer(a, banc):
 
 
 if __name__ == "__main__":
+    # « --sans-reel » : n'apprend QUE le corpus du depot. C'est la
+    # commande qui regenere le modele publie.
+    SANS_REEL = "--sans-reel" in sys.argv
+
     exemples, du_reel = corpus()
     par = {}
     for x in exemples:
