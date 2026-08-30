@@ -2796,7 +2796,17 @@ def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True,
     mouille, meme lumiere » lui apprend tout.
     """
     par = par or {}
-    etapes = int(par.get("etapes", REGLAGES["edition"]["etapes"]))
+    # Une grande zone demande plus de pas : le moteur doit inventer davantage.
+    # Mesure a masque et image constants : 4 pas -> texture a 0,59 du voisinage,
+    # 8 -> 0,73, 16 -> 0,83. Pour une petite zone, 4 pas donnent deja 1,12,
+    # c'est-a-dire mieux que le voisinage : monter serait payer pour rien.
+    #
+    # On ne connait pas l'aire du masque a ce stade — la calculer demanderait un
+    # aller-retour de plus. Mais on sait ce qu'on VISE, et ça la predit : un fond
+    # ou une etendue occupent une grande part du cadre par definition.
+    grande = region or not sur_le_sujet
+    etapes = int(par.get("etapes", 16 if grande else
+                         REGLAGES["edition"]["etapes"]))
     # Le masque du sujet, puis son inverse quand c'est le fond qu'on change.
     masque = ["7", 0] if sur_le_sujet else ["8", 0]
     # Une cible nommee remplace BiRefNet par SAM 3.1, qui sait viser « le ciel »
@@ -4862,6 +4872,9 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             plan["prompt"] = zone
             journal(tid, f"zone visee : « {cible} » "
                          f"({'etendue' if region else 'objet'}) — a la place : {zone[:60]}")
+            if region:
+                journal(tid, "etendue a refaire : 16 etapes au lieu de 4, deux "
+                             "fois plus long mais sans plaque floue")
             g = g_retouche_zone(zone, image, seed,
                                 prefixe_sortie(conv, intention, horod, "retouche"),
                                 par=par, cible=cible, region=region)
@@ -4884,6 +4897,9 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             g = g_retouche_zone(zone, image, seed,
                                 prefixe_sortie(conv, intention, horod, "retouche"),
                                 sur_le_sujet, par)
+            if not sur_le_sujet:
+                journal(tid, "le fond occupe une grande part du cadre : "
+                             "16 etapes au lieu de 4")
             journal(tid, "retouche localisee — hors du masque, l'image est "
                          "recollee a l'identique")
         elif intention == "detourer":
