@@ -765,6 +765,16 @@ def choisir_noeud(cle):
     # est un recours, pas un choix par defaut.
     natifs = [x for x in bons if tient_vraiment(cle, x["id"])]
     dans = natifs or bons
+    # Une carte LIBRE passe devant une grosse carte occupee. Sans cette regle,
+    # deux demandes visaient toutes deux la plus grosse et s'y empilaient pendant
+    # que l'autre machine dormait — le parallelisme ne rapportait rien.
+    #
+    # Ce n'est pas toujours le choix le plus rapide pour UNE demande : attendre
+    # deux minutes la grosse carte peut battre un rendu lance tout de suite sur
+    # la petite. Mais c'est le plus rapide pour l'ensemble, et c'est le seul
+    # qu'on puisse faire sans predire une duree qu'on ne connait pas.
+    libres = [x for x in dans if not verrou_noeud(x["id"]).locked()]
+    dans = libres or dans
     local = next((x for x in dans if x.get("local")), None)
     return local or max(dans, key=lambda x: ETAT_NOEUDS.get(x["id"], {}).get("vram", 0))
 
@@ -4073,6 +4083,11 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800):
         # tomber tant qu'une autre existe.
         autres = [x for x in noeuds_pour(cle) if x["id"] not in ecartes]
         if autres:
+            # Meme regle qu'au premier choix : une carte libre passe devant
+            # une grosse carte occupee. Une reprise a deja perdu du temps ; la
+            # faire attendre derriere un rendu en cours en perdrait deux fois.
+            au_repos = [x for x in autres if not verrou_noeud(x["id"]).locked()]
+            autres = au_repos or autres
             neuf = (next((x for x in autres if x.get("local")), None)
                     or max(autres, key=lambda x: ETAT_NOEUDS.get(x["id"], {}).get("vram", 0)))
             journal(tid, f"la demande repart sur {neuf.get('titre', neuf['id'])}")
