@@ -103,11 +103,11 @@ port (`serveur.py:47`, `PORT = int(os.environ.get("STUDIO_PORT", "8199"))`).
 ### Ce qu'on voit — sortie intégrale du premier lancement
 
 ```
-  Administration : jeton w3WI5xK0AGnIK9qAEDVffqCCMAN5wLio
+  Administration : jeton <jeton-32-caracteres>
   (a coller dans /admin ; conserve dans conversations/_admin.json)
 ================================================================
   Compte administrateur cree : admin
-  Mot de passe : FjcfhRbxCIZFtLE1
+  Mot de passe : <mot-de-passe-16-caracteres>
   Note-le : il n'est pas conserve en clair et ne sera
   plus jamais affiche. Change-le depuis l'interface.
 ================================================================
@@ -177,13 +177,13 @@ et `SORTIES_AGENT` (6141) dérivent tous de `DOSSIER_DONNEES` (99), lui-même
 | | lancement 1 | lancement 2 |
 |---|---|---|
 | « Compte administrateur cree » | 1 fois | **0 fois** |
-| « Mot de passe : » | `FjcfhRbxCIZFtLE1` | **aucune ligne** |
+| « Mot de passe : » | `<mot-de-passe-16-caracteres>` | **aucune ligne** |
 | « Administration : jeton » | affiché | **aucune ligne** |
 | SHA-256 de `_admin.json` | `04066A8F…` | `04066A8F…` (identique) |
 
 Preuve fonctionnelle, pas seulement de fichier :
 
-- connexion `POST /api/compte/entrer` avec `admin` / `FjcfhRbxCIZFtLE1` au
+- connexion `POST /api/compte/entrer` avec `admin` / `<mot-de-passe-16-caracteres>` au
   **second** lancement → `{"ok": true, "nom": "admin", "admin": true}` ;
 - le jeton d'administration affiché au **premier** lancement ouvre encore
   `/api/admin/*` au second ;

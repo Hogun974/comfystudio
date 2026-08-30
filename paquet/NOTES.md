@@ -47,8 +47,8 @@ choisir où écrire les données de l'utilisateur (destructeur).
 Mesuré sur le build d'avant correction, deux lancements successifs :
 
 ```
-lancement 1:   Mot de passe : tBzwxh3iobBpk2Q2
-lancement 2:   Mot de passe : NDszpXr-FMC5j5d6
+lancement 1:   Mot de passe : <mot-de-passe-lancement-1>
+lancement 2:   Mot de passe : <mot-de-passe-lancement-2>
 ```
 
 Un compte administrateur neuf à chaque démarrage : conversations, comptes,

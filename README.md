@@ -42,6 +42,7 @@ des **planches de BD** et des **objets 3D** — en local, sur plusieurs machines
 - [Des machines qui viennent d'elles-memes](#des-machines-qui-viennent-delles-memes)
 - [Quand un réglage n'est pas suivi](#quand-un-réglage-nest-pas-suivi)
 - [Quand une machine tombe](#quand-une-machine-tombe)
+- [Deux studios sur la même machine](#deux-studios-sur-la-même-machine)
 - [Déplacer le studio sur une machine sans carte](#déplacer-le-studio-sur-une-machine-sans-carte)
 - [Plusieurs machines, de puissances différentes](#plusieurs-machines-de-puissances-différentes)
 - [Retrouver ce qu'on a produit](#retrouver-ce-quon-a-produit)
@@ -78,9 +79,10 @@ Ce qu'il faut sur la machine, selon le chemin :
 | **Conteneur** — le studio seul, il pilote des cartes qui sont ailleurs | git, Docker Engine, et le plugin **Compose v2** |
 | **Natif** — Windows, macOS, Linux, sur la machine à carte | git, Python **3.8 ou plus récent** |
 
-`docker compose version` doit répondre `v2.…`. C'est bien `docker compose` en
+`docker compose version` doit répondre `v2` **ou plus récent** — `v5.…` va
+très bien. C'est bien `docker compose` en
 deux mots : `docker-compose` en un mot est la v1, qui n'est plus maintenue.
-Toutes les commandes de ce README sont écrites pour la v2.
+Toutes les commandes de ce README sont écrites pour la v2 et ses suites.
 
 Python 3.8 est le plancher, et les scripts d'installation le vérifient au lieu
 de se contenter de trouver un `python` (voir [Installer](#installer)). Sur
@@ -725,20 +727,40 @@ Deux détails qui comptent :
 Vérifié en tuant ComfyUI en plein calcul : reprise annoncée, ComfyUI relancé,
 image produite 80 secondes plus tard sans intervention.
 
-### Deux studios sur la même machine
+## Deux studios sur la même machine
 
-`docker compose -p autre` ne suffit pas : le nom du conteneur et le tag de
-l'image ne dépendent pas du projet, et un `--build` retaguerait l'image du
-studio déjà en service — vérifié, ça s'est produit pendant l'essai
-d'installation. Pose `STUDIO_NOM` et `STUDIO_IMAGE` dans le `.env` du second, où
-ils sont commentés :
+**Le nom du projet Compose décide du volume.** Pas le nom des services, pas
+celui des conteneurs : le projet. Et par défaut, il vaut le nom du dossier. Deux
+clones nommés `comfystudio` partagent donc **le même volume** — un `docker
+compose down -v` dans le second efface les conversations, les comptes et les
+clés du premier, et un `up -d` y remplace le conteneur en service. Vérifié en
+`--dry-run` : `Container comfystudio Recreate`, `Volume
+comfystudio_comfystudio-donnees Removed`.
+
+Ce README a donné le mauvais conseil : il disait que `-p` « ne suffit pas », ce
+qui est vrai mais incomplet, et le lecteur l'abandonnait pour se retrouver collé
+au volume de production **en croyant être isolé**. La ligne qui compte est la
+première :
 
 ```bash
+COMPOSE_PROJECT_NAME=studio-essai
 STUDIO_NOM=comfystudio-essai
 STUDIO_IMAGE=comfystudio-essai:latest
+STUDIO_PORT=8299
 ```
 
-Et donne-lui un autre port avec `STUDIO_PORT`.
+La première sépare le volume et le réseau. Les deux suivantes sont nécessaires
+en plus, parce que le nom du conteneur et le tag de l'image ne dépendent pas du
+projet : sans elles, un `--build` retaguerait l'image du studio en service —
+vérifié, ça s'est produit pendant le premier essai d'installation. La dernière
+évite que les deux se disputent le port.
+
+Contrôle avant d'exécuter quoi que ce soit — il coûte une seconde et il montre
+le volume qui serait touché :
+
+```bash
+docker compose up -d --dry-run
+```
 
 ## Déplacer le studio sur une machine sans carte
 
@@ -1503,7 +1525,7 @@ réessayer trois fois ne ferait que retarder le message.
 
 Le studio ne calcule rien : il pilote un ComfyUI et un Ollama qui vivent
 ailleurs. L'image est donc minuscule, sans CUDA. Mesuré sur une machine sans
-carte : **49 s** de construction et **64,6 Mo** téléchargés avec l'image de base
+carte : **49 s** de construction et **46 Mo** téléchargés avec l'image de base
 `python:3.12-slim` déjà en cache, environ **110 Mo** sans — puis **4 s** entre
 `up -d` et la première page servie.
 
@@ -1520,6 +1542,10 @@ docker compose up -d --build
 ```
 
 `.env.exemple` est un fichier caché : un `ls` ne le montre pas, `ls -a` si.
+
+**Si un studio tourne déjà sur cette machine**, ne lance rien avant d'avoir lu
+[Deux studios sur la même machine](#deux-studios-sur-la-même-machine) : par
+défaut, le second écrit dans le volume du premier.
 
 Puis <http://localhost:8199> — ou l'adresse de la machine, si le studio tourne
 sur un serveur, ce qui est le cas recommandé.
@@ -1606,6 +1632,8 @@ téléversements. **Sans lui, tout disparaît au redémarrage du conteneur.**
 | `COMFY_DIR` | racine de ComfyUI, si elle est montée |
 | `COMFY_MODELES`, `COMFY_ENTREE` | ou directement ces deux dossiers |
 | `COMFY_LANCEUR` | script de démarrage de ComfyUI (hors conteneur) |
+| `COMPOSE_PROJECT_NAME` | **le nom qui décide du volume** — à changer pour tout second studio |
+| `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
 
 ## Réglages
 

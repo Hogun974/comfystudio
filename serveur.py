@@ -4149,8 +4149,42 @@ _SEXUEL = re.compile(r"\b(nu|nue|nus|nues|nudit[ée]|seins|fesses|sexe|sexuel|se
 # donc retenir ce qu'il a REELLEMENT accepte, pas ce qu'on lui a demande.
 ENTREES_DISTANTES = {}
 
+def _sous(base, *morceaux):
+    """Assemble un chemin SOUS `base`, ou rend None.
+
+    Toutes les pieces viennent d'ailleurs : `subfolder` et `filename` sont
+    recopies du compte rendu d'une machine a agent, l'identifiant de noeud vient
+    d'une requete. Un « subfolder » absolu, ou seulement un « .. » de trop, et le
+    chemin sort du dossier — la purge des conversations fermees effaçait alors le
+    fichier vise, y compris « conversations/_cles.json ».
+
+    On refuse plutot que de corriger : un chemin qu'il faut redresser est un
+    chemin qu'on n'aurait pas du recevoir, et le silence vaut mieux qu'une
+    devinette. Le controle final porte sur le chemin RESOLU, seul moyen de tenir
+    compte des liens symboliques.
+    """
+    racine = os.path.realpath(base)
+    vise = os.path.realpath(os.path.join(racine, *[m or "" for m in morceaux]))
+    if vise != racine and not vise.startswith(racine + os.sep):
+        return None
+    return vise
+
+
 def chemin_agent(ident, nom):
-    return os.path.join(SORTIES_AGENT, ident, os.path.basename(nom))
+    """Le fichier d'une machine dans le depot du studio, ou None.
+
+    basename ne suffit pas : il rend « .. » pour « ../.. », si bien qu'un
+    identifiant de noeud forge remontait quand meme d'un cran. On assemble donc
+    par _sous(), qui verifie le chemin RESOLU au lieu de faire confiance a ses
+    morceaux.
+    """
+    return _sous(SORTIES_AGENT, os.path.basename(ident or ""),
+                 os.path.basename(nom or ""))
+
+
+def chemin_sortie_locale(sous, nom):
+    """Le fichier dans l'output du ComfyUI local — ou None s'il n'y est pas."""
+    return _sous(os.path.join(BASE_COMFY, "output"), sous, os.path.basename(nom or ""))
 
 
 def output_comfy_a_nous():
@@ -4175,19 +4209,19 @@ async def lire_sortie(info):
     # fournisseur y est pose sous l'identifiant local, et le chercher dans un
     # ComfyUI qui n'existe pas rendrait « introuvable » un fichier qu'on a.
     depot = chemin_agent(ident, info["filename"])
-    if os.path.exists(depot):
+    if depot and os.path.exists(depot):
         with open(depot, "rb") as f:
             return f.read()
     if est_agent(ident):
         # l'agent a depose le fichier chez nous : il est deja local
         chemin = chemin_agent(ident, info["filename"])
-        if not os.path.exists(chemin):
+        if not chemin or not os.path.exists(chemin):
             raise RuntimeError(f"fichier absent du depot de {ident} : {info['filename']}")
         with open(chemin, "rb") as f:
             return f.read()
     if est_local(ident):
-        src = os.path.join(BASE_COMFY, "output", info.get("subfolder", ""), info["filename"])
-        if not os.path.exists(src):
+        src = chemin_sortie_locale(info.get("subfolder", ""), info["filename"])
+        if not src or not os.path.exists(src):
             raise RuntimeError(f"image precedente introuvable : {src}")
         with open(src, "rb") as f:
             return f.read()
@@ -4821,7 +4855,12 @@ async def produire_distant(choix, plan, texte, entree, intention, tid, conv):
     if output_comfy_a_nous():
         dossier = os.path.join(BASE_COMFY, "output", *sous.split("/"))
     else:
-        dossier = os.path.dirname(chemin_agent(noeud_local()["id"], nom))
+        # noeud_local() a un identifiant que nous fabriquons : _sous() ne peut
+        # pas le refuser. On reste explicite plutot que d'en dependre.
+        depose = chemin_agent(noeud_local()["id"], nom)
+        if not depose:
+            raise RuntimeError(f"nom de fichier refuse : {nom}")
+        dossier = os.path.dirname(depose)
     os.makedirs(dossier, exist_ok=True)
     with open(os.path.join(dossier, nom), "wb") as f:
         f.write(octets)
@@ -5968,9 +6007,12 @@ def _fichiers_de(conv):
             if not nom:
                 continue
             ident = f.get("noeud") or noeud_local()["id"]
-            chemins.append(chemin_agent(ident, nom))
-            chemins.append(os.path.join(BASE_COMFY, "output",
-                                        f.get("subfolder", ""), nom))
+            depose = chemin_agent(ident, nom)
+            if depose:
+                chemins.append(depose)
+            local = chemin_sortie_locale(f.get("subfolder", ""), nom)
+            if local:
+                chemins.append(local)
     return chemins
 
 
@@ -6060,6 +6102,13 @@ def mes_fichiers(pid):
 
 EXT_3D = {".glb", ".gltf", ".obj", ".ply", ".stl", ".fbx"}
 
+# Ce qu'une machine a agent a le droit de deposer. Volontairement ferme : le
+# studio sert ces fichiers sur sa propre origine.
+EXT_DEPOT = EXT_IMAGE | EXT_VIDEO | EXT_AUDIO | EXT_3D
+# Deux gigaoctets : large pour la plus longue video qu'on sache produire, et
+# borne quand meme. Sans borne, un seul depot remplissait le disque.
+DEPOT_MAX = 2 * 1024 ** 3
+
 
 def famille_sortie(nom):
     """La famille d'une sortie, d'apres son extension.
@@ -6085,7 +6134,9 @@ def _date_sortie(f, conv):
     nom = f.get("filename") or ""
     ident = f.get("noeud") or noeud_local()["id"]
     for chemin in (chemin_agent(ident, nom),
-                   os.path.join(BASE_COMFY, "output", f.get("subfolder", ""), nom)):
+                   chemin_sortie_locale(f.get("subfolder", ""), nom)):
+        if not chemin:
+            continue
         try:
             return os.path.getmtime(chemin)
         except OSError:
@@ -6153,8 +6204,14 @@ async def api_fichier(req):
     # Depose ici — par un agent, ou par un fournisseur distant quand cette
     # machine n'a pas de ComfyUI : on sert du disque, sans relais.
     chemin = chemin_agent(ident, nom)
-    if os.path.exists(chemin):
-        return web.FileResponse(chemin)
+    if chemin and os.path.exists(chemin):
+        # nosniff : ces fichiers viennent d'une machine a agent et sont servis
+        # sur l'origine du studio. L'extension est deja filtree au depot ; on
+        # empeche en plus le navigateur de deviner un type que l'extension ne
+        # promet pas — deux verrous pour la meme porte, parce qu'elle donne sur
+        # la session de l'utilisateur.
+        return web.FileResponse(chemin,
+                                headers={"X-Content-Type-Options": "nosniff"})
     if est_agent(ident):
         # un agent ne se relaie pas : le studio n'a pas son adresse
         return web.json_response({"erreur": "inconnu"}, status=404)
@@ -6273,7 +6330,6 @@ async def comfy_repond():
     except Exception:
         return None
 
-APPAIRAGES = {}          # code -> (proprietaire, expiration)
 DUREE_CODE = 300         # cinq minutes
 
 async def api_comfy(req):
@@ -6519,6 +6575,32 @@ def charger_comptes():
 
 
 @web.middleware
+async def origine_verifiee(req, handler):
+    """Aucune route qui AGIT ne s'ouvre a un formulaire poste d'ailleurs.
+
+    SECURITY.md annonçait cette protection ; elle n'existait qu'a trois endroits
+    — la connexion et les deux boutons de pilotage de ComfyUI. Ni « generer », ni
+    « televerser », ni la fermeture d'une conversation, ni le changement de mot
+    de passe, ni AUCUNE route d'administration ne la portaient. En pratique le
+    « SameSite=Lax » des trois cookies bloque le POST inter-site sur les
+    navigateurs actuels, mais c'etait la seule chose qui tenait, et ce n'etait pas
+    ce qui etait ecrit. Un document de securite qui promet un controle inexistant
+    est pire que le silence : on implemente donc ce qui etait promis.
+
+    Ici plutot que route par route : c'est la seule forme qui ne s'oublie pas a
+    la prochaine route ajoutee.
+
+    Les machines a agent sont hors de portee de cette regle — elles n'ont pas de
+    navigateur, n'envoient pas d'« Origin », et sont authentifiees par jeton.
+    """
+    if req.method in ("GET", "HEAD", "OPTIONS") or req.path.startswith("/api/noeud/"):
+        return await handler(req)
+    if not origine_sure(req):
+        return web.json_response({"erreur": "origine refusee"}, status=403)
+    return await handler(req)
+
+
+@web.middleware
 async def exiger_compte(req, handler):
     """Ferme tout ce qui fait ou montre quelque chose, tant qu'on n'est pas
     connecte.
@@ -6750,13 +6832,40 @@ async def api_noeud_fichier(req):
     tid = re.sub(r"[^0-9a-f]", "", req.query.get("tid") or "")[:32]
     if not nom or not tid:
         return web.json_response({"erreur": "requete incomplete"}, status=400)
-    dossier = os.path.join(SORTIES_AGENT, x["id"])
-    os.makedirs(dossier, exist_ok=True)
+    # Une extension qu'on sait servir, et rien d'autre. Le studio rend ces
+    # fichiers sur SA propre origine : un « .html » ou un « .svg » depose ici
+    # s'executerait dans la page du studio, avec sa session. Une machine a agent
+    # produit des images, des videos, du son et des maillages ; elle n'a aucune
+    # raison de deposer autre chose.
+    if os.path.splitext(nom)[1].lower() not in EXT_DEPOT:
+        return web.json_response({"erreur": "extension refusee"}, status=400)
+    # Par chemin_agent(), qui verifie le chemin resolu : basename rend « .. »
+    # pour « ../.. », et un identifiant de noeud forge remontait d'un cran.
+    cible = chemin_agent(x["id"], nom)
+    if not cible:
+        return web.json_response({"erreur": "chemin refuse"}, status=400)
+    os.makedirs(os.path.dirname(cible), exist_ok=True)
+    # « client_max_size » ne s'applique PAS a req.content : en lisant le flux
+    # nous-memes, on sortait de sa protection, et rien ne bornait plus ce qu'une
+    # machine enregistree pouvait ecrire sur le disque du studio. On compte donc,
+    # et on efface ce qu'on a commence a poser plutot que de laisser un fichier
+    # tronque passer pour un rendu.
     taille = 0
-    with open(os.path.join(dossier, nom), "wb") as f:
-        async for bloc in req.content.iter_chunked(1 << 16):
-            taille += len(bloc)
-            f.write(bloc)
+    try:
+        with open(cible, "wb") as f:
+            async for bloc in req.content.iter_chunked(1 << 16):
+                taille += len(bloc)
+                if taille > DEPOT_MAX:
+                    raise ValueError("trop gros")
+                f.write(bloc)
+    except ValueError:
+        try:
+            os.remove(cible)
+        except OSError:
+            pass
+        print(f"  depot refuse de {x['id']} : {nom} depasse "
+              f"{DEPOT_MAX / 1e9:.0f} Go", flush=True)
+        return web.json_response({"erreur": "fichier trop gros"}, status=413)
     return web.json_response({"ok": True, "octets": taille})
 
 
@@ -7073,7 +7182,7 @@ async def arreter_file(a):
 
 def app():
     a = web.Application(client_max_size=128 * 1024 ** 2,
-                        middlewares=[identite, exiger_compte])
+                        middlewares=[identite, origine_verifiee, exiger_compte])
     a.router.add_get("/", page)
     a.router.add_get("/api/modeles", api_modeles)
     a.router.add_get("/api/comfy", api_comfy)
@@ -7150,7 +7259,18 @@ if __name__ == "__main__":
     print(f"  ComfyUI   : {COMFY}")
     print(f"  Ollama    : {OLLAMA}   ({MODELE_LLM})")
     print(f"  Modeles   : {RACINE_MODELES}")
-    print(f"  Interface : http://127.0.0.1:{PORT}")
+    # En conteneur, 127.0.0.1 designe le conteneur : l'adresse n'est utile
+    # qu'a lui-meme. Et le port publie sur l'hote n'est pas forcement le notre —
+    # sur une machine qui heberge deja un studio, annoncer 8199 envoie chez le
+    # voisin, qui repond.
+    _dans_conteneur = os.path.exists("/.dockerenv")
+    _port_hote = os.environ.get("STUDIO_PORT_HOTE") or str(PORT)
+    if _dans_conteneur:
+        print(f"  Interface : http://ADRESSE-DE-L-HOTE:{_port_hote}"
+              + (f"   (le conteneur, lui, ecoute sur {PORT})"
+                 if _port_hote != str(PORT) else ""))
+    else:
+        print(f"  Interface : http://127.0.0.1:{PORT}")
     if HOTE in _HOTES_LOCAUX:
         # Le cas muet etait le piege : une relance sans STUDIO_HOTE coupait le
         # telephone et la tablette sans que rien ne le dise.
@@ -7165,11 +7285,11 @@ if __name__ == "__main__":
         # 172.17.0.2 — que personne ne peut atteindre de l'exterieur. Les
         # annoncer envoyait taper une adresse qui ne repond pas. On dit alors ou
         # regarder vraiment : le port publie par le compose.
-        if os.path.exists("/.dockerenv"):
+        if _dans_conteneur:
             print(f"  RESEAU    : port {PORT} du conteneur, publie par le "
-                  f"compose sur l'hote")
+                  f"compose sur le port {_port_hote} de l'hote")
             print(f"              depuis une autre machine : "
-                  f"http://ADRESSE-DE-L-HOTE:{PORT}")
+                  f"http://ADRESSE-DE-L-HOTE:{_port_hote}")
         else:
             for adr in sorted(a for a in ADRESSES_MACHINE if a not in _HOTES_LOCAUX):
                 print(f"  RESEAU    : http://{adr}:{PORT}")

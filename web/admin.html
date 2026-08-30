@@ -299,8 +299,12 @@ function delai(s) {
   return `il y a ${Math.round(s / 3600)} h`;
 }
 
-const ech = t => (t || "").replace(/[<>&]/g,
-  c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+/* Echappe aussi les guillemets : cette fonction sert dans des ATTRIBUTS
+   (data-role="${ech(...)}"), ou une apostrophe suffisait a sortir de la
+   valeur et a poser un gestionnaire d'evenement. */
+const ech = t => (t == null ? "" : String(t)).replace(/[<>&"']/g,
+  c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;",
+          '"': "&quot;", "'": "&#39;" }[c]));
 const coupe = (t, n) => { t = t || ""; return t.length > n ? t.slice(0, n) + "\u2026" : t; };
 
 /* Le tableau des retours : c'est la seule mesure de ce qui marche. */
@@ -640,11 +644,16 @@ async function rafraichir() {
     const tr = document.createElement("tr");
     tr.className = (n.repond ? "" : "perdu ") + "ouvrable";
     const pastille = n.repond ? "vif" : (n.agent ? "mort" : "");
-    const carte = n.carte ? n.carte.replace(/^cuda:\d+\s*/, "") : "—";
+      /* Tout ce qui suit vient du battement de coeur d'une machine a agent,
+         et rien ne le filtre a l'arrivee. La console se rafraichit seule
+         toutes les 5 s : sans ech(), il n'y avait meme pas un clic a obtenir
+         pour executer du code ici, avec toute l'API d'administration a
+         portee. */
+    const carte = n.carte ? ech(n.carte.replace(/^cuda:\d+\s*/, "")) : "—";
     const vram = n.vram ? ` · ${n.vram} Go` : "";
     tr.innerHTML = `
-      <td><span class="pastille ${pastille}"></span><b>${n.titre || n.id}</b>
-          <div class="ident">${n.id}${n.agent ? "" : " · cette machine"}</div></td>
+      <td><span class="pastille ${pastille}"></span><b>${ech(n.titre || n.id)}</b>
+          <div class="ident">${ech(n.id)}${n.agent ? "" : " · cette machine"}</div></td>
       <td>${carte}<span class="detail">${vram}</span></td>
       <td class="detail">${(n.moteurs || []).length
         ? `<b>${n.moteurs.length}</b> prêts`

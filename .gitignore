@@ -42,3 +42,8 @@ paquet/dist/
 # les mots et leurs comptes : c'est peu, et deja trop pour un depot public.
 # Le modele du depot, aiguilleur.json, ne contient que le corpus.
 aiguilleur.local.json
+# Les comptes rendus de relecture de securite decrivent, par construction, ou
+# le studio est faible et a quoi ressemble le reseau sur lequel il tourne. Ils
+# restent sur le disque de qui les a demandes ; ils ne partent pas en public.
+essai_securite*.md
+essai_installation2.md

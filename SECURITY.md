@@ -85,11 +85,10 @@ dictionnaire y passe des années. Les rafales sont écrites dans le journal du
 studio, seul endroit où son propriétaire les remarquera. Le compteur vit en
 mémoire : le persister permettrait à un tiers de bloquer un compte à distance.
 
-**Ce qui n'existe toujours pas** : aucun
-verrouillage après échecs répétés, aucun délai. Un attaquant qui atteint le port
-peut essayer autant de mots de passe qu'il veut, au rythme que scrypt lui laisse
-(quelques dizaines de millisecondes par tentative). Si le studio est joignable
-au-delà de ta machine, mets la limitation dans le reverse proxy.
+**Ce qui n'existe toujours pas** : aucun verrouillage définitif. Le freinage
+ralentit, il n'arrête pas — et il vit en mémoire, donc un redémarrage le remet à
+zéro. Si le studio est joignable au-delà de ta machine, mets une vraie
+limitation dans le reverse proxy.
 
 ### Les sessions sont des jetons signés
 
@@ -108,9 +107,16 @@ Deux choses à savoir :
   ils ont désormais deux secrets.
 - **Contre le clic sur un site piégé**, deux garde-fous se cumulent :
   `SameSite=Lax` sur les cookies, et une vérification de l'en-tête `Origin`
-  contre l'hôte réellement utilisé sur les routes qui agissent. `local(req)`
-  seul n'aurait pas suffi : un formulaire posté depuis n'importe quel site part
-  du navigateur de l'utilisateur, donc depuis `127.0.0.1`.
+  contre l'hôte réellement utilisé. `local(req)` seul n'aurait pas suffi : un
+  formulaire posté depuis n'importe quel site part du navigateur de
+  l'utilisateur, donc depuis `127.0.0.1`.
+
+  Cette vérification est un **middleware** : toute requête autre que `GET`,
+  `HEAD` ou `OPTIONS` y passe, y compris les routes d'administration. Ce document
+  l'annonçait alors qu'elle ne couvrait que trois routes sur cinquante-trois — ni
+  « générer », ni « téléverser », ni le changement de mot de passe. Elle a été
+  écrite au lieu d'être promise. Les machines à agent en sont exclues : pas de
+  navigateur, pas d'`Origin`, une authentification par jeton.
 - **Il n'y a pas de révocation.** Se déconnecter efface le cookie du navigateur ;
   le jeton reste valide jusqu'à sa péremption. Supprimer un compte suffit à
   invalider ses jetons (le nom n'est plus reconnu), changer son mot de passe non.
@@ -166,8 +172,17 @@ de jeton de nœud peut réclamer du travail et déposer des fichiers de sortie c
 le studio. Le jeton n'est affiché qu'une fois à la création, et conservé en clair
 dans `_noeuds.json`.
 
-L'appairage d'un appareil se fait par un code à **six chiffres, valable cinq
-minutes, à usage unique**, délivré uniquement depuis la machine hôte.
+Une machine est ajoutée depuis `/admin`, qui délivre son jeton — affiché une
+seule fois. **Il n'y a pas d'autre appairage.** Ce document a longtemps décrit un
+code à six chiffres valable cinq minutes : il n'a jamais existé. La variable qui
+devait le porter était déclarée et référencée nulle part, et c'est tout ce qu'il
+y a jamais eu. Une politique de sécurité qui promet un contrôle inexistant est
+pire que le silence.
+
+Ce qu'une machine à agent peut faire chez le studio est borné : elle dépose des
+fichiers dont **l'extension est filtrée** — images, vidéos, sons, maillages, rien
+d'autre, parce que le studio les sert ensuite sur sa propre origine — et **chaque
+dépôt est plafonné à 2 Go**.
 
 ### Ce que le studio ne filtre pas
 

@@ -35,7 +35,7 @@ import re
 import secrets
 import time
 
-NOM_VALIDE = re.compile(r"[a-zA-Z0-9._-]{2,24}")
+NOM_VALIDE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{1,23}")
 DUREE_SESSION = 30 * 24 * 3600      # un mois : on n'ouvre pas un studio familial
                                     # tous les matins
 MDP_MINIMUM = 8

@@ -50,6 +50,12 @@ services:
       STUDIO_LLM: "${STUDIO_LLM:-qwen2.5vl:7b}"
       STUDIO_VISION: "${STUDIO_VISION:-qwen2.5vl:7b}"
       STUDIO_LLM_ECRITURE: "${STUDIO_LLM_ECRITURE:-}"
+      # Le conteneur ecoute TOUJOURS sur 8199 ; c'est le compose qui publie ce
+      # port ailleurs. Sans cette ligne, la banniere de demarrage annonçait 8199
+      # alors que le studio repond sur STUDIO_PORT — et sur une machine qui en
+      # heberge deja un, cette adresse repond : c'est le studio d'a cote. On lui
+      # dit donc sur quel port l'hote le publie.
+      STUDIO_PORT_HOTE: "${STUDIO_PORT:-8199}"
     extra_hosts:
       # Necessaire sous Linux ; sans effet sous Docker Desktop, qui le fournit.
       - "host.docker.internal:host-gateway"
