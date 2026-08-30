@@ -8,6 +8,10 @@
 /* ═══ Console d'atelier ═══════════════════════════════════════════════
    Aucune police distante : l'outil doit fonctionner hors ligne.        */
 :root{
+  /* Declare au navigateur la palette de ses widgets natifs : sans elle, les
+     menus deroulants des selecteurs s'ouvraient en clair sur le theme
+     sombre. Elle suit la meme bascule que les couleurs, plus bas. */
+  color-scheme:dark;
   --nuit:#15120f; --plan:#1d1915; --creux:#120f0d; --relief:#262019;
   --trait:#2e2721; --trait-vif:#4a3f34;
   --encre:#f0e9e0; --encre-douce:#b6a999; --encre-pale:#8e8175;
@@ -19,6 +23,7 @@
 }
 @media (prefers-color-scheme: light){
   :root{
+    color-scheme:light;
     --nuit:#f2ede4; --plan:#fffdf9; --creux:#e8e1d5; --relief:#faf6ef;
     --trait:#ddd4c5; --trait-vif:#a3927c;
     --encre:#20180f; --encre-douce:#584c3e; --encre-pale:#6f6151;
@@ -109,7 +114,13 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   cursor:pointer}
 .compte button:hover{border-color:var(--braise);color:var(--braise)}
 .compte b{color:var(--braise);font-weight:400}
+/* « background:transparent » n'est pas un ornement : sans lui le navigateur
+   applique son « buttonface » gris clair, et le bouton « mediatheque » ressortait
+   en clair sur le theme sombre — contraste mesure 2,02:1, illisible, des le
+   premier ecran. Le « sortir » d'a cote etait correct parce que sa classe le
+   declare, elle. */
 .lien-admin{font:11px var(--mono);color:var(--encre-douce);text-decoration:none;
+  background:transparent;
   border:1px solid var(--trait);border-radius:7px;padding:2px 8px}
 .lien-admin:hover{border-color:var(--braise);color:var(--braise)}
 .voile-entree{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;
@@ -315,6 +326,14 @@ textarea:focus-visible{outline:2px solid var(--braise);outline-offset:1px;
 .outils select,.outils label.joindre{background:transparent;color:var(--encre-douce);
   border:1px solid var(--trait-vif);border-radius:7px;padding:5px 11px;
   font:11.5px var(--mono);cursor:pointer;letter-spacing:.02em}
+/* Un <select> en flex prend la largeur de sa PLUS LONGUE option, pas celle de
+   l'option choisie : « FLUX.2 klein 9B pleine precision (a telecharger) » faisait
+   379 px dans un conteneur de 331, mesure sur telephone. Avec
+   « body{overflow-x:hidden} » il n'y avait meme pas de defilement pour aller
+   voir : la fleche du menu etait hors ecran, coupee net. Le meme remede est
+   applique a l'en-tete plus bas, avec le meme commentaire — il avait ete oublie
+   ici. */
+.outils select{min-width:0;max-width:100%}
 .outils label.joindre:hover{border-color:var(--braise);color:var(--braise)}
 .outils select:focus-visible,.outils label.joindre:focus-within{
   outline:2px solid var(--braise);outline-offset:2px}

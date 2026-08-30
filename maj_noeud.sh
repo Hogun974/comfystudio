@@ -86,7 +86,12 @@ elif [ "$RC" != 0 ]; then
   rm -f "$AGENT.neuf"
   exit 1
 fi
-[ -f "$AGENT" ] && cp "$AGENT" "$AGENT.precedent"
+# En « if » et non en « && » : sous « set -e », un test qui echoue termine le
+# script. Or il echoue exactement au cas qui compte, la PREMIERE installation,
+# ou aucun agent n'est encore la — juste avant le « mv » qui l'installe. On
+# voyait l'empreinte s'afficher, aucune erreur, un code de sortie 1, et pas
+# d'agent.
+if [ -f "$AGENT" ]; then cp "$AGENT" "$AGENT.precedent"; fi
 mv "$AGENT.neuf" "$AGENT"
 chmod +x "$AGENT"
 echo "  agent a jour — sha256 $EMP"
