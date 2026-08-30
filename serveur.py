@@ -1715,9 +1715,11 @@ def _lignes_propres(t, maxi=8):
 def _degrossir(ligne):
     """Supprime les mots repetes a la suite dans une ligne.
 
-    Le modele bourre les vers pour tenir la mesure : « Jacques, menuisier,
-    menuisier, menuisier, Jacques ». Ce n'est pas une intention, c'est un tic —
-    on l'enleve plutot que de jeter une ligne par ailleurs correcte.
+    Le modele bourre les vers pour tenir la mesure : « Martin, menuisier,
+    menuisier, menuisier, Martin ». Ce n'est pas une intention, c'est un tic —
+    on l'enleve plutot que de jeter une ligne par ailleurs correcte. Le prenom
+    est change : celui d'origine venait d'une demande reelle, et d'un hommage a
+    quelqu'un.
     """
     sortie, precedent = [], ""
     for mot in ligne.split():

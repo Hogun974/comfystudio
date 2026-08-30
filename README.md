@@ -1737,8 +1737,11 @@ avec la même consigne :
 
 | Modèle | Ce qu'il écrit |
 |---|---|
-| `qwen2.5vl:7b` | « Jacques, menuisier avec talent / Aider son ami, sa single » |
+| `qwen2.5vl:7b` | « Martin, menuisier avec talent / Aider son ami, sa single » |
 | `gemma4:26b` | « L'odeur du cèdre et la poussière d'or, / Il taillait le bois pour son propre décor » |
+
+Le prénom est changé : la demande d'origine était réelle, et c'était un hommage
+à quelqu'un. Le reste des deux vers est ce que les modèles ont écrit.
 
 Le studio choisit donc **tout seul** le plus gros modèle Ollama installé qui
 tienne dans 60 % de la RAM, et ne s'en sert que pour écrire. Il le garde chargé
