@@ -1094,7 +1094,10 @@ document.querySelector("#ouvrirMedia").onclick = () => {
 };
 document.querySelector("#fermerMedia").onclick = fermerMediatheque;
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && !document.querySelector("#mediatheque").hidden)
+  // La vue plein ecran s'ouvre PAR-DESSUS la mediatheque : echap doit fermer
+  // celle du dessus, pas les deux d'un coup.
+  if (e.key === "Escape" && !document.querySelector(".plein")
+      && !document.querySelector("#mediatheque").hidden)
     fermerMediatheque();
 });
 
