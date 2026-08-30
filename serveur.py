@@ -137,7 +137,12 @@ _PID = re.compile(r"[0-9a-f]{32}")
 # ── file d'attente : le GPU ne fait qu'une chose a la fois ────────────
 FILE_ATTENTE = None         # asyncio.Queue, creee au demarrage
 ATTENTE = []                # tids en attente, dans l'ordre
-EN_COURS = {"tid": None, "tache": None}
+# Les travaux qui ont quitte la file et n'ont pas encore rendu. Un dictionnaire
+# et non une place unique : le studio ne calcule plus rien lui-meme, il pilote
+# des machines, et rien dans sa nature n'impose d'en occuper une seule a la fois.
+# Il n'en lance toujours qu'un pour l'instant — ce registre ne change aucun
+# comportement, il retire seulement la supposition qui l'interdisait.
+EN_VOL = {}                 # tid -> asyncio.Task
 FICHIER_FILE = os.path.join(DOSSIER_CONV, "_file.json")
 EN_FILE = {}                # tid -> de quoi refaire la demande apres un arret
 
@@ -199,11 +204,11 @@ async def reprendre_file():
               flush=True)
     sauver_file()
 
-# Derniere progression annoncee par ComfyUI, pour le travail en cours. Remplie
-# par ecouter_comfy(), lue par /api/file. « total » a zero signifie « on ne
-# sait pas » : l'interface n'affiche alors pas de barre plutot qu'une barre
-# fausse.
-PROGRES = {"fait": 0, "total": 0, "quoi": ""}
+# Par TACHE, et non un jeu de compteurs unique : deux rendus simultanes
+# s'ecrasaient mutuellement, et la fin de l'un remettait a zero la barre de
+# l'autre. « total » a zero signifie « on ne sait pas » : l'interface n'affiche
+# alors pas de barre plutot qu'une barre fausse.
+AVANCES = {}                # tid -> {"fait", "total", "quoi"}
 # 0 signifie « inconnue » : aucun ComfyUI n'a encore repondu. Une valeur en dur
 # serait celle de la machine de developpement, et l'aiguilleur ecarterait des
 # moteurs sur la foi d'une carte qui n'existe pas ici.
@@ -4300,7 +4305,7 @@ def entrees_reservees():
     """Images dont une tache a encore besoin. Sans cela, quarante televersements
     d'affilee effacaient le fichier d'une tache encore en file, qui echouait
     ensuite sur un LoadImage introuvable."""
-    en_jeu = set(ATTENTE) | ({EN_COURS["tid"]} if EN_COURS["tid"] else set())
+    en_jeu = set(ATTENTE) | set(EN_VOL)
     return {TACHES[t].get("image") for t in en_jeu
             if t in TACHES and TACHES[t].get("image")}
 
@@ -5684,6 +5689,20 @@ async def api_televerser(req):
     sauver_entrees()
     return web.json_response({"image": nom, "octets": taille})
 
+def _tid_sur(ident):
+    """Le travail en vol confie a cette machine, s'il y en a un.
+
+    Sert a la websocket du ComfyUI local, qui annonce une progression sans
+    jamais nommer le travail : elle decrit sa machine, pas une demande. Rend le
+    premier trouve — il n'y en aura jamais deux, le verrou par machine s'en
+    chargera, et en attendant il n'y a de toute façon qu'un travail en vol.
+    """
+    for tid in EN_VOL:
+        if (TACHES.get(tid) or {}).get("noeud") == ident:
+            return tid
+    return None
+
+
 def purger_taches(garder=200):
     """TACHES ne se vidait jamais. Seul, l'utilisateur ne s'en apercevait pas ;
     a plusieurs le dict grossit d'autant plus vite. Les taches terminees ne
@@ -5709,14 +5728,14 @@ async def travailleur():
         if (TACHES.get(tid) or {}).get("annulee"):
             FILE_ATTENTE.task_done()
             continue
-        EN_COURS["tid"] = tid
+
         # Une tache nommee plutot qu'un simple await : c'est le seul moyen
         # d'arreter un travail qui n'a pas encore atteint ComfyUI — analyse,
         # ecriture des paroles, attente d'un fournisseur.
         travail = asyncio.create_task(
             executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
                      job.get("taille"), job.get("priorite", ""), job.get("noeud")))
-        EN_COURS["tache"] = travail
+        EN_VOL[tid] = travail
         try:
             await travail
         except asyncio.CancelledError:
@@ -5744,13 +5763,12 @@ async def travailleur():
         except Exception as e:                       # filet : la file ne doit jamais mourir
             journal(tid, f"ERREUR inattendue : {e}", etat="erreur")
         finally:
-            EN_COURS["tid"] = None
-            EN_COURS["tache"] = None
+            EN_VOL.pop(tid, None)
             # La progression d'une machine a agent n'a personne pour la remettre
             # a zero : le studio ecoute SA websocket, pas la sienne. Sans cette
             # ligne, la barre du travail suivant demarrait la ou le precedent
             # s'etait arrete.
-            PROGRES.update(fait=0, total=0, quoi="")
+            AVANCES.pop(tid, None)
             FILE_ATTENTE.task_done()
             purger_taches()
 
@@ -5814,7 +5832,7 @@ async def api_generer(req):
         return web.json_response({"erreur": "image inconnue"}, status=404)
     conv = conv_de(d.get("conversation"), pid)
     tid = uuid.uuid4().hex
-    devant = len(ATTENTE) + (1 if EN_COURS["tid"] else 0)
+    devant = len(ATTENTE) + len(EN_VOL)
     TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": texte,
                    "conversation": conv["id"], "proprietaire": pid, "image": image}
     # Le tour est pose des maintenant : la conversation remonte dans la liste,
@@ -5847,14 +5865,13 @@ async def api_etat(req):
     if tid in ATTENTE:
         # nombre de travaux DEVANT celui-ci : ceux qui le precedent dans la
         # file, plus celui qui occupe le GPU.
-        etat["position"] = ATTENTE.index(tid) + (1 if EN_COURS["tid"] else 0)
+        etat["position"] = ATTENTE.index(tid) + len(EN_VOL)
     # Le pourcentage, pour CE travail seulement. api_file le servait deja pour
     # sa ligne « en cours » ; api_etat ne l'a jamais servi, si bien que la barre
     # posee ce matin dans la bulle lisait un champ qui n'existe pas et ne
-    # s'affichait jamais. PROGRES est global : on ne le rend qu'au travail
-    # qu'il decrit.
-    if tid == EN_COURS["tid"] and PROGRES.get("total"):
-        etat["avance"] = dict(PROGRES)
+    # s'affichait jamais.
+    if AVANCES.get(tid, {}).get("total"):
+        etat["avance"] = dict(AVANCES[tid])
     return web.json_response(etat)
 
 def _ligne_file(tid, pid, admin, rang):
@@ -5896,15 +5913,17 @@ async def api_file(req):
     admin = bool(req.get("compte")) and COMPTES.est_admin(req["compte"])
     mien = lambda t: TACHES.get(t, {}).get("proprietaire") == pid
     lignes = []
-    if EN_COURS["tid"]:
-        avance = dict(PROGRES) if PROGRES["total"] else None
-        lignes.append(dict(_ligne_file(EN_COURS["tid"], pid, admin, 0),
-                           en_cours=True, avance=avance))
+    for tid_vol in list(EN_VOL):
+        a = AVANCES.get(tid_vol) or {}
+        lignes.append(dict(_ligne_file(tid_vol, pid, admin, 0), en_cours=True,
+                           avance=dict(a) if a.get("total") else None))
     for rang, tid in enumerate(ATTENTE, start=1):
         lignes.append(dict(_ligne_file(tid, pid, admin, rang), en_cours=False))
     return web.json_response({
-        "en_cours": EN_COURS["tid"] if mien(EN_COURS["tid"]) else None,
-        "occupe": bool(EN_COURS["tid"]),
+        # Le premier des miens qui calcule : la page s'en sert pour savoir
+        # qu'elle a quelque chose sur le feu, pas pour compter.
+        "en_cours": next((t for t in EN_VOL if mien(t)), None),
+        "occupe": bool(EN_VOL),
         "en_attente": len(ATTENTE),
         "a_moi": sum(1 for t in ATTENTE if mien(t)),
         "admin": admin,
@@ -5944,7 +5963,7 @@ async def api_file_annuler(req):
         journal(tid, "retiree de la file", etat="erreur")
         return web.json_response({"ok": True, "quoi": "retiree"})
 
-    if EN_COURS["tid"] == tid:
+    if tid in EN_VOL:
         t["annulee"] = True
         ident = t.get("noeud")
         # La ligne de journal AVANT tache.cancel() : celui-ci rend la main a
@@ -5971,7 +5990,7 @@ async def api_file_annuler(req):
         # Puis le vrai levier : la tache du studio. Elle porte tout ce que
         # ComfyUI ne fait pas — l'analyse, les paroles, l'attente d'un
         # fournisseur — et c'est la qu'une demande pouvait tourner sans fin.
-        tache = EN_COURS.get("tache")
+        tache = EN_VOL.get(tid)
         if tache is not None and not tache.done():
             tache.cancel()
         return web.json_response({"ok": True, "quoi": "interrompue"})
@@ -6562,9 +6581,9 @@ async def api_comfy_arreter(req):
         return web.json_response({"erreur": "origine refusee"}, status=403)
     if not local(req):
         return web.json_response({"erreur": "pilotage reserve a la machine hote"}, status=403)
-    # EN_COURS retombe a None entre deux taches : tester la file aussi, sinon
+    # EN_VOL se vide entre deux taches : tester la file aussi, sinon
     # l'arret passe dans cet intervalle et les suivantes echouent en cascade.
-    if EN_COURS["tid"] or ATTENTE:
+    if EN_VOL or ATTENTE:
         return web.json_response(
             {"erreur": "des generations sont en cours ou en attente"}, status=409)
     pid = pid_du_port(port_comfy())
@@ -7064,18 +7083,22 @@ async def api_noeud_progres(req):
         d = await req.json()
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
-    if d.get("tid") == EN_COURS["tid"]:
-        PROGRES.update(fait=int(d.get("fait") or 0),
-                       total=int(d.get("total") or 0),
-                       quoi=x.get("titre") or x["id"])
+    # Seulement pour un travail en vol qui appartient a CETTE machine : une
+    # annonce pour le travail d'une autre ecraserait sa barre.
+    tid_dit = d.get("tid")
+    if (isinstance(tid_dit, str) and tid_dit in EN_VOL
+            and (TACHES.get(tid_dit) or {}).get("noeud") == x["id"]):
+        AVANCES[tid_dit] = {"fait": int(d.get("fait") or 0),
+                            "total": int(d.get("total") or 0),
+                            "quoi": x.get("titre") or x["id"]}
     # La reponse de ce battement est le seul chemin par lequel une annulation
     # atteigne la machine : le studio n'a pas son adresse, et c'est elle qui
     # vient. Aucun autre appel de l'agent ne revient aussi souvent — il poste
     # sa progression toutes les deux secondes pendant un rendu. Faute de ce
     # mot, le 29 aout, la carte du NAS a calcule 179 s de plus pour une image
     # que plus personne n'attendait.
-    # TACHES et non EN_COURS : l'annulation vide EN_COURS dans la foulee, et la
-    # comparaison ci-dessus serait deja fausse au battement suivant.
+    # TACHES et non EN_VOL : l'annulation retire le travail du registre dans la
+    # foulee, et la comparaison serait deja fausse au battement suivant.
     # La machine attributaire est verifiee, comme pour un resultat ou une
     # reponse : on ne renseigne une machine que sur le travail qu'on lui a
     # confie, et rien n'oblige a offrir ce booleen a qui n'y a pas droit.
@@ -7438,20 +7461,27 @@ async def ecouter_comfy():
                             continue
                         genre, corps = d.get("type"), d.get("data") or {}
                         if genre == "progress":
-                            PROGRES.update(fait=int(corps.get("value") or 0),
-                                           total=int(corps.get("max") or 0),
-                                           quoi=str(corps.get("node") or ""))
+                            # Cette websocket ne nomme pas le travail : elle
+                            # decrit CE ComfyUI. On attribue donc a la tache qui
+                            # tourne sur la machine du studio — au plus une, le
+                            # verrou par machine y veillera.
+                            cible_ws = _tid_sur(noeud_local()["id"])
+                            if cible_ws:
+                                AVANCES[cible_ws] = {
+                                    "fait": int(corps.get("value") or 0),
+                                    "total": int(corps.get("max") or 0),
+                                    "quoi": str(corps.get("node") or "")}
                         elif genre in ("executing", "execution_success",
                                        "execution_error", "execution_interrupted"):
                             # « executing » avec un noeud nul signale la fin du
                             # graphe : la barre doit disparaitre, pas rester
                             # figee a 90 %.
                             if genre != "executing" or corps.get("node") is None:
-                                PROGRES.update(fait=0, total=0, quoi="")
+                                AVANCES.pop(_tid_sur(noeud_local()["id"]), None)
         except asyncio.CancelledError:
             raise
         except Exception:
-            PROGRES.update(fait=0, total=0, quoi="")
+            AVANCES.pop(_tid_sur(noeud_local()["id"]), None)
         await asyncio.sleep(attente)
         attente = min(attente * 2, 30)
 
