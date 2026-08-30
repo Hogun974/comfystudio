@@ -7152,7 +7152,10 @@ async def api_admin_essai_llm(req):
 async def api_admin_creer(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
-    d = await req.json()
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
     titre = (d.get("titre") or "").strip()[:60]
     ident = re.sub(r"[^A-Za-z0-9_-]", "", (d.get("id") or "").strip())[:24]
     if not ident:
@@ -7194,10 +7197,34 @@ async def api_admin_supprimer(req):
 
 
 async def api_admin_entrer(req):
-    """Depose le cookie d'administration si le jeton presente est le bon."""
-    d = await req.json()
+    """Depose le cookie d'administration si le jeton presente est le bon.
+
+    Le meme freinage que la porte des comptes, et pour une raison plus forte :
+    le jeton tire au sort fait 32 caracteres et n'est pas devinable, mais
+    STUDIO_ADMIN laisse en imposer un choisi a la main, dont rien ne controle la
+    longueur. Sans freinage, un jeton court se forçait a pleine vitesse et sans
+    laisser une ligne de journal derriere lui.
+    """
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
+    cle_freinage = ("admin", hote)
+    reste = _freinage(cle_freinage)
+    if reste > 0:
+        return web.json_response(
+            {"erreur": f"trop d'essais — reessaie dans {reste:.0f} s"}, status=429)
     if not ADMIN_JETON or not secrets.compare_digest(d.get("jeton") or "", ADMIN_JETON):
+        combien = _ECHECS.get(cle_freinage, (0, 0.0))[0] + 1
+        _ECHECS[cle_freinage] = (combien, time.time())
+        if combien in (3, 10, 50):
+            # La console est le seul endroit ou le proprietaire du studio verra
+            # qu'on essaie sa porte d'administration.
+            print(f"  {combien} jetons d'administration refuses depuis "
+                  f"{hote or 'origine inconnue'}", flush=True)
         return web.json_response({"erreur": "jeton refuse"}, status=403)
+    _ECHECS.pop(cle_freinage, None)
     rep_ = web.json_response({"ok": True})
     rep_.set_cookie("studio_admin", ADMIN_JETON, max_age=7 * 24 * 3600,
                     httponly=True, samesite="Lax")
