@@ -5996,6 +5996,51 @@ def purger_fermees():
     if partis:
         print(f"  {partis} conversation(s) fermee(s) depuis plus de 24 h "
               f"effacee(s), images comprises", flush=True)
+    purger_orphelins()
+    return partis
+
+
+def purger_orphelins():
+    """Efface du depot du studio les fichiers que plus rien ne reclame.
+
+    Ils sont deja invisibles : la mediatheque lit les conversations, pas le
+    disque. Les laisser fait grossir le disque sans que rien ne le montre — 51
+    fichiers et 134,7 Mo sur l'installation de reference, tous herites de
+    l'ancienne suppression immediate, qui effaçait la conversation et laissait
+    ses images.
+
+    Seulement le depot du STUDIO : l'output d'un ComfyUI appartient a sa
+    machine, qui fait son propre menage et y range aussi le travail fait a la
+    main par son proprietaire.
+
+    Et seulement au-dela du delai de garde : un fichier vient d'etre depose par
+    un agent, le tour qui le reference s'ecrit une seconde plus tard. Effacer
+    sur la seule absence de reference le supprimerait entre les deux.
+    """
+    if not os.path.isdir(SORTIES_AGENT):
+        return 0
+    reclames = {os.path.basename(f.get("filename") or "")
+                for conv in CONVERSATIONS.values()
+                for tour in conv.get("tours", [])
+                for f in (tour.get("fichiers") or [])}
+    limite = time.time() - GARDE_FERMEES
+    partis, octets = 0, 0
+    for racine, _, fichiers in os.walk(SORTIES_AGENT):
+        for nom in fichiers:
+            if nom in reclames or nom.startswith("."):
+                continue          # reference, ou registre d'un agent
+            chemin = os.path.join(racine, nom)
+            try:
+                if os.path.getmtime(chemin) > limite:
+                    continue
+                octets += os.path.getsize(chemin)
+                os.remove(chemin)
+                partis += 1
+            except OSError:
+                pass
+    if partis:
+        print(f"  {partis} fichier(s) sans conversation efface(s) "
+              f"({octets / 1e6:.1f} Mo)", flush=True)
     return partis
 
 def mes_fichiers(pid):
