@@ -77,6 +77,27 @@ CATALOGUE = {
    fichiers=[("frame_interpolation","film_net_fp16.safetensors",
               "Comfy-Org/frame_interpolation",
               "frame_interpolation/film_net_fp16.safetensors")]),
+ # ── retouche localisee ────────────────────────────────────────────────
+ # Un seul graphe les sert (g_retouche_zone) : la seule difference est le
+ # cote du masque qu'on remplace. Deux entrees quand meme, parce que c'est le
+ # catalogue que lit l'aiguilleur, et « retoucher une zone » ne lui dirait pas
+ # laquelle. Les fichiers sont ceux de l'edition PLUS BiRefNet, qui fabrique
+ # le masque : une machine qui n'a que l'un des deux ne peut pas servir ces
+ # moteurs, et le studio doit l'apprendre avant de lui confier le travail.
+ "retoucher_fond": dict(titre="Retouche du fond (klein + BiRefNet)", famille="flux2",
+   type="retoucher_fond", duree="15 s", vram=8.0, multilingue=True,
+   pour="changer le decor autour du sujet en gardant le sujet exactement tel quel",
+ fichiers=[("diffusion_models","flux-2-klein-4b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/diffusion_models/flux-2-klein-4b.safetensors"),
+           ("text_encoders","qwen_3_4b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/text_encoders/qwen_3_4b.safetensors"),
+           ("vae","flux2-vae.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/vae/flux2-vae.safetensors"),
+           ("background_removal","birefnet.safetensors","Comfy-Org/BiRefNet","background_removal/birefnet.safetensors")]),
+ "retoucher_sujet": dict(titre="Retouche du sujet (klein + BiRefNet)", famille="flux2",
+   type="retoucher_sujet", duree="15 s", vram=8.0, multilingue=True,
+   pour="effacer ou remplacer le sujet d'une image en gardant le decor exactement tel quel",
+ fichiers=[("diffusion_models","flux-2-klein-4b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/diffusion_models/flux-2-klein-4b.safetensors"),
+           ("text_encoders","qwen_3_4b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/text_encoders/qwen_3_4b.safetensors"),
+           ("vae","flux2-vae.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/vae/flux2-vae.safetensors"),
+           ("background_removal","birefnet.safetensors","Comfy-Org/BiRefNet","background_removal/birefnet.safetensors")]),
  "detourer": dict(titre="Detourage (BiRefNet)", famille="birefnet",
    type="detourer", duree="5 s", vram=1.0, multilingue=True,
    pour="isoler le sujet d'une image et rendre le fond transparent",

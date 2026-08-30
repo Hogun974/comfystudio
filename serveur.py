@@ -1863,6 +1863,19 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                     "parametres": {}, "parametres_bruts": {},
                     "raison": f"{propose} : reconnu a la formulation"}
 
+    # Reconnues a l'ecrit, avant tout appel : ces tournures ne laissent aucun
+    # doute, et le catalogue suffit ensuite a choisir le cote du masque.
+    if a_une_image == "image" and not modele_force:
+        for reconnait, quoi in ((veut_retoucher_fond, "retoucher_fond"),
+                                (veut_retoucher_sujet, "retoucher_sujet")):
+            if reconnait(texte):
+                journal(tid, f"« {quoi.replace('_', ' ')} » reconnu a la "
+                             f"formulation — la zone hors masque sera intacte")
+                return {"intention": quoi, "modele": quoi, "prompt": texte,
+                        "parametres": {}, "parametres_bruts": {},
+                        "raison": "retouche localisee : le reste de l'image ne "
+                                  "sera pas touche"}
+
     if veut_fluidifier(texte) and not modele_force:
         journal(tid, "fluidite video reconnue — aucune analyse necessaire")
         return {"intention": "fluidifier", "modele": "fluidifier", "prompt": texte,
@@ -2761,6 +2774,81 @@ def g_edition(consigne, image, seed, prefixe, par=None):
      "18":{"class_type":"SaveImage","inputs":{"images":["17",0],"filename_prefix":prefixe}},
     }
 
+def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True, par=None):
+    """Retouche la seule zone designee, et recolle le reste a l'identique.
+
+    « sur_le_sujet » choisit ce qu'on remplace : le sujet detoure (enlever,
+    remplacer quelqu'un ou quelque chose) ou tout le reste (changer le fond).
+    C'est la seule difference entre les deux usages — d'ou un seul graphe.
+
+    « description » decrit ce qu'on veut VOIR dans la zone, pas ce qu'il faut y
+    faire : sans ReferenceLatent, le moteur n'a que ce texte pour remplir le
+    trou. « enleve la voiture » ne lui apprend rien ; « la route vide, asphalte
+    mouille, meme lumiere » lui apprend tout.
+    """
+    par = par or {}
+    etapes = int(par.get("etapes", REGLAGES["edition"]["etapes"]))
+    # Le masque du sujet, puis son inverse quand c'est le fond qu'on change.
+    masque = ["7", 0] if sur_le_sujet else ["8", 0]
+    g = {
+     "1":{"class_type":"UNETLoader","inputs":{"unet_name":"flux-2-klein-4b.safetensors","weight_dtype":"default"}},
+     "2":{"class_type":"CLIPLoader","inputs":{"clip_name":"qwen_3_4b.safetensors","type":"flux2","device":"default"}},
+     "3":{"class_type":"VAELoader","inputs":{"vae_name":"flux2-vae.safetensors"}},
+     "4":{"class_type":"LoadImage","inputs":{"image":image}},
+     # PAS de mise a l'echelle, contrairement a g_edition. Mesure : elle rendait
+     # une image de 1238x847 pour une source de 1216x832 — donc reechantillonnee
+     # PARTOUT. Toute la promesse de cette voie est « le reste est identique » :
+     # une image redimensionnee la casse silencieusement. L'echantillonneur
+     # travaille donc a la taille de la source, et le rendu se recolle dessus.
+     "5":{"class_type":"ImageScaleBy","inputs":{"image":["4",0],
+          "upscale_method":"nearest-exact","scale_by":1.0}},
+     "6":{"class_type":"GetImageSize","inputs":{"image":["5",0]}},
+     # ── le masque ──────────────────────────────────────────────────────
+     "50":{"class_type":"LoadBackgroundRemovalModel",
+           "inputs":{"bg_removal_name":"birefnet.safetensors"}},
+     "51":{"class_type":"RemoveBackground",
+           "inputs":{"bg_removal_model":["50",0],"image":["5",0]}},
+     # Seuillage indispensable : le masque n'est jamais nul loin du sujet, et
+     # ces millimes suffisent a teinter toute l'image au recollage.
+     "7":{"class_type":"ThresholdMask","inputs":{"mask":["51",0],"value":0.5}},
+     "8":{"class_type":"InvertMask","inputs":{"mask":["7",0]}},
+     # 24 mesure : a 0 il reste un fantome du sujet au bord de la zone.
+     "9":{"class_type":"GrowMask","inputs":{"mask":masque,"expand":24,
+          "tapered_corners":True}},
+     # ── masque DOUX, pour le recollage seulement ───────────────────────
+     # FeatherMask ne convient pas : il degrade depuis les bords de l'IMAGE, pas
+     # depuis le contour du masque. Le seul flou de contour passe par l'image.
+     "10":{"class_type":"MaskToImage","inputs":{"mask":["9",0]}},
+     "11":{"class_type":"ImageBlur","inputs":{"image":["10",0],
+           "blur_radius":11,"sigma":5.5}},
+     "12":{"class_type":"ImageToMask","inputs":{"image":["11",0],"channel":"red"}},
+     # ── l'echantillonnage part de la source, avec le masque DUR ────────
+     # Un masque doux ici ne ferait que diluer l'edition sans rien preserver de
+     # plus : la preservation vient du recollage, pas du bruit.
+     "13":{"class_type":"VAEEncode","inputs":{"pixels":["5",0],"vae":["3",0]}},
+     "14":{"class_type":"SetLatentNoiseMask","inputs":{"samples":["13",0],
+           "mask":["9",0]}},
+     "15":{"class_type":"CLIPTextEncode","inputs":{"text":description,"clip":["2",0]}},
+     "16":{"class_type":"ConditioningZeroOut","inputs":{"conditioning":["15",0]}},
+     "17":{"class_type":"CFGGuider","inputs":{"model":["1",0],"positive":["15",0],
+           "negative":["16",0],"cfg":1.0}},
+     "18":{"class_type":"KSamplerSelect","inputs":{"sampler_name":"euler"}},
+     "19":{"class_type":"Flux2Scheduler","inputs":{"steps":etapes,
+           "width":["6",0],"height":["6",1]}},
+     "20":{"class_type":"RandomNoise","inputs":{"noise_seed":seed}},
+     "21":{"class_type":"SamplerCustomAdvanced","inputs":{"noise":["20",0],
+           "guider":["17",0],"sampler":["18",0],"sigmas":["19",0],
+           "latent_image":["14",0]}},
+     "22":{"class_type":"VAEDecode","inputs":{"samples":["21",0],"vae":["3",0]}},
+     # ── le recollage : c'est lui qui garantit le « seulement » ─────────
+     "23":{"class_type":"ImageCompositeMasked","inputs":{"destination":["5",0],
+           "source":["22",0],"x":0,"y":0,"resize_source":False,"mask":["12",0]}},
+     "24":{"class_type":"SaveImage","inputs":{"images":["23",0],
+           "filename_prefix":prefixe}},
+    }
+    return g
+
+
 def g_personnage(prompt, reference, w, h, seed, prefixe, par=None):
     """Une image NEUVE, en gardant le personnage d'une image de reference.
 
@@ -3019,6 +3107,82 @@ _DETOURER = re.compile(
 
 def veut_detourer(texte):
     return bool(_DETOURER.search(sans_accents(texte or "")))
+
+
+# « le fond », « l'arriere-plan », « le decor » — et un verbe qui remplace.
+# Le nom est pris nu — « un autre arriere-plan » n'a pas d'article devant — mais
+# il faut un VERBE de remplacement a moins de quarante caracteres, sinon « une
+# cabane au fond de la vallee » suffirait a declencher une retouche.
+_FOND = re.compile(
+    r"\b(chang|remplac|met[st]?|mettre|nouveau|nouvelle|autre)\w*\b[^.!?]{0,40}"
+    r"\b(fond|arriere.plan|decor)\b"
+    r"|\b(fond|arriere.plan|decor)\b[^.!?]{0,30}"
+    r"\b(chang|remplac|devien|autre|nouveau|nouvelle)\w*", re.I)
+# Effacer ou remplacer ce qui est AU PREMIER PLAN.
+_SUJET = re.compile(
+    r"\b(enleve|enlever|efface|effacer|supprime|supprimer|retire|retirer|"
+    r"remplace|remplacer|vire|virer)\b", re.I)
+
+
+def veut_retoucher_fond(texte):
+    return bool(_FOND.search(sans_accents(texte or "")))
+
+
+def veut_retoucher_sujet(texte):
+    t = sans_accents(texte or "")
+    # Le fond passe avant : « remplace le fond » contient un verbe de
+    # suppression, et les deux motifs y repondraient.
+    return bool(_SUJET.search(t)) and not _FOND.search(t)
+
+
+SYS_ZONE = """Tu decris ce qu'il faut VOIR dans une zone d'image, et rien d'autre.
+
+On va effacer une zone d'une photo et la redessiner. Le modele qui la redessine
+ne recoit que ta phrase : il ne voit pas l'ordre donne par l'utilisateur, et il
+ne sait pas ce qu'il y avait avant.
+
+Rends UNE phrase courte, en francais, qui decrit la zone TELLE QU'ELLE DOIT
+ETRE une fois refaite. Pas de verbe d'action, pas de commentaire, pas de
+guillemets.
+
+  « enleve la voiture »        -> « la route vide, asphalte mouille, meme lumiere »
+  « change le fond »           -> attends la precision de l'utilisateur et
+                                  decris-la : « une plage de sable au crepuscule,
+                                  mer calme »
+  « remplace le chien par un chat » -> « un chat assis au meme endroit, meme
+                                  lumiere, meme perspective »
+
+Deux interdits : ne dis jamais ce qu'il faut ENLEVER — la zone sera vide, il n'y
+a plus rien a enlever — et ne decris pas le reste de l'image, seulement la zone."""
+
+
+async def decrire_zone(texte, tid):
+    """Traduit un ordre en description de ce qu'on veut voir. "" si ça echoue.
+
+    Un appel a lui seul : c'est la piece qui manque au graphe, et la melanger a
+    l'aiguillage revenait a ne l'obtenir jamais — on l'a mesure sur
+    l'enrichissement du prompt.
+
+    Le controle est en code : une description qui recopie l'ordre, ou qui garde
+    un verbe de suppression, ne sert a rien. Mieux vaut le dire et rendre la
+    main que remplir le trou avec un ordre que le moteur ne comprendra pas.
+    """
+    try:
+        brut = await appeler_ollama(texte, None, SYS_ZONE, json_mode=False,
+                                    temperature=0.3, tid=tid,
+                                    modele=choisir_modele_ecriture())
+    except Exception as e:
+        journal(tid, f"description de la zone indisponible ({type(e).__name__})")
+        return ""
+    propose = " ".join((brut or "").split())
+    if not latin(propose) or len(propose.split()) < 3:
+        return ""
+    if _SUJET.search(sans_accents(propose)):
+        # « enleve la voiture » rendu tel quel : le moteur dessinerait une
+        # voiture, puisque c'est le seul objet nomme.
+        journal(tid, "description rejetee : elle donne encore un ordre")
+        return ""
+    return propose
 
 
 def g_agrandir(image, prefixe, facteur=4.0):
@@ -4567,6 +4731,25 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                          f"{(images0 - 1) * mult + 1} a {fps:.0f} im/s"
                          + (" (ralenti : deux fois plus long)" if ralenti
                             else " (meme duree, plus fluide)"))
+        elif intention in ("retoucher_fond", "retoucher_sujet"):
+            if not image:
+                raise RuntimeError(
+                    "aucune image a retoucher : depose une image, ou demande-le "
+                    "juste apres en avoir produit une.")
+            zone = await decrire_zone(texte, tid)
+            if not zone:
+                raise RuntimeError(
+                    "je n'arrive pas a decrire ce qu'il faut mettre a la place. "
+                    "Dis-le en clair — par exemple « le fond devient une plage "
+                    "au crepuscule » plutot que « change le fond ».")
+            sur_le_sujet = intention == "retoucher_sujet"
+            plan["prompt"] = zone
+            journal(tid, f"zone a redessiner : {zone[:80]}")
+            g = g_retouche_zone(zone, image, seed,
+                                prefixe_sortie(conv, intention, horod, "retouche"),
+                                sur_le_sujet, par)
+            journal(tid, "retouche localisee — hors du masque, l'image est "
+                         "recollee a l'identique")
         elif intention == "detourer":
             if not image:
                 raise RuntimeError(

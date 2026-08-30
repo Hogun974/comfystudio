@@ -33,6 +33,11 @@ import urllib.request
 ICI = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(ICI, "agent_noeud.json")
 DEPOSEES = "sorties_deposees.json"
+# Les champs par lesquels un graphe nomme un fichier d'entree : la meme liste
+# que entrees_du_graphe() dans serveur.py. Les deux cotes doivent bouger
+# ensemble — un champ que le studio joint mais que l'agent ne corrige pas
+# laisse le graphe pointer sur un nom que ComfyUI n'a pas retenu.
+CHAMPS_ENTREE = ("image", "file", "audio", "video")
 GARDE_DEFAUT = 24           # heures avant d'effacer une sortie deja au studio
 PURGE_TOUS_LES = 600        # secondes entre deux passages de menage
 PAUSE_COURTE = 3            # entre deux demandes de travail
@@ -154,7 +159,7 @@ def deposer_entrees(comfy, entrees, graphe):
         vrai = rendu.get("name") or nom
         if vrai != nom:
             for noeud in graphe.values():
-                for champ in ("image", "file"):
+                for champ in CHAMPS_ENTREE:
                     if (noeud.get("inputs") or {}).get(champ) == nom:
                         noeud["inputs"][champ] = vrai
     return None
@@ -243,11 +248,20 @@ def servir_le_langage(studio, jeton, ollama):
     Un fil a part : la boucle de travail est bloquee pendant un rendu, et une
     question posee au milieu d'une video attendrait sa fin.
     """
+    attente = PAUSE_COURTE
     while True:
         try:
             st, q = appeler(f"{studio}/api/noeud/question", jeton, secondes=30)
-            if st != 200 or not isinstance(q, dict) or "qid" not in q:
-                time.sleep(PAUSE_COURTE)
+            if st not in (200, 204):
+                # Studio injoignable, ou jeton refuse : ca ne guerit pas en trois
+                # secondes. Sans cet espacement, le fil interroge un studio mort
+                # mille fois par heure, sans que rien ne le dise jamais.
+                time.sleep(attente)
+                attente = min(attente * 2, PAUSE_LONGUE)
+                continue
+            attente = PAUSE_COURTE
+            if not isinstance(q, dict) or "qid" not in q:
+                time.sleep(PAUSE_COURTE)      # pas de question en attente
                 continue
             corps = q.get("corps") or {}
             st2, d = appeler(f"{ollama}/api/generate", corps=corps, secondes=900)
@@ -390,16 +404,83 @@ def _registre_chemin(sorties):
     registre serait perdu a chaque redemarrage, et le menage n'effacerait jamais
     rien sans que personne ne s'en apercoive.
     """
-    return os.path.join(sorties or ICI, "." + DEPOSEES if sorties else DEPOSEES)
+    chemin = os.path.join(sorties or ICI,
+                          "." + DEPOSEES if sorties else DEPOSEES)
+    _reprendre_ancien_registre(chemin)
+    return chemin
 
 
-def _registre(sorties=""):
+# Une seule fois par execution : le registre ne redemenage pas en cours de
+# route, et retester a chaque depot coute un acces disque pour rien.
+_ancien_registre_repris = False
+
+
+def _reprendre_ancien_registre(neuf):
+    """Ramene le registre qui vivait a cote du script vers son nouvel endroit.
+
+    Sans cette reprise, les depots notes avant le demenagement ne seraient
+    jamais effaces : le menage ne regarde que le registre courant, et l'ancien
+    resterait la a decrire des fichiers que plus personne ne surveille.
+
+    On fusionne au lieu de deplacer, parce que le nouveau registre existe deja
+    des que l'agent a tourne une fois depuis le demenagement — un simple
+    deplacement ecraserait alors les depots recents, et refuser de reprendre
+    abandonnerait les anciens. Les entrees portent un chemin absolu : elles
+    restent justes quel que soit le fichier qui les heberge.
+    """
+    global _ancien_registre_repris
+    if _ancien_registre_repris:
+        return
+    _ancien_registre_repris = True
+    ancien = os.path.join(ICI, DEPOSEES)
+    if os.path.abspath(ancien) == os.path.abspath(neuf):
+        return                      # sans dossier de sorties, c'est le meme
+    if not os.path.exists(ancien):
+        return
     try:
-        with open(_registre_chemin(sorties), encoding="utf-8") as f:
+        with open(ancien, encoding="utf-8") as f:
+            vieilles = json.load(f)
+    except Exception as e:
+        # Illisible : on n'efface pas ce qu'on n'a pas su lire, le proprietaire
+        # de la machine pourra toujours y jeter un oeil.
+        print(f"  ancien registre illisible ({e}) — laisse en place", flush=True)
+        return
+    fusion = {}
+    for e in (vieilles if isinstance(vieilles, list) else []) + _lire_registre(neuf):
+        if not isinstance(e, dict) or not e.get("chemin"):
+            continue
+        # Deux notes pour un meme fichier : la plus recente gagne, sinon la
+        # plus ancienne ferait effacer avant l'heure un fichier redepose entre
+        # temps.
+        vue = fusion.get(e["chemin"])
+        if vue is None or e.get("quand", 0) >= vue.get("quand", 0):
+            fusion[e["chemin"]] = e
+    try:
+        with open(neuf, "w", encoding="utf-8") as g:
+            json.dump(list(fusion.values())[-5000:], g, ensure_ascii=False)
+    except OSError as e:
+        print(f"  reprise de l'ancien registre impossible : {e}", flush=True)
+        return
+    try:
+        os.remove(ancien)
+    except OSError as e:
+        # Repris quand meme : le nouveau registre existe, l'ancien ne sera plus
+        # relu. On le signale pour qu'il ne traine pas sans raison.
+        print(f"  ancien registre a effacer a la main : {ancien} ({e})", flush=True)
+    print(f"  registre des depots repris ({len(fusion)} entree(s))", flush=True)
+
+
+def _lire_registre(chemin):
+    try:
+        with open(chemin, encoding="utf-8") as f:
             d = json.load(f)
         return d if isinstance(d, list) else []
     except Exception:
         return []
+
+
+def _registre(sorties=""):
+    return _lire_registre(_registre_chemin(sorties))
 
 
 def noter_depot(sorties, f, quand):
