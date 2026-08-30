@@ -167,6 +167,39 @@ def _corps_texte(fournisseur, modele, systeme, invite, temperature, json_mode):
 
 
 def _lire_texte(fournisseur, d):
+    """Le texte d'une reponse, dans les trois dialectes.
+
+    Une reponse VIDE est dite a voix haute. Elle est arrivee deux fois de suite
+    sur une traduction, le 30 aout : le studio a repli sur le francais et
+    prevenu l'utilisateur — le garde-fou a tenu — mais rien dans le journal ne
+    permettait de savoir POURQUOI le modele n'avait rien rendu. On imprime donc
+    ce qui explique : le motif d'arret et les types de blocs recus. Jamais le
+    contenu, qui porterait la demande de quelqu'un.
+    """
+    texte = _extraire_texte(fournisseur, d)
+    if not texte.strip():
+        print(f"  [{fournisseur}] reponse sans texte — {_pourquoi_vide(fournisseur, d)}",
+              flush=True)
+    return texte
+
+
+def _pourquoi_vide(fournisseur, d):
+    """De quoi comprendre une reponse vide, sans jamais recopier son contenu."""
+    if fournisseur == "anthropic":
+        types = [b.get("type") for b in d.get("content", []) or []]
+        return (f"arret={d.get('stop_reason')} blocs={types or 'aucun'} "
+                f"usage={(d.get('usage') or {}).get('output_tokens')}")
+    if fournisseur == "google":
+        cands = d.get("candidates") or []
+        if not cands:
+            return f"aucun candidat, filtre={d.get('promptFeedback')}"
+        return (f"arret={cands[0].get('finishReason')} "
+                f"parts={len((cands[0].get('content') or {}).get('parts') or [])}")
+    choix = d.get("choices") or []
+    return (f"arret={choix[0].get('finish_reason')}" if choix else "aucun choix")
+
+
+def _extraire_texte(fournisseur, d):
     if fournisseur == "anthropic":
         return "".join(b.get("text", "") for b in d.get("content", [])
                        if b.get("type") == "text")
