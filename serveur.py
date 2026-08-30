@@ -1229,6 +1229,27 @@ Regles absolues :
 _PLAGES_NON_LATINES = ((0x0400, 0x04ff), (0x0590, 0x06ff), (0x3040, 0x30ff),
                        (0x3400, 0x9fff), (0xac00, 0xd7af))
 
+def mise_en_garde(cle):
+    """Ce que ce moteur attend, en une phrase. "" s'il n'attend rien de special.
+
+    C'est le coeur de la question posee : partir en francais vers un moteur qui
+    lit le francais ne coute rien, vers un moteur qui exige l'anglais coute le
+    sujet. Les deux cas ne meritent pas le meme avertissement.
+    """
+    m = CATALOGUE.get(cle) or {}
+    if cle in ("pony", "planche"):
+        return ("ce moteur n'attend pas une phrase mais des etiquettes en "
+                "anglais, separees par des virgules — « 1girl, knight, silver "
+                "armor, forest ». Une phrase francaise y donne un resultat "
+                "approximatif.")
+    if m.get("traduire"):
+        return ("ce moteur ne lit que l'anglais : une demande restee en "
+                "francais donne souvent le mauvais sujet.")
+    if m.get("multilingue"):
+        return "ce moteur lit le francais, la demande partira telle quelle."
+    return ""
+
+
 def replier_sur_multilingue(plan, tid, cause):
     """Quand la traduction echoue, on change de moteur au lieu d'insister.
 
@@ -1247,12 +1268,14 @@ def replier_sur_multilingue(plan, tid, cause):
         # pas dans son dos. Il vaut mieux un prompt reste en francais que le
         # sentiment d'etre ignore — et on le dit dans le deroule.
         journal(tid, f"{cause} — moteur impose garde, prompt laisse en francais")
+        plan["enrichissement_rate"] = True
         return plan
     if CATALOGUE.get(plan.get("modele"), {}).get("etiquettes"):
         journal(tid, f"{cause} — etiquettes gardees telles quelles, le style prime")
         return plan
     if manquants_partout("klein4b"):
         journal(tid, f"{cause} — prompt garde en francais, le resultat peut deriver")
+        plan["enrichissement_rate"] = True
         return plan
     journal(tid, f"{cause} — bascule sur FLUX.2 klein, qui comprend le francais")
     plan["modele"] = "klein4b"
@@ -1442,7 +1465,10 @@ async def enrichir(plan, texte, tid):
             plan["prompt"] = propose
             journal(tid, f"demande enrichie : {propose[:90]}")
             return plan
-    journal(tid, "enrichissement sans effet — la demande part telle quelle")
+    journal(tid, "enrichissement sans effet")
+    # La marque, plutot qu'un envoi silencieux : c'est elle qui declenche la
+    # question. Sans elle, l'utilisateur decouvrait le probleme dans le rendu.
+    plan["enrichissement_rate"] = True
     return plan
 
 
@@ -3298,6 +3324,24 @@ _SUJET = re.compile(
     r"remplace|remplacer|vire|virer)\b", re.I)
 
 
+def _deja_demande(conv):
+    """Vrai si l'on a deja demande l'accord dans cette conversation, sans reponse.
+
+    La reponse de l'utilisateur repasse par l'aiguillage, et l'enrichissement
+    peut echouer de nouveau : sans cette garde, on redemanderait sans fin. On
+    regarde le dernier tour, celui qui porte la question.
+    """
+    tours = (conv or {}).get("tours") or []
+    for t in reversed(tours):
+        if t.get("etat") == "question":
+            return (t.get("parametres") or {}).get("attente") == "tel_quel" \
+                or (t.get("raison") or "") == "tel_quel" \
+                or t.get("type") == "question"
+        if t.get("etat") in ("fini", "erreur"):
+            return False
+    return False
+
+
 def veut_retoucher_fond(texte):
     return bool(_FOND.search(sans_accents(texte or "")))
 
@@ -4782,6 +4826,24 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             plan = await enrichir(plan, texte, tid)
             plan = await traduire(plan, tid)
         cle = plan["modele"]
+
+        # Le studio n'a pas su preparer la demande : plutot que de l'envoyer
+        # telle quelle et de laisser decouvrir le probleme dans le rendu, on
+        # demande — en disant ce que CE moteur attend.
+        if plan.get("enrichissement_rate") and not _deja_demande(conv):
+            garde = mise_en_garde(cle)
+            titre = CATALOGUE.get(cle, {}).get("titre", cle)
+            qs = [f"Je n'ai pas reussi a etoffer ta demande : je l'enverrais "
+                  f"telle quelle a {titre}."]
+            if garde:
+                qs.append(f"A savoir : {garde}")
+            qs.append("Tu preferes la reecrire toi-meme, ou j'envoie tel quel ?")
+            plan["attente"] = "tel_quel"
+            TACHES[tid].update(etat="question", questions=qs, plan=plan)
+            enregistrer_tour(conv, tid, texte, plan, "question", None, [], "question")
+            journal(tid, "demande d'accord avant d'envoyer la demande telle quelle",
+                    etat="question")
+            return
 
         # Le meme personnage qu'avant : la reference est celle qu'on a retenue,
         # sinon la derniere image produite. On la retient au passage, pour que
