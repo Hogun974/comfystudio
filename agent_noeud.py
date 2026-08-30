@@ -44,6 +44,10 @@ GARDE_DEFAUT = 24           # heures avant d'effacer une sortie deja au studio
 PURGE_TOUS_LES = 600        # secondes entre deux passages de menage
 PAUSE_COURTE = 3            # entre deux demandes de travail
 PAUSE_LONGUE = 20           # apres une erreur : on n'insiste pas
+# Ce que executer() rend quand le studio a dit « annule ». Une valeur a part et
+# non une erreur ordinaire : elle ne doit ni compter comme une panne de la
+# machine, ni la faire ecarter par le repartiteur du studio.
+ANNULE = "annulee par le studio"
 CONTEXTE = ssl.create_default_context()
 
 # Dossiers de modeles que le studio veut connaitre. unet_gguf et clip_gguf sont
@@ -167,12 +171,43 @@ def deposer_entrees(comfy, entrees, graphe):
     return None
 
 
+def interrompre(comfy, pid):
+    """Coupe notre rendu sur le ComfyUI local. Rend ce qui a ete fait, en clair.
+
+    On regarde /queue avant de tirer : POST /interrupt ne nomme pas le travail
+    qu'il coupe, il coupe ce qui tourne. Sur une carte que son proprietaire peut
+    aussi faire travailler depuis l'interface de ComfyUI, tirer sans regarder
+    reviendrait a lui voler son rendu a lui.
+
+    Un element encore en attente se retire de la file sans reveiller la carte ;
+    mesure du 30 aout : la suppression prend moins de dix millisecondes, et
+    l'interruption d'un travail deja au GPU rend la carte en moins de 2,1 s
+    sans ecrire le moindre fichier.
+    """
+    st, q = appeler(f"{comfy}/queue", secondes=10)
+    if st != 200 or not isinstance(q, dict):
+        return "file illisible, rien coupe"
+
+    def _dedans(cle):
+        return any(x[1] == pid for x in (q.get(cle) or [])
+                   if isinstance(x, (list, tuple)) and len(x) > 1)
+
+    if _dedans("queue_pending"):
+        appeler(f"{comfy}/queue", corps={"delete": [pid]}, secondes=10)
+        return "retire de la file avant le GPU"
+    if _dedans("queue_running"):
+        appeler(f"{comfy}/interrupt", corps={}, secondes=10)
+        return "carte interrompue"
+    return "deja fini, rien a couper"
+
+
 def executer(comfy, graphe, dire=None):
     """Soumet le graphe et attend la fin. Rend (fichiers, secondes, erreur).
 
     « dire » recoit la progression a chaque tour de boucle : c'est ce qui rend
     la barre de la file vivante quand le rendu se fait ailleurs que sur la
-    machine du studio.
+    machine du studio. Il rend vrai quand le studio annonce que la demande a
+    ete annulee ; l'erreur rendue vaut alors ANNULE.
     """
     st, d = appeler(f"{comfy}/prompt", corps={"prompt": graphe, "client_id": "agent"},
                     secondes=120)
@@ -199,8 +234,15 @@ def executer(comfy, graphe, dire=None):
             return sorties, time.time() - t0, None
         if time.time() - t0 > 3600:
             return [], time.time() - t0, "delai depasse"
-        if dire and PROGRES["total"]:
-            dire(PROGRES["fait"], PROGRES["total"])
+        # Appele a chaque tour, meme sans pourcentage a montrer : c'est la
+        # REPONSE a cette annonce qui apporte l'annulation, et les premieres
+        # dizaines de secondes d'un rendu — le chargement du modele — n'ont
+        # aucun pourcentage. Ne l'appeler que sur progression laissait ce
+        # trou-la sans aucun moyen d'apprendre qu'on calcule pour rien.
+        if dire and dire(PROGRES["fait"], PROGRES["total"]):
+            print(f"  annulation recue du studio — {interrompre(comfy, pid)}",
+                  flush=True)
+            return [], time.time() - t0, ANNULE
         time.sleep(2)
 
 
@@ -684,13 +726,38 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama=""):
                     # Une annonce toutes les deux secondes au plus : le studio
                     # n'a pas besoin de plus, et une machine lente ne doit pas
                     # passer son temps a poster des pourcentages.
-                    if time.time() - dernier[0] < 2:
-                        return
+                    # 1,5 s et non 2 : la boucle d'executer() tourne
+                    # toutes les deux secondes, et un frein regle sur la meme
+                    # duree laissait passer un tour sur deux. L'annonce ne porte
+                    # plus seulement un pourcentage, elle rapporte l'annulation :
+                    # un tour saute, ce sont deux secondes de GPU de plus.
+                    if time.time() - dernier[0] < 1.5:
+                        return False
                     dernier[0] = time.time()
-                    appeler(f"{studio}/api/noeud/progres", jeton,
-                            {"tid": tid, "fait": fait, "total": total}, secondes=10)
+                    st_, rep = appeler(f"{studio}/api/noeud/progres", jeton,
+                                       {"tid": tid, "fait": fait, "total": total},
+                                       secondes=10)
+                    # Le retour de cette annonce est le seul chemin par lequel
+                    # une annulation nous parvienne : le studio n'a pas notre
+                    # adresse. Un studio muet ou en erreur ne vaut donc jamais
+                    # « annule » — on ne jette pas un rendu sur un doute.
+                    return (st_ == 200 and isinstance(rep, dict)
+                            and bool(rep.get("annule")))
 
                 fichiers, secondes, erreur = executer(comfy, travail["graphe"], dire)
+
+            # Une demande annulee ne rend rien : ni fichier a televerser, ni
+            # erreur a imputer a la machine — l'imputer la ferait ecarter du
+            # repartiteur pour un incident qui n'est pas le sien. On le dit au
+            # studio, qui ecrira la derniere ligne de son journal (la seule qui
+            # parle de l'arret au passe), et on repart chercher du travail.
+            if erreur == ANNULE:
+                appeler(f"{studio}/api/noeud/resultat", jeton,
+                        {"tid": tid, "etat": "annule", "erreur": None,
+                         "secondes": round(secondes, 1), "fichiers": []})
+                print(f"  travail {tid[:8]} annule par le studio apres "
+                      f"{secondes:.0f} s", flush=True)
+                continue
 
             # 3. deposer les fichiers produits, puis rendre le resultat
             deposes = []

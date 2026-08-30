@@ -5703,7 +5703,14 @@ async def travailleur():
             if conv:
                 enregistrer_tour(conv, tid, (TACHES.get(tid) or {}).get("demande", ""),
                                  {}, None, None, [], "erreur", "interrompue")
-            journal(tid, "interrompue", etat="erreur")
+            # Le dernier mot revient a la machine quand c'est un agent qui
+            # calcule : elle seule sait a quelle seconde sa carte s'est arretee,
+            # et api_noeud_resultat l'ecrira a son retour. Poser « interrompue »
+            # ici, c'etait l'ecrire pendant que le GPU du NAS tournait toujours.
+            if est_agent((TACHES.get(tid) or {}).get("noeud") or ""):
+                TACHES.setdefault(tid, {"etapes": []}).update(etat="erreur")
+            else:
+                journal(tid, "interrompue", etat="erreur")
         except Exception as e:                       # filet : la file ne doit jamais mourir
             journal(tid, f"ERREUR inattendue : {e}", etat="erreur")
         finally:
@@ -5903,28 +5910,33 @@ async def api_file_annuler(req):
     if EN_COURS["tid"] == tid:
         t["annulee"] = True
         ident = t.get("noeud")
-        # D'abord la carte, si on peut l'atteindre : annuler la tache du studio
-        # sans cela laisserait un rendu dont plus personne ne veut occuper le
-        # GPU jusqu'au bout.
-        # Sans machine retenue, le travail en est a l'analyse ou a l'ecriture :
-        # il n'y a rien a interrompre dans ComfyUI, seulement ici.
-        if ident and not est_agent(ident):
-            await interrompre_comfy(ident)
+        # La ligne de journal AVANT tache.cancel() : celui-ci rend la main a
+        # travailleur(), qui ecrit aussitot la sienne. Ecrite apres, la ligne
+        # honnete se retrouvait DEVANT « interrompue » dans la liste, et la page
+        # n'affiche que la derniere — le 29 aout a 13:07:40, l'utilisateur a lu
+        # « interrompue » pendant que le NAS calculait encore 179 secondes.
+        if ident and est_agent(ident):
+            # Cette machine ne se joint pas : c'est elle qui appelle. Elle
+            # apprend l'annulation a son prochain battement de progression et
+            # coupe alors sa carte elle-meme ; la confirmation nous revient par
+            # api_noeud_resultat. On promet donc un arret imminent, pas un arret
+            # deja fait — c'est tout ce qu'on sait a cette seconde.
+            journal(tid, f"arret demande a {(noeud(ident) or {}).get('titre', ident)}"
+                         f" — sa carte s'arrete des qu'elle nous rappelle")
+        else:
+            # Une carte joignable s'arrete tout de suite : sans cela un rendu
+            # dont plus personne ne veut occuperait le GPU jusqu'au bout.
+            # Sans machine retenue, le travail en est a l'analyse ou a
+            # l'ecriture : rien a interrompre dans ComfyUI, seulement ici.
+            if ident:
+                await interrompre_comfy(ident)
+            journal(tid, "demande interrompue")
         # Puis le vrai levier : la tache du studio. Elle porte tout ce que
         # ComfyUI ne fait pas — l'analyse, les paroles, l'attente d'un
         # fournisseur — et c'est la qu'une demande pouvait tourner sans fin.
         tache = EN_COURS.get("tache")
         if tache is not None and not tache.done():
             tache.cancel()
-        if ident and est_agent(ident):
-            # La machine a agent, elle, ne s'arrete pas : le studio n'a pas son
-            # adresse, c'est elle qui appelle. Son rendu ira a son terme et son
-            # resultat sera ecarte. Le dire, plutot que de laisser croire a un
-            # arret qui n'a pas lieu.
-            journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} termine son "
-                         f"rendu de son cote : le resultat sera ecarte")
-        else:
-            journal(tid, "demande interrompue")
         return web.json_response({"ok": True, "quoi": "interrompue"})
 
     return web.json_response({"erreur": "cette demande est deja terminee"},
@@ -6995,7 +7007,20 @@ async def api_noeud_progres(req):
         PROGRES.update(fait=int(d.get("fait") or 0),
                        total=int(d.get("total") or 0),
                        quoi=x.get("titre") or x["id"])
-    return web.json_response({"ok": True})
+    # La reponse de ce battement est le seul chemin par lequel une annulation
+    # atteigne la machine : le studio n'a pas son adresse, et c'est elle qui
+    # vient. Aucun autre appel de l'agent ne revient aussi souvent — il poste
+    # sa progression toutes les deux secondes pendant un rendu. Faute de ce
+    # mot, le 29 aout, la carte du NAS a calcule 179 s de plus pour une image
+    # que plus personne n'attendait.
+    # TACHES et non EN_COURS : l'annulation vide EN_COURS dans la foulee, et la
+    # comparaison ci-dessus serait deja fausse au battement suivant.
+    # La machine attributaire est verifiee, comme pour un resultat ou une
+    # reponse : on ne renseigne une machine que sur le travail qu'on lui a
+    # confie, et rien n'oblige a offrir ce booleen a qui n'y a pas droit.
+    tache = TACHES.get(d.get("tid")) or {}
+    annule = bool(tache.get("annulee")) and tache.get("noeud") == x["id"]
+    return web.json_response({"ok": True, "annule": annule})
 
 
 async def api_noeud_resultat(req):
@@ -7018,6 +7043,19 @@ async def api_noeud_resultat(req):
               f"{attribue}, rendu par {x['id']}", flush=True)
         return web.json_response({"erreur": "travail confie a une autre machine"},
                                  status=403)
+    # « annule » : la machine confirme avoir coupe sa carte. C'est la seule
+    # ligne du journal ecrite APRES l'arret, donc la seule qui puisse en parler
+    # au passe. Elle arrive quelques secondes apres le clic, quand plus personne
+    # n'attend le futur : rattacher_tardif n'a rien a en faire, on sort ici.
+    if tid and d.get("etat") == "annule":
+        journal(tid, f"{x.get('titre') or x['id']} a coupe son rendu — "
+                     f"{float(d.get('secondes') or 0):.0f} s de calcul jetees",
+                etat="erreur")
+        if attente is not None and not attente.done():
+            attente.set_result({"etat": "erreur", "erreur": "interrompue",
+                                "secondes": d.get("secondes") or 0,
+                                "fichiers": [], "noeud": x["id"]})
+        return web.json_response({"ok": True})
     if attente is not None and not attente.done():
         attente.set_result({"etat": d.get("etat"), "erreur": d.get("erreur"),
                             "secondes": d.get("secondes") or 0,

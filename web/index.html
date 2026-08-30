@@ -1416,6 +1416,25 @@ function suivre(id, bloc, cid) {
         if (t.etat === "erreur" && derniere) t.erreur = derniere.msg;
         if (visible) { garnirReponse(bloc, t); auBas(); }
         listerConversations();
+        // Une machine a agent confirme l'arret de sa carte une a deux secondes
+        // plus tard, par une ligne de journal de plus. Le sondage s'arrete
+        // juste au-dessus et ne la verrait jamais : la bulle resterait sur
+        // « arret demande », c'est-a-dire sur une promesse. Le 29 aout, c'est
+        // exactement ce mecanisme qui a fait lire « interrompue » a
+        // l'utilisateur pendant que le NAS calculait encore.
+        if (t.etat === "erreur" && /^arret demande a /.test(t.erreur || ""))
+          setTimeout(async () => {
+            try {
+              const r2 = await fetch("/api/etat/" + id);
+              if (!r2.ok) return;
+              const t2 = await r2.json();
+              const suite = (t2.etapes || [])[(t2.etapes || []).length - 1];
+              if (!suite || suite.msg === t.erreur) return;
+              t2.erreur = suite.msg;
+              if (cid === convActive && document.body.contains(bloc))
+                garnirReponse(bloc, t2, cid);
+            } catch (e) { /* la bulle garde la promesse : elle etait vraie */ }
+          }, 8000);
       }
     } catch (err) {
       clearInterval(minuteur); suivis.delete(id);
