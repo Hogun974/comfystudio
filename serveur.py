@@ -12,6 +12,7 @@ le Python embarque de ComfyUI.
 """
 import asyncio, base64, json, os, re, secrets, shlex, subprocess, sys, time, uuid
 import mimetypes
+import urllib.parse
 import unicodedata
 
 # La console Windows ecrit en cp1252 : un seul ideogramme dans un prompt faisait
@@ -359,6 +360,17 @@ def memoire_vive():
         return 0.0
 
 
+def _ollama_ici():
+    """Vrai si Ollama tourne sur la machine du studio.
+
+    On ne peut pas connaitre la memoire d'une machine qu'on ne fait qu'appeler :
+    on lui fait confiance. Une machine ne telecharge pas un modele de vingt-six
+    milliards de parametres si elle ne peut pas le charger.
+    """
+    hote = (urllib.parse.urlparse(OLLAMA).hostname or "").lower()
+    return hote in ("127.0.0.1", "localhost", "::1", "")
+
+
 def choisir_modele_ecriture():
     """Le plus gros modele Ollama installe qui tienne raisonnablement ici.
 
@@ -370,7 +382,12 @@ def choisir_modele_ecriture():
     global MODELE_ECRITURE
     if MODELE_ECRITURE:
         return MODELE_ECRITURE
-    plafond = (memoire_vive() or 16.0) * 0.6
+    # Le plafond ne vaut que pour un Ollama LOCAL : c'est la memoire de CETTE
+    # machine qu'il mesure. Quand Ollama tourne ailleurs — le cas des que le
+    # studio n'a pas de carte — le borner ici ecartait un modele que la machine
+    # d'en face charge sans effort, et le studio se rabattait sur un 7B qui
+    # ecrit mal.
+    plafond = (memoire_vive() or 16.0) * 0.6 if _ollama_ici() else float("inf")
     try:
         import urllib.request
 
@@ -1410,8 +1427,12 @@ async def enrichir(plan, texte, tid):
     base = SYS_ENRICHIR + _A_DECIDER[quoi] + _cadre_technique(plan)
     for systeme in (base, base + SYS_ENRICHIR_DUR):
         try:
+            # Le modele d'ECRITURE, pas celui d'aiguillage : enrichir est une
+            # tache de redaction, et c'etait la derniere des trois a utiliser
+            # encore le petit modele de classement.
             brut = await appeler_ollama(depart, None, systeme, json_mode=False,
-                                        temperature=0.4, tid=tid)
+                                        temperature=0.4, tid=tid,
+                                        modele=choisir_modele_ecriture())
         except Exception as e:
             journal(tid, f"enrichissement indisponible ({type(e).__name__}) — "
                          f"demande gardee telle quelle")
