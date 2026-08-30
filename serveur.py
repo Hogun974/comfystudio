@@ -157,6 +157,11 @@ VERROUS_NOEUD = {}          # id de machine -> asyncio.Lock
 # en-tete Range, se seraient ecrit dessus — plusieurs gigaoctets corrompus, et
 # rien pour le dire avant que ComfyUI ne refuse de le charger.
 VERROUS_MODELE = {}         # (sous-dossier, nom) -> asyncio.Lock
+# Combien de temps une question au modele de langage accepte d'attendre la carte
+# d'une machine occupee. Au-dela, elle va voir ailleurs : un rendu dure deux
+# minutes, une question deux secondes, et faire attendre la seconde derriere le
+# premier bloquait un travailleur pour rien.
+ATTENTE_LLM = 20
 
 
 def verrou_noeud(ident):
@@ -1235,10 +1240,28 @@ async def poser_a(ident, corps, tid=None, secondes=900):
     # garde-fou pour ce cas, mais il ne regardait que SA carte, celle qu'il n'a
     # plus. Une carte, un traitement a la fois : image, video, son, maillage ou
     # langage.
+    #
+    # MAIS L'ATTENTE EST BORNEE. L'attendre sans limite etait pire que le mal :
+    # mesure sur cette installation, une question de deux secondes a attendu
+    # derriere un rendu de 147 s en retenant un travailleur tout ce temps, et
+    # trois demandes se sont bloquees mutuellement pendant dix minutes. Passe le
+    # delai on rend « carte occupee » : l'appelant essaiera une autre machine, ou
+    # se passera de reponse. Un studio lent vaut mieux qu'un studio arrete.
+    #
+    # acquire() puis un « finally », et non « async with » : il faut pouvoir
+    # borner la PRISE. Le relacher pour le reprendre aussitot laisserait passer
+    # quelqu'un entre les deux, ce qui viderait le verrou de son sens.
     verrou = verrou_noeud(ident)
     if verrou.locked() and tid:
-        journal(tid, f"{titre} calcule — la question attend que sa carte se libere")
-    async with verrou:
+        journal(tid, f"{titre} calcule — la question attend sa carte "
+                     f"({ATTENTE_LLM} s au plus)")
+    try:
+        await asyncio.wait_for(verrou.acquire(), timeout=ATTENTE_LLM)
+    except asyncio.TimeoutError:
+        if tid:
+            journal(tid, f"{titre} calcule toujours — on cherche ailleurs")
+        return "", "carte occupee"
+    try:
         qid = uuid.uuid4().hex
         futur = asyncio.get_event_loop().create_future()
         REPONSES[qid] = (ident, futur)
@@ -1255,6 +1278,8 @@ async def poser_a(ident, corps, tid=None, secondes=900):
         finally:
             REPONSES.pop(qid, None)
             QUESTIONS[ident] = [q for q in QUESTIONS.get(ident, []) if q["qid"] != qid]
+    finally:
+        verrou.release()
     return (rep_.get("reponse") or ""), (rep_.get("erreur") or "")
 
 
