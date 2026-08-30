@@ -1190,7 +1190,7 @@ async def poser_a(ident, corps, tid=None, secondes=900):
     corps["model"] = _modele_du_noeud(ident, corps.get("model"))
     qid = uuid.uuid4().hex
     futur = asyncio.get_event_loop().create_future()
-    REPONSES[qid] = futur
+    REPONSES[qid] = (ident, futur)
     QUESTIONS.setdefault(ident, []).append({"qid": qid, "corps": corps})
     titre = (noeud(ident) or {}).get("titre", ident)
     # journal() ecrit dans le fil d'une demande : l'essai depuis
@@ -3848,7 +3848,7 @@ async def soumettre_a_agent(g, tid, ident):
     """
     boucle = asyncio.get_running_loop()
     attente = boucle.create_future()
-    RESULTATS[tid] = attente
+    RESULTATS[tid] = (ident, attente)
     entrees = entrees_a_joindre(g)
     if entrees:
         poids = sum(len(v) for v in entrees.values()) * 3 / 4
@@ -6549,8 +6549,11 @@ REGISTRE = {}               # id -> {id, titre, jeton, cree}
 SILENCE_MAX = 45            # secondes sans nouvelle avant de declarer perdu
 TRAVAUX = {}                # id de noeud -> liste de travaux en attente
 QUESTIONS = {}              # id de noeud -> questions en attente pour son LLM
-REPONSES = {}               # id de question -> Future portant la reponse
-RESULTATS = {}              # tid -> asyncio.Future portant le resultat
+# La machine attributaire est gardee A COTE du futur : un identifiant seul ne
+# dit pas a qui le travail avait ete confie, et n'importe quelle machine
+# authentifiee pouvait donc rendre le resultat d'une autre.
+REPONSES = {}               # id de question -> (id de noeud, Future de la reponse)
+RESULTATS = {}              # tid -> (id de noeud, Future du resultat)
 SORTIES_AGENT = os.path.join(DOSSIER_DONNEES, "sorties")
 
 
@@ -6823,7 +6826,10 @@ async def api_noeud_annonce(req):
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
-    d = await req.json()
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
     etat = ETAT_NOEUDS.setdefault(x["id"], {})
     # Une annonce « comfy: False » dit : la machine est la, sa carte ne repond
     # pas. On note qu'on l'a vue et ce qu'elle porte cote langage, mais on
@@ -6902,8 +6908,16 @@ async def api_noeud_reponse(req):
         d = await req.json()
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
-    futur = REPONSES.get(d.get("qid"))
-    if futur and not futur.done():
+    attribue, futur = REPONSES.get(d.get("qid")) or (None, None)
+    if futur is not None and attribue != x["id"]:
+        # Une question n'est visible que dans la file de la machine a qui elle
+        # a ete posee, donc ce cas ne s'atteint pas depuis l'exterieur — tant
+        # qu'un qid ne fuit nulle part. La verification coute une comparaison.
+        print(f"  reponse refusee : question posee a {attribue}, "
+              f"repondue par {x['id']}", flush=True)
+        return web.json_response({"erreur": "question posee a une autre machine"},
+                                 status=403)
+    if futur is not None and not futur.done():
         futur.set_result({"reponse": d.get("reponse") or "",
                           "erreur": d.get("erreur")})
     return web.json_response({"ok": True})
@@ -6984,10 +6998,22 @@ async def api_noeud_resultat(req):
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
-    d = await req.json()
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
     tid = d.get("tid")
-    attente = RESULTATS.get(tid)
-    if attente and not attente.done():
+    attribue, attente = RESULTATS.get(tid) or (None, None)
+    if attente is not None and attribue != x["id"]:
+        # Un travail n'apparait que dans la file de la machine a qui il a ete
+        # confie : aucun tid d'une autre ne fuit aujourd'hui. Mais rien ne
+        # l'empechait de rendre a sa place — et un rendu accepte remplace les
+        # fichiers montres a l'utilisateur.
+        print(f"  [{str(tid)[:6]}] resultat refuse : travail confie a "
+              f"{attribue}, rendu par {x['id']}", flush=True)
+        return web.json_response({"erreur": "travail confie a une autre machine"},
+                                 status=403)
+    if attente is not None and not attente.done():
         attente.set_result({"etat": d.get("etat"), "erreur": d.get("erreur"),
                             "secondes": d.get("secondes") or 0,
                             "fichiers": d.get("fichiers") or [],
@@ -7001,7 +7027,14 @@ async def api_noeud_resultat(req):
 
 
 def rattacher_tardif(tid, d, x):
-    """Recolle un resultat au tour qui l'attendait, apres un redemarrage."""
+    """Recolle un resultat au tour qui l'attendait, apres un redemarrage.
+
+    Sans verifier a qui le travail avait ete confie, contrairement a
+    api_noeud_resultat : le redemarrage a emporte RESULTATS, et le tour ecrit
+    sur le disque ne garde pas la machine attributaire. Le tid reste un uuid4
+    — 128 bits qui ne se devinent pas — mais c'est la seule chose qui protege
+    ce chemin-la ; faire mieux demanderait d'ecrire le noeud dans le tour.
+    """
     for conv in CONVERSATIONS.values():
         for tour in conv.get("tours", []):
             if tour.get("id") != tid:
