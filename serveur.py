@@ -4055,13 +4055,27 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800):
             attendu = time.time()
             verrou = verrou_noeud(ident)
             if verrou.locked():
+                # Un TROISIEME etat, ni file ni calcul : la demande a ete
+                # analysee, sa machine est choisie, et cette machine travaille
+                # pour quelqu'un d'autre. Affichee « en cours », elle promettait
+                # un calcul qui n'avait pas commence.
+                if tid in TACHES:
+                    TACHES[tid]["attend_carte"] = True
                 journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} calcule "
                              f"deja pour quelqu'un — on prend le tour suivant")
-            async with verrou:
-                if time.time() - attendu > 2:
-                    journal(tid, f"la carte se libere apres "
-                                 f"{time.time() - attendu:.0f} s d'attente")
-                return await soumettre(g, tid, ident)
+            try:
+                async with verrou:
+                    if tid in TACHES:
+                        TACHES[tid].pop("attend_carte", None)
+                    if time.time() - attendu > 2:
+                        journal(tid, f"la carte se libere apres "
+                                     f"{time.time() - attendu:.0f} s d'attente")
+                    return await soumettre(g, tid, ident)
+            finally:
+                # Aussi sur reprise et sur annulation : le drapeau ne doit pas
+                # survivre au travail qu'il decrit.
+                if tid in TACHES:
+                    TACHES[tid].pop("attend_carte", None)
         except MachineIncapable as e:
             incapables.add(ident)
             ecartes.add(ident)
@@ -5968,7 +5982,11 @@ def _ligne_file(tid, pid, admin, rang):
     etapes = t.get("etapes") or []
     ligne = {"tid": tid, "rang": rang, "a_moi": a_moi,
              "annulable": a_moi or admin,
-             "etat": t.get("etat") or "en attente",
+             # « attend_carte » prime sur l'etat de la tache : elle est bien « en
+             # cours » du point de vue du studio, mais aucune carte ne calcule
+             # pour elle, et c'est ce que l'utilisateur regarde.
+             "etat": ("attente carte" if t.get("attend_carte")
+                      else t.get("etat") or "en attente"),
              # La derniere ligne du journal dit ou en est le travail bien mieux
              # qu'un pourcentage : « traduit pour flux1 », « 40 % telecharge ».
              "ou": (etapes[-1].get("msg", "")[:70] if etapes and visible else ""),

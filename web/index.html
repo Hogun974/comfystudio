@@ -1199,7 +1199,10 @@ async function peindreFile() {
     el.className = "tache" + (t.a_moi ? "" : " autrui");
     const rang = t.en_cours ? "▶" : t.rang;
     const etats = { "en cours": ["cours", "en cours"], fini: ["fini", "terminé"],
-                    erreur: ["rate", "échec"], question: ["attente", "en attente de précision"] };
+                    erreur: ["rate", "échec"], question: ["attente", "en attente de précision"],
+                    // Analysée, sa machine est choisie, et cette machine
+                    // travaille pour quelqu'un d'autre. Ni file, ni calcul.
+                    "attente carte": ["attente", "attend une carte"] };
     // Une demande porte l'etat « en cours » des sa creation : c'est l'etat de
     // la TACHE, pas sa place dans la file. Seule la ligne marquee en_cours
     // occupe vraiment la carte ; les autres attendaient en affichant
