@@ -25,21 +25,35 @@ jobs:
       - name: Recuperer le depot
         uses: actions/checkout@v4
 
-      - name: Installer Python
-        uses: actions/setup-python@v5
-        with:
-          # Une seule version. Le studio tourne surtout sur le Python embarque
-          # de ComfyUI, pas sur une matrice de versions : mieux vaut une
-          # verification qui passe et qu'on croit qu'une matrice rouge qu'on
-          # apprend a ignorer.
-          python-version: '3.12'
+      # PAS actions/setup-python. Cette action interroge un catalogue de versions
+      # heberge chez GitHub ; sur une forge auto-hebergee qui ne l'atteint pas,
+      # elle echoue en repondant « The version '3.12' with architecture 'x64' was
+      # not found for this operating system » — et le travail s'arrete la.
+      #
+      # Ce n'est pas une hypothese : les SOIXANTE-DIX premieres executions de
+      # cette verification ont echoue a cette etape, sans en franchir une seule
+      # des suivantes, pendant que les commits parlaient de tests qui passent.
+      # Une CI qui n'a jamais rien verifie est pire qu'une CI absente : elle
+      # rassure.
+      #
+      # On prend donc le python3 de l'image, dans un environnement virtuel — sans
+      # lui, Debian 12 refuse toute installation par pip. Le venv fournit
+      # « python » autant que « python3 », ce qui laisse les etapes suivantes
+      # inchangees. La version y est 3.11 et non 3.12 : c'est plus severe pour ce
+      # que fait cette verification, qui est de la syntaxe.
+      - name: Installer Python et aiohttp
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq python3-venv python3-pip
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install --quiet --upgrade pip aiohttp
+          echo /tmp/venv/bin >> "$GITHUB_PATH"
 
       # Le depot n'a pas de requirements.txt, et c'est voulu : aiohttp est la
-      # SEULE dependance obligatoire. huggingface_hub et av sont facultatifs,
-      # le code retombe sur du HTTPS direct sans eux — on ne les installe donc
-      # pas ici, ce qui verifie au passage que rien ne les exige en douce.
-      - name: Installer aiohttp
-        run: python -m pip install --upgrade pip aiohttp
+      # SEULE dependance obligatoire, installee juste au-dessus. huggingface_hub
+      # et av sont facultatifs, le code retombe sur du HTTPS direct sans eux — on
+      # ne les installe donc pas, ce qui verifie au passage que rien ne les exige
+      # en douce.
 
       # serveur.py fait 250 ko : une faute de syntaxe dans une branche rarement
       # prise ne se voit qu'au demarrage, c'est-a-dire chez l'utilisateur.
