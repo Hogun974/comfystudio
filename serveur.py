@@ -3953,7 +3953,7 @@ async def soumettre_a_agent(g, tid, ident):
     journal(tid, f"travail confie a {titre_} — en attente de sa reponse")
     t0 = time.time()
     try:
-        d = await asyncio.wait_for(attente, timeout=3600)
+        d = await _attendre_le_noeud(attente, ident, titre_, tid)
     except asyncio.TimeoutError:
         raise RuntimeError(f"{titre_} n'a pas rendu de resultat en une heure")
     finally:
@@ -3973,6 +3973,37 @@ async def soumettre_a_agent(g, tid, ident):
     sorties = [dict(f, noeud=ident) for f in d.get("fichiers", [])
                if isinstance(f, dict) and f.get("filename")]
     return sorties, d.get("secondes") or (time.time() - t0)
+
+
+async def _attendre_le_noeud(attente, ident, titre, tid):
+    """Attend le resultat, en surveillant que la machine parle encore.
+
+    Une heure d'attente seche etait la seule borne. Constate : le ComfyUI d'une
+    machine s'est arrete APRES avoir reçu le travail ; son agent continuait de
+    battre et d'annoncer honnetement « ma carte ne repond pas », et le studio a
+    attendu une reponse qui ne viendrait jamais. Deux demandes sont restees
+    « en cours » plus de dix minutes, sans un mot.
+
+    On regarde donc toutes les cinq secondes si la machine s'est tue. Le silence
+    seul ne suffit pas — un agent peut manquer un battement pendant un rendu qui
+    sature sa machine — d'ou une tolerance large, et une PanneNoeud plutot qu'une
+    erreur : soumettre_robuste reprendra ailleurs, ce qu'il sait deja faire.
+    """
+    fin = time.time() + 3600
+    while True:
+        reste = fin - time.time()
+        if reste <= 0:
+            raise asyncio.TimeoutError()
+        try:
+            return await asyncio.wait_for(asyncio.shield(attente), timeout=min(5, reste))
+        except asyncio.TimeoutError:
+            pass
+        e = ETAT_NOEUDS.get(ident) or {}
+        mut = time.time() - (e.get("vu") or 0)
+        if mut > 4 * SILENCE_MAX:
+            journal(tid, f"{titre} ne donne plus signe de vie depuis {mut:.0f} s "
+                         f"— on ne l'attend plus")
+            raise PanneNoeud(f"{titre} s'est tue pendant le rendu")
 
 
 class MachineIncapable(RuntimeError):
