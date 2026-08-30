@@ -5143,8 +5143,23 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         cible = None
         if noeud_force:
             cible = noeud(noeud_force)
+            titre_force = (cible or {}).get("titre", noeud_force)
             if cible and not ETAT_NOEUDS.get(noeud_force, {}).get("repond"):
-                raise RuntimeError(f"{cible.get('titre', noeud_force)} ne repond pas")
+                raise RuntimeError(f"{titre_force} ne repond pas")
+            # Le choix automatique passe par noeuds_pour(), qui ecarte une
+            # machine distante a qui il manque le modele — le studio n'ecrit que
+            # sur son propre disque et ne peut pas l'y poser. Le choix impose
+            # depuis l'interface contournait ce filtre : le graphe partait quand
+            # meme, et ComfyUI rendait une erreur de chargeur que personne ne
+            # savait lire. On refuse ici, en nommant les machines qui l'ont.
+            if cible and not cible.get("local") and manquants(cle, noeud_force):
+                ailleurs = [x.get("titre", x["id"]) for x in noeuds_pour(cle)]
+                raise RuntimeError(
+                    f"{titre_force} n'a pas le modele de "
+                    f"{CATALOGUE[cle]['titre']} — "
+                    + (f"a demander a {' ou '.join(ailleurs)}, ou laisser la "
+                       f"machine sur « automatique »" if ailleurs else
+                       "et aucune autre machine ne l'a non plus"))
         cible = cible or choisir_noeud(cle)
         if cible is None:
             # Trois causes distinctes, trois messages : accuser la carte quand
@@ -5716,7 +5731,13 @@ async def travailleur():
             # calcule : elle seule sait a quelle seconde sa carte s'est arretee,
             # et api_noeud_resultat l'ecrira a son retour. Poser « interrompue »
             # ici, c'etait l'ecrire pendant que le GPU du NAS tournait toujours.
-            if est_agent((TACHES.get(tid) or {}).get("noeud") or ""):
+            # ... a condition qu'elle puisse encore parler. Une machine deja
+            # silencieuse ne rappellera pas : se taire ici laissait l'utilisateur
+            # sur « sa carte s'arrete des qu'elle nous rappelle », au futur, pour
+            # un rendu deja mort. La page relit une fois a huit secondes, ne
+            # trouve rien de neuf, et abandonne sans rien dire.
+            ident_t = (TACHES.get(tid) or {}).get("noeud") or ""
+            if est_agent(ident_t) and ETAT_NOEUDS.get(ident_t, {}).get("repond"):
                 TACHES.setdefault(tid, {"etapes": []}).update(etat="erreur")
             else:
                 journal(tid, "interrompue", etat="erreur")
@@ -5827,6 +5848,13 @@ async def api_etat(req):
         # nombre de travaux DEVANT celui-ci : ceux qui le precedent dans la
         # file, plus celui qui occupe le GPU.
         etat["position"] = ATTENTE.index(tid) + (1 if EN_COURS["tid"] else 0)
+    # Le pourcentage, pour CE travail seulement. api_file le servait deja pour
+    # sa ligne « en cours » ; api_etat ne l'a jamais servi, si bien que la barre
+    # posee ce matin dans la bulle lisait un champ qui n'existe pas et ne
+    # s'affichait jamais. PROGRES est global : on ne le rend qu'au travail
+    # qu'il decrit.
+    if tid == EN_COURS["tid"] and PROGRES.get("total"):
+        etat["avance"] = dict(PROGRES)
     return web.json_response(etat)
 
 def _ligne_file(tid, pid, admin, rang):
@@ -6225,7 +6253,13 @@ EXT_3D = {".glb", ".gltf", ".obj", ".ply", ".stl", ".fbx"}
 
 # Ce qu'une machine a agent a le droit de deposer. Volontairement ferme : le
 # studio sert ces fichiers sur sa propre origine.
-EXT_DEPOT = EXT_IMAGE | EXT_VIDEO | EXT_AUDIO | EXT_3D
+# « .gif » explicitement : il n'est pas dans EXT_IMAGE, qui sert AUSSI a filtrer
+# les pieces jointes en entree, et l'y ajouter accepterait des gif a retoucher,
+# dont LoadImage ne lirait que la premiere image. Mais la page, elle, sait les
+# afficher (EXT_IMG dans index.html), et une machine qui fait de l'animation en
+# produit — VHS_VideoCombine ecrit du .gif par defaut. Sans cette ligne, un tel
+# rendu se faisait refuser au depot APRES avoir paye tout le temps de carte.
+EXT_DEPOT = EXT_IMAGE | EXT_VIDEO | EXT_AUDIO | EXT_3D | {".gif"}
 # Deux gigaoctets : large pour la plus longue video qu'on sache produire, et
 # borne quand meme. Sans borne, un seul depot remplissait le disque.
 DEPOT_MAX = 2 * 1024 ** 3
@@ -6477,9 +6511,17 @@ def origine_sure(req):
     o = req.headers.get("Origin")
     if not o:
         return True
+    # Depuis que cette verification s'applique a TOUTES les routes qui agissent,
+    # un proxy qui ne preserve pas le Host du navigateur ne casse plus seulement
+    # la connexion : il casse tout. On accepte donc aussi X-Forwarded-Host, que
+    # ce proxy pose et qu'une page piegee ne peut pas forger — un formulaire
+    # inter-site ne choisit pas ses en-tetes, et un fetch qui les choisit
+    # declenche un prevol que le studio ne valide pas.
+    vus = {req.headers.get("Host", ""),
+           (req.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()}
     # Comparaison a l'hote REELLEMENT utilise : une liste figee echouerait des
     # que le studio ecoute sur 0.0.0.0 et qu'on l'atteint par son adresse LAN.
-    return o.split("//")[-1].rstrip("/") == req.headers.get("Host", "")
+    return o.split("//")[-1].rstrip("/") in {h for h in vus if h}
 
 async def api_comfy_demarrer(req):
     if not origine_sure(req):
@@ -7051,9 +7093,20 @@ async def api_noeud_resultat(req):
         d = await req.json()
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
+    # Une chaine, et rien d'autre : ce tid sert de cle a TACHES, et journal()
+    # fait un setdefault. Un corps { "tid": {} } atteignait une cle non hachable
+    # et rendait 500.
     tid = d.get("tid")
+    if not isinstance(tid, str) or not tid:
+        return web.json_response({"erreur": "tid absent"}, status=400)
     attribue, attente = RESULTATS.get(tid) or (None, None)
-    if attente is not None and attribue != x["id"]:
+    # RESULTATS est vide des qu'un travail est fini : la verification ci-dessous
+    # ne mordait donc plus, et une machine authentifiee pouvait ecrire dans le
+    # journal d'un travail qui n'etait pas le sien. On se rabat sur la machine
+    # retenue par la tache, qui survit, elle.
+    if attribue is None:
+        attribue = (TACHES.get(tid) or {}).get("noeud")
+    if attribue is not None and attribue != x["id"]:
         # Un travail n'apparait que dans la file de la machine a qui il a ete
         # confie : aucun tid d'une autre ne fuit aujourd'hui. Mais rien ne
         # l'empechait de rendre a sa place — et un rendu accepte remplace les
