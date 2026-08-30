@@ -110,6 +110,19 @@ jobs:
 
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
+      # Les bancs du classifieur ne couvrent PAS ce chemin : ils mesurent ce que
+      # le modele bayesien decide, pas ce que les expressions regulieres
+      # court-circuitent avant lui. Or c'est la qu'une faute est la plus
+      # sournoise — le studio rend une image, simplement pas la bonne.
+      #
+      # Ce banc existe pour une faute qui a eu lieu : « enleve le fond »,
+      # formulation du detourage depuis le premier jour, s'est mise a remplacer
+      # le SUJET quand les moteurs de retouche sont arrives. Aucune tolerance
+      # ici : ce ne sont pas des statistiques mais des decisions ecrites a la
+      # main, et une seule qui change est une regression.
+      - name: Les formulations reconnues a l'ecrit partent au bon endroit
+        run: python verifier_formulations.py
+
       # lira dans le journal de l'action quand un chiffre bougera.
       # conversations/ n'existe pas ici, donc aucune demande reelle n'est
       # moissonnee : la CI mesure le corpus du depot, et rien d'autre.
