@@ -1,0 +1,30 @@
+{"texte": "detoure-la", "attendu": "detourer"}
+{"texte": "detoure le personnage", "attendu": "detourer"}
+{"texte": "enleve le fond", "attendu": "detourer"}
+{"texte": "retire l'arriere-plan", "attendu": "detourer"}
+{"texte": "mets-la sur fond transparent", "attendu": "detourer"}
+{"texte": "isole le sujet", "attendu": "detourer"}
+{"texte": "supprime le fond de cette image", "attendu": "detourer"}
+{"texte": "change le fond par une plage au crepuscule", "attendu": "retoucher_fond"}
+{"texte": "remplace le fond", "attendu": "retoucher_fond"}
+{"texte": "mets un autre arriere-plan", "attendu": "retoucher_fond"}
+{"texte": "je veux un nouveau decor", "attendu": "retoucher_fond"}
+{"texte": "le fond devient une plage", "attendu": "retoucher_fond"}
+{"texte": "enleve le sujet", "attendu": "retoucher_sujet"}
+{"texte": "efface la personne", "attendu": "retoucher_sujet"}
+{"texte": "change seulement le ciel", "attendu": "retoucher_zone"}
+{"texte": "remplace le ciel par un ciel d'orage", "attendu": "retoucher_zone"}
+{"texte": "enleve le chien", "attendu": "retoucher_zone"}
+{"texte": "efface la voiture rouge", "attendu": "retoucher_zone"}
+{"texte": "remplace le panneau par un arbre", "attendu": "retoucher_zone"}
+{"texte": "refais juste le mur du fond", "attendu": "retoucher_zone"}
+{"texte": "agrandis cette image", "attendu": "agrandir"}
+{"texte": "passe-la en 4k", "attendu": "agrandir"}
+{"texte": "rends-la plus fluide", "attendu": "fluidifier"}
+{"texte": "mets-la au ralenti", "attendu": "fluidifier"}
+{"texte": "un renard dans les hautes herbes au coucher du soleil", "attendu": "aucun"}
+{"texte": "une cabane au fond de la vallee", "attendu": "aucun"}
+{"texte": "un decor de theatre baroque", "attendu": "aucun"}
+{"texte": "une musique de piano melancolique", "attendu": "aucun"}
+{"texte": "decris cette image", "attendu": "aucun"}
+{"texte": "la meme mais en hiver", "attendu": "aucun"}

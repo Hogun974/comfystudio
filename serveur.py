@@ -3267,9 +3267,14 @@ def g_detourage(image, prefixe):
 # « detoure », « enleve le fond » : comme l'agrandissement, il n'y a rien a
 # interpreter. On tranche a l'ecrit plutot que d'envoyer la demande a un modele
 # qui pourrait decider de redessiner l'image.
+# « l.?arriere » et non « l arriere » : sans_accents() enleve les accents, pas
+# les apostrophes. « retire l'arriere-plan » — la forme que tout le monde ecrit,
+# et celle du corpus — ne correspondait a rien, et tombait depuis peu sur la
+# retouche du SUJET : fond transparent demande, sujet efface obtenu.
 _DETOURER = re.compile(
-    r"(detour|enleve.{0,12}(?:le fond|l arriere.?plan)|"
-    r"retire.{0,12}(?:le fond|l arriere.?plan)|supprime.{0,12}le fond|"
+    r"(detour|"
+    r"(?:enleve|enlever|retire|retirer|supprime|supprimer|vire|virer)"
+    r".{0,12}(?:le fond|l.?arriere.?plan|le decor)|"
     r"sans (?:le )?fond\b|fond transparent|sur fond transparent|"
     r"isole (?:le|la) (?:sujet|personnage|personne))", re.I)
 
