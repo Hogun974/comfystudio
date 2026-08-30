@@ -30,6 +30,7 @@ des **planches de BD** et des **objets 3D** — en local, sur plusieurs machines
 
 ## Sommaire
 
+- [Avant de commencer](#avant-de-commencer)
 - [Installer](#installer)
 - [Démarrer](#démarrer)
 - [Ce que tu peux demander](#ce-que-tu-peux-demander)
@@ -60,6 +61,46 @@ des **planches de BD** et des **objets 3D** — en local, sur plusieurs machines
 - [Un classifieur plutôt qu'un modèle, quand il n'y a rien à écrire](#un-classifieur-plutôt-quun-modèle-quand-il-ny-a-rien-à-écrire)
 - [Le modèle qui écrit n'est pas celui qui aiguille](#le-modèle-qui-écrit-nest-pas-celui-qui-aiguille)
 - [Mesures sur RTX 2080 Ti](#mesures-sur-rtx-2080-ti)
+
+## Avant de commencer
+
+Récupérer le code, quel que soit le chemin choisi ensuite :
+
+```bash
+git clone https://github.com/Hogun974/comfystudio.git comfystudio
+cd comfystudio
+```
+
+Ce qu'il faut sur la machine, selon le chemin :
+
+| Chemin | Ce qu'il faut |
+|---|---|
+| **Conteneur** — le studio seul, il pilote des cartes qui sont ailleurs | git, Docker Engine, et le plugin **Compose v2** |
+| **Natif** — Windows, macOS, Linux, sur la machine à carte | git, Python **3.8 ou plus récent** |
+
+`docker compose version` doit répondre `v2.…`. C'est bien `docker compose` en
+deux mots : `docker-compose` en un mot est la v1, qui n'est plus maintenue.
+Toutes les commandes de ce README sont écrites pour la v2.
+
+Python 3.8 est le plancher, et les scripts d'installation le vérifient au lieu
+de se contenter de trouver un `python` (voir [Installer](#installer)). Sur
+Windows, rien à installer : le studio s'appuie sur le Python embarqué de
+ComfyUI.
+
+**Les commandes `docker` de ce README n'ont pas de `sudo`** : elles supposent ton
+compte dans le groupe `docker`. Si `docker ps` répond « permission denied », deux
+possibilités :
+
+```bash
+sudo docker compose up -d          # préfixer chaque commande
+sudo usermod -aG docker "$USER"    # ou entrer dans le groupe, une fois
+```
+
+Le groupe n'est pas ajouté par l'installeur, et ce n'est pas un oubli :
+appartenir au groupe `docker` équivaut à être root sur la machine — la socket
+suffit à monter n'importe quel dossier dans un conteneur privilégié. C'est un
+choix qui revient à l'administrateur, pas à un script. Après un `usermod`, il
+faut refermer et rouvrir la session pour que le groupe soit pris en compte.
 
 ## Installer
 
@@ -190,11 +231,60 @@ liste des modèles ne peut pas diverger entre l'installeur et le studio.
 
 ## Démarrer
 
-1. Lance ComfyUI (`LANCER ComfyUI (2080 Ti).bat`)
+**Windows**
+
+1. Lance ComfyUI par ton lanceur habituel — celui que ComfyUI portable pose à
+   côté de lui, dont le nom porte souvent le modèle de la carte.
 2. Lance `LANCER ComfyStudio.bat`
 3. L'interface s'ouvre sur <http://127.0.0.1:8199>
 
 Le lanceur vérifie que ComfyUI répond avant de démarrer et te le dit sinon.
+
+**macOS et Linux**
+
+```bash
+python3 serveur.py          # au premier plan, Ctrl+C pour arrêter
+```
+
+ComfyUI se lance à part, comme sous Windows. S'il n'est pas encore là, le studio
+démarre quand même et annonce « VRAM inconnue » : c'est exact, et c'est son
+interface qui sert ensuite à le démarrer (voir [Piloter ComfyUI depuis
+l'interface](#piloter-comfyui-depuis-linterface)).
+
+Pour que le studio revienne tout seul au démarrage de la machine :
+
+```bash
+sudo sh service/installer_service.sh    # Linux — unité systemd
+sh service/installer_service.sh         # macOS — agent launchd, SANS sudo
+```
+
+Le script pose l'unité, crée le dossier de données, et écrit les réglages dans
+un fichier à part (`/etc/comfystudio.env` sous Linux) : une mise à jour peut
+alors écraser l'unité sans effacer la configuration de la machine. Il
+**n'écrase jamais** ce fichier d'environnement — c'est lui qui porte
+`STUDIO_ADMIN_MDP`. `--desinstaller` retire tout.
+
+Sous macOS, l'agent launchd ne tourne **que quand ta session est ouverte** :
+c'est la contrepartie du « jamais root ». Survivre à la déconnexion demande un
+`LaunchDaemon` dans `/Library/LaunchDaemons/`, qui tourne sous root tant qu'on
+ne lui ajoute pas de compte — le script ne le pose donc pas tout seul.
+`service/NOTES.md` donne les deux marches à suivre pour un Mac serveur.
+
+**La première page est un écran de connexion.** La connexion est obligatoire par
+défaut, y compris en local, et le mot de passe du compte `admin` est affiché
+**une seule fois** au démarrage. Où le lire, selon le chemin :
+
+| Démarrage | Où lire le mot de passe |
+|---|---|
+| au premier plan | dans le terminal, encadré, juste après la bannière |
+| service systemd | `journalctl -u comfystudio \| grep -A3 'Compte administrateur'` |
+| agent launchd | `grep -A3 'Compte administrateur' ~/Library/Logs/ComfyStudio/studio.log` |
+| conteneur | voir [En conteneur](#en-conteneur) |
+
+Mieux vaut le poser d'avance : `STUDIO_ADMIN_MDP` dans le fichier
+d'environnement du service, ou dans l'environnement avant `python3 serveur.py`.
+Un mot de passe tiré au sort et manqué au vol ne se relit pas — il n'est pas
+conservé en clair, seule une empreinte scrypt l'est.
 
 ## Ce que tu peux demander
 
@@ -348,13 +438,25 @@ C'est activé dans `LANCER ComfyStudio.bat` :
 set STUDIO_HOTE=0.0.0.0
 ```
 
-Remets `127.0.0.1` pour refermer.
+Remets `127.0.0.1` pour refermer. Hors Windows, c'est la même variable :
+`STUDIO_HOTE=0.0.0.0 python3 serveur.py`, ou `--hote 0.0.0.0` passé à
+`service/installer_service.sh`. **En conteneur, la question ne se pose pas** :
+`STUDIO_HOTE` y vaut déjà `0.0.0.0` — sinon le studio n'écouterait que la boucle
+locale du conteneur et le port publié ne mènerait nulle part. C'est le port
+publié par Compose qui décide de ce qui est joignable.
 
-**Mesure ce que cela veut dire.** Il n'y a aucune
-authentification : quiconque atteint le port peut générer (contenu adulte
-compris), téléverser des images et occuper le GPU. À réserver à un réseau de
-confiance. Le pilotage de ComfyUI, lui, reste refusé à distance — un visiteur ne
-peut pas arrêter le moteur sous les pieds des autres.
+**Mesure ce que cela veut dire.** La connexion est obligatoire par défaut : sans
+compte, une requête sur le port ne rend qu'un `401` (voir [Comptes](#comptes)).
+Ce qui reste vrai, c'est que le formulaire de connexion, lui, est exposé à tout
+le réseau. À réserver à un réseau de confiance.
+
+`STUDIO_AUTH=libre` rétablit l'ancien comportement — aucune authentification :
+quiconque atteint le port peut alors générer (contenu adulte compris),
+téléverser des images, occuper le GPU et dépenser les clés d'API posées dans
+`/admin`. Ne le mets qu'en le sachant.
+
+Le pilotage de ComfyUI, lui, reste refusé à distance dans tous les cas — un
+visiteur ne peut pas arrêter le moteur sous les pieds des autres.
 
 ### Retrouver son espace sur un autre appareil
 
@@ -599,11 +701,30 @@ Deux détails qui comptent :
 Vérifié en tuant ComfyUI en plein calcul : reprise annoncée, ComfyUI relancé,
 image produite 80 secondes plus tard sans intervention.
 
+### Deux studios sur la même machine
+
+`docker compose -p autre` ne suffit pas : le nom du conteneur et le tag de
+l'image ne dépendent pas du projet, et un `--build` retaguerait l'image du
+studio déjà en service — vérifié, ça s'est produit pendant l'essai
+d'installation. Pose `STUDIO_NOM` et `STUDIO_IMAGE` dans le `.env` du second, où
+ils sont commentés :
+
+```bash
+STUDIO_NOM=comfystudio-essai
+STUDIO_IMAGE=comfystudio-essai:latest
+```
+
+Et donne-lui un autre port avec `STUDIO_PORT`.
+
 ## Déplacer le studio sur une machine sans carte
 
 Le studio ne calcule rien : il aiguille, met en file et répartit. Sa place
 naturelle est donc une machine allumée en permanence — un NAS, un petit
 serveur — pendant que les cartes graphiques restent où elles sont.
+
+C'est le même montage que [En conteneur](#en-conteneur), vu de l'autre bout :
+là-bas on démarre le studio et on entre dedans, ici on lui donne les machines
+qui calculent.
 
 **Le chemin évident est le mauvais.** On pense d'abord à exposer ComfyUI au
 réseau (`--listen 0.0.0.0`) pour que le studio l'atteigne. C'est une carte et
@@ -631,7 +752,8 @@ pare-feu, et une machine peut même vivre derrière une autre box.
 
 1. **Sur la machine d'accueil**, déployer le studio seul :
    ```bash
-   git clone <ce dépôt> comfystudio && cd comfystudio
+   git clone https://github.com/Hogun974/comfystudio.git comfystudio
+   cd comfystudio
    cp .env.exemple .env      # y mettre au moins STUDIO_ADMIN_MDP
    docker compose up -d
    ```
@@ -909,7 +1031,9 @@ Au premier démarrage, si aucun compte n'existe, un compte **`admin`** est cré�
 tout seul : sans lui, la porte serait fermée sans clef. Son mot de passe vient
 de `STUDIO_ADMIN_MDP` — c'est ce qui permet de le fixer d'avance dans un
 `docker-compose` — et à défaut il est tiré au sort et affiché **une seule
-fois** dans la console.
+fois** au démarrage : dans la console si le studio tourne au premier plan, dans
+le journal sinon (`docker compose logs comfystudio`, `journalctl -u
+comfystudio`).
 
 Ce qui reste ouvert sans session : la page elle-même (sinon on ne pourrait pas
 afficher le formulaire de connexion), les routes de session, et les routes
@@ -1354,14 +1478,40 @@ réessayer trois fois ne ferait que retarder le message.
 ## En conteneur
 
 Le studio ne calcule rien : il pilote un ComfyUI et un Ollama qui vivent
-ailleurs. L'image est donc minuscule, sans CUDA, et se construit en quelques
-secondes.
+ailleurs. L'image est donc minuscule, sans CUDA. Mesuré sur une machine sans
+carte : **49 s** de construction et **64,6 Mo** téléchargés avec l'image de base
+`python:3.12-slim` déjà en cache, environ **110 Mo** sans — puis **4 s** entre
+`up -d` et la première page servie.
+
+C'est le montage décrit dans [Déplacer le studio sur une machine sans
+carte](#déplacer-le-studio-sur-une-machine-sans-carte) : sans carte ici, il
+faudra des machines à agent pour que quoi que ce soit se génère.
+
+Le dépôt est cloné et l'on est dans son dossier (voir [Avant de
+commencer](#avant-de-commencer)) :
 
 ```bash
+cp .env.exemple .env       # y mettre au moins STUDIO_ADMIN_MDP
 docker compose up -d --build
 ```
 
-Puis <http://localhost:8199>.
+`.env.exemple` est un fichier caché : un `ls` ne le montre pas, `ls -a` si.
+
+Puis <http://localhost:8199> — ou l'adresse de la machine, si le studio tourne
+sur un serveur, ce qui est le cas recommandé.
+
+**Une connexion est demandée immédiatement**, et c'est là qu'on croit le studio
+cassé alors qu'il tourne. Le compte `admin` est créé au premier démarrage. Si tu
+as renseigné `STUDIO_ADMIN_MDP` dans `.env`, c'est ce mot de passe-là. Sinon il
+est tiré au sort et affiché **une seule fois** dans le journal du conteneur :
+
+```bash
+docker compose logs comfystudio | grep -A3 'Compte administrateur'
+```
+
+Le tirage au sort est le bon défaut — un mot de passe par défaut identique pour
+tout le monde serait pire — mais il n'est conservé nulle part en clair. Manqué,
+il ne se relit plus : le renseigner d'avance dans `.env` évite la question.
 
 Par défaut il cherche ComfyUI et Ollama **sur la machine hôte**
 (`host.docker.internal`). Change `COMFY_URL` et `OLLAMA_URL` s'ils sont
@@ -1404,9 +1554,15 @@ automatique des modèles, qui exige d'écrire sur le disque de ComfyUI. Les
 modèles doivent alors être installés à la main, et le studio dira simplement
 qu'ils manquent.
 
-Pour retrouver le téléchargement automatique, monte les deux dossiers et
-renseigne `COMFY_MODELES` et `COMFY_ENTREE` — les lignes sont déjà écrites,
-commentées, dans `docker-compose.yml`.
+Pour retrouver le téléchargement automatique, monte le dossier de ComfyUI :
+décommente la ligne `- /chemin/vers/ComfyUI:/comfy` dans `docker-compose.yml` et
+mets-y ton chemin. Rien d'autre à renseigner — l'image pose déjà
+`COMFY_DIR=/comfy`, et `models/` comme `input/` en découlent.
+
+C'est la seule exception au « rien à modifier dans ce YAML » : Compose ne sait
+pas ajouter un montage depuis `.env`. `COMFY_MODELES` et `COMFY_ENTREE` restent
+disponibles (voir le tableau des variables) pour une installation où ces deux
+dossiers ne sont pas là où ComfyUI les met d'habitude.
 
 ### Le volume qui compte
 
@@ -1419,6 +1575,8 @@ téléversements. **Sans lui, tout disparaît au redémarrage du conteneur.**
 |---|---|
 | `COMFY_URL`, `OLLAMA_URL` | où joindre les deux services |
 | `STUDIO_HOTE`, `STUDIO_PORT` | adresse et port d'écoute |
+| `STUDIO_AUTH` | `obligatoire` (défaut) ou `libre` |
+| `STUDIO_ADMIN_MDP` | mot de passe du compte `admin`, posé avant le premier démarrage |
 | `STUDIO_LLM`, `STUDIO_VISION` | modèles Ollama |
 | `STUDIO_DONNEES` | dossier des conversations |
 | `COMFY_DIR` | racine de ComfyUI, si elle est montée |

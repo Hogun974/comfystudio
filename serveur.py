@@ -6891,8 +6891,19 @@ if __name__ == "__main__":
     else:
         # 0.0.0.0 ne se tape pas dans un navigateur : on donne les adresses
         # qu'on peut reellement lire sur un telephone.
-        for adr in sorted(a for a in ADRESSES_MACHINE if a not in _HOTES_LOCAUX):
-            print(f"  RESEAU    : http://{adr}:{PORT}")
+        #
+        # En conteneur, ces adresses sont celles du RESEAU DOCKER — 10.100.3.2,
+        # 172.17.0.2 — que personne ne peut atteindre de l'exterieur. Les
+        # annoncer envoyait taper une adresse qui ne repond pas. On dit alors ou
+        # regarder vraiment : le port publie par le compose.
+        if os.path.exists("/.dockerenv"):
+            print(f"  RESEAU    : port {PORT} du conteneur, publie par le "
+                  f"compose sur l'hote")
+            print(f"              depuis une autre machine : "
+                  f"http://ADRESSE-DE-L-HOTE:{PORT}")
+        else:
+            for adr in sorted(a for a in ADRESSES_MACHINE if a not in _HOTES_LOCAUX):
+                print(f"  RESEAU    : http://{adr}:{PORT}")
         print(f"  OUVERT AU RESEAU sur {HOTE}"
               + ("" if AUTH == "obligatoire"
                  else " — AUCUNE AUTHENTIFICATION (STUDIO_AUTH=libre)"))
