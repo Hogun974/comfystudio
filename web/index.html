@@ -1023,8 +1023,12 @@ function peindreGrille() {
     carte.appendChild(el);
 
     const legende = document.createElement("figcaption");
+    const quand = f.quand
+      ? new Date(f.quand * 1000).toLocaleString("fr-FR",
+          { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+      : (f.heure || "");
     legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
-                      + `<small>${ech(f.moteur || "")} · ${ech(f.heure || "")}</small>`;
+                      + `<small>${ech(f.moteur || "")} · ${ech(quand)}</small>`;
     carte.appendChild(legende);
 
     const actions = document.createElement("div");

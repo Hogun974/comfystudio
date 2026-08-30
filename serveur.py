@@ -5180,6 +5180,25 @@ def famille_sortie(nom):
     return famille_du_fichier(nom) or "autre"
 
 
+def _date_sortie(f, conv):
+    """La date d'une sortie, en secondes. Celle du fichier si on peut la lire.
+
+    Les tours ne portent qu'une heure — « 10:51 » — sans date : ils ne peuvent
+    pas servir a trier. Le fichier, lui, porte la sienne sur le disque. Faute de
+    pouvoir la lire, la derniere activite de la conversation : approximative,
+    mais du bon ordre de grandeur, et jamais nulle.
+    """
+    nom = f.get("filename") or ""
+    ident = f.get("noeud") or noeud_local()["id"]
+    for chemin in (chemin_agent(ident, nom),
+                   os.path.join(BASE_COMFY, "output", f.get("subfolder", ""), nom)):
+        try:
+            return os.path.getmtime(chemin)
+        except OSError:
+            continue
+    return conv.get("modifie", 0)
+
+
 async def api_mediatheque(req):
     """Tout ce que cet utilisateur a produit, range par famille.
 
@@ -5203,11 +5222,14 @@ async def api_mediatheque(req):
                     "demande": (tour.get("demande") or "")[:120],
                     "moteur": tour.get("modele"),
                     "heure": tour.get("heure"),
+                    "quand": _date_sortie(f, conv),
                     "conversation": conv["id"],
                     "titre": (conv.get("titre") or "")[:60],
                 })
     # Les plus recents d'abord : c'est ce qu'on vient chercher neuf fois sur dix.
-    items.reverse()
+    # Trier sur la date du FICHIER et non sur l'ordre de CONVERSATIONS, qui est
+    # celui d'os.listdir — c'est-a-dire aucun ordre.
+    items.sort(key=lambda x: x["quand"], reverse=True)
     compte = {}
     for it in items:
         compte[it["famille"]] = compte.get(it["famille"], 0) + 1
