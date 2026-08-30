@@ -5742,7 +5742,10 @@ async def api_reprendre(req):
 
 
 async def api_generer(req):
-    d = await req.json()
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
     texte = (d.get("texte") or "").strip()
     image = d.get("image")
     if not texte and not image:
