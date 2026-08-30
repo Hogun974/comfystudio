@@ -1336,7 +1336,13 @@ ajoute au moins dix mots de decor et de precisions concretes."""
 # Les etiquettes danbooru de "pony" et "planche" ne sont pas de la prose : les
 # enrichir en francais les casserait.
 _SANS_ENRICHISSEMENT = ("pony", "planche")
-_ENRICHIT = {"image": "image", "edition": "image", "personnage": "image",
+# « edition » en est volontairement absente. Son prompt n'est pas une
+# description mais une CONSIGNE — « change the sky to a stormy night sky » — et
+# l'enrichir en scene complete ferait REGENERER l'image au lieu de la retoucher.
+# On perdrait l'original, et rien dans le code ne saurait distinguer une consigne
+# enrichie d'une description : c'est le genre de faute qu'on ne peut pas
+# rattraper apres coup.
+_ENRICHIT = {"image": "image", "personnage": "image",
              "video": "video", "video_image": "video", "objet3d": "objet3d"}
 
 
