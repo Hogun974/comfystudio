@@ -1,7 +1,7 @@
 # Essai d'installation de ComfyStudio par un inconnu
 
 **Date** : 30 août 2026
-**Machine d'essai** : studio-191 (Ubuntu 24.04, 4 cœurs, 15,6 Go de RAM, 164 Go libres, **aucune carte NVIDIA**)
+**Machine d'essai** : une machine Linux sans carte graphique (Ubuntu 24.04, 4 cœurs, 15,6 Go de RAM, 164 Go libres, **aucune carte NVIDIA**)
 **Méthode** : clone git propre du dépôt dans `/tmp/essai-neuf`, lecture du README à partir de « Installer », puis exécution du chemin Docker.
 **Bac à sable** : projet Compose `essaineuf`, port 8299, image `essaineuf-comfystudio:latest`. Le studio en service (port 8199, projet `comfystudio`, volume `comfystudio_comfystudio-donnees`) n'a pas été touché.
 
@@ -158,7 +158,7 @@ Trois conséquences :
 - **Le conteneur ne peut pas être créé** si un `comfystudio` existe déjà : Docker refuse les noms en double.
 - **Le port 8199 est repris en dur** par défaut, donc en conflit lui aussi.
 
-Ce n'est pas un cas tordu : c'est exactement ce qui arrive à qui essaie une nouvelle version à côté de la sienne, ou à qui fait tourner une CI de construction sur la machine d'hébergement. Sur cette machine-ci, la chaîne Forgejo de l'auteur reconstruit et redéploie `comfystudio:latest` toutes les quelques minutes — un essai naïf serait entré en collision frontale avec elle.
+Ce n'est pas un cas tordu : c'est exactement ce qui arrive à qui essaie une nouvelle version à côté de la sienne, ou à qui fait tourner une CI de construction sur la machine d'hébergement. Sur cette machine-ci, une chaîne d'intégration continue auto-hébergée tournait déjà et reconstruit et redéploie `comfystudio:latest` toutes les quelques minutes — un essai naïf serait entré en collision frontale avec elle.
 
 **Correction** dans `docker-compose.yml` :
 ```yaml
@@ -329,8 +329,8 @@ Contrôles finaux : aucun conteneur, aucun volume, aucune image portant `essai`.
 
 Pendant l'essai, l'identifiant de l'image `comfystudio:latest` a changé (`4060b1f3…` → `60016962…`) et le conteneur en service a été recréé. **Ce n'est pas le fait de cet essai** :
 
-- le conteneur en service porte `com.docker.compose.project=comfystudio` et `working_dir=/home/hogun/comfystudio` — pas le projet `essaineuf` ;
+- le conteneur en service porte `com.docker.compose.project=comfystudio` et `working_dir=/home/<toi>/comfystudio` — pas le projet `essaineuf` ;
 - la construction de cet essai a produit `sha256:0434dece…`, taguée uniquement `essaineuf-comfystudio:latest`, et supprimée depuis ;
-- la chaîne Forgejo de l'auteur a lancé la tâche 348 (`hogun/comfystudio`, workflow « Construire-et-publier-l-image ») à 10:55:47, et l'image a été reconstruite à 10:56:07 — huit tâches se sont enchaînées en vingt minutes.
+- la chaîne d'intégration continue auto-hébergée a lancé une tâche de construction à 10:55:47, et l'image a été reconstruite à 10:56:07 — huit tâches se sont enchaînées en vingt minutes.
 
 C'est la CI du dépôt qui redéploie le studio en continu. Cela illustre au passage **B5** : parce que `docker-compose.yml` fige `image: comfystudio:latest`, cette CI et n'importe quel essai sur la même machine se disputent le même tag. Un inconnu qui aurait suivi le README à la lettre aurait écrasé l'image du studio en service, sans le savoir et sans le moindre avertissement.

@@ -20,7 +20,7 @@ services:
     #   docker push 127.0.0.1:5050/comfyui:local
     #
     # Variante par un Forgejo interne : remplacer par
-    #   image: ton-registre.local/hogun/comfyui:local
+    #   image: ton-registre.local/TON-COMPTE/comfyui:local
     # Le paquet doit alors etre PUBLIC, ou root doit avoir la session ouverte —
     # CasaOS tire en tant que root, pas en tant qu'utilisateur :
     #   sudo docker login ton-registre.local -u TON-COMPTE

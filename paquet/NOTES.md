@@ -101,7 +101,7 @@ différents du build d'avant correction. **La correction tient.**
 **Le chemin des modèles n'est plus dans le temporaire :**
 
 ```
-avant : C:\Users\Hogun974\AppData\Local\Temp\ComfyUI_windows_portable\ComfyUI\models
+avant : C:\Users\<toi>\AppData\Local\Temp\ComfyUI_windows_portable\ComfyUI\models
 apres : D:\ComfyStudio\paquet\ComfyUI_windows_portable\ComfyUI\models
 ```
 

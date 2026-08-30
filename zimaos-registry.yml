@@ -10,7 +10,8 @@ name: comfystudio-registry
 #   HOME=/tmp docker tag comfyui:local 127.0.0.1:5050/comfyui:local
 #   HOME=/tmp docker push 127.0.0.1:5050/comfyui:local
 #
-# 5050 et non 5000 : frigate occupe deja le 5000.
+# 5050 et non 5000 : le 5000 etait deja pris sur le NAS d'essai. C'est un port
+# tres demande sur ce genre de machine — verifie avant d'installer.
 services:
   registry:
     image: registry:2

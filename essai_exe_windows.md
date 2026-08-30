@@ -261,7 +261,7 @@ validée), `POST /api/admin/aiguilleur` rend `HTTP 200` avec de belles mesures,
 puis :
 
 - le fichier écrit est
-  `C:\Users\Hogun974\AppData\Local\Temp\_MEI0000c6602\aiguilleur.json`
+  `C:\Users\<toi>\AppData\Local\Temp\_MEI0000c6602\aiguilleur.json`
   (192 338 o, horodaté 15:15) — la copie **embarquée**, dans le dossier
   temporaire effacé à l'arrêt ;
 - rien n'apparaît à côté de l'exe ;
