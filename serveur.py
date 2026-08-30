@@ -6044,11 +6044,60 @@ def purger_fermees():
 
 # Efface, ou se contente de compter. DEFAUT : compter. Ce ramassage repare
 # l'heritage d'une ancienne suppression immediate qui effaçait la conversation et
-# laissait ses images ; sur une installation de reference il a trouve 51 fichiers
-# et 134,7 Mo. Ce sont des images que leur proprietaire n'a plus aucun moyen de
-# voir — mais ce sont ses images, et elles existent par un bug, pas par un choix.
-# On annonce donc ce qu'on liberait, et l'on attend qu'on nous le demande.
+# laissait ses images ; sur une installation de reference, 5 fichiers et 12,8 Mo
+# sur les 51 du depot. Ce sont des images que leur proprietaire n'a plus aucun
+# moyen de voir — mais ce sont ses images, et elles existent par un bug, pas par
+# un choix. On annonce donc ce qu'on liberait, et l'on attend qu'on nous le
+# demande.
 PURGE_ORPHELINS = os.environ.get("STUDIO_PURGE_ORPHELINS", "") == "1"
+
+
+def _reclames_sur_disque():
+    """Les noms de fichiers que reclame une conversation, lues SUR LE DISQUE.
+
+    charger_conversations() ne lit que les *.json de la RACINE de DOSSIER_CONV.
+    C'est ce qu'il faut au demarrage ; c'est faux pour decider qu'un fichier
+    n'appartient plus a personne. Sur l'installation de reference, 27
+    conversations avaient ete rangees dans un sous-dossier d'archive du meme
+    disque : invisibles en memoire, donc reputees inexistantes, alors que leurs
+    images etaient bien la et toujours a leur proprietaire.
+
+    Rend None — et non un ensemble vide — quand le parcours n'aboutit pas :
+    dossier illisible, JSON tronque. Un ramassage qui se trompe efface pour de
+    bon, donc l'appelant doit s'abstenir plutot que deviner. Une conversation
+    illisible bloque le ramassage jusqu'a ce qu'on s'en occupe, et c'est le bon
+    sens de l'erreur.
+    """
+    def _leve(e):
+        raise e
+
+    noms = set()
+    try:
+        for racine, dossiers, fichiers in os.walk(DOSSIER_CONV, onerror=_leve):
+            # Le depot des sorties est souvent SOUS le dossier de donnees et ne
+            # contient aucune conversation : le parcourir ne ferait qu'exposer
+            # le ramassage aux JSON qu'une machine a agent y depose.
+            dossiers[:] = [d for d in dossiers
+                           if os.path.join(racine, d) != SORTIES_AGENT]
+            for f in fichiers:
+                # Les registres du studio (_cles.json, _noeuds.json…) ne sont
+                # pas des conversations, et n'ont pas a etre ouverts ici.
+                if not f.endswith(".json") or f.startswith("_"):
+                    continue
+                with open(os.path.join(racine, f), encoding="utf-8") as fh:
+                    conv = json.load(fh)
+                if not isinstance(conv, dict):
+                    continue
+                for tour in (conv.get("tours") or []):
+                    for x in (tour.get("fichiers") or []):
+                        nom = os.path.basename((x or {}).get("filename") or "")
+                        if nom:
+                            noms.add(nom)
+    except Exception as e:
+        print(f"  conversations illisibles sous {DOSSIER_CONV} ({e}) — "
+              f"aucun fichier orphelin ne sera efface", flush=True)
+        return None
+    return noms
 
 
 def purger_orphelins():
@@ -6060,6 +6109,13 @@ def purger_orphelins():
     l'ancienne suppression immediate, qui effaçait la conversation et laissait
     ses images.
 
+    Ce qu'on reclame se lit sur le DISQUE, pas dans CONVERSATIONS. La version
+    qui interrogeait la memoire annonçait 38 orphelins (76,7 Mo) sur cette meme
+    installation, alors que 46 des 51 fichiers (121,9 Mo) etaient reclames par
+    l'une des 27 conversations rangees dans un dossier d'archive, et que 5
+    seulement (12,8 Mo) n'appartenaient plus a personne : elle aurait efface les
+    images de 22 conversations que leur proprietaire possede toujours.
+
     Seulement le depot du STUDIO : l'output d'un ComfyUI appartient a sa
     machine, qui fait son propre menage et y range aussi le travail fait a la
     main par son proprietaire.
@@ -6070,10 +6126,15 @@ def purger_orphelins():
     """
     if not os.path.isdir(SORTIES_AGENT):
         return 0
-    reclames = {os.path.basename(f.get("filename") or "")
-                for conv in CONVERSATIONS.values()
-                for tour in conv.get("tours", [])
-                for f in (tour.get("fichiers") or [])}
+    reclames = _reclames_sur_disque()
+    if reclames is None:
+        return 0
+    # La memoire par-dessus le disque : un tour tout juste enregistre peut
+    # n'etre pas encore retombe dans son fichier.
+    reclames |= {os.path.basename(f.get("filename") or "")
+                 for conv in CONVERSATIONS.values()
+                 for tour in conv.get("tours", [])
+                 for f in (tour.get("fichiers") or [])}
     limite = time.time() - GARDE_FERMEES
     partis, octets = 0, 0
     for racine, _, fichiers in os.walk(SORTIES_AGENT):
