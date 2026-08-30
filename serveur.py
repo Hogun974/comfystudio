@@ -4973,7 +4973,29 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             vivantes = [x for x in tous_les_noeuds()
                         if ETAT_NOEUDS.get(x["id"], {}).get("repond")]
             if not vivantes:
-                raise RuntimeError("aucune machine ne repond — ComfyUI est-il demarre ?")
+                # Le bon geste n'est pas le meme selon le montage. Sur une
+                # machine sans carte, il n'y a PAS de ComfyUI a demarrer : la
+                # reponse est de declarer une machine dans /admin. Envoyer tout
+                # le monde verifier un ComfyUI inexistant a ete releve comme le
+                # message le plus decourageant d'une installation neuve.
+                if output_comfy_a_nous():
+                    raise RuntimeError(
+                        "ComfyUI ne repond pas — est-il demarre ?"
+                        + (" Les machines declarees non plus : leur agent "
+                           "tourne-t-il ?" if REGISTRE else ""))
+                if REGISTRE:
+                    # Des machines sont declarees mais aucune ne s'annonce :
+                    # c'est leur agent qu'il faut regarder, pas un ComfyUI qui
+                    # n'existe pas ici.
+                    raise RuntimeError(
+                        "cette machine n'a pas de ComfyUI, et aucune des "
+                        "machines declarees ne repond : leur agent tourne-t-il ? "
+                        "L'etat de chacune est dans /admin.")
+                raise RuntimeError(
+                    "cette machine n'a pas de ComfyUI, et aucune machine a "
+                    "carte n'est declaree. Ajoutes-en une dans /admin : elle "
+                    "viendra chercher le travail d'elle-meme, sans rien ouvrir "
+                    "sur le reseau.")
             if not any(x.get("local") for x in vivantes):
                 # Des machines repondent, mais aucune ne convient a ce moteur.
                 # Le dire, plutot que d'accuser un ComfyUI qui va tres bien.
