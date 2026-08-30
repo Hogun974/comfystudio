@@ -1326,6 +1326,12 @@ _A_DECIDER = {
              "decor. Un seul plan, pas de montage ni de changement de scene.",
     "objet3d": "Ici : la forme d'ensemble, les materiaux et leur etat de surface, "
                "l'objet seul, vu en entier, sur fond neutre.",
+    # Animer une image fournie : la scene EXISTE deja. La redecrire ferait
+    # derailler le modele vers autre chose que ce qu'on lui montre — on ne parle
+    # donc que de ce qui bouge.
+    "animation": "L'image de depart existe deja : ne la decris pas. Dis "
+                 "seulement CE QUI BOUGE — le mouvement du sujet, celui de la "
+                 "camera, le vent, la lumiere qui change. Un seul plan.",
 }
 
 SYS_ENRICHIR_DUR = """
@@ -1343,7 +1349,7 @@ _SANS_ENRICHISSEMENT = ("pony", "planche")
 # enrichie d'une description : c'est le genre de faute qu'on ne peut pas
 # rattraper apres coup.
 _ENRICHIT = {"image": "image", "personnage": "image",
-             "video": "video", "video_image": "video", "objet3d": "objet3d"}
+             "video": "video", "video_image": "animation", "objet3d": "objet3d"}
 
 
 def _mots(t):
