@@ -6076,6 +6076,10 @@ def purger_fermees():
 # demande.
 PURGE_ORPHELINS = os.environ.get("STUDIO_PURGE_ORPHELINS", "") == "1"
 
+# Le dernier compte annonce, pour ne pas repeter une ligne identique toutes les
+# 30 secondes. Une liste plutot qu'un entier : reassignable sans « global ».
+_DERNIERS_ORPHELINS = [None]
+
 
 def _reclames_sur_disque():
     """Les noms de fichiers que reclame une conversation, lues SUR LE DISQUE.
@@ -6179,12 +6183,18 @@ def purger_orphelins():
     if partis and PURGE_ORPHELINS:
         print(f"  {partis} fichier(s) sans conversation efface(s) "
               f"({octets / 1e6:.1f} Mo)", flush=True)
-    elif partis:
+    elif partis and partis != _DERNIERS_ORPHELINS[0]:
         # Compter sans effacer : c'est le seul moyen de voir combien pese
         # l'heritage avant de decider. Une installation neuve n'en a pas.
+        #
+        # Et seulement quand le nombre CHANGE : cette fonction tourne avec la
+        # veille des machines, toutes les 30 s. La meme ligne repetee noyait le
+        # journal — neuf lignes sur dix-sept pendant un rendu, mesure — au point
+        # de cacher ce qu'on y cherchait vraiment.
         print(f"  {partis} fichier(s) sans conversation dorment ici "
               f"({octets / 1e6:.1f} Mo) — STUDIO_PURGE_ORPHELINS=1 pour les "
               f"effacer", flush=True)
+    _DERNIERS_ORPHELINS[0] = partis
     return partis
 
 def mes_fichiers(pid):
@@ -7139,7 +7149,10 @@ async def api_admin_noeuds(req):
     e = ETAT_NOEUDS.get(local["id"], {})
     ligne_locale = {"id": local["id"], "titre": local.get("titre"), "agent": False,
                     "repond": bool(e.get("repond")), "carte": e.get("carte"),
-                    "vram": e.get("vram"), "vu_il_y_a": 0, "en_travail": 0,
+                    "vram": e.get("vram"), "vu_il_y_a": 0,
+                    # Zero en dur : la console affichait « en travail 0 » pendant
+                    # qu'un rendu tournait sur cette machine.
+                    "en_travail": len(TRAVAUX.get(local["id"], [])),
                     "moteurs": moteurs_du_noeud(local["id"])}
     return web.json_response({"noeuds": [ligne_locale] + noeuds_agents(),
                               "silence_max": SILENCE_MAX})

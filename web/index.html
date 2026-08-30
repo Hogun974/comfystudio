@@ -1169,7 +1169,13 @@ async function peindreFile() {
     const rang = t.en_cours ? "▶" : t.rang;
     const etats = { "en cours": ["cours", "en cours"], fini: ["fini", "terminé"],
                     erreur: ["rate", "échec"], question: ["attente", "en attente de précision"] };
-    const [classe, mot] = etats[t.etat] || ["attente", "en attente"];
+    // Une demande porte l'etat « en cours » des sa creation : c'est l'etat de
+    // la TACHE, pas sa place dans la file. Seule la ligne marquee en_cours
+    // occupe vraiment la carte ; les autres attendaient en affichant
+    // « en cours », ce qui rendait la file illisible.
+    const [classe, mot] = (!t.en_cours && t.etat === "en cours")
+      ? ["attente", "en attente"]
+      : (etats[t.etat] || ["attente", "en attente"]);
     // Le pourcentage vient de ComfyUI ; sans lui on montre l'etat seul.
     const pct = t.avance && t.avance.total
       ? Math.round(t.avance.fait * 100 / t.avance.total) : null;
