@@ -426,6 +426,9 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       <select id="forcer" aria-label="Forcer un moteur">
         <option value="">moteur : automatique</option>
       </select>
+      <select id="machine" aria-label="Machine">
+        <option value="">machine : automatique</option>
+      </select>
       <select id="priorite" aria-label="Priorité">
         <option value="">priorité : équilibre</option>
         <option value="rapide">rapide — moins d'étapes</option>
@@ -839,6 +842,31 @@ $("#neuve").onclick = async () => {
   $("#txt").focus();
 };
 
+/* Le choix de machine est retenu dans le navigateur, et lui seul : « epargne ma
+   carte, je joue » vaut pour la soiree, pas pour une demande. Retenu par
+   identifiant et non par rang : les machines vont et viennent. */
+fetch("/api/machines").then(r => r.json()).then(ns => {
+  const sel = $("#machine");
+  if (!Array.isArray(ns) || ns.length < 2) return;   // une seule machine : rien a choisir
+  for (const x of ns) {
+    const o = document.createElement("option");
+    o.value = x.id;
+    // La VRAM est ce sur quoi le repartiteur tranche : la montrer explique le
+    // choix automatique au lieu de le laisser paraitre arbitraire.
+    o.textContent = x.titre + (x.vram ? ` — ${x.vram} Go` : "")
+                  + (x.repond ? "" : " (ne repond pas)");
+    sel.appendChild(o);
+  }
+  const garde = localStorage.getItem("machine");
+  if (garde && sel.querySelector(`option[value="${CSS.escape(garde)}"]`)) sel.value = garde;
+  sel.addEventListener("change", () => {
+    if (sel.value) localStorage.setItem("machine", sel.value);
+    else localStorage.removeItem("machine");
+    peindreActifs();
+  });
+  peindreActifs();
+}).catch(() => {});
+
 /* ── amorçage ────────────────────────────────────────────────────── */
 fetch("/api/modeles").then(r => r.json()).then(ms => {
   const sel = $("#forcer"); let prets = 0, locaux = ms.length;
@@ -1199,6 +1227,7 @@ document.querySelector("#panneauFile").addEventListener("mouseleave", e => {
    etre visible donne le sentiment de ne pas etre ecoute. */
 const REGLAGES = [
   { sel: "#forcer", nom: "moteur", lire: o => o.textContent },
+  { sel: "#machine", nom: "machine", lire: o => o.textContent.split(" — ")[0] },
   { sel: "#priorite", nom: "", lire: o => o.textContent.split(" — ")[0] },
   { sel: "#taille", nom: "", lire: o => o.textContent.split(" — ")[0] },
 ];
@@ -1322,6 +1351,7 @@ $("#go").onclick = async () => {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texte, image: imageJointe, modele: $("#forcer").value,
                              taille: $("#taille").value, priorite: $("#priorite").value,
+                             noeud: $("#machine").value || null,
                              conversation: monConv })
     });
     const d = await r.json().catch(() => ({}));

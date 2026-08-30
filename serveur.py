@@ -6244,9 +6244,12 @@ async def api_mediatheque(req):
     """
     pid = qui(req)
     items = []
-    for conv in CONVERSATIONS.values():
-        if conv.get("proprietaire") != pid:
-            continue
+    # mes_conversations() et non CONVERSATIONS : elle ecarte les fermees, comme
+    # le fait mes_fichiers() du cote du service. Les deux divergeaient, et la
+    # mediatheque affichait des vignettes que /api/fichier refusait ensuite —
+    # image cassee, telechargement mort, « reprendre » mort, pour un fichier qui
+    # est pourtant toujours la.
+    for conv in mes_conversations(pid):
         for tour in conv.get("tours", []):
             for f in (tour.get("fichiers") or []):
                 nom = f.get("filename") or ""
@@ -7068,6 +7071,29 @@ def rattacher_tardif(tid, d, x):
 
 
 # ── ce que voit l'administrateur ──────────────────────────────────────
+async def api_machines(_):
+    """Les machines qu'un utilisateur peut viser depuis la page.
+
+    On ne rend ici que ce qu'il faut pour choisir : un identifiant, un nom, si
+    la machine repond, sa VRAM et ce qu'elle a sur le feu. Ni jeton, ni adresse,
+    ni inventaire de modeles — ceux-la restent dans /api/admin/noeuds, derriere
+    le jeton d'administration.
+
+    Les machines qui ne repondent pas sont rendues quand meme, et marquees : les
+    cacher ferait disparaitre le choix de l'utilisateur sans explication, juste
+    parce qu'un agent s'est tu trois minutes.
+    """
+    local = noeud_local()
+    e = ETAT_NOEUDS.get(local["id"], {})
+    liste = [{"id": local["id"], "titre": local.get("titre") or local["id"],
+              "local": True, "repond": bool(e.get("repond")),
+              "vram": e.get("vram"), "en_travail": 0}]
+    liste += [{"id": x["id"], "titre": x["titre"], "local": False,
+               "repond": x["repond"], "vram": x["vram"],
+               "en_travail": x["en_travail"]} for x in noeuds_agents()]
+    return web.json_response(liste)
+
+
 async def api_admin_noeuds(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
@@ -7359,6 +7385,7 @@ def app():
     a.router.add_post("/api/comfy/arreter", api_comfy_arreter)
     a.router.add_post("/api/televerser", api_televerser)
     a.router.add_post("/api/generer", api_generer)
+    a.router.add_get("/api/machines", api_machines)
     a.router.add_get("/api/etat/{tid}", api_etat)
     a.router.add_get("/api/file", api_file)
     a.router.add_post("/api/reprendre", api_reprendre)
