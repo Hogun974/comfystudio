@@ -99,6 +99,18 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
      s'ancre sous l'entete plutot que sur un bouton qui a pu passer a la ligne. */
   #panneauFile{right:8px;left:8px;width:auto;top:auto;
     top:calc(env(safe-area-inset-top, 0px) + 52px)}
+  /* Cibles tactiles : mesurees a 19 px de haut pour « mediatheque » et
+     « sortir », 12 pour le lien « source ». Un doigt n'est pas un curseur — on
+     ne change pas le dessin, on ajoute de la hauteur cliquable. */
+  .compte button,.lien-admin,.jauge .source{min-height:34px;
+    display:inline-flex;align-items:center}
+  .nuages button{min-height:32px}
+}
+/* Sans survol, un bouton qui n'apparait qu'au survol n'apparait jamais. La
+   croix qui ferme une conversation etait en opacity:0 : sur telephone, elle
+   etait purement inatteignable, et fermer une conversation impossible. */
+@media (hover:none){
+  .conv .jeter{opacity:1;color:var(--encre-douce);padding:6px 8px;top:2px}
 }
 .nuages button{background:transparent;border:1px solid var(--trait);
   border-radius:20px;padding:1px 7px;font:13px/1.4 var(--sans);cursor:pointer;
@@ -164,7 +176,7 @@ aside{width:236px;flex:none;background:var(--plan);border-right:1px solid var(--
   background:var(--braise);border-radius:2px}
 .conv small{display:block;font:10px var(--mono);color:var(--encre-pale);margin-top:2px}
 .conv .jeter{position:absolute;right:5px;top:6px;border:0;background:transparent;
-  color:var(--encre-pale);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;
+  color:var(--encre-douce);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;
   opacity:0;border-radius:4px}
 .conv:hover .jeter{opacity:1}
 .conv .jeter:hover{color:var(--rouge);background:var(--creux)}
