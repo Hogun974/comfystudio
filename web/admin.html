@@ -275,16 +275,16 @@ async function api(chemin, methode = "GET", corps) {
 function livrer(n) {
   $("#livraison").innerHTML = `
     <div class="jeton">
-      <b>${n.titre}</b> est créée. Voici son jeton — <b>il ne sera plus affiché</b>.
-      <code>${n.jeton}</code>
+      <b>${ech(n.titre)}</b> est créée. Voici son jeton — <b>il ne sera plus affiché</b>.
+      <code>${ech(n.jeton)}</code>
       <div class="avert">Sur la machine, une seule commande. Elle vérifie tout,
         démarre ComfyUI s'il dort, récupère l'agent et se met en service.</div>
       <div class="avert" style="margin-top:10px">macOS et Linux :</div>
       <code>curl -fsS ${adresse}/api/noeud/noeud.sh -o noeud.sh
-bash noeud.sh --studio ${adresse} --jeton ${n.jeton}</code>
+bash noeud.sh --studio ${adresse} --jeton ${ech(n.jeton)}</code>
       <div class="avert">Windows, dans PowerShell :</div>
       <code>curl.exe -fsS ${adresse}/api/noeud/noeud.bat -o noeud.bat
-.\\noeud.bat --studio ${adresse} --jeton ${n.jeton}</code>
+.\\noeud.bat --studio ${adresse} --jeton ${ech(n.jeton)}</code>
       <div class="avert">Les modèles doivent être installés sur cette machine :
         le studio n'écrit que sur son propre disque. Ajoute
         <code style="display:inline;padding:2px 5px">--verifier</code> pour un
