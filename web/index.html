@@ -80,6 +80,10 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   overflow:hidden}
 .avance i{display:block;height:100%;background:var(--braise);
   transition:width .3s ease}
+/* Dans le bandeau de la bulle, le bandeau est un flex : sans largeur imposee la
+   barre serait un point. Elle prend donc la place qui reste, et perd la marge
+   haute qui la decalerait de la ligne. */
+.bandeau-tech .avance{flex:1 1 90px;min-width:90px;margin-top:0}
 .etat-tache{font:10.5px var(--mono);margin-top:3px}
 .etat-tache.attente{color:var(--encre-pale)}
 .etat-tache.cours{color:var(--braise)}
@@ -454,7 +458,12 @@ let imageJointe = null, apercuURL = null, convActive = null;
 const suivis = new Map();           // tid -> {bloc, minuteur}
 
 const TITRES = {};
-const ech = s => String(s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+/* Les guillemets et l'apostrophe en font partie, comme dans admin.html. Aucun
+   appel d'ici ne sert aujourd'hui dans un ATTRIBUT, mais la premiere
+   interpolation posee dans un title= ou un data- trouvera une fonction qui
+   protege deja : c'est exactement l'oubli qui a donne la XSS de la console. */
+const ech = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const EXT_IMG = /\.(png|jpe?g|webp|bmp|gif)$/i;
 const EXT_VID = /\.(mp4|webm|mkv|mov)$/i;
 const EXT_SON = /\.(mp3|flac|wav|ogg|opus)$/i;
@@ -810,6 +819,11 @@ async function ouvrir(cid) {
   convActive = cid;
   $("#txt").value = brouillons[cid] || ""; ajuster();
   $("#go").disabled = false;
+  // Dire au serveur laquelle on lit. La route existait et n'etait appelee de
+  // nulle part : apres un F5, on retombait sur la derniere conversation CREEE,
+  // pas sur celle qu'on avait sous les yeux. Sans « await » : c'est du confort,
+  // pas une condition pour afficher.
+  fetch("/api/conversation/" + cid + "/activer", { method: "POST" }).catch(() => {});
   const c = await (await fetch("/api/conversation/" + cid)).json();
   $("#fil").innerHTML = "";
   if (!c.tours || !c.tours.length) messageVide();
@@ -1328,6 +1342,7 @@ $("#go").onclick = async () => {
 /* Le sondage est indexe par tache : plusieurs demandes peuvent courir
    en parallele, y compris dans des conversations differentes. */
 function suivre(id, bloc, cid) {
+  const depart = Date.now();
   const ancien = suivis.get(id);
   if (ancien) { clearInterval(ancien.minuteur); suivis.delete(id); }
   const minuteur = setInterval(async () => {
@@ -1341,9 +1356,23 @@ function suivre(id, bloc, cid) {
       if (visible && t.etat === "en cours") {
         const derniere = t.etapes[t.etapes.length - 1];
         const puces = bloc.querySelector(".bandeau-tech");
+        // Le pourcentage existait deja — dans le panneau de file, qu'il faut
+        // ouvrir. Ici, la bulle n'affichait que la derniere ligne de journal :
+        // « travail confie a NAS ZimaOS — en attente de sa reponse », figee 150
+        // des 157 secondes d'un rendu mesure. On voyait un studio en panne.
+        //
+        // Les secondes ecoulees s'affichent MEME sans pourcentage : les 27
+        // premieres secondes n'en ont pas, et un ecran ou rien ne bouge est
+        // exactement ce qui fait recharger la page au milieu d'un rendu.
+        const pct = t.avance && t.avance.total
+          ? Math.round(t.avance.fait * 100 / t.avance.total) : null;
+        const secondes = Math.round((Date.now() - depart) / 1000);
         puces.innerHTML = t.position
           ? `<span class="puce attente">en file — ${t.position} devant</span>`
-          : `<span class="puce cours">${ech((derniere ? derniere.msg : "…").slice(0, 64))}</span>`;
+          : `<span class="puce cours">${ech((derniere ? derniere.msg : "…").slice(0, 64))}`
+            + `${pct === null ? "" : ` · ${pct} %`} · ${secondes} s</span>`
+            + (pct === null ? ""
+               : `<span class="avance"><i style="width:${pct}%"></i></span>`);
       }
       if (t.etat === "question") {
         clearInterval(minuteur); suivis.delete(id);
