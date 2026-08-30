@@ -519,6 +519,16 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama=""):
                     if connu:
                         print("  ComfyUI ne repond plus — on attend")
                         connu = False
+                    # On s'annonce quand meme, avec ce qu'on a : cette machine
+                    # porte peut-etre un modele de langage, et c'est justement
+                    # celle dont le studio a besoin quand le sien tombe. Se
+                    # taire la rendait invisible pour ça aussi.
+                    if ollama:
+                        appeler(f"{studio}/api/noeud/annonce", jeton,
+                                {"comfy": False,
+                                 "llm": etat_ollama(ollama) or {"ok": False,
+                                                                "modeles": []}})
+                    derniere_annonce = maintenant
                     time.sleep(PAUSE_LONGUE)
                     continue
                 corps = dict(etat)

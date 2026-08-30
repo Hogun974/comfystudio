@@ -21,7 +21,7 @@
     --trait:#ddd4c5; --trait-vif:#a3927c;
     --encre:#20180f; --encre-douce:#584c3e; --encre-pale:#6f6151;
     --braise:#b06d10; --braise-sourde:#f3e3c8; --braise-vive:#8a5308;
-    --vert:#4a7a33; --rouge:#a8412020;
+    --vert:#4a7a33; --rouge:#a84120;
   }
 }
 *{box-sizing:border-box}
@@ -284,8 +284,7 @@ function livrer(n) {
 bash noeud.sh --studio ${adresse} --jeton ${n.jeton}</code>
       <div class="avert">Windows, dans PowerShell :</div>
       <code>curl.exe -fsS ${adresse}/api/noeud/noeud.bat -o noeud.bat
-.
-oeud.bat --studio ${adresse} --jeton ${n.jeton}</code>
+.\\noeud.bat --studio ${adresse} --jeton ${n.jeton}</code>
       <div class="avert">Les modèles doivent être installés sur cette machine :
         le studio n'écrit que sur son propre disque. Ajoute
         <code style="display:inline;padding:2px 5px">--verifier</code> pour un
@@ -628,6 +627,10 @@ async function rafraichirAiguilleur(rendu) {
 }
 
 async function rafraichir() {
+  // Ne pas reconstruire le tableau pendant qu'un pli est ouvert : on y lit des
+  // details, et un essai de modele peut demander trois minutes. Le rafraichir
+  // sous les yeux referme le pli et jette la reponse attendue.
+  if (document.querySelector("#liste tr.pli.ouvert")) return;
   const { ok, statut, d } = await api("/api/admin/noeuds");
   if (statut === 403) { montrerEntree(); return; }
   if (!ok || !d) return;

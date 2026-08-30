@@ -4062,9 +4062,15 @@ def _mesurer_aiguilleur():
 
     entrainer = importlib.import_module("entrainer_aiguilleur")
     importlib.reload(entrainer)
-    exemples = entrainer.corpus()
+    # corpus() rend desormais (exemples, du_reel) : le drapeau dit si des
+    # demandes de CETTE installation sont entrees dans le melange. Ne pas le
+    # lire faisait passer un tuple a apprendre() — le bouton « reentrainer »
+    # rendait une erreur 500 a chaque clic.
+    exemples, du_reel = entrainer.corpus()
     neuf = _aiguilleur.Aiguilleur().apprendre(exemples)
-    neuf.ecrire()
+    # Et le meme choix de fichier que la ligne de commande : entraine sur des
+    # demandes reelles, le modele ne peut pas etre celui qu'on publie.
+    neuf.ecrire(_aiguilleur.MODELE_LOCAL if du_reel else _aiguilleur.MODELE)
     bancs = []
     for nom in entrainer.BANCS:
         banc = entrainer._lire(nom)
@@ -4477,8 +4483,22 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         if cible is None:
             # Trois causes distinctes, trois messages : accuser la carte quand
             # c'est ComfyUI qui ne repond pas envoie chercher au mauvais endroit.
-            if not any(ETAT_NOEUDS.get(x["id"], {}).get("repond") for x in NOEUDS):
+            # tous_les_noeuds() et non NOEUDS : sur un studio sans carte, ce
+            # dernier ne contient que la machine locale, qui ne repond jamais.
+            # Le message accusait donc ComfyUI pendant que deux machines
+            # tournaient.
+            vivantes = [x for x in tous_les_noeuds()
+                        if ETAT_NOEUDS.get(x["id"], {}).get("repond")]
+            if not vivantes:
                 raise RuntimeError("aucune machine ne repond — ComfyUI est-il demarre ?")
+            if not any(x.get("local") for x in vivantes):
+                # Des machines repondent, mais aucune ne convient a ce moteur.
+                # Le dire, plutot que d'accuser un ComfyUI qui va tres bien.
+                noms = ", ".join(x.get("titre", x["id"]) for x in vivantes)
+                raise RuntimeError(
+                    f"{CATALOGUE[cle]['titre']} n'est disponible sur aucune "
+                    f"machine joignable ({noms}) : modele absent, ou carte trop "
+                    f"petite. Le detail est dans /admin, en ouvrant la machine.")
             cible = noeud_local()
             dispo = vram_de(cible["id"])
             if besoin > dispo:
@@ -5748,7 +5768,12 @@ def noeuds_agents():
         vu = e.get("vu", 0)
         liste.append({"id": x["id"], "titre": x.get("titre") or x["id"],
                       "cree": x.get("cree"), "agent": True,
-                      "repond": bool(vu and time.time() - vu < SILENCE_MAX),
+                      # « vu » ne suffit plus : depuis que l'agent s'annonce
+                      # meme quand ComfyUI est mort — pour preter son modele de
+                      # langage — une machine restait verte en permanence
+                      # pendant que le repartiteur l'ecartait a juste titre.
+                      "repond": bool(vu and time.time() - vu < SILENCE_MAX
+                                     and e.get("repond")),
                       "vu_il_y_a": round(time.time() - vu) if vu else None,
                       "carte": e.get("carte"), "vram": e.get("vram"),
                       "moteurs": moteurs_du_noeud(x["id"]),
@@ -5763,6 +5788,24 @@ def _inventaire_connu(ident):
     return bool(connu and any(connu.get("dossiers", {}).values()))
 
 
+def _inventaire_a_rafraichir(ident):
+    """Vrai s'il faut redemander l'inventaire a cette machine.
+
+    Pas seulement quand on ne l'a jamais eu : AUSSI quand il approche de la
+    peremption. manquants() jette le cache au-dela de 3 x FRAICHEUR_MODELES et
+    declare alors tous les fichiers absents — la machine devient ineligible
+    tout en restant verte. Mesure : elle disparaissait 120 s sur 300, et deux
+    machines decalees laissaient 76 secondes ou plus rien n'etait eligible.
+
+    On redemande a partir de FRAICHEUR_MODELES : l'agent bat toutes les dix
+    secondes, il repond donc largement avant l'echeance.
+    """
+    connu = MODELES_NOEUD.get(ident)
+    if not _inventaire_connu(ident):
+        return True
+    return time.time() - connu.get("quand", 0) > FRAICHEUR_MODELES
+
+
 async def api_noeud_annonce(req):
     """Battement de coeur : l'agent dit qui il est et ce qu'il sait faire."""
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
@@ -5770,10 +5813,17 @@ async def api_noeud_annonce(req):
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     d = await req.json()
     etat = ETAT_NOEUDS.setdefault(x["id"], {})
-    etat.update(repond=True, vu=time.time(), agent=True,
-                carte=d.get("carte"), vram=float(d.get("vram") or 0),
-                libre=float(d.get("libre") or 0),
-                ram=float(d.get("ram") or 0))
+    # Une annonce « comfy: False » dit : la machine est la, sa carte ne repond
+    # pas. On note qu'on l'a vue et ce qu'elle porte cote langage, mais on
+    # n'ecrase ni sa carte ni sa memoire par des zeros — ce qu'on savait d'elle
+    # reste vrai, et le repartiteur doit continuer a l'ecarter.
+    if d.get("comfy") is False:
+        etat.update(vu=time.time(), agent=True, repond=False)
+    else:
+        etat.update(repond=True, vu=time.time(), agent=True,
+                    carte=d.get("carte"), vram=float(d.get("vram") or 0),
+                    libre=float(d.get("libre") or 0),
+                    ram=float(d.get("ram") or 0))
     dossiers = d.get("modeles") or {}
     # Un dictionnaire de listes VIDES est bien forme et ne veut rien dire : il
     # arrive pendant que ComfyUI se releve. L'enregistrer effacait tout ce
@@ -5791,7 +5841,7 @@ async def api_noeud_annonce(req):
     # Sans cela, une machine bien equipee reste declaree incapable de tout
     # pendant les cinq minutes qui suivent un redemarrage du studio.
     return web.json_response({"ok": True, "intervalle": 10, "titre": x.get("titre"),
-                              "modeles_demandes": not _inventaire_connu(x["id"])})
+                              "modeles_demandes": _inventaire_a_rafraichir(x["id"])})
 
 
 async def api_noeud_travail(req):
@@ -5799,7 +5849,12 @@ async def api_noeud_travail(req):
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
-    ETAT_NOEUDS.setdefault(x["id"], {}).update(vu=time.time(), repond=True)
+    # « vu » et non « repond » : cette route prouve que l'AGENT est la, pas que
+    # ComfyUI l'est. Seule l'annonce le prouve, puisqu'elle l'a interroge. Les
+    # confondre gardait verte une machine dont la carte etait morte, lui
+    # envoyait du travail que personne ne venait chercher, et bloquait la file
+    # une heure durant.
+    ETAT_NOEUDS.setdefault(x["id"], {}).update(vu=time.time())
     file = TRAVAUX.get(x["id"]) or []
     if not file:
         return web.Response(status=204)
@@ -5815,11 +5870,15 @@ async def api_noeud_question(req):
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
-    ETAT_NOEUDS.setdefault(x["id"], {}).update(vu=time.time(), repond=True)
+    ETAT_NOEUDS.setdefault(x["id"], {}).update(vu=time.time())
     file = QUESTIONS.get(x["id"]) or []
     if not file:
         return web.Response(status=204)
-    return web.json_response(file[0])
+    # Retiree a la remise, et non au retour de la reponse : si ce retour se perd
+    # — reseau, studio qui redemarre — l'agent reprenait la meme question et
+    # relançait un appel de quinze minutes, indefiniment. Le studio a son propre
+    # delai d'attente, c'est lui qui tranche.
+    return web.json_response(file.pop(0))
 
 
 async def api_noeud_reponse(req):
@@ -5910,6 +5969,18 @@ def rattacher_tardif(tid, d, x):
                 continue
             if tour.get("etat") == "fini":
                 return          # deja rattache : rien a refaire
+            # La marque en memoire ET la trace sur le disque : rattacher_tardif
+            # existe pour le cas « le studio a redemarre », et TACHES est vide
+            # apres un redemarrage. Sans le second signal, une demande
+            # interrompue puis suivie d'un redemarrage revenait terminee.
+            if ((TACHES.get(tid) or {}).get("annulee")
+                    or tour.get("erreur") == "interrompue"):
+                # On a ecrit a l'utilisateur que le resultat serait ECARTE :
+                # le recoller ferait reapparaitre, terminee et illustree, une
+                # demande qu'il a lui-meme interrompue.
+                print(f"  [{tid[:6]}] rendu tardif ignore : la demande avait "
+                      f"ete interrompue", flush=True)
+                return
             fichiers = [dict(f, noeud=x["id"]) for f in (d.get("fichiers") or [])]
             if d.get("etat") == "fini" and fichiers:
                 tour.update(etat="fini", erreur=None, fichiers=fichiers)

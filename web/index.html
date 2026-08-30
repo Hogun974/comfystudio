@@ -280,19 +280,6 @@ details.detail summary:hover{color:var(--encre-douce)}
   font:11.5px/1.75 var(--mono);color:var(--encre-douce);
   max-height:230px;overflow:auto;white-space:pre-wrap}
 
-/* La taille ne s'applique qu'aux images : la laisser active pour un moteur
-   audio ou vidéo ferait croire que la consigne est prise en compte. */
-const SANS_TAILLE = ["wan5b", "wan14b", "audio", "audioplus", "edition", "objet3d"];
-function accorderTaille() {
-  const m = $("#forcer").value;
-  const inerte = SANS_TAILLE.includes(m);
-  $("#taille").disabled = inerte;
-  $("#taille").title = inerte
-    ? "sans effet sur ce moteur : la taille vient de la source ou du format"
-    : "";
-}
-$("#forcer").addEventListener("change", accorderTaille);
-accorderTaille();
 
 /* ── saisie ──────────────────────────────────────────────────────── */
 footer{flex:none;border-top:1px solid var(--trait);background:var(--plan)}
@@ -1219,6 +1206,20 @@ document.querySelector("#plier").onclick = e => {
   e.target.classList.toggle("ouvert", ouvert);
   e.target.setAttribute("aria-expanded", String(ouvert));
 };
+/* La taille ne s'applique qu'aux images : la laisser active pour un moteur
+   audio ou vidéo ferait croire que la consigne est prise en compte. */
+const SANS_TAILLE = ["wan5b", "wan14b", "audio", "audioplus", "edition", "objet3d"];
+function accorderTaille() {
+  const m = $("#forcer").value;
+  const inerte = SANS_TAILLE.includes(m);
+  $("#taille").disabled = inerte;
+  $("#taille").title = inerte
+    ? "sans effet sur ce moteur : la taille vient de la source ou du format"
+    : "";
+}
+$("#forcer").addEventListener("change", accorderTaille);
+accorderTaille();
+
 peindreActifs();
 
 /* Le champ grandit en tapant. La fonction existait, mais plus rien ne
