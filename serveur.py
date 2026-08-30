@@ -2893,6 +2893,126 @@ def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True,
     return g
 
 
+# En dessous, il n'y a rien a retoucher : ni le modele ni l'utilisateur n'ont
+# trouve ce qui etait demande. Un demi pour cent d'une image d'un megapixel fait
+# encore cinq mille pixels — le seuil laisse passer une petite plaque, pas un
+# masque vide.
+AIRE_MINIMALE = 0.005
+# Au-dela, le moteur doit inventer beaucoup : seize pas au lieu de quatre. Le
+# seuil vient de la mesure de texture, pas d'une intuition.
+AIRE_GRANDE = 0.15
+
+
+async def mesurer_puis_choisir(image, tid, cle, sur_le_sujet=True, cible="",
+                               region=False):
+    """Rend (aire, etapes) apres avoir mesure le masque. (None, None) si on n'a pas su.
+
+    On choisit la machine ici pour la mesure seulement ; le rendu la choisira de
+    nouveau, et rien n'oblige les deux a etre la meme — soumettre_robuste sait
+    de toute facon changer de machine en route.
+    """
+    ou = choisir_noeud(cle)
+    if ou is None:
+        return None, None
+    aire = await aire_du_masque(image, tid, ou["id"], cle, sur_le_sujet, cible, region)
+    if aire is None:
+        return None, None
+    return aire, (16 if aire >= AIRE_GRANDE else REGLAGES["edition"]["etapes"])
+
+
+def g_masque_seul(image, prefixe, sur_le_sujet=True, cible="", region=False):
+    """Le meme masque que la retouche, reduit a un pixel et enregistre.
+
+    On reprend g_retouche_zone plutot que de recopier ses noeuds : le masque
+    mesure doit etre EXACTEMENT celui qui servira, dilatation comprise. Deux
+    graphes ecrits separement finiraient par diverger, et l'on mesurerait alors
+    un masque que personne n'utilise.
+    """
+    g = g_retouche_zone("", image, 0, prefixe, sur_le_sujet, None, cible, region)
+    # On coupe tout ce qui suit le masque : ni encodage, ni echantillonnage, ni
+    # decodage. Il ne reste que ce qu'il faut pour connaitre l'aire.
+    # Les chargeurs du moteur d'images partent aussi : ComfyUI n'execute que ce
+    # qui alimente une sortie, mais les laisser ferait croire, a la lecture,
+    # qu'on charge dix gigaoctets pour compter des pixels.
+    for mort in ("1", "2", "3", "11", "12",
+                 "13", "14", "15", "16", "17", "18", "19", "20", "21", "22",
+                 "23", "24"):
+        g.pop(mort, None)
+    # Moyenne d'aire vers un seul pixel : sa valeur est la fraction couverte.
+    g["40"] = {"class_type": "ImageScale",
+               "inputs": {"image": ["10", 0], "upscale_method": "area",
+                          "width": 1, "height": 1, "crop": "disabled"}}
+    g["41"] = {"class_type": "SaveImage",
+               "inputs": {"images": ["40", 0], "filename_prefix": prefixe}}
+    return g
+
+
+def _fraction_png_1x1(octets):
+    """La valeur du pixel d'un PNG 1x1, entre 0 et 1. None si illisible.
+
+    Ecrit a la main parce que le studio n'a ni PIL ni numpy : son image ne
+    contient qu'aiohttp. Trente lignes valent mieux qu'une dependance de
+    quarante megaoctets posee sur chaque installation pour lire un pixel.
+    """
+    import struct
+    import zlib
+
+    if not octets or octets[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    i, largeur, canaux, morceaux = 8, 0, 3, []
+    while i + 8 <= len(octets):
+        taille, genre = struct.unpack(">I4s", octets[i:i + 8])
+        corps = octets[i + 8:i + 8 + taille]
+        if genre == b"IHDR":
+            largeur = struct.unpack(">I", corps[:4])[0]
+            profondeur, couleur = corps[8], corps[9]
+            if profondeur != 8:
+                return None
+            canaux = {0: 1, 2: 3, 4: 2, 6: 4}.get(couleur, 0)
+            if not canaux:
+                return None
+        elif genre == b"IDAT":
+            morceaux.append(corps)
+        elif genre == b"IEND":
+            break
+        i += 12 + taille
+    if largeur != 1 or not morceaux:
+        return None
+    try:
+        brut = zlib.decompress(b"".join(morceaux))
+    except zlib.error:
+        return None
+    # Une ligne d'un pixel : un octet de filtre, puis les canaux. Les filtres
+    # PNG sont neutres sur le premier pixel d'une ligne, quel que soit leur type.
+    if len(brut) < 1 + canaux:
+        return None
+    return brut[1] / 255.0
+
+
+async def aire_du_masque(image, tid, ident, cle, sur_le_sujet=True, cible="",
+                         region=False):
+    """La fraction de l'image que le masque couvre, ou None si on n'a pas su.
+
+    None et non zero : « je ne sais pas » et « il n'y a rien » n'appellent pas
+    la meme suite. Sur un doute, on laisse passer le rendu — refuser a tort
+    couterait plus cher que la seconde qu'on vient de perdre.
+    """
+    prefixe = f"masque/{tid[:8]}"
+    g = g_masque_seul(image, prefixe, sur_le_sujet, cible, region)
+    try:
+        fichiers, _ = await soumettre_robuste(g, tid, ident, cle)
+    except Exception as e:
+        journal(tid, f"aire du masque inconnue ({type(e).__name__})")
+        return None
+    if not fichiers:
+        return None
+    try:
+        octets = await lire_sortie(fichiers[0])
+    except Exception:
+        return None
+    return _fraction_png_1x1(octets)
+
+
 def g_personnage(prompt, reference, w, h, seed, prefixe, par=None):
     """Une image NEUVE, en gardant le personnage d'une image de reference.
 
@@ -4872,9 +4992,23 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             plan["prompt"] = zone
             journal(tid, f"zone visee : « {cible} » "
                          f"({'etendue' if region else 'objet'}) — a la place : {zone[:60]}")
-            if region:
-                journal(tid, "etendue a refaire : 16 etapes au lieu de 4, deux "
-                             "fois plus long mais sans plaque floue")
+            aire, etapes = await mesurer_puis_choisir(image, tid, cle,
+                                                      cible=cible, region=region)
+            if aire is not None:
+                journal(tid, f"le masque couvre {aire * 100:.1f} % de l'image")
+                if aire < AIRE_MINIMALE:
+                    # Le dire tout de suite, en nommant ce qu'on a cherche :
+                    # quinze secondes pour rendre l'image inchangee ressemblent
+                    # a une panne, et n'apprennent rien.
+                    raise RuntimeError(
+                        f"je n'ai pas trouve « {cible} » dans cette image. "
+                        f"Nomme autrement ce qu'il faut changer, ou decris-le "
+                        f"plus simplement.")
+                par = dict(par or {}, etapes=etapes)
+                if etapes > REGLAGES["edition"]["etapes"]:
+                    journal(tid, f"grande zone : {etapes} etapes au lieu de "
+                                 f"{REGLAGES['edition']['etapes']}, deux fois plus "
+                                 f"long mais sans plaque floue")
             g = g_retouche_zone(zone, image, seed,
                                 prefixe_sortie(conv, intention, horod, "retouche"),
                                 par=par, cible=cible, region=region)
@@ -4894,6 +5028,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             sur_le_sujet = intention == "retoucher_sujet"
             plan["prompt"] = zone
             journal(tid, f"zone a redessiner : {zone[:80]}")
+            aire, etapes = await mesurer_puis_choisir(image, tid, cle,
+                                                      sur_le_sujet=sur_le_sujet)
+            if aire is not None:
+                journal(tid, f"le masque couvre {aire * 100:.1f} % de l'image")
+                if aire < AIRE_MINIMALE:
+                    raise RuntimeError(
+                        "je ne distingue pas de sujet sur cette image : il n'y a "
+                        "rien a separer du fond. Decris plutot ce que tu veux "
+                        "changer, par exemple « change seulement le ciel ».")
+                par = dict(par or {}, etapes=etapes)
             g = g_retouche_zone(zone, image, seed,
                                 prefixe_sortie(conv, intention, horod, "retouche"),
                                 sur_le_sujet, par)
