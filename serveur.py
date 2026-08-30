@@ -5303,13 +5303,38 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # meme, et ComfyUI rendait une erreur de chargeur que personne ne
             # savait lire. On refuse ici, en nommant les machines qui l'ont.
             if cible and not cible.get("local") and manquants(cle, noeud_force):
-                ailleurs = [x.get("titre", x["id"]) for x in noeuds_pour(cle)]
-                raise RuntimeError(
-                    f"{titre_force} n'a pas le modele de "
-                    f"{CATALOGUE[cle]['titre']} — "
-                    + (f"a demander a {' ou '.join(ailleurs)}, ou laisser la "
-                       f"machine sur « automatique »" if ailleurs else
-                       "et aucune autre machine ne l'a non plus"))
+                # Un moteur EQUIVALENT que cette machine sait executer, plutot
+                # qu'un refus. Choisir une machine, c'est vouloir epargner
+                # l'autre : la renvoyer sur celle qu'on evitait annulerait le
+                # choix, mais echouer alors qu'un moteur du meme type est
+                # disponible ici ne sert personne.
+                #
+                # Meme « type » seulement — une demande d'image ne se rend pas
+                # en video. La VRAM la plus proche par le haut : c'est le moteur
+                # le plus capable que cette carte tienne.
+                genre = CATALOGUE[cle].get("type")
+                possibles = [c for c in CATALOGUE
+                             if CATALOGUE[c].get("type") == genre
+                             and not manquants(c, noeud_force)
+                             and _vram_utile(noeud_force) >= CATALOGUE[c].get("vram", 0)]
+                if possibles:
+                    neuf_cle = max(possibles, key=lambda c: CATALOGUE[c].get("vram", 0))
+                    journal(tid, f"{titre_force} n'a pas {CATALOGUE[cle]['titre']} — "
+                                 f"{CATALOGUE[neuf_cle]['titre']} a sa place, "
+                                 f"puisque c'est cette machine qui est demandee")
+                    cle = neuf_cle
+                    plan["modele"] = cle
+                    # « besoin » a ete calcule au-dessus, pour l'ancien moteur :
+                    # le laisser tel quel ferait juger la carte sur une exigence
+                    # qui n'est plus la sienne.
+                    besoin = CATALOGUE[cle].get("vram", 0)
+                else:
+                    ailleurs = [x.get("titre", x["id"]) for x in noeuds_pour(cle)]
+                    raise RuntimeError(
+                        f"{titre_force} n'a aucun moteur d'{genre} installe — "
+                        + (f"a demander a {' ou '.join(ailleurs)}, ou laisser la "
+                           f"machine sur « automatique »" if ailleurs else
+                           "et aucune autre machine n'en a non plus"))
         cible = cible or choisir_noeud(cle)
         if cible is None:
             # Trois causes distinctes, trois messages : accuser la carte quand
