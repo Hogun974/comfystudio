@@ -164,6 +164,22 @@ class Comptes:
     def nombre_admins(self):
         return sum(1 for c in self.gens.values() if c.get("admin"))
 
+    def est_espace_de_compte(self, pid):
+        """Ce cookie designe-t-il l'espace d'un compte existant ?
+
+        identifiant() n'est qu'un sha256 du nom, sans sel et sans secret :
+        l'espace du compte « admin » se calcule de tete, hors ligne, sans rien
+        savoir de l'installation visee. Un visiteur qui pose ce cookie sans
+        jamais presenter de mot de passe reprenait ses conversations et sa
+        mediatheque — en STUDIO_AUTH=libre, ou aucune session n'est exigee,
+        cela suffisait.
+
+        Saler l'empreinte serait plus propre, mais reattribuerait toutes les
+        conversations deja rangees sous l'ancien identifiant. Refuser le cookie
+        ferme la meme porte sans toucher aux donnees existantes.
+        """
+        return any(identifiant(c["nom"]) == pid for c in self.gens.values())
+
     def authentifier(self, nom, mdp):
         c = self.gens.get((nom or "").strip().lower())
         if not c or not verifier(mdp or "", c.get("sel"), c.get("empreinte")):

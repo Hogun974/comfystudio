@@ -5540,12 +5540,20 @@ async def identite(req, handler):   # aiohttp passe le second argument NOMME `ha
     """
     pid = req.cookies.get("studio") or ""
     neuf = not _PID.fullmatch(pid)
-    if neuf:
-        pid = uuid.uuid4().hex
     # Un compte connecte prime sur le cookie du navigateur : c'est ce qui fait
     # qu'on retrouve ses conversations depuis un autre appareil, et que deux
     # adresses du meme studio ne donnent plus deux historiques.
     nom = compte_de(req)
+    if not neuf and not nom and COMPTES and COMPTES.est_espace_de_compte(pid):
+        # L'espace d'un compte se calcule a partir du seul nom d'utilisateur
+        # (voir est_espace_de_compte). Sans cette ligne, poser a la main le
+        # cookie « studio » du compte « admin » donnait ses conversations et sa
+        # mediatheque a un visiteur qui n'a jamais rien presente — pas en
+        # STUDIO_AUTH=obligatoire, ou exiger_compte refuse tout, mais en
+        # STUDIO_AUTH=libre, qui est un reglage documente.
+        neuf = True
+    if neuf:
+        pid = uuid.uuid4().hex
     req["compte"] = nom
     req["pid"] = _comptes.identifiant(nom) if nom else pid
     rep_ = await handler(req)
