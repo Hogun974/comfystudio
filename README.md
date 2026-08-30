@@ -1632,6 +1632,7 @@ téléversements. **Sans lui, tout disparaît au redémarrage du conteneur.**
 | `COMFY_DIR` | racine de ComfyUI, si elle est montée |
 | `COMFY_MODELES`, `COMFY_ENTREE` | ou directement ces deux dossiers |
 | `COMFY_LANCEUR` | script de démarrage de ComfyUI (hors conteneur) |
+| `STUDIO_PURGE_ORPHELINS` | `1` pour effacer les fichiers que plus aucune conversation ne réclame |
 | `COMPOSE_PROJECT_NAME` | **le nom qui décide du volume** — à changer pour tout second studio |
 | `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
 

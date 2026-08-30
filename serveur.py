@@ -6042,6 +6042,15 @@ def purger_fermees():
     return partis
 
 
+# Efface, ou se contente de compter. DEFAUT : compter. Ce ramassage repare
+# l'heritage d'une ancienne suppression immediate qui effaçait la conversation et
+# laissait ses images ; sur une installation de reference il a trouve 51 fichiers
+# et 134,7 Mo. Ce sont des images que leur proprietaire n'a plus aucun moyen de
+# voir — mais ce sont ses images, et elles existent par un bug, pas par un choix.
+# On annonce donc ce qu'on liberait, et l'on attend qu'on nous le demande.
+PURGE_ORPHELINS = os.environ.get("STUDIO_PURGE_ORPHELINS", "") == "1"
+
+
 def purger_orphelins():
     """Efface du depot du studio les fichiers que plus rien ne reclame.
 
@@ -6076,13 +6085,20 @@ def purger_orphelins():
                 if os.path.getmtime(chemin) > limite:
                     continue
                 octets += os.path.getsize(chemin)
-                os.remove(chemin)
+                if PURGE_ORPHELINS:
+                    os.remove(chemin)
                 partis += 1
             except OSError:
                 pass
-    if partis:
+    if partis and PURGE_ORPHELINS:
         print(f"  {partis} fichier(s) sans conversation efface(s) "
               f"({octets / 1e6:.1f} Mo)", flush=True)
+    elif partis:
+        # Compter sans effacer : c'est le seul moyen de voir combien pese
+        # l'heritage avant de decider. Une installation neuve n'en a pas.
+        print(f"  {partis} fichier(s) sans conversation dorment ici "
+              f"({octets / 1e6:.1f} Mo) — STUDIO_PURGE_ORPHELINS=1 pour les "
+              f"effacer", flush=True)
     return partis
 
 def mes_fichiers(pid):
