@@ -6698,7 +6698,15 @@ SCRIPTS_NOEUD = {"agent": "agent_noeud.py", "noeud.sh": "noeud.sh",
                  "installer.py": "installer.py",
                  "installation.py": "installation.py",
                  "catalogue.py": "catalogue.py",
-                 "modeles.sh": "modeles.sh"}
+                 "modeles.sh": "modeles.sh",
+                 # noeud.sh et noeud.bat vont les chercher pour se mettre a
+                 # jour. Ils sont copies dans l'image depuis toujours, avec un
+                 # commentaire disant que le studio les sert — mais ils
+                 # n'etaient pas dans cette table : /api/noeud/maj_noeud.sh
+                 # rendait 404, et la mise a jour d'un agent echouait sans que
+                 # rien ne dise pourquoi.
+                 "maj_noeud.sh": "maj_noeud.sh",
+                 "maj_noeud.bat": "maj_noeud.bat"}
 
 async def api_agent_source(req):
     """Un script de mise en service, servi tel quel."""

@@ -21,8 +21,12 @@
 services:
   comfystudio:
     build: .
-    image: comfystudio:latest
-    container_name: comfystudio
+    # Le nom et le tag se laissent changer. Figes, ils rendaient toute seconde
+    # installation impossible sur la meme machine : « docker compose -p autre »
+    # ne les touche pas, et un « --build » naif retaguait l'image d'un studio EN
+    # SERVICE. Constate en installant a blanc a cote du studio du reseau.
+    image: "${STUDIO_IMAGE:-comfystudio:latest}"
+    container_name: "${STUDIO_NOM:-comfystudio}"
     restart: unless-stopped
     ports:
       - "${STUDIO_PORT:-8199}:8199"
@@ -83,8 +87,8 @@ services:
         #   cu126  GTX 10xx / TITAN X (Pascal), et tout ce qui precede la RTX
         #   cpu    sans carte : demarre et repond, mais genere tres lentement
         ROUE: "${ROUE:-cu128}"
-    image: comfystudio-comfyui:latest
-    container_name: comfyui
+    image: "${COMFY_IMAGE:-comfystudio-comfyui:latest}"
+    container_name: "${COMFY_NOM:-comfyui}"
     restart: unless-stopped
     ports:
       - "${COMFY_PORT:-8188}:8188"
@@ -110,7 +114,7 @@ services:
   ollama:
     profiles: ["complet"]
     image: ollama/ollama:latest
-    container_name: ollama
+    container_name: "${OLLAMA_NOM:-ollama}"
     restart: unless-stopped
     ports:
       - "${OLLAMA_PORT:-11434}:11434"

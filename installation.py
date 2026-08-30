@@ -275,7 +275,19 @@ def afficher_moteurs(vram, ram):
 
     titre("Moteurs que cette machine peut faire tourner")
     if not tiennent and not debordent:
-        print("  aucun : il faut une carte NVIDIA d'au moins 6 Go.")
+        # Ne pas s'arreter la : c'est exactement la machine que le README
+        # recommande pour heberger le studio, et lui dire « il faut une carte »
+        # sans dire la suite decourage sur un montage qui marche tres bien.
+        print("  aucun sur cette machine : il faudrait une carte NVIDIA d'au "
+              "moins 6 Go.")
+        print()
+        print("  Ce n'est pas bloquant. Un studio sans carte reste utile :")
+        print("    - il repartit le travail sur des machines A CARTE, chacune")
+        print("      portant un agent qui l'appelle — rien a ouvrir sur le")
+        print("      reseau. Voir « Des machines qui viennent d'elles-memes »")
+        print("      dans le README ;")
+        print("    - avec une cle d'API, il confie texte, images, musique ou")
+        print("      video a un fournisseur. Voir « Cles d'API ».")
     for cle in tiennent:
         ligne(cle)
     if debordent:
