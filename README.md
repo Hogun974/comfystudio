@@ -451,9 +451,28 @@ Un cookie plutôt qu'un en-tête : les images sont chargées par `<img src>`, qu
 n'envoie aucun en-tête personnalisé. Le cookie part tout seul et couvre donc
 aussi le relais de fichiers — c'est ce qui a décidé du choix.
 
-Ce qui reste **volontairement commun** : la file d'attente et son compteur. Le
-GPU est unique, une position calculée sur sa propre file serait fausse. Chacun
-voit « 3 en file », mais seul l'auteur voit le texte de ses demandes.
+Ce qui reste **volontairement commun** : la file d'attente et son compteur.
+Chacun voit « 3 en file », mais seul l'auteur voit le texte de ses demandes.
+
+### Une demande à la fois, même avec plusieurs machines
+
+Le studio ne traite **qu'une demande à la fois**. Cette règle datait du temps où
+il était lui-même la machine à carte : une carte ne se partage pas, et une
+position calculée sur sa propre file aurait été fausse.
+
+Elle n'est plus juste dès qu'il y a deux machines. Mesuré : quatre demandes
+envoyées coup sur coup se sont empilées derrière une seule carte, et la seconde
+machine n'a rien reçu — y compris la demande qui lui était **explicitement
+imposée**, qui a attendu son tour derrière du travail destiné à l'autre.
+
+L'analyse par le modèle de langage subit la même file : la demande 2 n'est
+analysée qu'une fois la 1 rendue, alors que cela ne coûterait rien à personne
+de le faire pendant.
+
+C'est donc à savoir avant de monter un parc : **ajouter une machine augmente ce
+que le studio sait faire, pas ce qu'il fait par heure.** Le correctif — plusieurs
+travaux en vol, un verrou par machine — est en cours ; ce paragraphe disparaîtra
+avec lui.
 
 ### Ouvrir au réseau local
 
