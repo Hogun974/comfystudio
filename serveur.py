@@ -2874,7 +2874,16 @@ def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True,
     # un objet nomme, ou le sujet detoure. Jamais pour une etendue, jamais pour
     # un fond — la ou le masque est deja le complement de ce qu'on protege.
     objet_a_retirer = (cible and not region) or (not cible and sur_le_sujet)
-    expand = 24 if objet_a_retirer else 0
+    # Vingt-quatre pixels, mesures sur une image d'environ mille pixels de cote.
+    # Ecrits en dur, ils ne veulent pas dire la meme chose partout : sur une
+    # source de 2048 c'est un lisere qui laisse le fantome, sur une vignette de
+    # 512 c'est une morsure deux fois trop large. On garde donc la PROPORTION,
+    # avec un plancher — en deça de huit pixels, la dilatation ne sert plus a
+    # rien.
+    expand = 0
+    if objet_a_retirer:
+        cote = min(cadre) if cadre else 1024
+        expand = max(8, round(cote * 24 / 1024))
     g = {
      "1":{"class_type":"UNETLoader","inputs":{"unet_name":"flux-2-klein-4b.safetensors","weight_dtype":"default"}},
      "2":{"class_type":"CLIPLoader","inputs":{"clip_name":"qwen_3_4b.safetensors","type":"flux2","device":"default"}},
