@@ -1865,7 +1865,12 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
 
     # Reconnues a l'ecrit, avant tout appel : ces tournures ne laissent aucun
     # doute, et le catalogue suffit ensuite a choisir le cote du masque.
-    if a_une_image == "image" and not modele_force:
+    # Le detourage passe AVANT : « enleve le fond », « mets-la sur fond
+    # transparent », « retire l'arriere-plan » sont ses formulations depuis le
+    # premier jour, et elles contiennent les memes verbes que la retouche. Sans
+    # cette garde, « enleve le fond » remplaçait le SUJET — l'inverse exact de
+    # ce qu'on demande.
+    if a_une_image == "image" and not modele_force and not veut_detourer(texte):
         # La zone nommee passe devant : « enleve le chien » vise le chien, pas
         # « le sujet » que BiRefNet aurait devine. On ne la propose que si une
         # machine peut la servir — le modele de selection est un telechargement
