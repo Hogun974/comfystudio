@@ -143,6 +143,30 @@ ATTENTE = []                # tids en attente, dans l'ordre
 # Il n'en lance toujours qu'un pour l'instant — ce registre ne change aucun
 # comportement, il retire seulement la supposition qui l'interdisait.
 EN_VOL = {}                 # tid -> asyncio.Task
+# Le studio n'a plus de carte : il attend des machines, et attendre ne coute
+# rien. Le nombre ne borne donc pas le materiel mais l'appetit — vingt demandes
+# d'un coup n'ouvrent pas vingt analyses simultanees chez le modele de langage.
+TRAVAILLEURS = max(1, int(os.environ.get("STUDIO_TRAVAILLEURS") or 3))
+
+# Une carte ne se partage pas : deux travaux qui la visent attendent chacun leur
+# tour. C'est la SEULE serialisation qui ait un sens physique — le studio, lui,
+# peut analyser dix demandes pendant qu'une carte calcule.
+VERROUS_NOEUD = {}          # id de machine -> asyncio.Lock
+# Un fichier de modele non plus. Le fichier .part porte le nom du MODELE, pas
+# celui du travail : deux telechargements du meme fichier, chacun avec son
+# en-tete Range, se seraient ecrit dessus — plusieurs gigaoctets corrompus, et
+# rien pour le dire avant que ComfyUI ne refuse de le charger.
+VERROUS_MODELE = {}         # (sous-dossier, nom) -> asyncio.Lock
+
+
+def verrou_noeud(ident):
+    """Le verrou de cette carte. Cree a la demande : les machines vont et
+    viennent, et une machine qu'on n'a jamais vue n'a pas besoin du sien."""
+    return VERROUS_NOEUD.setdefault(ident, asyncio.Lock())
+
+
+def verrou_modele(sous, nom):
+    return VERROUS_MODELE.setdefault((sous, nom), asyncio.Lock())
 FICHIER_FILE = os.path.join(DOSSIER_CONV, "_file.json")
 EN_FILE = {}                # tid -> de quoi refaire la demande apres un arret
 
@@ -1193,29 +1217,47 @@ async def poser_a(ident, corps, tid=None, secondes=900):
     # machine annonce vraiment porter.
     corps = dict(corps)
     corps["model"] = _modele_du_noeud(ident, corps.get("model"))
-    qid = uuid.uuid4().hex
-    futur = asyncio.get_event_loop().create_future()
-    REPONSES[qid] = (ident, futur)
-    QUESTIONS.setdefault(ident, []).append({"qid": qid, "corps": corps})
     titre = (noeud(ident) or {}).get("titre", ident)
-    # journal() ecrit dans le fil d'une demande : l'essai depuis
-    # l'administration n'en a pas, et lui en inventer une la ferait apparaitre
-    # dans la conversation de quelqu'un.
-    if tid:
-        journal(tid, f"question confiee a {titre}…")
-    try:
-        rep_ = await asyncio.wait_for(futur, timeout=secondes)
-    except asyncio.TimeoutError:
-        return "", "n'a pas repondu a temps"
-    finally:
-        REPONSES.pop(qid, None)
-        QUESTIONS[ident] = [q for q in QUESTIONS.get(ident, []) if q["qid"] != qid]
+    # LE MEME VERROU QUE LES RENDUS. Un modele de langage de vingt-six milliards
+    # de parametres et une diffusion se disputent les memes gigaoctets : les
+    # faire tourner ensemble ne casse rien, la machine rame — le LLM reserve sa
+    # place et la diffusion se replie sur le disque. Le studio avait bien un
+    # garde-fou pour ce cas, mais il ne regardait que SA carte, celle qu'il n'a
+    # plus. Une carte, un traitement a la fois : image, video, son, maillage ou
+    # langage.
+    verrou = verrou_noeud(ident)
+    if verrou.locked() and tid:
+        journal(tid, f"{titre} calcule — la question attend que sa carte se libere")
+    async with verrou:
+        qid = uuid.uuid4().hex
+        futur = asyncio.get_event_loop().create_future()
+        REPONSES[qid] = (ident, futur)
+        QUESTIONS.setdefault(ident, []).append({"qid": qid, "corps": corps})
+        # journal() ecrit dans le fil d'une demande : l'essai depuis
+        # l'administration n'en a pas, et lui en inventer une la ferait
+        # apparaitre dans la conversation de quelqu'un.
+        if tid:
+            journal(tid, f"question confiee a {titre}…")
+        try:
+            rep_ = await asyncio.wait_for(futur, timeout=secondes)
+        except asyncio.TimeoutError:
+            return "", "n'a pas repondu a temps"
+        finally:
+            REPONSES.pop(qid, None)
+            QUESTIONS[ident] = [q for q in QUESTIONS.get(ident, []) if q["qid"] != qid]
     return (rep_.get("reponse") or ""), (rep_.get("erreur") or "")
 
 
 async def demander_a_un_noeud(corps, tid=None, secondes=900):
     """La premiere machine qui sait repondre. Rend le texte, ou ""."""
-    for ident in noeuds_a_llm():
+    # Celles dont la carte est libre d'abord. Depuis qu'une carte ne fait qu'une
+    # chose a la fois, prendre les machines dans l'ordre du registre faisait
+    # attendre deux minutes derriere un rendu alors qu'une autre machine
+    # repondait tout de suite. L'ordre relatif est conserve a l'interieur de
+    # chaque groupe : le premier de la liste reste le premier des libres.
+    a_llm = list(noeuds_a_llm())
+    libres = [i for i in a_llm if not verrou_noeud(i).locked()]
+    for ident in libres + [i for i in a_llm if i not in libres]:
         reponse, erreur = await poser_a(ident, corps, tid, secondes)
         if erreur:
             journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} : {erreur}")
@@ -3996,7 +4038,20 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800):
     inexpliques = 0
     while True:
         try:
-            return await soumettre(g, tid, ident)
+            # Le verrou ici et pas plus haut : seule la carte se dispute, et une
+            # reprise sur une autre machine prend ainsi le verrou de celle-la.
+            # Pose autour du bloc entier, il serait reste tenu sur une carte qui
+            # ne calcule plus des la premiere reprise.
+            attendu = time.time()
+            verrou = verrou_noeud(ident)
+            if verrou.locked():
+                journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} calcule "
+                             f"deja pour quelqu'un — on prend le tour suivant")
+            async with verrou:
+                if time.time() - attendu > 2:
+                    journal(tid, f"la carte se libere apres "
+                                 f"{time.time() - attendu:.0f} s d'attente")
+                return await soumettre(g, tid, ident)
         except MachineIncapable as e:
             incapables.add(ident)
             ecartes.add(ident)
@@ -4023,6 +4078,11 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800):
             journal(tid, f"la demande repart sur {neuf.get('titre', neuf['id'])}")
             g = await deplacer_entrees(g, ident, neuf["id"], tid)
             ident = neuf["id"]
+            # La tache doit suivre : l'annulation, la progression et le verrou
+            # lisent tous TACHES[tid]["noeud"]. Fige au premier choix, il faisait
+            # frapper l'annulation a la porte d'une machine qui ne calculait plus.
+            if tid in TACHES:
+                TACHES[tid]["noeud"] = ident
             continue
 
         # Plus personne. Sur la machine hote, on tente de relever ComfyUI :
@@ -5233,8 +5293,13 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # distant s'approvisionne a la main, et reste inelegible en attendant.
         a_prendre = manquants(cle, ident) if cible.get("local") else []
         for sous, nom, repo, distant in a_prendre:
-            await asyncio.get_event_loop().run_in_executor(
-                None, telecharger, sous, nom, repo, distant, tid)
+            # Un verrou par FICHIER : deux demandes qui reclament le meme modele
+            # se le partageraient sinon, chacune avec son propre Range sur le
+            # meme .part. La seconde trouve le fichier deja la et ressort aussitot
+            # — telecharger() sort sur « os.path.exists(cible) ».
+            async with verrou_modele(sous, nom):
+                await asyncio.get_event_loop().run_in_executor(
+                    None, telecharger, sous, nom, repo, distant, tid)
         if a_prendre:
             MODELES_NOEUD.pop(ident, None)      # le cache ne connait pas l'arrivant
 
@@ -7489,7 +7554,13 @@ async def ecouter_comfy():
 async def demarrer_file(a):
     global FILE_ATTENTE
     FILE_ATTENTE = asyncio.Queue()
-    a["travailleur"] = asyncio.create_task(travailleur())
+    # Plusieurs travailleurs, pas un. Chacun prend une demande dans la meme
+    # file ; le verrou par machine garantit qu'ils ne se disputent pas une carte.
+    # Trois plutot que « autant que de machines » : les machines vont et
+    # viennent, et il en faut un de plus que de cartes pour qu'une analyse
+    # avance pendant que les autres calculent.
+    for i in range(TRAVAILLEURS):
+        a[f"travailleur{i}"] = asyncio.create_task(travailleur())
     await reprendre_file()
     a["veilleur"] = asyncio.create_task(veiller_noeuds())
     a["ecoute"] = asyncio.create_task(ecouter_comfy())
