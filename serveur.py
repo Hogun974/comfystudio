@@ -2814,7 +2814,7 @@ def g_edition(consigne, image, seed, prefixe, par=None):
     }
 
 def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True,
-                    par=None, cible="", region=False):
+                    par=None, cible="", region=False, cadre=None, reduite=False):
     """Retouche la seule zone designee, et recolle le reste a l'identique.
 
     « sur_le_sujet » choisit ce qu'on remplace : le sujet detoure (enlever,
@@ -2844,22 +2844,42 @@ def g_retouche_zone(description, image, seed, prefixe, sur_le_sujet=True,
     # ou « le panneau » et pas seulement « le sujet ».
     if cible:
         masque = ["32", 0]
-    # 24 pour remplacer un OBJET — sinon il reste un fantome au bord — mais 0
-    # pour refaire une REGION : a 24, le masque du ciel mange 9,33 % de l'image
-    # sur les arbres. La distinction ne se lit pas dans l'image, elle se demande.
-    expand = 0 if region else 24
+    # Grossir le masque efface le fantome de ce qu'on RETIRE. Mais grossir mord
+    # toujours sur l'autre cote : quand le masque est le FOND, les 24 pixels
+    # entrent dans le sujet — celui-la meme qu'on jurait de garder. Mesure sur
+    # une photo de cerf : 61,2 % du sujet detruit, un cerf sans tete ni bois.
+    #
+    # On ne dilate donc que lorsque le masque EST la chose a faire disparaitre :
+    # un objet nomme, ou le sujet detoure. Jamais pour une etendue, jamais pour
+    # un fond — la ou le masque est deja le complement de ce qu'on protege.
+    objet_a_retirer = (cible and not region) or (not cible and sur_le_sujet)
+    expand = 24 if objet_a_retirer else 0
     g = {
      "1":{"class_type":"UNETLoader","inputs":{"unet_name":"flux-2-klein-4b.safetensors","weight_dtype":"default"}},
      "2":{"class_type":"CLIPLoader","inputs":{"clip_name":"qwen_3_4b.safetensors","type":"flux2","device":"default"}},
      "3":{"class_type":"VAELoader","inputs":{"vae_name":"flux2-vae.safetensors"}},
      "4":{"class_type":"LoadImage","inputs":{"image":image}},
-     # PAS de mise a l'echelle, contrairement a g_edition. Mesure : elle rendait
-     # une image de 1238x847 pour une source de 1216x832 — donc reechantillonnee
-     # PARTOUT. Toute la promesse de cette voie est « le reste est identique » :
-     # une image redimensionnee la casse silencieusement. L'echantillonneur
-     # travaille donc a la taille de la source, et le rendu se recolle dessus.
-     "5":{"class_type":"ImageScaleBy","inputs":{"image":["4",0],
-          "upscale_method":"nearest-exact","scale_by":1.0}},
+     # PAS de mise a l'echelle libre, contrairement a g_edition : elle rendait
+     # 1238x847 pour une source de 1216x832, donc reechantillonnee PARTOUT, ce
+     # qui casse en silence la promesse « le reste est identique ».
+     #
+     # Mais pas la source brute non plus. Deux mesures l'interdisent : une
+     # entree de 4000 px a TUE ComfyUI (le VAE : 656 s a 2560 px, API bloquee),
+     # et une taille non multiple de 16 decalait le recollage de quelques
+     # pixels, laissant une bande sombre en bas de l'image.
+     #
+     # On rogne donc au multiple de 16 — au plus quinze pixels — et l'on reduit
+     # seulement au-dela du plafond. Le calcul est fait en amont, sur les
+     # dimensions lues dans le fichier.
+     "5":({"class_type":"ImageScale",
+           "inputs":{"image":["4",0],"upscale_method":"area",
+                     "width":cadre[0],"height":cadre[1],"crop":"disabled"}}
+          if reduite else
+          {"class_type":"ImageCrop",
+           "inputs":{"image":["4",0],"width":cadre[0],"height":cadre[1],
+                     "x":0,"y":0}}) if cadre else
+          {"class_type":"ImageScaleBy","inputs":{"image":["4",0],
+           "upscale_method":"nearest-exact","scale_by":1.0}},
      "6":{"class_type":"GetImageSize","inputs":{"image":["5",0]}},
      # ── le masque ──────────────────────────────────────────────────────
      "50":{"class_type":"LoadBackgroundRemovalModel",
@@ -2932,10 +2952,15 @@ AIRE_MINIMALE = 0.005
 # Au-dela, le moteur doit inventer beaucoup : seize pas au lieu de quatre. Le
 # seuil vient de la mesure de texture, pas d'une intuition.
 AIRE_GRANDE = 0.15
+# Au-dela, il ne reste presque rien a preserver : la promesse « le reste est
+# intact » devient vraie et vide. Cinq cas mesures a 100,00 % — un ciel plein
+# cadre, une image sans sujet — annonçaient une retouche locale en refaisant
+# tout.
+AIRE_TOTALE = 0.95
 
 
 async def mesurer_puis_choisir(image, tid, cle, sur_le_sujet=True, cible="",
-                               region=False):
+                               region=False, cadre=None, reduite=False):
     """Rend (aire, etapes) apres avoir mesure le masque. (None, None) si on n'a pas su.
 
     On choisit la machine ici pour la mesure seulement ; le rendu la choisira de
@@ -2945,13 +2970,15 @@ async def mesurer_puis_choisir(image, tid, cle, sur_le_sujet=True, cible="",
     ou = choisir_noeud(cle)
     if ou is None:
         return None, None
-    aire = await aire_du_masque(image, tid, ou["id"], cle, sur_le_sujet, cible, region)
+    aire = await aire_du_masque(image, tid, ou["id"], cle, sur_le_sujet, cible,
+                                region, cadre, reduite)
     if aire is None:
         return None, None
     return aire, (16 if aire >= AIRE_GRANDE else REGLAGES["edition"]["etapes"])
 
 
-def g_masque_seul(image, prefixe, sur_le_sujet=True, cible="", region=False):
+def g_masque_seul(image, prefixe, sur_le_sujet=True, cible="", region=False,
+                  cadre=None, reduite=False):
     """Le meme masque que la retouche, reduit a un pixel et enregistre.
 
     On reprend g_retouche_zone plutot que de recopier ses noeuds : le masque
@@ -2959,7 +2986,8 @@ def g_masque_seul(image, prefixe, sur_le_sujet=True, cible="", region=False):
     graphes ecrits separement finiraient par diverger, et l'on mesurerait alors
     un masque que personne n'utilise.
     """
-    g = g_retouche_zone("", image, 0, prefixe, sur_le_sujet, None, cible, region)
+    g = g_retouche_zone("", image, 0, prefixe, sur_le_sujet, None, cible, region,
+                        cadre, reduite)
     # On coupe tout ce qui suit le masque : ni encodage, ni echantillonnage, ni
     # decodage. Il ne reste que ce qu'il faut pour connaitre l'aire.
     # Les chargeurs du moteur d'images partent aussi : ComfyUI n'execute que ce
@@ -2976,6 +3004,84 @@ def g_masque_seul(image, prefixe, sur_le_sujet=True, cible="", region=False):
     g["41"] = {"class_type": "SaveImage",
                "inputs": {"images": ["40", 0], "filename_prefix": prefixe}}
     return g
+
+
+# Au-dela, le VAE devient le probleme : 3,5 s a 1216 px, 10,2 s a 1920, et
+# 656 s a 2560 — pendant lesquelles ComfyUI entier cesse de repondre. Une entree
+# de 4000 px l'a tue une fois. Deux megapixels laissent passer tout ce qu'un
+# telephone produit en 16:9 ou en 4:3.
+PIXELS_MAX = 2_100_000
+
+
+def dimensions_image(chemin):
+    """(largeur, hauteur) d'un fichier image, ou None si on ne sait pas lire.
+
+    Les en-tetes suffisent : on ne decode rien. PNG, JPEG, BMP et WebP couvrent
+    tout ce que le studio accepte en piece jointe. En bibliotheque standard,
+    parce que l'image du studio ne contient ni PIL ni numpy et qu'on n'ajoute
+    pas quarante megaoctets de dependance pour lire deux entiers.
+    """
+    import struct
+
+    try:
+        with open(chemin, "rb") as f:
+            tete = f.read(32)
+            if tete[:8] == b"\x89PNG\r\n\x1a\n":
+                return struct.unpack(">II", tete[16:24])
+            if tete[:2] == b"BM":
+                return struct.unpack("<ii", tete[18:26])
+            if tete[:4] == b"RIFF" and tete[8:12] == b"WEBP":
+                if tete[12:16] == b"VP8X":
+                    l = int.from_bytes(tete[24:27], "little") + 1
+                    h = int.from_bytes(tete[27:30], "little") + 1
+                    return l, h
+                if tete[12:16] == b"VP8 ":
+                    return struct.unpack("<HH", tete[26:30])
+                if tete[12:16] == b"VP8L":
+                    b = int.from_bytes(tete[21:25], "little")
+                    return (b & 0x3FFF) + 1, ((b >> 14) & 0x3FFF) + 1
+                return None
+            if tete[:2] != b"\xff\xd8":
+                return None
+            # JPEG : on saute de marqueur en marqueur jusqu'au cadre, seul
+            # endroit ou les dimensions sont ecrites.
+            f.seek(2)
+            while True:
+                bloc = f.read(2)
+                if len(bloc) < 2 or bloc[0] != 0xFF:
+                    return None
+                marque = bloc[1]
+                if 0xC0 <= marque <= 0xCF and marque not in (0xC4, 0xC8, 0xCC):
+                    f.read(3)
+                    h, l = struct.unpack(">HH", f.read(4))
+                    return l, h
+                taille = struct.unpack(">H", f.read(2))[0]
+                f.seek(taille - 2, 1)
+    except (OSError, struct.error, IndexError):
+        return None
+
+
+def cadrage_source(chemin):
+    """Ce qu'il faut faire de la source avant de la retoucher.
+
+    Rend (largeur, hauteur, reduite) : la taille a laquelle travailler, et si
+    l'on a du reduire. (None, None, False) quand on n'a pas su lire le fichier —
+    on laisse alors passer, comme partout ailleurs : refuser a tort coute plus
+    cher qu'un doute.
+    """
+    d = dimensions_image(chemin)
+    if not d or min(d) < 32:
+        return None, None, False
+    l, h = d
+    reduite = l * h > PIXELS_MAX
+    if reduite:
+        f = (PIXELS_MAX / (l * h)) ** 0.5
+        l, h = int(l * f), int(h * f)
+    # Multiple de 16 par le BAS : le VAE recadre au multiple de 16 centre, et
+    # ce recadrage decalait le recollage. En rognant nous-memes, il n'a plus
+    # rien a faire et le collage retombe en place. Au plus quinze pixels a
+    # droite et en bas.
+    return max(l - l % 16, 16), max(h - h % 16, 16), reduite
 
 
 def _fraction_png_1x1(octets):
@@ -3021,7 +3127,7 @@ def _fraction_png_1x1(octets):
 
 
 async def aire_du_masque(image, tid, ident, cle, sur_le_sujet=True, cible="",
-                         region=False):
+                         region=False, cadre=None, reduite=False):
     """La fraction de l'image que le masque couvre, ou None si on n'a pas su.
 
     None et non zero : « je ne sais pas » et « il n'y a rien » n'appellent pas
@@ -3029,7 +3135,9 @@ async def aire_du_masque(image, tid, ident, cle, sur_le_sujet=True, cible="",
     couterait plus cher que la seconde qu'on vient de perdre.
     """
     prefixe = f"masque/{tid[:8]}"
-    g = g_masque_seul(image, prefixe, sur_le_sujet, cible, region)
+    # Le meme cadrage que le rendu : mesurer un masque calcule sur une autre
+    # taille reviendrait a mesurer autre chose.
+    g = g_masque_seul(image, prefixe, sur_le_sujet, cible, region, cadre, reduite)
     try:
         fichiers, _ = await soumettre_robuste(g, tid, ident, cle)
     except Exception as e:
@@ -3355,7 +3463,10 @@ def veut_retoucher_sujet(texte):
 
 # « seulement », « juste », « uniquement » : le mot qui dit qu'on vise une zone
 # et pas l'image entiere. C'est le signal le plus sur qu'on ait.
-_SEULEMENT = re.compile(r"\b(seulement|uniquement|juste|que)\b", re.I)
+# « que » a ete retire : il attrapait « je voudrais QUE tu changes le style » et
+# « est-ce QUE tu peux refaire cette image », deux editions globales envoyees en
+# retouche localisee. Les trois autres ne se disent pas par hasard.
+_SEULEMENT = re.compile(r"\b(seulement|uniquement|juste)\b", re.I)
 
 
 def veut_zone_nommee(texte):
@@ -5077,6 +5188,17 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 raise RuntimeError(
                     "aucune image a retoucher : depose une image, ou demande-le "
                     "juste apres en avoir produit une.")
+            # Les dimensions se lisent dans le fichier, une fois : elles
+            # bornent la taille — une entree de 4000 px a tue ComfyUI — et
+            # alignent le recollage sur un multiple de 16, sans quoi le VAE
+            # recadre de son cote et laisse une bande au bas de l'image.
+            chemin_src = os.path.join(DOSSIER_ENTREE, os.path.basename(image))
+            cadre_l, cadre_h, reduite = cadrage_source(chemin_src)
+            cadre = (cadre_l, cadre_h) if cadre_l else None
+            if reduite:
+                journal(tid, f"image ramenee a {cadre_l}x{cadre_h} : au-dela, le "
+                             f"decodeur bloque ComfyUI plusieurs minutes. "
+                             f"L'image entiere est donc reechantillonnee.")
             cible, region, zone = await preparer_cible(texte, tid)
             if not cible:
                 raise RuntimeError(
@@ -5087,9 +5209,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             journal(tid, f"zone visee : « {cible} » "
                          f"({'etendue' if region else 'objet'}) — a la place : {zone[:60]}")
             aire, etapes = await mesurer_puis_choisir(image, tid, cle,
-                                                      cible=cible, region=region)
+                                                      cible=cible, region=region,
+                                                      cadre=cadre, reduite=reduite)
             if aire is not None:
                 journal(tid, f"le masque couvre {aire * 100:.1f} % de l'image")
+                if aire > AIRE_TOTALE:
+                    # « Hors du masque, l'image est recollee a l'identique » est
+                    # vrai et vide s'il n'y a aucun pixel hors du masque. Le
+                    # dire, plutot que de laisser croire a une retouche fine.
+                    journal(tid, "cette zone couvre presque tout : le resultat "
+                                 "sera une image neuve, pas une retouche locale")
                 if aire < AIRE_MINIMALE:
                     # Le dire tout de suite, en nommant ce qu'on a cherche :
                     # quinze secondes pour rendre l'image inchangee ressemblent
@@ -5105,7 +5234,8 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                                  f"long mais sans plaque floue")
             g = g_retouche_zone(zone, image, seed,
                                 prefixe_sortie(conv, intention, horod, "retouche"),
-                                par=par, cible=cible, region=region)
+                                par=par, cible=cible, region=region,
+                                cadre=cadre, reduite=reduite)
             journal(tid, "retouche localisee — hors du masque, l'image est "
                          "recollee a l'identique")
         elif intention in ("retoucher_fond", "retoucher_sujet"):
@@ -5113,6 +5243,17 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 raise RuntimeError(
                     "aucune image a retoucher : depose une image, ou demande-le "
                     "juste apres en avoir produit une.")
+            # Les dimensions se lisent dans le fichier, une fois : elles
+            # bornent la taille — une entree de 4000 px a tue ComfyUI — et
+            # alignent le recollage sur un multiple de 16, sans quoi le VAE
+            # recadre de son cote et laisse une bande au bas de l'image.
+            chemin_src = os.path.join(DOSSIER_ENTREE, os.path.basename(image))
+            cadre_l, cadre_h, reduite = cadrage_source(chemin_src)
+            cadre = (cadre_l, cadre_h) if cadre_l else None
+            if reduite:
+                journal(tid, f"image ramenee a {cadre_l}x{cadre_h} : au-dela, le "
+                             f"decodeur bloque ComfyUI plusieurs minutes. "
+                             f"L'image entiere est donc reechantillonnee.")
             zone = await decrire_zone(texte, tid)
             if not zone:
                 raise RuntimeError(
@@ -5123,9 +5264,13 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             plan["prompt"] = zone
             journal(tid, f"zone a redessiner : {zone[:80]}")
             aire, etapes = await mesurer_puis_choisir(image, tid, cle,
-                                                      sur_le_sujet=sur_le_sujet)
+                                                      sur_le_sujet=sur_le_sujet,
+                                                      cadre=cadre, reduite=reduite)
             if aire is not None:
                 journal(tid, f"le masque couvre {aire * 100:.1f} % de l'image")
+                if aire > AIRE_TOTALE:
+                    journal(tid, "cette zone couvre presque tout : le resultat "
+                                 "sera une image neuve, pas une retouche locale")
                 if aire < AIRE_MINIMALE:
                     raise RuntimeError(
                         "je ne distingue pas de sujet sur cette image : il n'y a "
@@ -5134,7 +5279,7 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 par = dict(par or {}, etapes=etapes)
             g = g_retouche_zone(zone, image, seed,
                                 prefixe_sortie(conv, intention, horod, "retouche"),
-                                sur_le_sujet, par)
+                                sur_le_sujet, par, cadre=cadre, reduite=reduite)
             if not sur_le_sujet:
                 journal(tid, "le fond occupe une grande part du cadre : "
                              "16 etapes au lieu de 4")

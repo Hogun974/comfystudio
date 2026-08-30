@@ -28,3 +28,7 @@
 {"texte": "une musique de piano melancolique", "attendu": "aucun"}
 {"texte": "decris cette image", "attendu": "aucun"}
 {"texte": "la meme mais en hiver", "attendu": "aucun"}
+{"texte": "je voudrais que tu changes le style", "attendu": "aucun"}
+{"texte": "est-ce que tu peux refaire cette image", "attendu": "aucun"}
+{"texte": "ajoute des aurores boreales", "attendu": "aucun"}
+{"texte": "la meme mais plus sombre", "attendu": "aucun"}
