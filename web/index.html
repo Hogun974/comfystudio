@@ -779,11 +779,18 @@ async function listerConversations() {
       el.onclick = e => { if (!e.target.classList.contains("jeter")) ouvrir(c.id); };
       el.querySelector(".jeter").onclick = async e => {
         e.stopPropagation();
-        await fetch("/api/conversation/" + c.id, { method: "DELETE" });
-        if (c.id === convActive) convActive = null;
-        await listerConversations();
-        if (!convActive) { const r = await (await fetch("/api/conversations")).json();
-                           ouvrir(r.courante); }
+        const r = await (await fetch("/api/conversation/" + c.id,
+                                     { method: "DELETE" })).json();
+        // Le serveur dit laquelle reste — il vient de la choisir. La redemander
+        // ouvrait la porte a deux reponses differentes, et l'ecran gardait
+        // parfois la conversation qu'on venait de fermer. ouvrir() rafraichit
+        // la liste lui-meme, donc l'ordre compte : ouvrir PUIS lister.
+        if (c.id === convActive) {
+          convActive = null;
+          await ouvrir(r.courante);
+        } else {
+          await listerConversations();
+        }
       };
       box.appendChild(el);
     });

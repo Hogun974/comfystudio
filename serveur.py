@@ -549,8 +549,16 @@ def adopter(pid):
 def a_moi(conv, pid):
     return bool(conv) and conv.get("proprietaire") == pid
 
+
+def ouvrable(conv, pid):
+    """A moi ET pas fermee. Une fermee ne se rouvre pas : elle attend sa purge."""
+    return a_moi(conv, pid) and not conv.get("ferme")
+
 def mes_conversations(pid):
-    return [c for c in CONVERSATIONS.values() if a_moi(c, pid)]
+    # Une conversation fermee sort de la liste sur-le-champ : c'est ce qu'on
+    # demande en fermant. Elle reste sur le disque jusqu'a la purge, mais plus
+    # rien dans l'interface n'y mene.
+    return [c for c in CONVERSATIONS.values() if a_moi(c, pid) and not c.get("ferme")]
 
 def conv_de(cid, pid):
     """Ne leve jamais, mais ne franchit jamais la frontiere d'un utilisateur.
@@ -561,10 +569,10 @@ def conv_de(cid, pid):
     desormais une conversation neuve, a soi.
     """
     conv = CONVERSATIONS.get(cid)
-    if a_moi(conv, pid):
+    if ouvrable(conv, pid):
         return conv
     conv = CONVERSATIONS.get(COURANTE.get(pid))
-    if a_moi(conv, pid):
+    if ouvrable(conv, pid):
         return conv
     miennes = mes_conversations(pid)
     if miennes:
@@ -5887,14 +5895,14 @@ async def api_conversation(req):
     La bascule se fait explicitement par POST /api/conversation/{cid}/activer."""
     pid = qui(req)
     cid = req.match_info.get("cid")
-    if cid and not a_moi(CONVERSATIONS.get(cid), pid):
+    if cid and not ouvrable(CONVERSATIONS.get(cid), pid):
         return web.json_response({"erreur": "inconnue"}, status=404)
     return web.json_response(conv_de(cid, pid))
 
 async def api_activer(req):
     pid = qui(req)
     cid = req.match_info["cid"]
-    if not a_moi(CONVERSATIONS.get(cid), pid):
+    if not ouvrable(CONVERSATIONS.get(cid), pid):
         return web.json_response({"erreur": "inconnue"}, status=404)
     COURANTE[pid] = cid
     return web.json_response({"courante": cid})
@@ -5907,18 +5915,74 @@ async def api_nouvelle(req):
     sauver(c)
     return web.json_response(c)
 
+# Une conversation fermee reste sur le disque un jour avant de disparaitre. La
+# boite de dialogue n'est pas un filet : c'est un reflexe qu'on apprend a
+# cliquer. Un jour suffit a s'apercevoir qu'on s'est trompe, et ne laisse pas
+# s'accumuler ce que personne ne reverra.
+GARDE_FERMEES = 24 * 3600
+
+
 async def api_supprimer(req):
+    """Ferme une conversation. Elle sort de la liste, et s'efface demain."""
     pid = qui(req)
     cid = req.match_info["cid"]
-    if not a_moi(CONVERSATIONS.get(cid), pid):
+    conv = CONVERSATIONS.get(cid)
+    if not a_moi(conv, pid):
         return web.json_response({"erreur": "inconnue"}, status=404)
-    CONVERSATIONS.pop(cid)
-    chemin = os.path.join(DOSSIER_CONV, cid + ".json")
-    if os.path.exists(chemin):
-        os.remove(chemin)
+    conv["ferme"] = time.time()
+    sauver(conv)
     if COURANTE.get(pid) == cid:
         COURANTE.pop(pid, None)
+    # La suivante est choisie ici, pas par la page : le serveur sait laquelle
+    # reste, et la page doit afficher CE qu'elle vient de selectionner. Deux
+    # decisions separees finissaient par diverger — on effaçait la courante et
+    # l'ecran gardait l'ancienne.
     return web.json_response({"ok": True, "courante": conv_de(None, pid)["id"]})
+
+
+def _fichiers_de(conv):
+    """Les chemins sur disque des fichiers produits par cette conversation.
+
+    Les deux copies possibles : celle qu'une machine a agent a deposee dans le
+    depot du studio, et celle d'un ComfyUI local. On rend les deux ; celle qui
+    n'existe pas sera simplement ignoree.
+    """
+    chemins = []
+    for tour in conv.get("tours", []):
+        for f in (tour.get("fichiers") or []):
+            nom = f.get("filename")
+            if not nom:
+                continue
+            ident = f.get("noeud") or noeud_local()["id"]
+            chemins.append(chemin_agent(ident, nom))
+            chemins.append(os.path.join(BASE_COMFY, "output",
+                                        f.get("subfolder", ""), nom))
+    return chemins
+
+
+def purger_fermees():
+    """Efface pour de bon les conversations fermees depuis plus d'un jour."""
+    limite = time.time() - GARDE_FERMEES
+    partis = 0
+    for cid, conv in list(CONVERSATIONS.items()):
+        quand = conv.get("ferme")
+        if not quand or quand > limite:
+            continue
+        for chemin in _fichiers_de(conv):
+            try:
+                os.remove(chemin)
+            except OSError:
+                pass          # deja parti, ou sur une machine qu'on n'a pas
+        CONVERSATIONS.pop(cid, None)
+        try:
+            os.remove(os.path.join(DOSSIER_CONV, cid + ".json"))
+        except OSError:
+            pass
+        partis += 1
+    if partis:
+        print(f"  {partis} conversation(s) fermee(s) depuis plus de 24 h "
+              f"effacee(s), images comprises", flush=True)
+    return partis
 
 def mes_fichiers(pid):
     """Tout ce que cet utilisateur a le droit de relire : ce que ses propres
@@ -6243,6 +6307,7 @@ async def veiller_noeuds():
     premiere heure."""
     while True:
         try:
+            purger_fermees()
             await sonder_noeuds()
             for x in NOEUDS:
                 if ETAT_NOEUDS.get(x["id"], {}).get("repond"):
