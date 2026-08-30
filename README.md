@@ -46,6 +46,7 @@ des **planches de BD** et des **objets 3D** — en local, sur plusieurs machines
 - [Déplacer le studio sur une machine sans carte](#déplacer-le-studio-sur-une-machine-sans-carte)
 - [Plusieurs machines, de puissances différentes](#plusieurs-machines-de-puissances-différentes)
 - [Retrouver ce qu'on a produit](#retrouver-ce-quon-a-produit)
+- [Fermer une conversation](#fermer-une-conversation)
 - [Le modèle de langage peut venir d'une autre machine](#le-modèle-de-langage-peut-venir-dune-autre-machine)
 - [Comptes](#comptes)
 - [Garder le même personnage](#garder-le-même-personnage)
@@ -924,6 +925,33 @@ Sans cette règle, le studio refusait d'employer des modèles que l'installeur
 avait justement téléchargés pour cette machine : trente-deux gigaoctets dormant
 sur le NAS pour un seul moteur utilisable.
 
+### Choisir la machine soi-même
+
+Entre deux machines capables, le studio prend **la plus grosse carte**. C'est le
+bon défaut, et c'est le mauvais quand une de ces machines sert à autre chose —
+jouer, par exemple. Le sélecteur **« machine »**, dans les réglages sous la zone
+de saisie, impose la machine pour les demandes suivantes :
+
+```
+machine : automatique
+cette machine            — 0 Go   (ne répond pas)
+NAS ZimaOS (GTX 1060)    — 5,9 Go
+PC (RTX 2080 Ti)         — 11 Go
+```
+
+La mémoire de chaque carte est affichée parce que c'est sur elle que le choix
+automatique se fait : la voir explique le choix au lieu de le laisser paraître
+arbitraire. Une machine qui ne répond pas reste dans la liste, marquée — la
+cacher ferait disparaître un choix déjà fait, sans explication, parce qu'un
+agent s'est tu trois minutes.
+
+Le choix est retenu **dans le navigateur**, par identifiant de machine et non
+par rang dans la liste, les machines allant et venant. « Épargne ma carte, je
+joue » vaut pour la soirée, pas pour une demande.
+
+Il reste soumis à la règle du dessus : une machine choisie qui n'a pas le modèle,
+ou dont la carte ne tient pas le moteur, ne recevra rien.
+
 ### Une machine à agent reçoit aussi les fichiers
 
 Les moteurs qui partent d'une image — agrandir, détourer, fluidifier, sculpter
@@ -1038,6 +1066,51 @@ La liste est lue dans vos **conversations**, jamais sur le disque : elles seules
 savent à qui appartient un fichier et ce qui avait été demandé. Un balayage du
 disque rendrait des noms sans histoire — et franchirait la frontière entre
 utilisateurs, que le contrôle de propriété existe précisément pour tenir.
+
+Une conversation fermée en sort aussitôt, avec ses pièces : la médiathèque et le
+service des fichiers lisent la même liste. Ils ont divergé un temps, et la
+médiathèque affichait alors des vignettes que le studio refusait ensuite de
+servir — image cassée, bouton mort, pour un fichier pourtant toujours là.
+
+## Fermer une conversation
+
+Fermer une conversation la retire de la liste **immédiatement** — c'est ce qu'on
+demande en fermant — et le studio l'efface pour de bon **vingt-quatre heures plus
+tard**, ses images comprises.
+
+Elle disparaissait auparavant sur-le-champ, fichier compris : un clic, et le
+travail de la semaine n'existait plus. Une boîte de dialogue n'est pas un filet,
+c'est un réflexe qu'on apprend à cliquer. Pendant ces vingt-quatre heures elle
+est encore sur le disque, récupérable par qui a accès à la machine — c'est le
+niveau de recours qu'on attend d'une corbeille.
+
+Les images partent avec elle, et c'est délibéré : ce sont les seules données qui
+pèsent. Les laisser derrière ferait un disque qui grossit sans que rien ne le
+montre, puisque plus rien dans l'interface n'y mènerait.
+
+### Les fichiers que plus aucune conversation ne réclame
+
+L'ancienne suppression immédiate effaçait la conversation et **laissait ses
+images**. Sur l'installation de référence, cinquante et un fichiers dormaient
+ainsi, invisibles.
+
+Le studio les compte à chaque passage et l'annonce dans son journal. Il ne les
+efface que si on le lui demande, par `STUDIO_PURGE_ORPHELINS=1` : ce sont les
+images de quelqu'un, et elles existent par un défaut, pas par un choix.
+
+Deux gardes, parce qu'on efface pour de bon. Seulement le dépôt du studio —
+l'`output` d'un ComfyUI appartient à sa machine, qui y range aussi le travail
+fait à la main par son propriétaire. Et seulement au-delà des vingt-quatre
+heures, sinon un fichier tout juste déposé par un agent disparaîtrait avant que
+le tour qui le référence ne soit écrit.
+
+Un fichier n'est orphelin que si **aucune conversation du disque** ne le nomme,
+archives et sous-dossiers compris — et non « aucune conversation chargée en
+mémoire ». La distinction n'est pas théorique : sur l'installation de référence,
+la première règle comptait 5 orphelins, la seconde en annonçait 38. Les 33 de
+différence appartenaient à des conversations rangées dans un dossier d'archive.
+Si le parcours du disque échoue, pour quelque raison que ce soit, le studio
+n'efface rien du tout.
 
 ## Le modèle de langage peut venir d'une autre machine
 
