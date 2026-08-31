@@ -3261,16 +3261,21 @@ PRIORITES = ("", "brouillon", "rapide", "soigne")
 # Facteur applique au nombre d'etapes. Les bornes par intention gardent la main :
 # « rapide » ne peut pas descendre sous le minimum qui produit encore une image.
 #
-# « brouillon » n'est pas un « rapide » plus fort. Quand on cherche une image on
-# cherche un cadrage, une lumiere, une posture ; les details ne comptent qu'a la
-# fin, et on les paie pourtant a chaque essai — 249 s mesurees pour une image
-# dont on ne sait pas encore si la composition convient. Un quart des etapes,
-# MEME moteur, MEME graine, MEME taille : le chemin de debruitage est le meme,
-# simplement plus grossier, donc la composition tient et les details tombent.
+# « brouillon » n'est pas un « rapide » plus fort : un quart des etapes, quatorze
+# secondes contre deux cent dix-sept sur la meme carte. Il sert a juger vite un
+# prompt, un moteur, une ambiance — pas a choisir un cadrage.
 #
-# C'est pour cela que « brouillon », contrairement a « rapide », ne dit rien a
-# l'aiguilleur : un brouillon rendu par un autre moteur ne predirait pas l'image
-# finale, et ne servirait donc a rien.
+# CE QU'IL NE FAIT PAS, et je l'ai cru avant de regarder les images : il ne
+# predit PAS la composition finale. J'avais ecrit ici que « le chemin de
+# debruitage est le meme, simplement plus grossier ». C'est faux. Le nombre
+# d'etapes definit l'echelonnement du bruit, donc la trajectoire diverge des le
+# premier pas ; la graine fixe le point de depart, pas la destination. Mesure du
+# 31 aout, meme graine 864102317, meme prompt, meme moteur, meme taille : deux
+# phares contre un, l'ilot centre contre une falaise a gauche. Deux images sans
+# rapport.
+#
+# Il ne dit quand meme rien a l'aiguilleur, contrairement a « rapide » : un
+# brouillon rendu par un AUTRE moteur ne dirait rien du moteur qu'on juge.
 _FACTEUR_ETAPES = {"brouillon": 0.25, "rapide": 0.6, "soigne": 1.35}
 
 def appliquer_parametres(plan):
@@ -5856,8 +5861,8 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # et l'esquisse n'aurait servi a rien. Trois appels au modele de
             # langage economises au passage.
             plan = dict(plan_impose)
-            journal(tid, "on reprend l'esquisse telle quelle : meme prompt, "
-                         "meme graine, tout le soin")
+            journal(tid, "meme prompt et meme moteur que l'esquisse, tout le "
+                         "soin — la composition, elle, sera differente")
         else:
             plan = await aiguiller(texte, tid, conv, img_b64,
                                    a_une_image=(famille_du_fichier(image) if image
@@ -6805,13 +6810,20 @@ async def api_reprendre(req):
 
 
 async def api_au_propre(req):
-    """Refait une esquisse avec tout le soin, et rien d'autre de change.
+    """Refait la demande d'une esquisse avec tout le soin.
 
-    Le pari de l'esquisse ne tient que si la grande image est bien celle qu'on a
-    choisie en petit : meme moteur, meme prompt, meme graine, meme taille, et
-    seulement le nombre d'etapes qui remonte. On ne repasse donc pas par
-    l'analyse — elle rendrait un autre prompt, et l'esquisse n'aurait servi a
-    rien. Trois appels au modele de langage economises au passage.
+    Meme prompt, meme moteur, meme graine, meme taille : tout ce qui a ete
+    etabli est repris tel quel, et seul le nombre d'etapes remonte. On ne
+    repasse pas par l'analyse — elle rendrait un autre prompt, donc un autre
+    sujet, et l'on ne saurait plus ce qu'on compare. Trois appels au modele de
+    langage economises au passage.
+
+    Ce que cette route NE PROMET PAS : la meme image en mieux. Le nombre
+    d'etapes change la trajectoire du debruitage, et la graine ne fixe que son
+    point de depart. L'image soignee traite le meme sujet, dans le meme style,
+    avec le meme moteur — mais sa composition sera differente. Mesure du
+    31 aout. Le libelle du bouton le dit, et cette docstring aussi, parce que
+    l'inverse a ete ecrit ici pendant une heure.
     """
     pid = qui(req)
     try:

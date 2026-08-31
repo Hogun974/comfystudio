@@ -105,6 +105,14 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   .compte button,.lien-admin,.jauge .source{min-height:34px;
     display:inline-flex;align-items:center}
   .nuages button{min-height:32px}
+  /* Meme mesure pour la barre sous le champ : « brouillon » y est desormais une
+     action qu'on repete, et ses voisins montent avec lui — un bouton plus haut
+     que les deux d'a cote se lit comme une erreur d'alignement. */
+  .barre button,.au-propre button{min-height:34px}
+  /* « joindre un fichier » est un <label>, pas un <button> : sans cette ligne il
+     restait a 26 px a cote de deux boutons montes a 34, et la barre paraissait
+     de travers. */
+  .barre .joindre{min-height:34px;display:inline-flex;align-items:center}
   /* Les familles de la mediatheque defilaient lateralement, sans rien pour
      l'annoncer : « objets 3D » etait coupe et personne ne pouvait deviner qu'il
      fallait glisser. Sur telephone elles passent a la ligne — six etiquettes
@@ -214,6 +222,25 @@ main{flex:1;overflow-y:auto;min-width:0}
 .puce.cours{color:var(--braise-vive);border-color:var(--braise-vive)}
 .puce.fini{color:var(--vert);border-color:var(--vert)}
 .puce.attente{color:var(--encre-pale);border-style:dashed}
+/* Un brouillon reussi n'a aucune marque propre : meme cadre, meme legende
+   qu'une image finie. Le trait discontinu dit « pas encore fini » sans mot de
+   plus, et il tient dans les deux themes — la braise est la seule couleur qui
+   soit lisible sur le creux clair comme sur le creux sombre. */
+.puce.esquisse{color:var(--braise);border-color:var(--braise);border-style:dashed}
+/* Le brouillon a montre le sujet et l'ambiance ; la question suivante est « et
+   en soigne ? ». Elle se pose sous l'image, pas au fond du depliant des
+   details. Le nom « au-propre » est celui de la route et reste tel quel ; le
+   LIBELLE, lui, dit « refaire » — parce qu'on n'obtient pas cette image en
+   mieux, on obtient le meme sujet autrement cadre. */
+.au-propre{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:9px;
+  font:11px var(--mono);color:var(--encre-pale)}
+.au-propre button{background:transparent;border:1px solid var(--braise);
+  border-radius:8px;padding:4px 11px;font:11.5px var(--mono);color:var(--braise);
+  cursor:pointer}
+.au-propre button:hover:not(:disabled){background:var(--braise-sourde)}
+.au-propre button:disabled{opacity:.45;cursor:default}
+.au-propre .fait{color:var(--vert)}
+.au-propre .mal{color:var(--rouge)}
 .sortie img,.sortie video{display:block;max-width:100%;border-radius:9px;
   border:1px solid var(--trait);background:var(--creux)}
 .sortie audio{width:100%;margin-top:4px}
@@ -270,6 +297,15 @@ main{flex:1;overflow-y:auto;min-width:0}
 .media img,.media video{width:100%;border-radius:7px;display:block}
 .media audio{width:100%}
 .media .cube{font-size:38px;text-align:center;color:var(--encre-pale);padding:18px 0}
+/* Trois jours plus tard, rien ne distinguait une esquisse d'une image finie :
+   meme vignette, meme legende, et l'on croit avoir deja fait ce qu'on n'a
+   qu'essaye. La marque est posee SUR la vignette, la ou l'oeil arrive en
+   parcourant la grille, et non dans la legende qu'on ne lit qu'apres avoir
+   choisi. « pointer-events:none » : le clic doit continuer d'agrandir. */
+.cadre-media{position:relative;display:block}
+.cadre-media .marque-esquisse{position:absolute;left:7px;top:7px;
+  background:var(--braise);color:var(--nuit);border-radius:6px;padding:1px 7px;
+  font:10.5px/1.7 var(--mono);letter-spacing:.04em;pointer-events:none}
 .media figcaption{font:12.5px var(--serif);display:flex;flex-direction:column;gap:2px}
 .media figcaption small{font:10.5px var(--mono);color:var(--encre-pale)}
 .vide-media{color:var(--encre-pale);font-style:italic}
@@ -357,6 +393,14 @@ textarea:focus-visible{outline:2px solid var(--braise);outline-offset:1px;
   padding:4px 10px;font:11.5px var(--mono);color:var(--encre-douce);cursor:pointer}
 .barre button:hover{border-color:var(--braise);color:var(--braise)}
 .barre button.ouvert{border-color:var(--braise);color:var(--braise)}
+/* Le brouillon est une ACTION, pas un reglage : il part tout de suite, comme la
+   fleche. Il est donc dans la barre visible et non dans le tiroir des reglages,
+   et son trait discontinu reprend celui de la pastille qu'il produira. */
+.barre button.brouillon{border-style:dashed;border-color:var(--braise);
+  color:var(--braise)}
+.barre button.brouillon:hover:not(:disabled){border-style:solid;
+  background:var(--braise-sourde)}
+.barre button.brouillon:disabled{opacity:.45;cursor:default}
 .actifs{font:11px var(--mono);color:var(--braise);display:flex;gap:7px;flex-wrap:wrap}
 .actifs .oter{cursor:pointer;border-bottom:1px dotted var(--braise)}
 .outils.replie{display:none}
@@ -485,6 +529,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       <button class="envoyer" id="go" title="Générer (Ctrl+Entrée)" aria-label="Générer">↑</button>
     </div>
     <div class="barre">
+      <button type="button" id="lancerBrouillon" class="brouillon"
+        title="Un rendu au quart des étapes : quelques secondes au lieu de quelques minutes. De quoi juger le prompt, le moteur et l'ambiance. Attention : la version soignée traitera le même sujet mais n'aura PAS le même cadrage — le nombre d'étapes change le calcul.">brouillon</button>
       <label class="joindre" for="img" style="border:1px solid var(--trait);
         border-radius:8px;padding:4px 10px;font:11.5px var(--mono);
         color:var(--encre-douce);cursor:pointer">joindre un fichier</label>
@@ -530,6 +576,13 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 const $ = s => document.querySelector(s);
 let imageJointe = null, apercuURL = null, convActive = null;
 const suivis = new Map();           // tid -> {bloc, minuteur}
+/* Les esquisses lancees DEPUIS CETTE PAGE. /api/etat sert l'etat de la tache, ou
+   la marque « esquisse » n'est pas : elle est posee sur le TOUR, donc visible
+   seulement apres rechargement de la conversation. Sans ce releve, la pastille
+   et le bouton « refaire en soigne » n'apparaissaient pas sur le brouillon qu'on
+   venait justement de lancer — c'est-a-dire au seul moment ou l'on en a besoin.
+   Le serveur reprend la main des qu'il sait : « t.esquisse » l'emporte. */
+const esquissesLancees = new Set();
 
 const TITRES = {};
 /* Les guillemets et l'apostrophe en font partie, comme dans admin.html. Aucun
@@ -657,6 +710,64 @@ function plein(f) {
   fermer.onclick = e => { e.stopPropagation(); partir(); };
 }
 
+/* « Passer au propre » : meme prompt, meme graine, meme moteur, meme taille, et
+   toutes les etapes. Rien n'est renvoye au serveur que l'identifiant du tour —
+   c'est lui qui garde de quoi refaire l'image a l'identique.
+
+   Le bouton ne se repropose pas indefiniment : des que le serveur a pose
+   « au_propre » sur l'esquisse, il cede la place a une mention. La mention et
+   non le vide — trois jours plus tard, « l'ai-je deja refaite ? » est exactement
+   la question qu'on se pose devant une esquisse, et une rangee vide n'y repond
+   pas. */
+function barreAuPropre(t, cid) {
+  const zone = document.createElement("div");
+  zone.className = "au-propre";
+  const fait = mot => { zone.innerHTML = ""; const s = document.createElement("span");
+                        s.className = "fait"; s.textContent = "✓ " + mot;
+                        zone.appendChild(s); };
+  if (t.au_propre) { fait("refait en soigné"); return zone; }
+
+  const b = document.createElement("button");
+  b.type = "button";
+  // « refaire » et non « passer au propre ». Le second promet CETTE image en
+  // mieux, et c'est faux : le nombre d'etapes change la trajectoire du
+  // debruitage, la graine n'en fixe que le depart. Mesure du 31 aout, meme
+  // graine et meme prompt : deux images sans rapport. Le libelle doit dire ce
+  // qu'on obtient, pas ce qu'on aurait aime obtenir.
+  b.textContent = "refaire en soigné";
+  b.title = "Reprend le même prompt, le même moteur et la même taille, avec toutes les étapes. "
+          + "Le sujet et le style seront les mêmes ; le cadrage, non.";
+  const dit = document.createElement("span");
+  b.onclick = async () => {
+    b.disabled = true; dit.className = ""; dit.textContent = "envoi…";
+    try {
+      const r = await fetch("/api/au_propre", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation: cid, tour: t.id }) });
+      const d = await r.json().catch(() => ({}));
+      // 409 : un autre onglet est passe avant nous. Ce n'est pas un echec, c'est
+      // la reponse a la question posee — l'image est en route ou deja la.
+      if (r.status === 409) { fait("déjà refait en soigné"); return; }
+      if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la reprise");
+      fait("refait en soigné");
+      // La nouvelle demande prend le chemin de toutes les autres : une bulle en
+      // bas du fil, et le suivi ordinaire. Elle est bien la plus recente, meme
+      // si l'esquisse dont elle sort est loin au-dessus.
+      ajouterDemande(t.demande);
+      const nouveau = ajouterReponse();
+      auBas();
+      suivre(d.id, nouveau, cid);
+      listerConversations();
+    } catch (err) {
+      b.disabled = false;
+      dit.className = "mal"; dit.textContent = err.message;
+    }
+  };
+  zone.append(b, dit);
+  return zone;
+}
+
 function garnirReponse(bloc, t, cid) {
   // une conversation rechargee peut contenir une question restee en suspens
   if (t.etat === "question" && (t.questions || []).length) {
@@ -677,9 +788,14 @@ function garnirReponse(bloc, t, cid) {
   const cle = p.modele || t.modele;
   const par = p.parametres || t.parametres;
   // Un echec doit sauter aux yeux ; une reussite se voit deja a l'image, et une
-  // pastille verte de plus ne ferait qu'occuper la ligne.
+  // pastille verte de plus ne ferait qu'occuper la ligne. Un brouillon, lui, se
+  // dit meme reussi : rien dans l'image ne previent qu'elle n'est qu'a un quart
+  // du chemin, et une esquisse rangee pour une image finie est une image qu'on
+  // ne refera jamais, croyant l'avoir faite.
+  const esquisse = t.esquisse === true || esquissesLancees.has(t.id);
   bloc.querySelector(".bandeau-tech").innerHTML =
-    rate ? '<span class="puce rate">échec</span>' : "";
+    (rate ? '<span class="puce rate">échec</span>' : "")
+    + (esquisse ? '<span class="puce esquisse">brouillon</span>' : "");
 
   const sortie = bloc.querySelector(".sortie");
   sortie.innerHTML = "";
@@ -723,6 +839,11 @@ function garnirReponse(bloc, t, cid) {
     }
     sortie.appendChild(e);
   }
+  // Dans « .sortie », qui est vide a chaque passage : garnirReponse peut etre
+  // rejoue sur la meme bulle (la relance tardive apres un arret, par exemple),
+  // et une rangee posee plus haut s'y serait dupliquee.
+  if (esquisse && !rate && (t.fichiers || []).length && t.id)
+    sortie.appendChild(barreAuPropre(t, cid || convActive));
   bloc.querySelectorAll("details.detail").forEach(d => d.remove());
   bloc.querySelectorAll(".signature").forEach(d => d.remove());
 
@@ -1218,7 +1339,19 @@ function peindreGrille() {
     else { el = document.createElement("div"); el.className = "cube"; el.textContent = "▣"; }
     if (el.tagName !== "DIV") el.src = url(f);
     if (el.tagName === "IMG") { el.style.cursor = "zoom-in"; el.onclick = () => plein(f); }
-    carte.appendChild(el);
+    // Un brouillon garde la taille et le cadrage d'une image finie : rien ne les
+    // separe a l'oeil. La marque va sur ce qui se regarde — la vignette — et
+    // seulement a defaut dans la legende, pour un son qu'on n'a pas a masquer.
+    const vignette = f.esquisse && (f.famille === "image" || f.famille === "video");
+    if (vignette) {
+      const cadre = document.createElement("div");
+      cadre.className = "cadre-media";
+      const marque = document.createElement("span");
+      marque.className = "marque-esquisse";
+      marque.textContent = "brouillon";
+      cadre.append(el, marque);
+      carte.appendChild(cadre);
+    } else carte.appendChild(el);
 
     const legende = document.createElement("figcaption");
     const quand = f.quand
@@ -1230,6 +1363,7 @@ function peindreGrille() {
     // confonde jamais la piece de quelqu'un d'autre avec la sienne.
     legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
                       + `<small>${f.a ? "<b>" + ech(f.a) + "</b> · " : ""}`
+                      + `${f.esquisse && !vignette ? "brouillon · " : ""}`
                       + `${ech(f.moteur || "")} · ${ech(quand)}</small>`;
     // Replie : le prompt envoye fait souvent dix lignes, et on ne le cherche
     // que lorsqu'un rendu surprend. Deplie, il repond a « pourquoi cette
@@ -1521,7 +1655,11 @@ function detacher() {
 }
 $("#retirer").onclick = detacher;
 
-$("#go").onclick = async () => {
+/* Un seul chemin d'envoi pour la fleche et pour « brouillon » : seule la
+   priorite change. Deux copies auraient diverge des la premiere correction —
+   c'est deja arrive avec la reponse a une precision, qui a longtemps oublie la
+   taille choisie. */
+async function lancerDemande(priorite) {
   const texte = $("#txt").value.trim();
   if (!texte && !imageJointe) return;
   $("#alerte").textContent = "";
@@ -1534,12 +1672,13 @@ $("#go").onclick = async () => {
     const r = await fetch("/api/generer", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texte, image: imageJointe, modele: $("#forcer").value,
-                             taille: $("#taille").value, priorite: $("#priorite").value,
+                             taille: $("#taille").value, priorite,
                              noeud: $("#machine").value || null,
                              conversation: monConv })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la demande");
+    if (priorite === "brouillon") esquissesLancees.add(d.id);
     detacher();
     // La conversation remonte tout de suite : le tour est deja enregistre cote
     // serveur, et attendre la fin du rendu laissait croire que rien n'etait
@@ -1551,7 +1690,11 @@ $("#go").onclick = async () => {
     $("#alerte").textContent = err.message;
     auBas();
   }
-};
+}
+$("#go").onclick = () => lancerDemande($("#priorite").value);
+// Le brouillon l'emporte sur le cran de priorite choisi dans les reglages : on
+// vient de le demander explicitement, c'est le geste le plus recent.
+$("#lancerBrouillon").onclick = () => lancerDemande("brouillon");
 
 /* Le sondage est indexe par tache : plusieurs demandes peuvent courir
    en parallele, y compris dans des conversations differentes. */
@@ -1581,12 +1724,16 @@ function suivre(id, bloc, cid) {
         const pct = t.avance && t.avance.total
           ? Math.round(t.avance.fait * 100 / t.avance.total) : null;
         const secondes = Math.round((Date.now() - depart) / 1000);
-        puces.innerHTML = t.position
-          ? `<span class="puce attente">en file — ${t.position} devant</span>`
-          : `<span class="puce cours">${ech((derniere ? derniere.msg : "…").slice(0, 64))}`
-            + `${pct === null ? "" : ` · ${pct} %`} · ${secondes} s</span>`
-            + (pct === null ? ""
-               : `<span class="avance"><i style="width:${pct}%"></i></span>`);
+        // Deux rendus peuvent courir de front ; savoir lequel est l'esquisse dit
+        // lequel va revenir dans une minute et lequel dans quatre.
+        puces.innerHTML = (esquissesLancees.has(id)
+            ? '<span class="puce esquisse">brouillon</span>' : "")
+          + (t.position
+              ? `<span class="puce attente">en file — ${t.position} devant</span>`
+              : `<span class="puce cours">${ech((derniere ? derniere.msg : "…").slice(0, 64))}`
+                + `${pct === null ? "" : ` · ${pct} %`} · ${secondes} s</span>`
+                + (pct === null ? ""
+                   : `<span class="avance"><i style="width:${pct}%"></i></span>`));
       }
       if (t.etat === "question") {
         clearInterval(minuteur); suivis.delete(id);
