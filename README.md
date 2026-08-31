@@ -730,6 +730,10 @@ Quatre précautions, chacune pour un accident qu'on peut nommer :
   redémarrer la machine indéfiniment.
 
 `--sans-maj-auto`, ou `AGENT_SANS_MAJ_AUTO=1`, désactive le tout.
+`--empreinte SHA256`, ou `AGENT_EMPREINTE`, épingle une version.
+`AGENT_LIVRAISON_MINUTES` borne l'insistance de l'agent lorsqu'il rend un travail
+à un studio qui ne répond pas — dix minutes par défaut, largement de quoi
+couvrir un redémarrage.
 
 C'est du code téléchargé puis exécuté, et en HTTP simple si le studio n'est pas
 derrière TLS : voir [`SECURITY.md`](SECURITY.md). Épingler une empreinte, ou
@@ -1873,6 +1877,9 @@ téléversements. **Sans lui, tout disparaît au redémarrage du conteneur.**
 | `STUDIO_PURGE_ORPHELINS` | `1` pour effacer les fichiers que plus aucune conversation ne réclame |
 | `STUDIO_TRAVAILLEURS` | demandes menées de front (3 par défaut) — une seule par carte quoi qu'il arrive |
 | `STUDIO_PAUSE_PROPOSE` | minutes qu'une demande patiente pour une machine en pause (30) |
+| `STUDIO_ANALYSE_PETITE` | `0` pour analyser sur la plus grosse carte plutôt que la plus petite |
+| `STUDIO_ATTENTE_CARTE` | secondes qu'une analyse attend une carte occupée avant d'abandonner (1800) |
+| `STUDIO_LLM_GARDER` | combien de temps Ollama garde le modèle chargé entre deux appels (`60s`) |
 | `COMPOSE_PROJECT_NAME` | **le nom qui décide du volume** — à changer pour tout second studio |
 | `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
 
