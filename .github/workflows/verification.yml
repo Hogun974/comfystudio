@@ -200,6 +200,12 @@ jobs:
       - name: Le studio choisit le bon Ollama
         run: python banc_cerveaux.py
 
+      # Le devis annonce, avant de lancer, ce que les rendus precedents ont
+      # coute. Deux facons de se tromper, aussi graves l'une que l'autre :
+      # promettre un chiffre tire d'un seul rendu, et se taire alors qu'on sait.
+      - name: Le devis dit ce qu'il sait, et se tait sinon
+        run: python banc_durees.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

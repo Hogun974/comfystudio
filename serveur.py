@@ -1357,6 +1357,52 @@ async def patienter_pause(cle, tid):
                 f"perdu, relance-le quand elle sera revenue.")
 
 
+# Ce qu'on a mesure, par (machine, moteur, taille). Reconstruit depuis les
+# conversations, qui portent deja tout : « noeud », « modele », « taille » et
+# « secondes » sont sur chaque tour termine.
+_DUREES = {"quand": 0.0, "table": {}}
+FRAICHEUR_DUREES = 120
+# En dessous, on se tait. Deux rendus ne font pas une mediane : annoncer
+# « environ quatre minutes » sur un seul echantillon, c'est promettre au hasard.
+ASSEZ_DE_MESURES = 3
+
+
+def _relever_durees():
+    """Range les durees passees par (machine, moteur, taille), puis par
+    (machine, moteur), puis par moteur seul — du plus precis au plus general."""
+    table = {}
+    for conv in CONVERSATIONS.values():
+        for t in conv.get("tours") or []:
+            s_ = t.get("secondes")
+            cle_, ou = t.get("modele"), t.get("noeud")
+            if not s_ or not cle_ or t.get("etat") != "fini":
+                continue
+            # L'esquisse ne predit pas la version soignee : un quart des etapes,
+            # et c'est justement ce qu'on cherche a comparer.
+            if t.get("esquisse"):
+                continue
+            for k in ((ou, cle_, t.get("taille")), (ou, cle_), (cle_,)):
+                table.setdefault(k, []).append(float(s_))
+    _DUREES["table"], _DUREES["quand"] = table, time.time()
+    return table
+
+
+def duree_typique(ident, cle, taille=None):
+    """Combien ça a pris les fois d'avant, ou None si l'on ne sait pas.
+
+    La mediane et non la moyenne : un rendu qui a attendu une carte occupee
+    tirerait la moyenne sans rien dire de ce qui va se passer maintenant.
+    """
+    if time.time() - _DUREES["quand"] > FRAICHEUR_DUREES:
+        _relever_durees()
+    for k in ((ident, cle, taille), (ident, cle), (cle,)):
+        v = _DUREES["table"].get(k)
+        if v and len(v) >= ASSEZ_DE_MESURES:
+            v = sorted(v)
+            return v[len(v) // 2], len(v)
+    return None, 0
+
+
 def choisir_noeud(cle):
     """Le placement fin (debit mesure, arbitrage vitesse/qualite) viendra avec
     la mesure par noeud. Pour l'instant : la machine locale si elle convient,
@@ -6819,6 +6865,18 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         TACHES[tid]["noeud"] = ident
         if len(NOEUDS) > 1:
             journal(tid, f"machine retenue : {cible.get('titre', ident)}")
+        # LE DEVIS. « Pourquoi celle-ci a mis quatre minutes » est une question
+        # qu'on se pose apres ; « combien de temps ça va prendre » est celle
+        # qu'on se pose avant, et rien n'y repondait. Le studio a pourtant la
+        # reponse : chaque tour termine porte sa machine, son moteur, sa taille
+        # et sa duree. On la lit.
+        mediane_, combien_ = duree_typique(
+            ident, cle, f"{plan.get('largeur')}x{plan.get('hauteur')}"
+            if plan.get("largeur") else None)
+        if mediane_:
+            journal(tid, f"d'apres tes {combien_} rendus precedents, compte "
+                         + (f"{mediane_ / 60:.0f} min" if mediane_ >= 90
+                            else f"{mediane_:.0f} s"))
         # « en offre None » : la taille de la carte vient de l'annonce, et une
         # machine qui rendait deja avant un redemarrage du studio ne s'est pas
         # encore reannoncee. Annoncer un debordement qu'on n'a pas constate,
