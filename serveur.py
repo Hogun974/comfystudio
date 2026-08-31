@@ -859,7 +859,14 @@ def sauver_parc():
     _PARC_ECRIT[0] = time.time()
     d = {}
     for ident, e in ETAT_NOEUDS.items():
-        garde = {k: e[k] for k in ("carte", "vram", "ram", "libre")
+        # « ip » est le seul champ VIVANT qu'on garde, et c'est deliberе : sans
+        # elle, le studio ne reconnait pas la machine qui heberge un Ollama tant
+        # qu'elle ne s'est pas reannoncee. Pendant cette minute-la, la pause de
+        # cette machine ne la protegeait pas et sa carte n'etait pas reservee —
+        # une analyse et un rendu se partageaient la carte de quelqu'un qui
+        # jouait, sans une ligne de journal. Une adresse perimee ne fait courir
+        # aucun risque : la premiere annonce la corrige.
+        garde = {k: e[k] for k in ("carte", "vram", "ram", "libre", "ip")
                  if e.get(k) is not None}
         inv = MODELES_NOEUD.get(ident)
         if inv and inv.get("dossiers"):
@@ -890,7 +897,7 @@ def charger_parc():
         if not isinstance(garde, dict):
             continue
         e = ETAT_NOEUDS.setdefault(ident, {})
-        for k in ("carte", "vram", "ram", "libre"):
+        for k in ("carte", "vram", "ram", "libre", "ip"):
             if k in garde:
                 e[k] = garde[k]
         # Muette jusqu'a preuve du contraire : la premiere annonce dira si elle
