@@ -578,6 +578,26 @@ def faire_le_menage(garde_h, sorties=""):
 
 
 # ══════════════════════════ mise a jour ═══════════════════════════════
+try:
+    with open(os.path.abspath(__file__), "rb") as _f:
+        _EMPREINTE_AU_DEMARRAGE = hashlib.sha256(_f.read()).hexdigest()
+except OSError:
+    _EMPREINTE_AU_DEMARRAGE = ""
+
+
+def _mon_empreinte():
+    """Le sha256 du code REELLEMENT en cours d'execution.
+
+    Lu une seule fois, au chargement, et retenu. C'est le contraire de ce qu'on
+    ferait par reflexe : « --maj » remplace le fichier sous nos pieds, mais le
+    processus qui tourne continue d'executer l'ancien code jusqu'a son
+    redemarrage. Relire le disque annoncerait donc une version a jour pendant
+    qu'une version perimee travaille — exactement le mensonge que cette
+    empreinte existe pour empecher.
+    """
+    return _EMPREINTE_AU_DEMARRAGE
+
+
 def se_mettre_a_jour(studio, empreinte=""):
     """Recupere la derniere version du script depuis le studio.
 
@@ -671,6 +691,14 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama=""):
                     time.sleep(PAUSE_LONGUE)
                     continue
                 corps = dict(etat)
+                # Notre propre empreinte, a chaque annonce. Le studio la compare
+                # a celle de l'agent qu'il sert : c'est le seul moyen qu'il ait
+                # de savoir qu'une machine porte une version perimee. Constate le
+                # 31 aout : l'annulation d'un rendu ne fonctionnait pas sur une
+                # machine, parce que son agent datait d'avant le protocole
+                # d'annulation. Rien ne le disait — elle repondait, elle rendait
+                # des images, et une fonction entiere manquait en silence.
+                corps["empreinte"] = _mon_empreinte()
                 # Reevalue a chaque annonce : un modele peut etre telecharge ou
                 # retire pendant que l'agent tourne.
                 if ollama:

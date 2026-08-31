@@ -42,6 +42,10 @@ th{text-align:left;font:600 11px var(--mono);color:var(--encre-pale);
   text-transform:uppercase;letter-spacing:.6px;padding:0 10px 8px;font-weight:600}
 td{padding:11px 10px;border-top:1px solid var(--trait);vertical-align:middle}
 tr.perdu td{color:var(--encre-pale)}
+/* Un agent perime repond, rend des images, et il lui manque en silence tout ce
+   qui a ete ajoute depuis. Le 31 aout, l'annulation d'un rendu n'atteignait pas
+   une machine pour cette seule raison, et rien ne le disait. */
+.perime{color:var(--rouge);font:10px var(--mono);margin-top:2px}
 .pastille{display:inline-block;width:8px;height:8px;border-radius:50%;
   background:var(--trait-vif);margin-right:8px}
 .pastille.vif{background:var(--vert);box-shadow:0 0 6px var(--vert)}
@@ -658,7 +662,11 @@ async function rafraichir() {
       <td class="detail">${(n.moteurs || []).length
         ? `<b>${n.moteurs.length}</b> prêts`
         : '<span style="color:var(--rouge)">aucun</span>'}</td>
-      <td class="detail">${n.agent ? delai(n.vu_il_y_a) : "locale"}</td>
+      <td class="detail">${n.agent ? delai(n.vu_il_y_a) : "locale"}
+          ${n.a_jour === false
+            ? '<div class="perime">agent périmé — redémarre-le</div>' : ""}
+          ${n.a_jour === null && n.agent
+            ? '<div class="ident">version inconnue</div>' : ""}</td>
       <td class="detail">${n.en_travail || 0}</td>
       <td></td>`;
     const pli = document.createElement("tr");
