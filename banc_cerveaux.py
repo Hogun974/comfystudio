@@ -115,6 +115,24 @@ async def main():
     dit([u for u, _ in l] == [NAS, PC], "relachee, elle reprend la tete",
         str([u for u, _ in l]))
 
+    # ── une image inverse l'ordre des cartes ────────────────────────────
+    # Lire une image est la seule tache ou la taille decide vraiment : mesure
+    # du 31 aout, 19 s sur la 2080 Ti et toujours rien apres 900 s sur la
+    # GTX 1060, ou le modele de vision deborde.
+    poser()
+    l = S.cerveaux_utilisables()
+    dit([u for u, _ in l] == [NAS, PC], "pour du texte, la plus PETITE d'abord",
+        str([u for u, _ in l]))
+    l = S.cerveaux_utilisables(image=True)
+    dit([u for u, _ in l] == [PC, NAS], "pour une image, la plus GROSSE d'abord",
+        str([u for u, _ in l]))
+    # La pause reste plus forte que tout.
+    poser(pause_pc=True)
+    l = S.cerveaux_utilisables(image=True)
+    dit([u for u, _ in l] == [NAS], "et une machine en pause reste ecartee",
+        str([u for u, _ in l]))
+    poser()
+
     # ── le modele, par adresse ──────────────────────────────────────────
     poser()
     corps = {"model": S.MODELE_POUR_ECRIRE, "prompt": "x"}

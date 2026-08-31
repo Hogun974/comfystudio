@@ -297,7 +297,15 @@ async def reprendre_file():
                                 "image": r.get("image"), "modele": r.get("modele"),
                                 "taille": r.get("taille"),
                                 "priorite": r.get("priorite", ""),
-                                "noeud": r.get("noeud"), "plan": r.get("plan")})
+                                "noeud": r.get("noeud"), "plan": r.get("plan"),
+                                "modele_choisi": r.get("modele_choisi", False),
+                                # LA GRAINE DEJA TIREE. Sans elle, la reprise en
+                                # tirait une neuve pendant que la carte finissait
+                                # l'image faite avec l'ancienne : le tour gardait
+                                # une graine qui n'avait produit aucune image, et
+                                # « refaire en soigne » serait reparti d'un
+                                # fantome. Releve par la recette.
+                                "graine": r.get("graine")})
         repris += 1
     if repris:
         print(f"  {repris} demande(s) reprise(s) de la file d'avant l'arret",
@@ -640,7 +648,7 @@ def _sait_voir_ici(url, modele):
     return False
 
 
-def cerveaux_utilisables():
+def cerveaux_utilisables(image=False):
     """Les Ollama qu'on a le droit d'employer, dans l'ordre ou les employer.
 
     Trois regles, dans cet ordre, et ce sont celles de l'utilisateur :
@@ -652,6 +660,13 @@ def cerveaux_utilisables():
       - a egalite, la PLUS PETITE carte. Une analyse tient sur n'importe
         laquelle ; occuper la meilleure pour reflechir, c'est la retirer du
         rendu qu'elle seule fait vite.
+
+    SAUF POUR UNE IMAGE, ou la derniere regle s'inverse. Lire une image est la
+    seule tache ou la taille de la carte decide vraiment : mesure du 31 aout,
+    la meme image lue en 19 s sur la 2080 Ti et toujours pas rendue apres
+    NEUF CENTS secondes sur la GTX 1060, ou le modele de vision deborde.
+    « La plus petite qui suffise » suppose qu'elles suffisent toutes ; ici,
+    non.
     """
     bons = []
     for url in OLLAMAS:
@@ -663,7 +678,7 @@ def cerveaux_utilisables():
             continue
         libre = not (ident and verrou_noeud(ident).locked())
         taille = (ETAT_NOEUDS.get(ident) or {}).get("vram") or 0 if ident else 0
-        bons.append((0 if libre else 1, taille, url, ident))
+        bons.append((0 if libre else 1, -taille if image else taille, url, ident))
     bons.sort(key=lambda x: (x[0], x[1]))
     return [(url, ident) for _, _, url, ident in bons]
 
@@ -1827,7 +1842,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # egalite la plus petite. Le detour par l'agent d'une machine reste en
     # dernier recours — mesure du 31 aout, la meme question coute 3,8 s en
     # direct, 74,8 s au PC par son agent et 162,6 s au NAS.
-    cerveaux = cerveaux_utilisables()
+    cerveaux = cerveaux_utilisables(image=bool(corps.get("images")))
     if not cerveaux:
         journal(tid, _pourquoi_aucun_cerveau())
     panne = None
@@ -1875,7 +1890,14 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                 verrou_ol.release()
                 continue
         try:
-            rendu = await _ollama_local(ici, url)
+            # BORNE PLUS COURTE POUR UNE IMAGE. Les neuf cents secondes du
+            # delai ordinaire sont la pour qu'une chanson longue aboutisse ;
+            # appliquees a une lecture d'image sur une carte qui deborde, elles
+            # font perdre un quart d'heure avant d'essayer la machine d'a cote,
+            # qui repond en dix-neuf secondes. Mesure du 31 aout : 919 s, dont
+            # 900 perdues.
+            rendu = await _ollama_local(
+                ici, url, 300 if ici.get("images") else 900)
             # Seulement si on l'a demande CHAUD : sans « garder », Ollama l'a
             # deja relache et il n'y a rien a fermer derriere nous.
             if garder and tid:
@@ -2033,16 +2055,18 @@ def _pourquoi_aucun_cerveau():
     return "aucun modele de langage joignable"
 
 
-async def _ollama_local(corps, url=None):
+async def _ollama_local(corps, url=None, secondes=900):
     """L'appel lui-meme, une fois la carte reservee.
 
     Il ne rattrape rien : le repli sur une autre machine appartient a
     appeler_ollama, qui doit d'abord relacher la carte — sans quoi le repli
     demanderait la carte qu'on tient encore, et s'attendrait lui-meme.
     """
-    # 900 s : un gros modele qui deborde sur le processeur met plus longtemps
-    # que la minute d'un 7B, et une coupure ici rend une chanson muette.
-    to = aiohttp.ClientTimeout(total=900)
+    # 900 s par defaut : un gros modele qui deborde sur le processeur met plus
+    # longtemps que la minute d'un 7B, et une coupure ici rend une chanson
+    # muette. L'appelant raccourcit quand il a une machine de rechange sous la
+    # main — voir la lecture d'image.
+    to = aiohttp.ClientTimeout(total=secondes)
     async with aiohttp.ClientSession(timeout=to) as s:
         async with s.post(f"{url or OLLAMA}/api/generate", json=corps) as r:
             if r.status >= 400:
@@ -2950,7 +2974,8 @@ def _decouper_couplets(brut):
 
 
 async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
-                    modele_force=None, taille=None, priorite=""):
+                    modele_force=None, taille=None, priorite="",
+                    modele_choisi=False):
     pid = (TACHES.get(tid) or {}).get("proprietaire")
     # Un agrandissement se reconnait a l'ecrit et ne demande rien au modele :
     # ni sujet, ni cadrage, ni style. On tranche donc AVANT de l'appeler — dix
@@ -2984,7 +3009,15 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     # de langage, dont c'est le travail. Le raccourci n'existe que pour epargner
     # dix secondes sur les cas evidents.
     court = len((texte or "").strip()) <= 70
-    if (AIGUILLEUR and not modele_force and not a_une_image
+    # « choisi » et non « force » : depuis que les reglages vivent sur la
+    # conversation, « modele_force » peut etre un moteur HERITE de trois
+    # demandes plus tot. Ces raccourcis ont ete ecrits pour un moteur choisi
+    # POUR CETTE DEMANDE — le desarmer sur un heritage, c'est refuser
+    # « detoure-la » a quelqu'un qui a regle un moteur hier. Constate par la
+    # recette : « decris cette image » reprenait le chemin long, l'enrichissement
+    # etait appele SANS l'image, repondait « je ne vois pas d'image attachee »,
+    # et le studio adoptait cette phrase comme prompt.
+    if (AIGUILLEUR and not modele_choisi and not a_une_image
             and source_dispo and court):
         propose, marge = AIGUILLEUR.classer(texte)
         if propose in SANS_ECRITURE and marge >= _aiguilleur.MARGE_SURE \
@@ -3003,7 +3036,7 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     # premier jour, et elles contiennent les memes verbes que la retouche. Sans
     # cette garde, « enleve le fond » remplaçait le SUJET — l'inverse exact de
     # ce qu'on demande.
-    if a_une_image == "image" and not modele_force and not veut_detourer(texte):
+    if a_une_image == "image" and not modele_choisi and not veut_detourer(texte):
         # La zone nommee passe devant : « enleve le chien » vise le chien, pas
         # « le sujet » que BiRefNet aurait devine. On ne la propose que si une
         # machine peut la servir — le modele de selection est un telechargement
@@ -3022,7 +3055,7 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                         "raison": "retouche localisee : le reste de l'image ne "
                                   "sera pas touche"}
 
-    if veut_fluidifier(texte) and not modele_force:
+    if veut_fluidifier(texte) and not modele_choisi:
         journal(tid, "fluidite video reconnue — aucune analyse necessaire")
         return {"intention": "fluidifier", "modele": "fluidifier", "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
@@ -3031,19 +3064,19 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     # AVANT les autres : « decris-la » est sans ambiguite des lors qu'une image
     # est jointe, et deux des raccourcis suivants mordent sur des formulations
     # courtes du meme genre.
-    if a_une_image == "image" and veut_lire(texte) and not modele_force:
+    if a_une_image == "image" and veut_lire(texte) and not modele_choisi:
         journal(tid, "lecture d'image reconnue — aucune analyse necessaire")
         return {"intention": "lecture", "modele": None, "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "lecture : on decrit ce que l'image montre"}
 
-    if veut_detourer(texte) and not modele_force:
+    if veut_detourer(texte) and not modele_choisi:
         journal(tid, "detourage reconnu — aucune analyse necessaire")
         return {"intention": "detourer", "modele": "detourer", "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "detourage : le sujet est isole, le fond devient transparent"}
 
-    if veut_agrandir(texte) and not modele_force:
+    if veut_agrandir(texte) and not modele_choisi:
         journal(tid, "agrandissement reconnu — aucune analyse necessaire")
         return {"intention": "agrandir", "modele": "agrandir", "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
@@ -3114,7 +3147,7 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     if (plan.get("intention") != "question"
             and plan.get("intention") not in ("edition", "video_image", "lecture")
             and len((texte or "").split()) <= MOTS_VERIF_SUJET
-            and not a_une_image and not modele_force
+            and not a_une_image and not modele_choisi
             and not await sujet_nomme(texte, tid)):
         journal(tid, "aucun sujet nomme — precision demandee plutot que devinee")
         plan["intention"] = "question"
@@ -6291,7 +6324,8 @@ def prefixe_sortie(conv, intention, horod, suffixe):
 
 
 async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
-                   priorite="", noeud_force=None, plan_impose=None):
+                   priorite="", noeud_force=None, plan_impose=None,
+                   modele_choisi=False, graine=None):
     try:
         # Le tour a deja ete pose a la mise en file ; on le rafraichit pour
         # qu'il porte l'heure du debut reel du travail.
@@ -6325,7 +6359,8 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                                    a_une_image=(famille_du_fichier(image) if image
                                                 else False),
                                    modele_force=modele_force, taille=taille,
-                                   priorite=priorite)
+                                   priorite=priorite,
+                                   modele_choisi=modele_choisi)
         if modele_force:
             plan["modele"] = modele_force
             plan["modele_impose"] = True
@@ -6679,8 +6714,15 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
 
         # Imposee quand on repasse une esquisse au propre : c'est elle qui fait
         # que la grande image est bien celle qu'on a choisie en petit.
-        seed = int(plan.get("graine") or 0) or int.from_bytes(os.urandom(4), "big") % (2**31)
+        seed = (int(plan.get("graine") or graine or 0)
+                or int.from_bytes(os.urandom(4), "big") % (2**31))
         TACHES.setdefault(tid, {})["graine"] = seed
+        # Ecrite dans la file : une reprise apres redemarrage doit refaire LA
+        # MEME image, pas une autre. C'est aussi ce qui permet au tour de porter
+        # la graine qui a reellement produit son image.
+        if tid in EN_FILE and EN_FILE[tid].get("graine") != seed:
+            EN_FILE[tid]["graine"] = seed
+            sauver_file()
         # Le compteur de ComfyUI (_00001_, _00002_…) repart de zero SUR CHAQUE
         # MACHINE : deux noeuds produiraient le meme nom le meme jour, et le
         # relais servirait silencieusement l'image de l'autre. L'identifiant du
@@ -7190,7 +7232,8 @@ async def travailleur():
         travail = asyncio.create_task(
             executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
                      job.get("taille"), job.get("priorite", ""), job.get("noeud"),
-                     job.get("plan")))
+                     job.get("plan"), job.get("modele_choisi", False),
+                     job.get("graine")))
         EN_VOL[tid] = travail
         # ICI, et pas avant : la demande appartient maintenant au registre des
         # travaux en vol, donc le fichier la portera.
@@ -7399,13 +7442,17 @@ async def api_generer(req):
     if devant:
         journal(tid, f"en file d'attente — {devant} demande(s) devant")
     ATTENTE.append(tid)
+    # « modele_choisi » : ce moteur a-t-il ete demande POUR CETTE demande, ou
+    # herite de la conversation ? Les raccourcis ecrits en dependent.
+    choisi = bool(d.get("modele"))
     EN_FILE[tid] = {"tid": tid, "texte": texte, "conversation": conv["id"],
                     "proprietaire": pid, "image": image, "modele": modele,
-                    "taille": taille, "priorite": priorite, "noeud": machine}
+                    "taille": taille, "priorite": priorite, "noeud": machine,
+                    "modele_choisi": choisi}
     sauver_file()
     await FILE_ATTENTE.put({"tid": tid, "texte": texte, "conv": conv, "taille": taille,
                             "image": image, "modele": modele, "priorite": priorite,
-                            "noeud": machine})
+                            "noeud": machine, "modele_choisi": choisi})
     return web.json_response({"id": tid, "conversation": conv["id"], "position": devant})
 
 async def api_etat(req):

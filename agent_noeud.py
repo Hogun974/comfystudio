@@ -59,6 +59,47 @@ ANNULE = "annulee par le studio"
 EN_COURS_ICI = []
 CONTEXTE = ssl.create_default_context()
 
+# Ce que le fil d'annonce a appris, et dont la boucle de travail a besoin.
+#
+# Un dictionnaire nu, sans verrou : chaque champ est pose par UNE seule
+# ecriture, dans le fil d'annonce, et lu par UNE seule autre, dans la boucle.
+# En CPython chacune de ces deux operations est atomique, et une valeur en
+# retard d'un battement ne coute qu'un tour d'attente. Ce qui ne serait pas sur
+# — lire puis reecrire le meme champ depuis les deux fils — n'existe pas ici :
+# la boucle ne fait que lire. Un verrou, lui, serait tenu pendant un appel HTTP
+# de soixante secondes et bloquerait justement la boucle qu'on libere.
+DEPUIS_L_ANNONCE = {
+    # Le dernier etat_comfy() connu, None quand la carte ne repond pas. La
+    # boucle s'en sert pour ne pas reclamer un travail qu'elle ne peut pas
+    # faire.
+    "comfy": None,
+    # Vrai quand la derniere annonce a eu 200. Faux sur jeton refuse ou studio
+    # muet : inutile d'aller reclamer du travail a un studio qui ne repond pas.
+    "studio": False,
+    # L'empreinte de l'agent que le studio distribue. POSEE ici, jamais
+    # appliquee ici : voir battre_annonce().
+    "empreinte_agent": "",
+    # Le nombre d'annonces abouties. La boucle s'en sert pour ne tenter la mise
+    # a jour qu'UNE FOIS PAR BATTEMENT, comme avant ce fil : sans ce compteur
+    # elle relisait l'empreinte a chaque tour, soit toutes les trois secondes,
+    # et un studio qui sert un agent que l'on refuse — empreinte epinglee,
+    # telechargement tronque — noyait la console sous deux lignes toutes les
+    # trois secondes. Incremente APRES l'empreinte : un compteur neuf garantit
+    # donc une empreinte au moins aussi neuve.
+    "battements": 0,
+    # Pose par la BOUCLE quand elle finit un travail : le fil remesure alors la
+    # carte tout de suite au lieu d'attendre l'expiration de son cache. Sans
+    # cela, la boucle reclamait le travail suivant sur un etat vieux de dix a
+    # trente secondes — et un ComfyUI mort en fin de rendu, le cas classique de
+    # l'OOM sur le dernier noeud, faisait prendre puis rater le travail suivant
+    # au lieu de le laisser partir sur l'autre carte.
+    "remesurer": False,
+}
+# Pose des que le premier battement est retombe, abouti ou non. La boucle
+# l'attend avant de reclamer du travail : sans cela elle prendrait un rendu
+# avant de savoir si la carte de cette machine repond.
+PREMIERE_ANNONCE = threading.Event()
+
 # Dossiers de modeles que le studio veut connaitre. unet_gguf et clip_gguf sont
 # des dossiers virtuels du noeud ComfyUI-GGUF : les .gguf n'apparaissent que la.
 DOSSIERS = ["checkpoints", "diffusion_models", "loras", "text_encoders", "vae",
@@ -695,8 +736,22 @@ def se_mettre_a_jour_seul(studio, attendue, epinglee):
     print("  redemarrage sur la nouvelle version", flush=True)
     os.environ[MARQUE_MAJ] = attendue
     try:
-        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)]
-                 + sys.argv[1:])
+        # LES GUILLEMETS SOUS WINDOWS. os.execv y recolle les arguments en une
+        # seule ligne de commande, SANS les proteger : un espace dans le chemin
+        # de l'interpreteur ou du script, et l'enfant demarre sur un morceau du
+        # chemin. Mesure du 31 aout avec « C:/Program Files/Python314 » :
+        # l'enfant meurt sur « C:\Program: can't open file », et le parent sort
+        # avec le code 0 — donc aucune OSError, donc le repli ci-dessous ne
+        # s'execute jamais et l'agent est mort pour de bon.
+        #
+        # Aucune des deux machines n'est concernee aujourd'hui — leurs chemins
+        # n'ont pas d'espace, et le NAS est sous Linux — mais un agent qui se
+        # remplace lui-meme ne doit pas dependre de ça.
+        morceaux = [sys.executable, os.path.abspath(__file__)] + sys.argv[1:]
+        if os.name == "nt":
+            morceaux = [f'"{m}"' if " " in m and not m.startswith('"') else m
+                        for m in morceaux]
+        os.execv(sys.executable, morceaux)
     except OSError as e:
         # execv a echoue : le processus est intact, sur l'ANCIEN code, avec le
         # nouveau fichier sur le disque. Le dire, et continuer de travailler —
@@ -747,26 +802,240 @@ def insister(url, jeton, corps=None, brut=None, secondes=60):
         attente = min(attente * 2, 30)
 
 
+# ══════════════════════════ annonce ═══════════════════════════════════
+# Secondes entre deux annonces quand le studio n'en dit rien. Chez lui
+# SILENCE_MAX vaut 45 s : trois battements peuvent se perdre avant qu'il ne
+# declare la machine morte.
+ANNONCE_DEFAUT = 10
+# Le studio fixe la cadence par « intervalle », mais on ne le suit que pour
+# RALENTIR, jamais pour accelerer : un agent plus bavard que dix secondes
+# n'apporte rien et multiplie les ecritures de sauver_parc() cote studio. Et
+# jamais au-dela de 20 s. Le commentaire disait 30 « pour qu'un battement perdu
+# ne franchisse pas SILENCE_MAX » — mais a 30 s, un battement perdu en fait 60,
+# qui franchit tout autant les 45. Il faut 22 s au plus pour survivre a une
+# perte ; on prend 20. Inerte aujourd'hui, le studio codant 10 en dur, mais
+# c'etait un piege arme pour le jour ou quelqu'un reglerait cette cadence.
+ANNONCE_MAX = 20
+# Pendant un rendu, on ne redemande pas /system_stats a chaque battement : on
+# reprend le dernier etat connu. Ce n'est pas le cout qui commande — mesure du
+# 31 aout sur un ComfyUI au repos, /system_stats repond en 4 ms (median sur
+# huit appels, maximum 8 ms). C'est qu'avant ce fil, l'agent n'interrogeait
+# PAS la carte pendant un rendu, et que cette route traverse la boucle asyncio
+# de ComfyUI, celle-la meme qui sert la websocket de progression : rien ne dit
+# ce qu'elle coute quand la carte calcule, et l'annonce n'a besoin que
+# d'exister. Ni le nom de la carte ni sa VRAM totale ne changent en cours de
+# rendu. Soixante secondes bornent le retard sur une carte qui tomberait au
+# milieu — et le battement de progression, lui, s'en apercoit tout de suite.
+ETAT_PENDANT_TRAVAIL = 60
+
+
+def battre_annonce(studio, jeton, comfy, ollama):
+    """S'annonce au studio sans jamais s'interrompre, quoi que fasse la boucle.
+
+    L'annonce est ce qui rend la machine VISIBLE, et la boucle de travail, elle,
+    se bloque : de trente secondes a plusieurs minutes pour un rendu, deux
+    minutes pour deposer une entree volumineuse, jusqu'a dix pour livrer une
+    sortie a un studio qui rechigne. Passe les quarante-cinq secondes de
+    SILENCE_MAX, le studio retire la machine de noeuds_pour() et repond
+    « aucune machine ne repond » alors qu'elle est bel et bien la.
+
+    Le battement de /api/noeud/progres bouchait le trou du RENDU, et lui seul.
+    Mesure au banc du 31 aout, contre un faux studio : rendu de 180 s, zero
+    annonce, mais quatre-vingt-dix battements de progression — le studio garde
+    la machine. Puis depot de la sortie, cent secondes : zero annonce ET zero
+    battement, puisque le rendu est fini. Cent secondes de silence complet pour
+    quarante-cinq permises. C'est la que la machine mourait, et c'est le cas
+    qu'aucune rustine ne couvrait. Avec ce fil, dix-huit annonces pendant les
+    180 s du rendu, ecart median 10,0 s, maximal 10,0 s ; et dix pendant les
+    cent secondes du depot, meme cadence.
+
+    Ce fil ne fait QUE s'annoncer. Il n'applique pas la mise a jour, alors que
+    c'est lui qui apprend l'empreinte servie par le studio : se_mettre_a_jour_seul()
+    finit par un os.execv, qui remplace le processus d'un bloc, sans deroulement
+    ni fils survivants. Declenche depuis ici, il couperait un rendu en cours
+    sans rien rendre au studio — une image perdue chez l'utilisateur, pour une
+    mise a jour qui pouvait attendre dix minutes. L'empreinte est donc reposee
+    dans DEPUIS_L_ANNONCE, et la boucle s'en saisit entre deux travaux.
+    """
+    intervalle = ANNONCE_DEFAUT
+    modeles_envoyes = 0.0
+    etat_mesure = 0.0
+    etat = None
+    # Vrai au premier tour : le studio ne sait rien de cette machine tant qu'on
+    # ne lui a rien dit, et attendre cinq minutes la rendrait inutilisable
+    # d'autant.
+    reclame_modeles = True
+    connu = False
+    while True:
+        debut = time.time()
+        attente = intervalle
+        try:
+            if (not EN_COURS_ICI or DEPUIS_L_ANNONCE["remesurer"]
+                    or debut - etat_mesure > ETAT_PENDANT_TRAVAIL):
+                DEPUIS_L_ANNONCE["remesurer"] = False
+                etat = etat_comfy(comfy)
+                # SEULEMENT sur un releve REUSSI. Pose aussi sur un echec, ce
+                # cache s'appliquait a l'echec : une seule lenteur de ComfyUI
+                # au-dela des huit secondes du delai, et l'agent se taisait une
+                # minute entiere meme si la carte repondait a la seconde
+                # suivante. Mesure au banc : soixante-dix secondes entre deux
+                # annonces pendant une livraison, pour quarante-cinq permises.
+                # Le trou que ce fil existe pour boucher, rouvert par une porte
+                # plus etroite.
+                if etat:
+                    etat_mesure = debut
+            DEPUIS_L_ANNONCE["comfy"] = etat
+            if not etat:
+                if connu:
+                    print("  ComfyUI ne repond plus — on attend", flush=True)
+                    connu = False
+                # On s'annonce quand meme, avec ce qu'on a : cette machine
+                # porte peut-etre un modele de langage, et c'est justement
+                # celle dont le studio a besoin quand le sien tombe. Se taire
+                # la rendait invisible pour ça aussi.
+                #
+                # ET SANS OLLAMA AUSSI. Cette annonce ne coutait rien et c'est
+                # elle qui rafraichit « vu » cote studio : la reserver aux
+                # machines a modele de langage laissait les autres muettes.
+                #
+                # « travaux » surtout. Le studio ecrit cette liste a CHAQUE
+                # annonce, cle absente valant liste vide — et avant ce fil,
+                # l'agent ne s'annonçait jamais pendant un travail, donc cette
+                # annonce-la ne pouvait pas exister en cours de rendu.
+                # Maintenant si : sans cette ligne, une machine qui calcule
+                # declare ne rien calculer, et un studio qui redemarre dans
+                # cette fenetre relance une demande que la carte rend encore.
+                menu = {"comfy": False, "travaux": list(EN_COURS_ICI)}
+                if ollama:
+                    menu["llm"] = (etat_ollama(ollama)
+                                   or {"ok": False, "modeles": []})
+                st, _ = appeler(f"{studio}/api/noeud/annonce", jeton, menu)
+                DEPUIS_L_ANNONCE["studio"] = st == 200
+                attente = PAUSE_LONGUE
+                continue
+            corps = dict(etat)
+            # Notre propre empreinte, a chaque annonce. Le studio la compare a
+            # celle de l'agent qu'il sert : c'est le seul moyen qu'il ait de
+            # savoir qu'une machine porte une version perimee. Constate le
+            # 31 aout : l'annulation d'un rendu ne fonctionnait pas sur une
+            # machine, parce que son agent datait d'avant le protocole
+            # d'annulation. Rien ne le disait — elle repondait, elle rendait
+            # des images, et une fonction entiere manquait en silence.
+            corps["empreinte"] = _mon_empreinte()
+            # Copiee au plus tard, juste avant l'envoi. La boucle pose et
+            # retire cette liste sans nous prevenir ; une copie prise plus haut
+            # Reevalue a chaque annonce : un modele peut etre telecharge ou
+            # retire pendant que l'agent tourne.
+            if ollama:
+                corps["llm"] = etat_ollama(ollama) or {"ok": False,
+                                                       "modeles": []}
+            # la liste des modeles change rarement : toutes les cinq minutes
+            # Le studio peut reclamer l'inventaire : il vient de redemarrer
+            # et ne connait plus rien de cette machine. Repondre tout de
+            # suite evite cinq minutes pendant lesquelles il la croit vide.
+            #
+            # Il part desormais AUSSI pendant un rendu, ce qui n'arrivait
+            # jamais avant ce fil. C'est voulu : cote studio manquants() jette
+            # l'inventaire au-dela de 3 x FRAICHEUR_MODELES, soit 180 s, et une
+            # machine qui rendait pendant une heure ressortait de noeuds_pour()
+            # ET de patienter_machine() — le studio refusait la demande suivante
+            # en bloc. Le studio ne le reclame qu'une fois par minute, et ces
+            # dix listages coutent 23 ms en tout (mesure du 31 aout sur un
+            # ComfyUI au repos, 39 fichiers) : ComfyUI les sert de son cache.
+            if debut - modeles_envoyes > 300 or reclame_modeles:
+                corps["modeles"] = modeles_comfy(comfy)
+                modeles_envoyes = debut
+            # AU PLUS TARD, et cette fois vraiment. Copiee plus haut, elle
+            # precedait etat_ollama() et modeles_comfy() — jusqu'a cent
+            # secondes d'entrees-sorties bloquantes, pendant lesquelles la
+            # boucle a pu prendre un travail. On annonçait alors libre une
+            # machine qui calculait. list() d'une liste est une operation
+            # unique, donc sure meme si la boucle ecrit au meme instant : au
+            # pire on lit l'etat d'avant.
+            corps["travaux"] = list(EN_COURS_ICI)
+            st, d = appeler(f"{studio}/api/noeud/annonce", jeton, corps)
+            DEPUIS_L_ANNONCE["studio"] = st == 200
+            if st == 401:
+                print("  jeton refuse par le studio — verifie l'administration",
+                      flush=True)
+                attente = 30
+                continue
+            if st != 200:
+                if connu:
+                    print(f"  studio injoignable ({st}) — on reessaie",
+                          flush=True)
+                    connu = False
+                attente = PAUSE_LONGUE
+                continue
+            d = d if isinstance(d, dict) else {}
+            # Le studio dit s'il connait nos modeles. Il ne les connait
+            # plus apres chacun de ses redemarrages.
+            reclame_modeles = bool(d.get("modeles_demandes"))
+            # « intervalle » etait servi par le studio depuis le debut et
+            # ignore ici. On le suit maintenant, mais borne : voir ANNONCE_MAX.
+            try:
+                intervalle = min(max(int(d.get("intervalle") or ANNONCE_DEFAUT),
+                                     ANNONCE_DEFAUT), ANNONCE_MAX)
+            except (TypeError, ValueError):
+                intervalle = ANNONCE_DEFAUT
+            attente = intervalle
+            DEPUIS_L_ANNONCE["empreinte_agent"] = d.get("empreinte_agent") or ""
+            DEPUIS_L_ANNONCE["battements"] += 1
+            if not connu:
+                nom = d.get("titre") or "?"
+                print(f"  connecte au studio en tant que « {nom} » "
+                      f"— {etat['carte']}, {etat['vram']} Go", flush=True)
+                connu = True
+        except Exception as e:
+            # Ce fil ne doit jamais emporter l'agent, ni s'arreter : s'il meurt,
+            # la machine devient invisible en quarante-cinq secondes et plus
+            # rien ne le dit. On le note et l'on rebat.
+            #
+            # Le « print » lui-meme sous filet : une sortie standard qui casse —
+            # service, tube ferme, journal tourne — levait DEPUIS le
+            # gestionnaire, sortait de la boucle et tuait le fil pour de bon.
+            # Le defaut qu'on corrige, en permanent au lieu de cent secondes.
+            try:
+                print(f"  incident dans l'annonce : {type(e).__name__} "
+                      f"{str(e)[:160]}", flush=True)
+            except Exception:
+                pass
+            attente = PAUSE_LONGUE
+        finally:
+            PREMIERE_ANNONCE.set()
+            # Le temps de l'appel est DEDANS l'intervalle, pas en plus : une
+            # annonce qui met huit secondes ne doit pas repousser la suivante a
+            # dix-huit. Une seconde de plancher pour qu'un studio qui refuse
+            # instantanement ne fasse pas tourner ce fil a vide.
+            time.sleep(max(1.0, attente - (time.time() - debut)))
+
+
 # ══════════════════════════ boucle ════════════════════════════════════
 def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
            epinglee="", maj_auto=True):
     print(f"  studio  : {studio}", flush=True)
     print(f"  ComfyUI : {comfy}", flush=True)
     print("  en service — ctrl+C pour arreter\n", flush=True)
-    derniere_annonce = 0.0
-    modeles_envoyes = 0.0
-    # Vrai au premier tour : le studio ne sait rien de cette machine tant qu'on
-    # ne lui a rien dit, et attendre cinq minutes la rendrait inutilisable
-    # d'autant.
-    reclame_modeles = True
-    connu = False
     dernier_menage = 0.0
-    # Un fil a part, en arriere-plan : la progression ne doit jamais retarder la
-    # demande de travail, et son echec ne coute qu'un pourcentage.
+    # Trois fils de fond, tous daemon : ils ne detiennent rien qu'il faille
+    # rendre, et le processus se termine sans les attendre.
+    #
+    # La progression : elle ne doit jamais retarder la demande de travail, et
+    # son echec ne coute qu'un pourcentage.
     threading.Thread(target=ecouter_progression, args=(comfy,), daemon=True).start()
+    # L'annonce : voir battre_annonce(). C'est elle qui rend la machine
+    # visible, et la boucle ci-dessous se bloque des qu'elle travaille.
+    threading.Thread(target=battre_annonce, args=(studio, jeton, comfy, ollama),
+                     daemon=True).start()
     if ollama:
         threading.Thread(target=servir_le_langage, args=(studio, jeton, ollama),
                          daemon=True).start()
+    # Le premier battement dit si la carte repond et si le studio nous accepte.
+    # Reclamer du travail avant de le savoir, c'est prendre un rendu qu'on ne
+    # peut pas faire. Soixante secondes de plafond : au-dela, le battement est
+    # en peine et la boucle se debrouillera avec ce qu'elle a.
+    PREMIERE_ANNONCE.wait(60)
+    dernier_battement = 0
     while True:
         try:
             maintenant = time.time()
@@ -778,73 +1047,28 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                 if partis:
                     print(f"  {partis} sortie(s) effacee(s) ici — le studio les a",
                           flush=True)
-            # 1. s'annoncer regulierement : c'est ce qui rend le noeud visible
-            if maintenant - derniere_annonce > 10:
-                etat = etat_comfy(comfy)
-                if not etat:
-                    if connu:
-                        print("  ComfyUI ne repond plus — on attend")
-                        connu = False
-                    # On s'annonce quand meme, avec ce qu'on a : cette machine
-                    # porte peut-etre un modele de langage, et c'est justement
-                    # celle dont le studio a besoin quand le sien tombe. Se
-                    # taire la rendait invisible pour ça aussi.
-                    if ollama:
-                        appeler(f"{studio}/api/noeud/annonce", jeton,
-                                {"comfy": False,
-                                 "llm": etat_ollama(ollama) or {"ok": False,
-                                                                "modeles": []}})
-                    derniere_annonce = maintenant
-                    time.sleep(PAUSE_LONGUE)
-                    continue
-                corps = dict(etat)
-                # Notre propre empreinte, a chaque annonce. Le studio la compare
-                # a celle de l'agent qu'il sert : c'est le seul moyen qu'il ait
-                # de savoir qu'une machine porte une version perimee. Constate le
-                # 31 aout : l'annulation d'un rendu ne fonctionnait pas sur une
-                # machine, parce que son agent datait d'avant le protocole
-                # d'annulation. Rien ne le disait — elle repondait, elle rendait
-                # des images, et une fonction entiere manquait en silence.
-                corps["empreinte"] = _mon_empreinte()
-                corps["travaux"] = list(EN_COURS_ICI)
-                # Reevalue a chaque annonce : un modele peut etre telecharge ou
-                # retire pendant que l'agent tourne.
-                if ollama:
-                    corps["llm"] = etat_ollama(ollama) or {"ok": False,
-                                                           "modeles": []}
-                # la liste des modeles change rarement : toutes les cinq minutes
-                # Le studio peut reclamer l'inventaire : il vient de redemarrer
-                # et ne connait plus rien de cette machine. Repondre tout de
-                # suite evite cinq minutes pendant lesquelles il la croit vide.
-                if maintenant - modeles_envoyes > 300 or reclame_modeles:
-                    corps["modeles"] = modeles_comfy(comfy)
-                    modeles_envoyes = maintenant
-                st, d = appeler(f"{studio}/api/noeud/annonce", jeton, corps)
-                derniere_annonce = maintenant
-                if st == 401:
-                    print("  jeton refuse par le studio — verifie l'administration")
-                    time.sleep(30)
-                    continue
-                if st != 200:
-                    if connu:
-                        print(f"  studio injoignable ({st}) — on reessaie")
-                        connu = False
-                    time.sleep(PAUSE_LONGUE)
-                    continue
-                # Le studio dit s'il connait nos modeles. Il ne les connait
-                # plus apres chacun de ses redemarrages.
-                reclame_modeles = bool((d or {}).get("modeles_demandes"))
-                # ICI et nulle part ailleurs : le travail precedent est rendu,
-                # le suivant pas encore reclame. C'est le seul instant de la
-                # boucle ou se remplacer ne trahit personne.
-                if maj_auto:
-                    se_mettre_a_jour_seul(studio, (d or {}).get("empreinte_agent"),
-                                          epinglee)
-                if not connu:
-                    nom = (d or {}).get("titre") or "?"
-                    print(f"  connecte au studio en tant que « {nom} » "
-                          f"— {etat['carte']}, {etat['vram']} Go", flush=True)
-                    connu = True
+            # 1. l'annonce bat dans son propre fil ; ici on ne fait que
+            # relever ce qu'elle en a rapporte.
+            #
+            # ICI et nulle part ailleurs : le travail precedent est rendu, le
+            # suivant pas encore reclame. C'est le seul instant ou se remplacer
+            # ne trahit personne, et c'est pourquoi le fil d'annonce se contente
+            # de poser l'empreinte au lieu de l'appliquer — son os.execv, tire
+            # pendant un rendu, emporterait l'image avec le processus.
+            battement = DEPUIS_L_ANNONCE["battements"]
+            if maj_auto and battement != dernier_battement:
+                dernier_battement = battement
+                se_mettre_a_jour_seul(studio,
+                                      DEPUIS_L_ANNONCE["empreinte_agent"],
+                                      epinglee)
+            # Pas de carte, ou pas de studio : on ne reclame rien. Prendre un
+            # travail qu'on ne peut pas faire le ferait echouer chez
+            # l'utilisateur alors qu'une autre machine l'aurait pris. Le fil
+            # d'annonce, lui, continue de battre — la machine reste visible, et
+            # le studio sait qu'elle est la sans sa carte.
+            if DEPUIS_L_ANNONCE["comfy"] is None or not DEPUIS_L_ANNONCE["studio"]:
+                time.sleep(PAUSE_LONGUE)
+                continue
 
             # 2. reclamer du travail
             st, travail = appeler(f"{studio}/api/noeud/travail", jeton, secondes=30)
@@ -901,6 +1125,10 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                 print(f"  travail {tid[:8]} annule par le studio apres "
                       f"{secondes:.0f} s", flush=True)
                 EN_COURS_ICI.clear()
+                # La carte est rendue : que le fil la remesure tout de
+                # suite, pour que le travail suivant ne soit pas reclame
+                # sur un etat vieux de trente secondes.
+                DEPUIS_L_ANNONCE["remesurer"] = True
                 continue
 
             # 3. deposer les fichiers produits, puis rendre le resultat
@@ -929,6 +1157,10 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
             print(f"  travail {tid[:8]} {'echoue' if erreur else 'rendu'} "
                   f"en {secondes:.0f} s — {len(deposes)} fichier(s)", flush=True)
             EN_COURS_ICI.clear()
+            # La carte est rendue : que le fil la remesure tout de
+            # suite, pour que le travail suivant ne soit pas reclame
+            # sur un etat vieux de trente secondes.
+            DEPUIS_L_ANNONCE["remesurer"] = True
         except KeyboardInterrupt:
             raise
         except Exception as e:
@@ -936,6 +1168,10 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
             # studio qu'un rendu tourne encore, et il attendrait un resultat qui
             # ne viendra jamais.
             EN_COURS_ICI.clear()
+            # La carte est rendue : que le fil la remesure tout de
+            # suite, pour que le travail suivant ne soit pas reclame
+            # sur un etat vieux de trente secondes.
+            DEPUIS_L_ANNONCE["remesurer"] = True
             print(f"  incident : {type(e).__name__} {str(e)[:160]}", flush=True)
             time.sleep(PAUSE_LONGUE)
 
