@@ -155,6 +155,7 @@ td .detail{display:block;max-width:34ch}
       <button type="button" role="tab" id="o-machines" data-volet="machines" aria-controls="v-machines">machines</button>
       <button type="button" role="tab" id="o-avis" data-volet="avis" aria-controls="v-avis">retours</button>
       <button type="button" role="tab" id="o-cles" data-volet="cles" aria-controls="v-cles">clés d'API</button>
+      <button type="button" role="tab" id="o-couts" data-volet="couts" aria-controls="v-couts">coût du nuage</button>
       <button type="button" role="tab" id="o-comptes" data-volet="comptes" aria-controls="v-comptes">comptes</button>
       <button type="button" role="tab" id="o-aiguilleur" data-volet="aiguilleur" aria-controls="v-aiguilleur">aiguilleur</button>
     </nav>
@@ -172,11 +173,19 @@ td .detail{display:block;max-width:34ch}
       <h2 style="margin-top:0">pause</h2>
       <p class="aide">Une machine en pause continue de s'annoncer et reste à
         jour, elle ne reçoit simplement plus de travail. Une demande qui la
-        réclame patiente — puis renonce, si la pause dure. Au-delà de ce délai,
-        le studio refuse tout de suite plutôt que de laisser espérer.</p>
+        réclame patiente au premier temps ; passé ce délai, le studio arrête de
+        la faire attendre devant l'écran et lui propose la suite — garder la
+        demande de côté, et la lancer toute seule au retour de la machine.</p>
       <label>patienter au plus
         <input type="number" id="pauseMinutes" min="0" max="1440" step="5"
                style="width:5em"> minutes</label>
+      <p class="aide">Puis combien de temps la demande reste en attente de sa
+        machine, prête à repartir seule. Douze heures : une pause commencée le
+        soir se termine le lendemain matin. À zéro, il n'y a plus de second
+        temps du tout et le studio refuse tout de suite, comme avant.</p>
+      <label>garder la demande
+        <input type="number" id="armeeHeures" min="0" max="168" step="1"
+               style="width:5em"> heures</label>
       <button id="poserPause">enregistrer</button>
     </div>
 
@@ -230,6 +239,39 @@ td .detail{display:block;max-width:34ch}
       <div class="alerte" id="alerteCles"></div>
     </div>
 
+
+    </section>
+    <section class="volet" id="v-couts" role="tabpanel" aria-labelledby="o-couts">
+    <div class="carte">
+      <h2 style="margin-top:0">ce que le nuage a coûté</h2>
+      <p class="aide">Chaque appel <b>abouti</b> à un fournisseur distant est
+        consigné à côté des conversations, une ligne par appel. Un appel qui
+        échoue n'apparaît pas&nbsp;: il n'est pas facturé, et le compter
+        fermerait le robinet pour une dépense qui n'a pas eu lieu.</p>
+      <p class="aide"><b>Aucun prix n'est affiché ici.</b> Les tarifs changent
+        d'un trimestre à l'autre et ce logiciel ne les suit pas&nbsp;: un
+        montant en euros serait faux sans que personne ne s'en aperçoive. Ce qui
+        est montré est mesuré — les jetons quand l'API les rend, les octets
+        reçus, la durée. La multiplication par le tarif de votre facture vous
+        appartient.</p>
+      <div id="couts"></div>
+    </div>
+
+    <div class="carte">
+      <h2 style="margin-top:0">plafond mensuel</h2>
+      <p class="aide">Au-delà de ce nombre d'appels distants dans le mois, le
+        compte revient au modèle local&nbsp;: l'interrupteur du nuage s'éteint
+        pour lui, et le journal de chaque demande dit pourquoi. La demande en
+        cours n'est pas cassée — le moteur local prend simplement la suite.
+        <b>Zéro veut dire aucune limite</b>, et c'est le réglage d'origine.</p>
+      <div class="rangee">
+        <label>au plus
+          <input type="number" id="plafondNuage" min="0" max="100000" step="10"
+                 style="width:7em"> appels distants par mois et par compte</label>
+        <button id="poserPlafond">enregistrer</button>
+      </div>
+      <div class="alerte" id="alertePlafond"></div>
+    </div>
 
     </section>
     <section class="volet" id="v-comptes" role="tabpanel" aria-labelledby="o-comptes">
@@ -651,6 +693,97 @@ async function rafraichirAiguilleur(rendu) {
     + (bancs.length ? " \u2014 " + bancs.join(" \u00b7 ") : "");
 }
 
+/* ── ce que le nuage a coûté ──────────────────────────────────────────
+   Des nombres mesurés, et rien d'autre. Pas d'euros : les tarifs changent d'un
+   trimestre à l'autre, cette page ne les suivrait pas, et un montant faux
+   affiché avec assurance vaut moins que pas de montant du tout. */
+const octetsLisibles = o => !o ? "—"
+  : o < 1024 * 1024 ? `${Math.round(o / 1024)} ko`
+  : `${(o / 1048576).toFixed(1)} Mo`;
+
+const dureeLisible = s => !s ? "—"
+  : s < 60 ? `${Math.round(s)} s`
+  : s < 3600 ? `${Math.round(s / 60)} min`
+  : `${(s / 3600).toFixed(1)} h`;
+
+const nombre = n => (n || 0).toLocaleString("fr-FR");
+
+/* « 2026-08 » ne se lit pas dans un titre. Le 15 du mois plutôt que le 1er :
+   un fuseau à l'ouest ramenait la date au mois précédent. */
+function moisLisible(m) {
+  const [a, mm] = m.split("-").map(Number);
+  return new Date(a, mm - 1, 15).toLocaleDateString("fr-FR",
+    { month: "long", year: "numeric" });
+}
+
+/* Le décompte de jetons vient de l'API du fournisseur, ou de nulle part : Veo
+   et Meshy ne rendent qu'un nom de tâche. On le dit plutôt que de laisser une
+   somme basse passer pour une petite facture. */
+function jetonsLisibles(x) {
+  const dits = x.appels - x.sans_jetons;
+  if (!dits) return `<span class="detail">non rendus par le fournisseur</span>`;
+  return nombre(x.jetons_entree) + " → " + nombre(x.jetons_sortie)
+    + (x.sans_jetons
+       ? `<div class="detail">${nombre(x.sans_jetons)} appel(s) sans décompte</div>`
+       : "");
+}
+
+async function rafraichirCouts() {
+  const { ok, d } = await api("/api/admin/couts");
+  if (!ok || !d) return;
+  const champ = $("#plafondNuage");
+  if (champ && document.activeElement !== champ) champ.value = d.plafond ?? 0;
+  const zone = $("#couts");
+  zone.innerHTML = "";
+  for (const m of d.mois) {
+    const titre = document.createElement("h2");
+    titre.textContent = moisLisible(m.mois);
+    zone.appendChild(titre);
+    if (!m.comptes.length) {
+      zone.insertAdjacentHTML("beforeend",
+        '<p class="vide">aucun appel distant ce mois-ci</p>');
+      continue;
+    }
+    const lignes = [];
+    for (const c of m.comptes) {
+      const atteint = d.plafond > 0 && c.appels >= d.plafond;
+      lignes.push(`<tr>
+        <td><b>${ech(c.compte)}</b>${atteint
+            ? '<div class="perime">plafond atteint — retour au local</div>' : ""}</td>
+        <td class="detail">tous</td>
+        <td><b>${nombre(c.appels)}</b>${d.plafond > 0
+            ? `<div class="detail">sur ${nombre(d.plafond)}</div>` : ""}</td>
+        <td>${jetonsLisibles(c)}</td>
+        <td>${octetsLisibles(c.octets)}</td>
+        <td>${dureeLisible(c.secondes)}</td></tr>`);
+      for (const x of c.detail) {
+        lignes.push(`<tr>
+          <td></td>
+          <td class="detail">${ech(x.fournisseur)} · ${ech(x.modalite)}</td>
+          <td class="detail">${nombre(x.appels)}</td>
+          <td class="detail">${jetonsLisibles(x)}</td>
+          <td class="detail">${octetsLisibles(x.octets)}</td>
+          <td class="detail">${dureeLisible(x.secondes)}</td></tr>`);
+      }
+    }
+    zone.insertAdjacentHTML("beforeend", `<div class="tableau"><table>
+      <thead><tr><th>compte</th><th>fournisseur</th><th>appels</th>
+        <th>jetons entrée → sortie</th><th>reçu</th><th>temps</th></tr></thead>
+      <tbody>${lignes.join("")}</tbody></table></div>`);
+  }
+}
+
+$("#poserPlafond").onclick = async () => {
+  $("#alertePlafond").textContent = "";
+  const r = await api("/api/admin/reglages", "POST",
+                      { plafond_nuage: Number($("#plafondNuage").value) });
+  if (!r.ok) {
+    $("#alertePlafond").textContent = (r.d && r.d.erreur) || "réglage refusé";
+    return;
+  }
+  rafraichirCouts();
+};
+
 async function rafraichir() {
   // Ne pas reconstruire le tableau pendant qu'un pli est ouvert : on y lit des
   // details, et un essai de modele peut demander trois minutes. Le rafraichir
@@ -731,6 +864,11 @@ async function rafraichir() {
   const champ = $("#pauseMinutes");
   if (champ && document.activeElement !== champ)
     champ.value = d.pause_propose ?? 30;
+  /* Le même garde-fou que pour la pause : le rafraîchissement automatique
+     écrasait sinon le chiffre qu'on était en train de taper. */
+  const champH = $("#armeeHeures");
+  if (champH && document.activeElement !== champH)
+    champH.value = d.armee_heures ?? 12;
   $("#languePanne").innerHTML = !casses.length ? "" : `
     <div class="carte" style="border-color:var(--rouge)">
       <h2 style="margin-top:0">modèle de langage qui ne se charge pas</h2>
@@ -746,7 +884,8 @@ async function rafraichir() {
 
 $("#poserPause").onclick = async () => {
   await api("/api/admin/reglages", "POST",
-            { pause_propose: Number($("#pauseMinutes").value) });
+            { pause_propose: Number($("#pauseMinutes").value),
+              armee_heures: Number($("#armeeHeures").value) });
   rafraichir();
 };
 
@@ -805,7 +944,7 @@ document.querySelector("#entrainerAig").onclick = async e => {
 (async () => {
   const r = await api("/api/admin/noeuds");
   if (r.statut === 403) { montrerEntree(); }
-  else { $("#console").style.display = ""; rafraichir(); rafraichirAvis(); rafraichirCles(); rafraichirComptes(); rafraichirAiguilleur(); }
+  else { $("#console").style.display = ""; rafraichir(); rafraichirAvis(); rafraichirCles(); rafraichirComptes(); rafraichirAiguilleur(); rafraichirCouts(); }
   setInterval(() => { if ($("#console").style.display !== "none") rafraichir(); }, 5000);
 })();
 
@@ -826,6 +965,10 @@ function montrer(cle, ecrire = true) {
     // pas s'arreter sur chaque onglet en tabulant.
     b.tabIndex = c === cle ? 0 : -1;
   }
+  // Le seul volet dont les chiffres bougent sans qu'on ait rien fait : il se
+  // relit en s'ouvrant, plutot que de rejoindre le rafraichissement de cinq
+  // secondes qui interrogerait le compteur en permanence pour personne.
+  if (cle === "couts") rafraichirCouts();
   if (ecrire) {
     try { localStorage.setItem("adminVolet", cle); } catch (e) {}
     if (location.hash.slice(1) !== cle) history.replaceState(null, "", "#" + cle);

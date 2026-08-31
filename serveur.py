@@ -203,6 +203,16 @@ def verrou_modele(sous, nom):
     return VERROUS_MODELE.setdefault((sous, nom), asyncio.Lock())
 FICHIER_FILE = os.path.join(DOSSIER_CONV, "_file.json")
 EN_FILE = {}                # tid -> de quoi refaire la demande apres un arret
+# Les demandes ARMEES : celles qui attendent qu'une machine en pause revienne.
+# Elles n'occupent aucun travailleur — il n'y en a que trois, et en immobiliser
+# un devant une carte que personne ne compte rallumer, c'est fermer un tiers du
+# studio pour une demande qui, elle, ne coute rien a garder.
+#
+# Rien de plus a persister : elles restent dans EN_FILE, donc dans _file.json,
+# et reprendre_file() les remet en file au reveil — ou elles se rearment d'elles
+# memes si la machine dort encore. Ce registre-ci ne vit que le temps du
+# processus, et c'est suffisant.
+ARMEES = {}                 # tid -> {"quand", "depuis", "jusqua", "cle", "noeuds", "titres"}
 
 
 def sauver_file():
@@ -1308,6 +1318,37 @@ async def patienter_machine(cle, tid):
     return None
 
 
+class MachineEnPause(Exception):
+    """Une machine EN PAUSE saurait faire ce travail, et aucune autre.
+
+    Ni un echec ni une attente : une demande a mettre de cote. Portee jusqu'a
+    travailleur(), qui l'arme au lieu de l'echouer. Le refus d'avant rendait la
+    main a l'utilisateur avec sa demande a retaper le jour ou la machine
+    revenait — et personne ne se souvient d'une demande une demi-heure plus tard.
+
+    Une Exception et non une RuntimeError : PanneNoeud et MachineIncapable en
+    heritent, et soumettre_robuste les rattrape pour reprendre AILLEURS. Passer
+    par la meme porte enverrait chercher une autre machine a une demande dont on
+    vient justement d'etablir qu'il n'y en a pas.
+    """
+
+    def __init__(self, cle, dormantes):
+        self.cle = cle
+        self.noeuds = [x["id"] for x in dormantes]
+        self.titres = [x.get("titre", x["id"]) for x in dormantes]
+        super().__init__(" et ".join(self.titres) + " est en pause")
+
+    @property
+    def refus(self):
+        """Le message d'avant, garde pour le reglage a zero : quand personne ne
+        veut de l'attente, refuser tout de suite reste la bonne reponse."""
+        return (f"{' et '.join(self.titres)} pourrait faire ce travail, mais "
+                f"elle est en pause depuis plus de "
+                f"{PREFERENCES['pause_propose']} minutes. Reactive-la dans "
+                f"/admin, ou demande quelque chose qu'une autre machine sait "
+                f"faire.")
+
+
 async def patienter_pause(cle, tid):
     """Attend qu'une machine en pause revienne, si l'attente a un sens.
 
@@ -1332,11 +1373,9 @@ async def patienter_pause(cle, tid):
         return None
     limite = PREFERENCES["pause_propose"] * 60
     if all(time.time() - x["pause"] >= limite for x in en_pause_):
-        noms = " et ".join(x.get("titre", x["id"]) for x in en_pause_)
-        raise RuntimeError(
-            f"{noms} pourrait faire ce travail, mais elle est en pause depuis "
-            f"plus de {PREFERENCES['pause_propose']} minutes. Reactive-la dans "
-            f"/admin, ou demande quelque chose qu'une autre machine sait faire.")
+        # Plus un refus : une demande a mettre de cote. travailleur() decide
+        # quoi en faire — c'est lui qui sait qu'il ne doit pas rester la.
+        raise MachineEnPause(cle, en_pause_)
     noms = " ou ".join(x.get("titre", x["id"]) for x in en_pause_)
     journal(tid, f"{noms} en pause — ta demande attend son retour, "
                  f"annule-la si tu preferes")
@@ -1350,11 +1389,141 @@ async def patienter_pause(cle, tid):
         if not restantes:
             return None
         if all(time.time() - x["pause"] >= limite for x in restantes):
-            noms = " et ".join(x.get("titre", x["id"]) for x in restantes)
-            raise RuntimeError(
-                f"{noms} est toujours en pause apres "
-                f"{PREFERENCES['pause_propose']} minutes — le travail n'est pas "
-                f"perdu, relance-le quand elle sera revenue.")
+            # On a patiente le temps prevu et la pause n'a pas bouge : la meme
+            # mise de cote que si elle avait ete longue des le depart. Le
+            # travailleur retourne servir la file au lieu de dormir ici.
+            raise MachineEnPause(cle, restantes)
+
+
+def echouer(tid, quoi):
+    """Termine une demande en erreur, le tour de la conversation compris.
+
+    Le « except Exception » d'executer() le fait deja pour ce qui casse pendant
+    le travail. Une demande armee, elle, n'est plus dans aucun executer quand
+    son attente expire : sans cette fonction elle serait restee « en cours »
+    pour toujours dans la conversation, ce qui est la pire des trois fins.
+    """
+    t = TACHES.get(tid) or {}
+    conv = CONVERSATIONS.get(t.get("conversation"))
+    if conv:
+        enregistrer_tour(conv, tid, t.get("demande", ""), {}, None, None, [],
+                         "erreur", quoi)
+    journal(tid, f"ERREUR : {quoi}", etat="erreur")
+
+
+def armer(tid, e):
+    """Met la demande de cote jusqu'au retour de la machine. Vrai si c'est fait.
+
+    « arme_depuis » vit sur l'entree de file et non dans ARMEES, pour deux
+    raisons. L'echeance se compte depuis la PREMIERE mise de cote : une machine
+    qui sort de pause puis y retourne rearmerait sinon la demande a chaque
+    aller-retour, et l'expiration n'arriverait jamais. Et elle est ecrite dans
+    _file.json, donc un redemarrage du studio ne remet pas le compteur a zero.
+    """
+    heures = PREFERENCES["armee_heures"]
+    if heures <= 0 or (TACHES.get(tid) or {}).get("annulee") or tid not in EN_FILE:
+        return False
+    depuis = EN_FILE[tid].get("arme_depuis")
+    if not isinstance(depuis, (int, float)):
+        depuis = EN_FILE[tid]["arme_depuis"] = time.time()
+        sauver_file()
+    ARMEES[tid] = {"quand": time.time(), "depuis": depuis, "cle": e.cle,
+                   "noeuds": list(e.noeuds), "titres": list(e.titres),
+                   "jusqua": depuis + heures * 3600}
+    reste = depuis + heures * 3600 - time.time()
+    journal(tid, f"{' et '.join(e.titres)} pourrait faire ce travail, mais elle "
+                 f"est en pause depuis plus de {PREFERENCES['pause_propose']} "
+                 f"minutes. Ta demande est gardee en attente : elle partira "
+                 f"toute seule des que la machine reviendra, pendant encore "
+                 + (f"{reste / 3600:.0f} h" if reste >= 5400
+                    else f"{reste / 60:.0f} min")
+                 + ". Retire-la de la file si tu preferes demander autre chose.")
+    return True
+
+
+async def _relancer_armee(tid, msg):
+    """Remet une demande armee dans la file, avec exactement ce qu'elle portait.
+
+    A la QUEUE de la file et non en tete : elle a attendu des heures, quelques
+    minutes de plus ne se sentent pas, et passer devant ceux qui patientent
+    depuis dix minutes serait plus surprenant que juste.
+    """
+    # Desarmee AVANT le moindre await : la fin de pause et le battement de la
+    # machine arrivent souvent dans la meme seconde, et les deux reveils
+    # auraient mis la meme demande deux fois dans la file — donc deux images.
+    a = ARMEES.pop(tid, None)
+    if a is None:
+        return False
+    r = EN_FILE.get(tid)
+    conv = CONVERSATIONS.get((r or {}).get("conversation"))
+    if not r or not conv or (TACHES.get(tid) or {}).get("annulee"):
+        return False
+    journal(tid, msg, etat="en cours")
+    ATTENTE.append(tid)
+    sauver_file()
+    await FILE_ATTENTE.put({"tid": tid, "texte": r.get("texte", ""), "conv": conv,
+                            "image": r.get("image"), "modele": r.get("modele"),
+                            "taille": r.get("taille"),
+                            "priorite": r.get("priorite", ""),
+                            "noeud": r.get("noeud"), "plan": r.get("plan"),
+                            "modele_choisi": r.get("modele_choisi", False),
+                            "graine": r.get("graine")})
+    return True
+
+
+async def reveiller_armees(ident=None):
+    """Relance les demandes armees qu'une machine peut enfin servir.
+
+    On ne demande pas « la pause est-elle finie ? » mais « choisir_noeud rend-il
+    quelque chose ? » : c'est la seule question dont la reponse fasse repartir le
+    travail. Un modele arrive entre-temps, une machine rallumee qui s'annonce,
+    une autre carte devenue eligible reveillent donc aussi bien qu'un clic dans
+    /admin — et un battement de machine TOUJOURS en pause ne declenche rien.
+
+    « ident » restreint aux demandes qui attendaient CETTE machine : l'annonce
+    arrive six fois par minute et par machine, et il n'y a pas de raison de
+    reexaminer tout le monde a chaque battement.
+    """
+    if not ARMEES or FILE_ATTENTE is None:
+        return 0
+    partis = 0
+    for tid in list(ARMEES):
+        a = ARMEES.get(tid) or {}
+        if ident and ident not in a.get("noeuds", ()):
+            continue
+        # Quinze secondes de plancher. Une machine qui bascule entre pause et
+        # travail relancerait sinon la demande a chaque aller-retour, et chaque
+        # relance coute une analyse complete au modele de langage.
+        if time.time() - a.get("quand", 0) < 15:
+            continue
+        cible = choisir_noeud(a["cle"]) if a.get("cle") in CATALOGUE else None
+        if not cible:
+            continue
+        if await _relancer_armee(
+                tid, f"{cible.get('titre', cible['id'])} est revenue — ta "
+                     f"demande repart d'elle-meme"):
+            partis += 1
+    return partis
+
+
+async def expirer_armees():
+    """Une demande gardee en attente n'est pas gardee pour toujours.
+
+    Passe le delai, on le DIT et on rend la main. Une demande qui aurait
+    silencieusement disparu du panneau serait pire que le refus qu'on vient de
+    remplacer : au moins le refus arrivait pendant que l'utilisateur regardait.
+    """
+    for tid in list(ARMEES):
+        a = ARMEES.get(tid) or {}
+        if time.time() < a.get("jusqua", 0):
+            continue
+        ARMEES.pop(tid, None)
+        EN_FILE.pop(tid, None)
+        sauver_file()
+        heures = max(1, round((a.get("jusqua", 0) - a.get("depuis", 0)) / 3600))
+        echouer(tid, f"{' et '.join(a.get('titres') or ['la machine'])} n'est "
+                     f"pas revenue en {heures} h : ta demande a ete retiree de "
+                     f"l'attente. Relance-la quand la machine sera la.")
 
 
 # Ce qu'on a mesure, par (machine, moteur, taille). Reconstruit depuis les
@@ -7279,6 +7448,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         TACHES.setdefault(tid, {})["secondes"] = secondes
         enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, "fini")
         journal(tid, f"termine en {secondes:.0f} s", etat="fini")
+    except MachineEnPause:
+        # Elle ne dit pas un echec mais une remise a plus tard : le tour reste
+        # « en cours », et c'est travailleur() qui met la demande de cote. Sans
+        # ce relais, le filet ci-dessous l'ecrivait en erreur — exactement le
+        # refus qu'on remplace, avec un autre texte.
+        raise
     except Exception as e:
         enregistrer_tour(conv, tid, texte, locals().get("plan") or {},
                          (locals().get("plan") or {}).get("intention"),
@@ -7512,6 +7687,19 @@ async def travailleur():
                 # propre arret et repartait attendre a la porte. Le « finally »
                 # ci-dessous tourne quand meme.
                 raise
+        except MachineEnPause as e:
+            # Ni un echec ni une fin : la demande est mise de cote et le
+            # travailleur repart AUSSITOT chercher la suivante. Il n'y en a que
+            # trois, et rester la a guetter une carte que son proprietaire ne
+            # rallumera peut-etre pas ce soir fermerait un tiers du studio.
+            #
+            # « fini_pour_de_bon » reste faux : la demande garde sa place dans
+            # EN_FILE, donc dans _file.json, et un redemarrage la retrouve.
+            fini_pour_de_bon = not armer(tid, e)
+            if fini_pour_de_bon:
+                # Reglage a zero, ou demande deja retiree pendant l'analyse : le
+                # refus d'avant reste le bon message dans ces deux cas-la.
+                echouer(tid, e.refus)
         except Exception as e:                       # filet : la file ne doit jamais mourir
             journal(tid, f"ERREUR inattendue : {e}", etat="erreur")
             fini_pour_de_bon = True
@@ -7761,7 +7949,12 @@ def _ligne_file(tid, pid, admin, rang):
              # « attend_carte » prime sur l'etat de la tache : elle est bien « en
              # cours » du point de vue du studio, mais aucune carte ne calcule
              # pour elle, et c'est ce que l'utilisateur regarde.
-             "etat": ("attente carte" if t.get("attend_carte")
+             # « attente machine » avant tout le reste : la demande est
+             # armee, elle n'est ni dans la file ni sur une carte, elle attend
+             # qu'une machine en pause revienne. C'est le seul etat ou l'attente
+             # se compte en heures, donc le seul qu'il faille vraiment nommer.
+             "etat": ("attente machine" if tid in ARMEES
+                      else "attente carte" if t.get("attend_carte")
                       else t.get("etat") or "en attente"),
              # La derniere ligne du journal dit ou en est le travail bien mieux
              # qu'un pourcentage : « traduit pour flux1 », « 40 % telecharge ».
@@ -7793,6 +7986,14 @@ async def api_file(req):
                            avance=dict(a) if a.get("total") else None))
     for rang, tid in enumerate(ATTENTE, start=1):
         lignes.append(dict(_ligne_file(tid, pid, admin, rang), en_cours=False))
+    # Les armees en dernier, et sans rang : elles n'attendent pas la carte mais
+    # son proprietaire, et se ranger devant ou derriere quelqu'un n'a aucun sens
+    # pour elles. Les montrer est indispensable — c'est de cette ligne que part
+    # le bouton « retirer », le seul recours de l'utilisateur.
+    for tid_arme in list(ARMEES):
+        reste = (ARMEES[tid_arme].get("jusqua", 0) - time.time()) / 3600
+        lignes.append(dict(_ligne_file(tid_arme, pid, admin, 0), en_cours=False,
+                           armee=True, reste_h=max(0.0, reste)))
     return web.json_response({
         # Le premier des miens qui calcule : la page s'en sert pour savoir
         # qu'elle a quelque chose sur le feu, pas pour compter.
@@ -7805,7 +8006,13 @@ async def api_file(req):
         # « 1 en file » et voyait trois lignes dans le panneau — le compteur et
         # la liste ne comptaient pas la meme chose.
         "en_vol": len(EN_VOL),
-        "a_moi": sum(1 for t in list(ATTENTE) + list(EN_VOL) if mien(t)),
+        # Combien attendent une machine en pause. Sert a l'en-tete : une file
+        # vide avec trois demandes armees n'est pas une file vide.
+        "armees": len(ARMEES),
+        # Les armees comptent dans « a moi » : la demande n'est pas perdue, et
+        # ce compteur est le seul endroit ou l'utilisateur peut s'en souvenir.
+        "a_moi": sum(1 for t in list(ATTENTE) + list(EN_VOL) + list(ARMEES)
+                     if mien(t)),
         "admin": admin,
         "lignes": lignes,
         # conserve : d'anciennes pages peuvent encore le lire
@@ -7826,9 +8033,16 @@ async def api_file_annuler(req):
         # existe, et permettrait de sonder la file d'un autre.
         return web.json_response({"erreur": "demande inconnue"}, status=404)
 
-    if tid in ATTENTE or (t.get("etat") or "en attente") == "en attente":
+    if (tid in ATTENTE or tid in ARMEES
+            or (t.get("etat") or "en attente") == "en attente"):
         if tid in ATTENTE:
             ATTENTE.remove(tid)
+        # Une demande armee attend une machine, pas un travailleur : il n'y a
+        # rien a interrompre, il suffit de la desarmer. Sans cette ligne le
+        # retrait repondait « cette demande est deja terminee » — son etat est
+        # « en cours » — et la demande repartait a la sortie de pause, des
+        # heures apres que l'utilisateur l'a retiree.
+        ARMEES.pop(tid, None)
         # La marque, et non l'etat : une tache peut etre en erreur pour dix
         # autres raisons, et confondre les deux ferait sauter des travaux
         # legitimes au moment ou le travailleur les sort de la file.
@@ -8577,6 +8791,13 @@ async def veiller_noeuds():
     while True:
         try:
             purger_fermees()
+            # Le filet des demandes armees. Les deux reveils precis — la sortie
+            # de pause et le battement de la machine — couvrent ce qu'on sait
+            # anticiper ; celui-ci couvre le reste : un registre modifie a la
+            # main, un modele arrive, une autre machine devenue capable. Et
+            # c'est le seul endroit ou une attente expiree peut etre dite.
+            await expirer_armees()
+            await reveiller_armees()
             await sonder_noeuds()
             for x in NOEUDS:
                 if ETAT_NOEUDS.get(x["id"], {}).get("repond"):
@@ -8797,7 +9018,13 @@ FICHIER_PREFERENCES = os.path.join(DOSSIER_CONV, "_reglages.json")
 # Combien de minutes une machine peut rester en pause en continuant de faire
 # patienter les demandes qui la reclament. Au-dela, on refuse plutot que de
 # laisser esperer : personne ne surveille une pause d'une heure.
-PREFERENCES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30)}
+# Et combien d'HEURES la demande reste ensuite armee, prete a repartir toute
+# seule au retour de la machine. Douze : une pause commencee le soir se termine
+# le lendemain matin, et c'est la plus longue absence au bout de laquelle une
+# image qui arrive toute seule fait encore plaisir plutot que peur. A zero, on
+# retrouve le refus immediat d'avant — pour qui prefere qu'un refus soit un refus.
+PREFERENCES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30),
+               "armee_heures": int(os.environ.get("STUDIO_ARMEE_HEURES") or 12)}
 
 
 def charger_reglages():
@@ -8990,6 +9217,13 @@ async def api_noeud_annonce(req):
     # toutes les dix secondes ecriraient sinon ce fichier neuf fois par minute
     # pour rien.
     sauver_parc()
+    # Une machine eteinte pendant sa pause ne repasse pas par /admin en
+    # revenant : elle se contente de s'annoncer. C'est donc ici aussi que se
+    # reveille ce qui l'attendait. Le test vit dans reveiller_armees(), qui ne
+    # relance que si une machine est VRAIMENT eligible — le battement d'une
+    # machine encore en pause ne declenche rien, six fois par minute.
+    if ARMEES:
+        await reveiller_armees(x["id"])
     # Tant qu'on ne connait pas ses modeles, on les reclame a chaque battement.
     # Sans cela, une machine bien equipee reste declaree incapable de tout
     # pendant les cinq minutes qui suivent un redemarrage du studio.
@@ -9334,6 +9568,7 @@ async def api_admin_noeuds(req):
                                      .get("titre") or u): p
                                   for (u, nom), p in MODELES_CASSES.items()},
                               "pause_propose": PREFERENCES["pause_propose"],
+                              "armee_heures": PREFERENCES["armee_heures"],
                               "modele_ecriture": choisir_modele_ecriture(),
                               "silence_max": SILENCE_MAX})
 
@@ -9432,14 +9667,21 @@ async def api_admin_pause(req):
     sauver_registre()
     print(f"  {x.get('titre', x['id'])} "
           + ("mise en pause" if x.get("pause") else "remise au travail"), flush=True)
-    return web.json_response({"ok": True, "pause": x.get("pause")})
+    # Le geste qui rend la machine est aussi celui qui libere ce qui l'attendait.
+    # Le veilleur le ferait trente secondes plus tard ; ici c'est immediat, et
+    # l'administrateur voit la file repartir dans le meme rafraichissement que
+    # le bouton qu'il vient de cliquer.
+    reveillees = 0 if x.get("pause") else await reveiller_armees(x["id"])
+    return web.json_response({"ok": True, "pause": x.get("pause"),
+                              "reveillees": reveillees})
 
 
 async def api_admin_reglages(req):
     """Les reglages qui n'ont pas leur place dans une variable d'environnement.
 
-    Un seul pour l'instant : combien de temps une machine peut rester en pause
-    en continuant de faire patienter les demandes qui la reclament.
+    Deux, et ils se suivent : combien de temps une machine en pause fait
+    patienter la demande qui la reclame, puis combien de temps cette demande
+    reste gardee en attente de son retour.
     """
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
@@ -9448,13 +9690,28 @@ async def api_admin_reglages(req):
             d = await req.json()
         except Exception:
             d = {}
-        v = d.get("pause_propose")
-        if isinstance(v, (int, float)) and 0 <= v <= 1440:
-            PREFERENCES["pause_propose"] = int(v)
-            sauver_reglages()
-        else:
+        # Chaque clef est facultative : la carte « pause » de /admin n'envoie
+        # que la sienne. Exiger pause_propose, comme le faisait la version d'un
+        # seul reglage, aurait refuse en 400 toute requete venue d'un champ
+        # ajoute apres elle.
+        bornes = {"pause_propose": (0, 1440, "une duree en minutes, de 0 a 1440"),
+                  "armee_heures": (0, 168, "une duree en heures, de 0 a 168")}
+        change = False
+        for clef, (bas, haut, dit_) in bornes.items():
+            if clef not in d:
+                continue
+            v = d.get(clef)
+            # « isinstance(True, int) » vaut vrai : sans ce garde-fou, un JSON
+            # portant « true » posait le reglage a une heure.
+            if (isinstance(v, bool) or not isinstance(v, (int, float))
+                    or not bas <= v <= haut):
+                return web.json_response({"erreur": dit_}, status=400)
+            PREFERENCES[clef] = int(v)
+            change = True
+        if not change:
             return web.json_response(
-                {"erreur": "une duree en minutes, de 0 a 1440"}, status=400)
+                {"erreur": "aucun reglage connu dans cette demande"}, status=400)
+        sauver_reglages()
     return web.json_response(dict(PREFERENCES))
 
 
