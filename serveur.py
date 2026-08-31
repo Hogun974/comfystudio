@@ -872,6 +872,57 @@ def charge_noeud(ident):
     return sum(1 for t in EN_VOL if (TACHES.get(t) or {}).get("noeud") == ident)
 
 
+async def patienter_machine(cle, tid):
+    """Attend une machine capable qui ne repond pas EN CE MOMENT.
+
+    Une machine a agent se tait des qu'elle travaille : sa boucle est
+    sequentielle, elle rend ou elle reflechit, elle ne s'annonce pas. Passe
+    quarante-cinq secondes de silence, noeuds_pour() la retire — et le studio
+    refusait alors la demande en bloc, en accusant au passage une autre machine
+    mise en pause. Constate le 31 aout : « realvis » demande explicitement, le
+    NAS l'a et travaille, et l'utilisateur s'entend repondre que le PC est en
+    pause depuis plus de trente minutes.
+
+    Une indisponibilite passagere n'est pas une absence. On attend tant qu'une
+    machine capable donne signe de vie, et l'on rend la main quand elle se tait
+    vraiment — les messages d'erreur habituels reprennent alors leur role.
+    """
+    def occupees():
+        besoin = CATALOGUE[cle].get("vram", 0)
+        vues = []
+        for x in tous_les_noeuds():
+            if x.get("pause") or x.get("local"):
+                continue
+            e = ETAT_NOEUDS.get(x["id"]) or {}
+            # Jamais vue depuis le demarrage : on ne sait rien d'elle, ni sa
+            # carte ni ce qu'elle porte. L'attendre serait attendre au hasard.
+            if not e.get("vram") or _vram_utile(x["id"]) < besoin:
+                continue
+            if manquants(cle, x["id"]):
+                continue
+            # La meme tolerance que _attendre_le_noeud : un agent occupe peut
+            # manquer plusieurs battements, un agent mort n'en donne plus aucun.
+            if time.time() - (e.get("vu") or 0) < 4 * SILENCE_MAX:
+                vues.append(x)
+        return vues
+
+    dort = occupees()
+    if not dort:
+        return None
+    noms = " ou ".join(x.get("titre", x["id"]) for x in dort)
+    journal(tid, f"{noms} travaille — ta demande attend son tour")
+    fin = time.time() + ATTENTE_CARTE
+    while time.time() < fin:
+        await asyncio.sleep(5)
+        cible = choisir_noeud(cle)
+        if cible:
+            journal(tid, f"{cible.get('titre', cible['id'])} s'est liberee")
+            return cible
+        if not occupees():
+            return None
+    return None
+
+
 async def patienter_pause(cle, tid):
     """Attend qu'une machine en pause revienne, si l'attente a un sens.
 
@@ -5926,6 +5977,11 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             journal(tid, f"{cible.get('titre', occupee_par)} n'a jamais arrete "
                          f"cette demande — on la lui laisse")
         cible = cible or choisir_noeud(cle)
+        if cible is None:
+            # D'ABORD une machine vivante qui travaille, ENSUITE seulement une
+            # machine en pause. L'ordre inverse faisait refuser une demande que
+            # le NAS savait faire, au motif que le PC dormait.
+            cible = await patienter_machine(cle, tid)
         if cible is None:
             # Peut-etre pas « aucune machine » : peut-etre « pas maintenant ».
             cible = await patienter_pause(cle, tid)
