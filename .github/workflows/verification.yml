@@ -122,6 +122,37 @@ jobs:
           done
           exit $echec
 
+      # Un nom pose deux fois au niveau du module ecrase le premier, en
+      # silence. Le 31 aout, un « REGLAGES » ajoute pour un delai de pause a
+      # ecrase la table des parametres PAR MOTEUR qui portait le meme nom : toute
+      # generation qui la lisait mourait sur un KeyError, et l'utilisateur l'a vu
+      # avant la CI. Trois secondes de verification valent mieux que cela.
+      - name: Aucun nom n'est defini deux fois au niveau d'un module
+        run: |
+          python - <<'PY'
+          import ast, collections, glob, sys
+
+          fautes = 0
+          for chemin in sorted(glob.glob("*.py")):
+              arbre = ast.parse(open(chemin, encoding="utf-8").read())
+              poses = collections.defaultdict(list)
+              for n in arbre.body:
+                  if isinstance(n, ast.Assign):
+                      for c in n.targets:
+                          if isinstance(c, ast.Name):
+                              poses[c.id].append(n.lineno)
+                  elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                      ast.ClassDef)):
+                      poses[n.name].append(n.lineno)
+              for nom, lignes in sorted(poses.items()):
+                  if len(lignes) > 1:
+                      print(f"  ECRASE    {chemin}:{lignes} — {nom}")
+                      fautes += 1
+              if not any(len(v) > 1 for v in poses.values()):
+                  print(f"  ok        {chemin}")
+          sys.exit(1 if fautes else 0)
+          PY
+
       # Les bancs du classifieur ne couvrent PAS ce chemin : ils mesurent ce que
       # le modele bayesien decide, pas ce que les expressions regulieres
       # court-circuitent avant lui. Or c'est la qu'une faute est la plus
