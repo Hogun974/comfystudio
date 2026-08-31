@@ -7803,9 +7803,22 @@ async def demarrer_file(a):
     a["ecoute"] = asyncio.create_task(ecouter_comfy())
 
 async def arreter_file(a):
-    a["travailleur"].cancel()
-    a["veilleur"].cancel()
-    a["ecoute"].cancel()
+    """Arrete tout ce que le studio a lance, sans supposer combien il y en a.
+
+    « a["travailleur"] » n'existe plus depuis que les travailleurs sont
+    numerotes : cette ligne levait un KeyError, et les DEUX suivantes — le
+    veilleur des machines et l'ecoute de ComfyUI — n'etaient donc jamais
+    atteintes. Un arret qui echoue a sa premiere ligne n'arrete rien, et il
+    echouait en silence, dans le gestionnaire de fermeture d'aiohttp.
+
+    On parcourt les clefs plutot que de les nommer : le prochain qui ajoute une
+    tache de fond n'aura rien a penser ici.
+    """
+    for nom in [k for k in a if str(k).startswith("travailleur")] + ["veilleur",
+                                                                     "ecoute"]:
+        tache = a.get(nom)
+        if tache is not None:
+            tache.cancel()
 
 def app():
     a = web.Application(client_max_size=128 * 1024 ** 2,
