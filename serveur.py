@@ -417,6 +417,19 @@ def _ollama_ici():
     return hote in ("127.0.0.1", "localhost", "::1", "")
 
 
+# Les modeles qu'Ollama ne SAIT PAS charger, et pourquoi. Constate le 31 aout :
+# « gemma4:26b » etait installe, annonce dans /api/tags, choisi comme modele
+# d'ecriture — et llama-server mourait a chaque chargement
+# (« Gemma4Assistant requires ctx_other to be set »), incompatibilite entre ce
+# modele et cette version d'Ollama. Le studio le rappelait deux fois par demande,
+# recevait deux fois rien, et concluait « je n'ai pas reussi a etoffer ta
+# demande ». A chaque fois, sans jamais dire pourquoi.
+#
+# Un modele qui ne se charge pas ne se repare pas tout seul : on l'ecarte pour de
+# bon, en le disant une fois.
+MODELES_CASSES = {}
+
+
 def choisir_modele_ecriture():
     """Le plus gros modele Ollama installe qui tienne raisonnablement ici.
 
@@ -441,7 +454,8 @@ def choisir_modele_ecriture():
             modeles = json.load(r).get("models", [])
     except Exception:
         modeles = []
-    tenables = [m for m in modeles if 0 < m.get("size", 0) / 1e9 <= plafond]
+    tenables = [m for m in modeles if 0 < m.get("size", 0) / 1e9 <= plafond
+                and m.get("name") not in MODELES_CASSES]
     if not tenables:
         MODELE_ECRITURE = MODELE_LLM
         return MODELE_ECRITURE
@@ -633,6 +647,18 @@ def conv_de(cid, pid):
     return conv
 
 def journal(tid, msg, **extra):
+    """Une ligne dans le fil d'une demande, et dans le journal du studio.
+
+    « tid » peut etre absent : poser_a() et appeler_ollama() acceptent tous deux
+    de travailler sans demande — c'est le cas de l'essai de modele lance depuis
+    l'administration. Le chemin d'erreur d'appeler_ollama journalisait pourtant
+    sans condition, et « tid[:6] » levait alors un TypeError qui remplaçait le
+    vrai message par une erreur 500. Le diagnostic disparaissait au moment
+    precis ou l'on en avait besoin.
+    """
+    if not tid:
+        print(f"[studio] {msg}", flush=True)
+        return
     t = TACHES.setdefault(tid, {"etapes": [], "etat": "en cours"})
     t["etapes"].append({"t": time.strftime("%H:%M:%S"), "msg": msg})
     t.update(extra)
@@ -1194,6 +1220,19 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
             async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
                 d = await r.json()
                 rep_ = d.get("response", "")
+                if not rep_.strip() and d.get("error"):
+                    # Ollama a repondu 200 avec un champ « error » : le modele
+                    # existe, il ne se CHARGE pas. Le reessayer a chaque demande
+                    # ne fait que perdre du temps deux fois par appel.
+                    nom_ = corps.get("model") or ""
+                    if nom_ and nom_ not in MODELES_CASSES:
+                        MODELES_CASSES[nom_] = str(d["error"])[:200]
+                        print(f"  [ollama] {nom_} ne se charge pas, il est ecarte "
+                              f"— {MODELES_CASSES[nom_]}", flush=True)
+                        global MODELE_ECRITURE
+                        if MODELE_ECRITURE == nom_:
+                            # Le prochain appel en choisira un autre.
+                            MODELE_ECRITURE = ""
                 if not rep_.strip():
                     # Une reponse vide est dite a voix haute, comme pour un
                     # fournisseur distant. Sans cela, « traduction rejetee
