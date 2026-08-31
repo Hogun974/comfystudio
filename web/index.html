@@ -243,6 +243,23 @@ main{flex:1;overflow-y:auto;min-width:0}
   color:var(--encre-douce);white-space:nowrap}
 .onglets-media button.ouvert{border-color:var(--braise);color:var(--braise)}
 .onglets-media button:disabled{opacity:.35;cursor:default}
+/* La barre de tri : une ligne qui se replie, jamais une colonne de reglages.
+   Trois cents pieces sans moyen de chercher, c'est un dossier, pas une
+   mediatheque. */
+#filtresMedia{display:flex;flex-wrap:wrap;gap:7px;align-items:center;
+  padding:10px 18px 0;font:11.5px var(--mono)}
+#filtresMedia input,#filtresMedia select{background:transparent;
+  color:var(--encre-douce);border:1px solid var(--trait-vif);border-radius:7px;
+  padding:5px 9px;font:11.5px var(--mono);min-width:0}
+#filtresMedia input{flex:1 1 220px}
+#filtresMedia input:focus-visible,#filtresMedia select:focus-visible{
+  outline:2px solid var(--braise);outline-offset:1px}
+.detail-media{color:var(--encre-pale);margin-left:auto}
+/* Le prompt reellement envoye, replie. Il explique un rendu qu'on ne
+   s'explique pas, et il n'etait visible nulle part. */
+.media .envoye{display:block;margin-top:4px;color:var(--encre-pale);
+  font:10px var(--mono);white-space:pre-wrap;word-break:break-word}
+.media details summary{cursor:pointer;color:var(--encre-pale);font:10px var(--mono)}
 /* Regarder la production de tout le monde ne doit jamais se faire sans le
    savoir : la mention est a cote des familles, pas cachee en bas. */
 .vue-admin{font:10.5px var(--mono);color:var(--braise);align-self:center}
@@ -423,6 +440,20 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     <span id="toutLeStudio" class="vue-admin"></span>
     <button type="button" id="fermerMedia" aria-label="fermer">✕</button>
   </header>
+  <div id="filtresMedia">
+    <input type="search" id="chercheMedia" placeholder="chercher dans la demande, le prompt, le nom du fichier">
+    <select id="triMedia" aria-label="Trier">
+      <option value="-quand">plus récent d'abord</option>
+      <option value="quand">plus ancien d'abord</option>
+      <option value="moteur">moteur</option>
+      <option value="a">propriétaire</option>
+      <option value="demande">demande (A→Z)</option>
+    </select>
+    <select id="moteurMedia" aria-label="Moteur"></select>
+    <select id="machineMedia" aria-label="Machine"></select>
+    <select id="quiMedia" aria-label="Propriétaire" hidden></select>
+    <span id="combienMedia" class="detail-media"></span>
+  </div>
   <div id="grilleMedia"></div>
 </div>
 <div class="voile" id="voile"></div>
@@ -1060,6 +1091,24 @@ async function ouvrirMediatheque() {
     } catch (e) { mediaCharge = { fichiers: [], compte: {} }; }
   }
   peindreFamilles();
+  const tous = mediaCharge.fichiers || [];
+  garnirChoix($("#moteurMedia"), tous.map(f => f.moteur), "tous les moteurs");
+  garnirChoix($("#machineMedia"), tous.map(f => f.noeud), "toutes les machines");
+  const quiSel = $("#quiMedia");
+  // Le proprietaire n'existe que pour un administrateur : le serveur ne le sert
+  // a personne d'autre, et le selecteur reste donc cache.
+  quiSel.hidden = !mediaCharge.tout;
+  // Trier par proprietaire n'a de sens que pour qui en voit plusieurs : sans
+  // cela l'option existe, ne fait rien, et laisse croire a une panne.
+  const triQui = $("#triMedia").querySelector('option[value="a"]');
+  if (triQui) triQui.hidden = !mediaCharge.tout;
+  if (!mediaCharge.tout && $("#triMedia").value === "a")
+    $("#triMedia").value = "-quand";
+  if (mediaCharge.tout)
+    garnirChoix(quiSel, tous.map(f => f.a), "tout le monde");
+  for (const id of ["#chercheMedia", "#triMedia", "#moteurMedia",
+                    "#machineMedia", "#quiMedia"])
+    $(id).oninput = peindreGrille;
   peindreGrille();
 }
 
@@ -1078,6 +1127,47 @@ function peindreFamilles() {
   }
 }
 
+/* Remplit un selecteur avec les valeurs presentes, sans doublon et triees.
+   Ne proposer que ce qui EXISTE : un menu de vingt moteurs dont deux ont servi
+   fait chercher dans le vide. */
+function garnirChoix(sel, valeurs, tout) {
+  if (!sel) return;
+  const avant = sel.value;
+  const vues = [...new Set(valeurs.filter(Boolean))].sort();
+  sel.innerHTML = `<option value="">${tout}</option>`
+    + vues.map(v => `<option value="${ech(v)}">${ech(v)}</option>`).join("");
+  if (vues.includes(avant)) sel.value = avant;
+}
+
+function trierEtFiltrer(liste) {
+  const q = ($("#chercheMedia").value || "").trim().toLowerCase();
+  const moteur = $("#moteurMedia").value;
+  const machine = $("#machineMedia").value;
+  const qui = $("#quiMedia").value;
+  const tri = $("#triMedia").value;
+
+  const gardees = liste.filter(f =>
+    (!moteur || f.moteur === moteur)
+    && (!machine || f.noeud === machine)
+    && (!qui || f.a === qui)
+    // La recherche porte sur ce que l'utilisateur a ECRIT, sur ce qui a ete
+    // ENVOYE au moteur, et sur le nom du fichier : les trois façons dont on se
+    // souvient d'une image qu'on a produite il y a trois semaines.
+    && (!q || [(f.demande || ""), (f.prompt || ""), (f.filename || "")]
+                .some(x => x.toLowerCase().includes(q))));
+
+  const dec = tri.startsWith("-");
+  const cle = dec ? tri.slice(1) : tri;
+  return gardees.sort((a, b) => {
+    const x = a[cle] ?? "", y = b[cle] ?? "";
+    const c = typeof x === "number" && typeof y === "number"
+      ? x - y : String(x).localeCompare(String(y), "fr");
+    // A egalite, du plus recent au plus ancien : c'est l'ordre qu'on attend
+    // quand on trie par moteur ou par proprietaire.
+    return (dec ? -c : c) || (b.quand || 0) - (a.quand || 0);
+  });
+}
+
 function peindreGrille() {
   const g = document.querySelector("#grilleMedia");
   g.innerHTML = "";
@@ -1087,7 +1177,14 @@ function peindreGrille() {
   if (banniere)
     banniere.textContent = mediaCharge.tout
       ? "vue administrateur — tout ce que ce studio a produit" : "";
-  const liste = (mediaCharge.fichiers || []).filter(f => f.famille === familleVue);
+  const dansLaFamille = (mediaCharge.fichiers || [])
+    .filter(f => f.famille === familleVue);
+  const liste = trierEtFiltrer(dansLaFamille);
+  const compteur = $("#combienMedia");
+  if (compteur)
+    compteur.textContent = liste.length === dansLaFamille.length
+      ? `${liste.length} pièce${liste.length > 1 ? "s" : ""}`
+      : `${liste.length} sur ${dansLaFamille.length}`;
   if (!liste.length) {
     g.innerHTML = '<p class="vide-media">rien de ce type pour l\'instant</p>';
     return;
@@ -1115,6 +1212,12 @@ function peindreGrille() {
     legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
                       + `<small>${f.a ? "<b>" + ech(f.a) + "</b> · " : ""}`
                       + `${ech(f.moteur || "")} · ${ech(quand)}</small>`;
+    // Replie : le prompt envoye fait souvent dix lignes, et on ne le cherche
+    // que lorsqu'un rendu surprend. Deplie, il repond a « pourquoi cette
+    // image-la ».
+    if (f.prompt && f.prompt !== f.demande)
+      legende.innerHTML += `<details><summary>prompt envoyé</summary>`
+                         + `<span class="envoye">${ech(f.prompt)}</span></details>`;
     carte.appendChild(legende);
 
     const actions = document.createElement("div");

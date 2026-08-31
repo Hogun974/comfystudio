@@ -6934,6 +6934,11 @@ async def api_mediatheque(req):
                     "type": f.get("type", "output"), "noeud": f.get("noeud"),
                     "famille": famille_sortie(nom),
                     "demande": (tour.get("demande") or "")[:120],
+                    # Le prompt REELLEMENT envoye au moteur, apres
+                    # enrichissement et traduction. C'est lui qui explique un
+                    # rendu qu'on ne s'explique pas, et il n'etait visible nulle
+                    # part une fois la conversation refermee.
+                    "prompt": (tour.get("prompt") or "")[:400],
                     "moteur": tour.get("modele"),
                     "heure": tour.get("heure"),
                     "quand": _date_sortie(f, conv),
