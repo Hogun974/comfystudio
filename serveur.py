@@ -760,6 +760,17 @@ def noeuds_pour(cle):
         bons.append(x)
     return bons
 
+def charge_noeud(ident):
+    """Combien de travaux en vol visent deja cette machine.
+
+    L'intention, et non le verrou : entre le choix d'une machine et la prise de
+    son verrou il y a toute l'analyse, les telechargements et l'envoi des
+    entrees. Compter les verrous tenus revenait a croire libre une carte que
+    trois demandes attendaient deja.
+    """
+    return sum(1 for t in EN_VOL if (TACHES.get(t) or {}).get("noeud") == ident)
+
+
 def choisir_noeud(cle):
     """Le placement fin (debit mesure, arbitrage vitesse/qualite) viendra avec
     la mesure par noeud. Pour l'instant : la machine locale si elle convient,
@@ -771,16 +782,20 @@ def choisir_noeud(cle):
     # est un recours, pas un choix par defaut.
     natifs = [x for x in bons if tient_vraiment(cle, x["id"])]
     dans = natifs or bons
-    # Une carte LIBRE passe devant une grosse carte occupee. Sans cette regle,
-    # deux demandes visaient toutes deux la plus grosse et s'y empilaient pendant
-    # que l'autre machine dormait — le parallelisme ne rapportait rien.
+    # La carte la MOINS CHARGEE passe devant la plus grosse. On compte les
+    # travaux qui la VISENT, pas le verrou qu'elle tient : le verrou n'est pris
+    # qu'au moment de soumettre, bien apres le choix. Deux demandes envoyees a
+    # deux secondes d'ecart voyaient donc toutes deux une carte libre, visaient
+    # la meme, et la seconde attendait pendant que l'autre machine dormait.
+    # Constate par l'utilisateur, et c'est exactement ce que le parallelisme
+    # etait cense eviter.
     #
     # Ce n'est pas toujours le choix le plus rapide pour UNE demande : attendre
     # deux minutes la grosse carte peut battre un rendu lance tout de suite sur
     # la petite. Mais c'est le plus rapide pour l'ensemble, et c'est le seul
     # qu'on puisse faire sans predire une duree qu'on ne connait pas.
-    libres = [x for x in dans if not verrou_noeud(x["id"]).locked()]
-    dans = libres or dans
+    moindre = min(charge_noeud(x["id"]) for x in dans)
+    dans = [x for x in dans if charge_noeud(x["id"]) == moindre]
     local = next((x for x in dans if x.get("local")), None)
     return local or max(dans, key=lambda x: ETAT_NOEUDS.get(x["id"], {}).get("vram", 0))
 
@@ -4180,11 +4195,11 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800):
         # tomber tant qu'une autre existe.
         autres = [x for x in noeuds_pour(cle) if x["id"] not in ecartes]
         if autres:
-            # Meme regle qu'au premier choix : une carte libre passe devant
-            # une grosse carte occupee. Une reprise a deja perdu du temps ; la
-            # faire attendre derriere un rendu en cours en perdrait deux fois.
-            au_repos = [x for x in autres if not verrou_noeud(x["id"]).locked()]
-            autres = au_repos or autres
+            # Meme regle qu'au premier choix : la moins chargee d'abord. Une
+            # reprise a deja perdu du temps ; la faire attendre derriere un rendu
+            # en cours en perdrait deux fois.
+            moindre_ = min(charge_noeud(x["id"]) for x in autres)
+            autres = [x for x in autres if charge_noeud(x["id"]) == moindre_]
             neuf = (next((x for x in autres if x.get("local")), None)
                     or max(autres, key=lambda x: ETAT_NOEUDS.get(x["id"], {}).get("vram", 0)))
             journal(tid, f"la demande repart sur {neuf.get('titre', neuf['id'])}")
