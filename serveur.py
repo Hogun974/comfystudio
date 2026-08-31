@@ -342,7 +342,7 @@ def tous_les_noeuds():
     """Ceux declares dans noeuds.json, plus ceux enregistres par jeton."""
     connus = {x["id"] for x in NOEUDS}
     agents = [{"id": x["id"], "titre": x.get("titre") or x["id"], "url": None,
-               "local": False, "agent": True}
+               "local": False, "agent": True, "pause": x.get("pause")}
               for x in REGISTRE.values() if x["id"] not in connus]
     return NOEUDS + agents
 
@@ -777,6 +777,10 @@ def noeuds_pour(cle):
         # machine.
         if not e.get("repond") or (besoin and _vram_utile(x["id"]) < besoin):
             continue
+        # En pause : la machine repond, sa carte va bien, son proprietaire s'en
+        # sert. On ne la sert pas.
+        if x.get("pause"):
+            continue
         # un agent qui s'est taru depuis trop longtemps est considere perdu :
         # son dernier « je reponds » ne vaut plus rien
         if x.get("agent") and time.time() - (e.get("vu") or 0) > SILENCE_MAX:
@@ -795,6 +799,55 @@ def charge_noeud(ident):
     trois demandes attendaient deja.
     """
     return sum(1 for t in EN_VOL if (TACHES.get(t) or {}).get("noeud") == ident)
+
+
+async def patienter_pause(cle, tid):
+    """Attend qu'une machine en pause revienne, si l'attente a un sens.
+
+    Rend la machine des qu'elle est de nouveau eligible, ou None s'il n'y a
+    aucune machine en pause capable de ce travail — les messages d'erreur
+    habituels reprennent alors la main.
+
+    Leve si la pause dure depuis plus longtemps que le reglage : faire patienter
+    une demi-heure pour une machine que personne ne compte rallumer, c'est
+    perdre le temps de quelqu'un poliment.
+    """
+    def dormantes():
+        besoin = CATALOGUE[cle].get("vram", 0)
+        return [x for x in tous_les_noeuds()
+                if x.get("pause")
+                and ETAT_NOEUDS.get(x["id"], {}).get("repond")
+                and _vram_utile(x["id"]) >= besoin
+                and (x.get("local") or not manquants(cle, x["id"]))]
+
+    en_pause_ = dormantes()
+    if not en_pause_:
+        return None
+    limite = REGLAGES["pause_propose"] * 60
+    if all(time.time() - x["pause"] >= limite for x in en_pause_):
+        noms = " et ".join(x.get("titre", x["id"]) for x in en_pause_)
+        raise RuntimeError(
+            f"{noms} pourrait faire ce travail, mais elle est en pause depuis "
+            f"plus de {REGLAGES['pause_propose']} minutes. Reactive-la dans "
+            f"/admin, ou demande quelque chose qu'une autre machine sait faire.")
+    noms = " ou ".join(x.get("titre", x["id"]) for x in en_pause_)
+    journal(tid, f"{noms} en pause — ta demande attend son retour, "
+                 f"annule-la si tu preferes")
+    while True:
+        await asyncio.sleep(15)
+        cible = choisir_noeud(cle)
+        if cible:
+            journal(tid, f"{cible.get('titre', cible['id'])} est revenue")
+            return cible
+        restantes = dormantes()
+        if not restantes:
+            return None
+        if all(time.time() - x["pause"] >= limite for x in restantes):
+            noms = " et ".join(x.get("titre", x["id"]) for x in restantes)
+            raise RuntimeError(
+                f"{noms} est toujours en pause apres "
+                f"{REGLAGES['pause_propose']} minutes — le travail n'est pas "
+                f"perdu, relance-le quand elle sera revenue.")
 
 
 def choisir_noeud(cle):
@@ -5499,6 +5552,9 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                            "et aucune autre machine n'en a non plus"))
         cible = cible or choisir_noeud(cle)
         if cible is None:
+            # Peut-etre pas « aucune machine » : peut-etre « pas maintenant ».
+            cible = await patienter_pause(cle, tid)
+        if cible is None:
             # Trois causes distinctes, trois messages : accuser la carte quand
             # c'est ComfyUI qui ne repond pas envoie chercher au mauvais endroit.
             # tous_les_noeuds() et non NOEUDS : sur un studio sans carte, ce
@@ -7161,6 +7217,33 @@ def compte_de(req):
     return COMPTES.nom_du_jeton(req.cookies.get("studio_compte") or "") or ""
 
 
+FICHIER_REGLAGES = os.path.join(DOSSIER_CONV, "_reglages.json")
+# Combien de minutes une machine peut rester en pause en continuant de faire
+# patienter les demandes qui la reclament. Au-dela, on refuse plutot que de
+# laisser esperer : personne ne surveille une pause d'une heure.
+REGLAGES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30)}
+
+
+def charger_reglages():
+    try:
+        with open(FICHIER_REGLAGES, encoding="utf-8") as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            REGLAGES.update({k: int(v) for k, v in d.items() if k in REGLAGES})
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def sauver_reglages():
+    try:
+        tmp = FICHIER_REGLAGES + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(REGLAGES, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, FICHIER_REGLAGES)
+    except OSError:
+        pass
+
+
 def sauver_registre():
     try:
         tmp = FICHIER_REGISTRE + ".tmp"
@@ -7235,6 +7318,7 @@ def noeuds_agents():
                       # plus honnete que « perime » ou que « a jour ».
                       "a_jour": (None if not e.get("empreinte")
                                  else e["empreinte"] == empreinte_agent()),
+                      "pause": x.get("pause"),
                       "en_travail": len(TRAVAUX.get(x["id"], []))})
     return liste
 
@@ -7610,6 +7694,7 @@ async def api_admin_noeuds(req):
                               # L'utilisateur ne voyait que « je n'ai pas reussi
                               # a etoffer ta demande », sans cause. Ici, la cause.
                               "modeles_casses": dict(MODELES_CASSES),
+                              "pause_propose": REGLAGES["pause_propose"],
                               "modele_ecriture": choisir_modele_ecriture(),
                               "silence_max": SILENCE_MAX})
 
@@ -7682,6 +7767,56 @@ async def api_admin_essai_llm(req):
                               "reponse": (reponse or "").strip()[:400],
                               "erreur": erreur,
                               "secondes": round(time.time() - debut, 1)})
+
+
+async def api_admin_pause(req):
+    """Met une machine en pause, ou l'en sort. Elle continue de s'annoncer.
+
+    Une pause n'est pas un retrait : le jeton reste valable, l'agent garde sa
+    configuration, la machine reste visible et son inventaire a jour. Elle ne
+    reçoit simplement plus de travail — « je vais jouer un peu, mais le studio
+    doit rester utilisable ».
+    """
+    if not admin_ok(req):
+        return web.json_response({"erreur": "acces refuse"}, status=403)
+    x = REGISTRE.get(req.match_info["ident"])
+    if not x:
+        return web.json_response({"erreur": "machine inconnue"}, status=404)
+    try:
+        d = await req.json()
+    except Exception:
+        d = {}
+    if d.get("pause"):
+        x["pause"] = time.time()
+    else:
+        x.pop("pause", None)
+    sauver_registre()
+    print(f"  {x.get('titre', x['id'])} "
+          + ("mise en pause" if x.get("pause") else "remise au travail"), flush=True)
+    return web.json_response({"ok": True, "pause": x.get("pause")})
+
+
+async def api_admin_reglages(req):
+    """Les reglages qui n'ont pas leur place dans une variable d'environnement.
+
+    Un seul pour l'instant : combien de temps une machine peut rester en pause
+    en continuant de faire patienter les demandes qui la reclament.
+    """
+    if not admin_ok(req):
+        return web.json_response({"erreur": "acces refuse"}, status=403)
+    if req.method == "POST":
+        try:
+            d = await req.json()
+        except Exception:
+            d = {}
+        v = d.get("pause_propose")
+        if isinstance(v, (int, float)) and 0 <= v <= 1440:
+            REGLAGES["pause_propose"] = int(v)
+            sauver_reglages()
+        else:
+            return web.json_response(
+                {"erreur": "une duree en minutes, de 0 a 1440"}, status=400)
+    return web.json_response(dict(REGLAGES))
 
 
 async def api_admin_creer(req):
@@ -7938,6 +8073,9 @@ def app():
     a.router.add_post("/api/admin/noeuds/{ident}/llm", api_admin_essai_llm)
     a.router.add_post("/api/admin/noeuds", api_admin_creer)
     a.router.add_post("/api/admin/noeuds/{ident}/jeton", api_admin_rejeton)
+    a.router.add_post("/api/admin/noeuds/{ident}/pause", api_admin_pause)
+    a.router.add_get("/api/admin/reglages", api_admin_reglages)
+    a.router.add_post("/api/admin/reglages", api_admin_reglages)
     a.router.add_delete("/api/admin/noeuds/{ident}", api_admin_supprimer)
     a.router.add_post("/api/comfy/demarrer", api_comfy_demarrer)
     a.router.add_post("/api/comfy/arreter", api_comfy_arreter)
@@ -7981,6 +8119,7 @@ if __name__ == "__main__":
     charger_conversations()
     charger_entrees()
     charger_registre()
+    charger_reglages()
     charger_comptes()
     charger_cles()
     charger_nuage()

@@ -46,6 +46,11 @@ tr.perdu td{color:var(--encre-pale)}
    qui a ete ajoute depuis. Le 31 aout, l'annulation d'un rendu n'atteignait pas
    une machine pour cette seule raison, et rien ne le disait. */
 .perime{color:var(--rouge);font:10px var(--mono);margin-top:2px}
+/* Une machine en pause n'est ni verte ni morte : son proprietaire s'en sert.
+   Elle reste lisible, en retrait, et son bouton dit quoi faire. */
+.endormie{opacity:.55}
+.endormie td:first-child b::after{content:" — en pause";color:var(--braise);
+  font:10px var(--mono)}
 .pastille{display:inline-block;width:8px;height:8px;border-radius:50%;
   background:var(--trait-vif);margin-right:8px}
 .pastille.vif{background:var(--vert);box-shadow:0 0 6px var(--vert)}
@@ -163,6 +168,17 @@ td .detail{display:block;max-width:34ch}
       <tbody id="liste"></tbody>
     </table></div>
     <div id="languePanne"></div>
+    <div class="carte">
+      <h2 style="margin-top:0">pause</h2>
+      <p class="aide">Une machine en pause continue de s'annoncer et reste à
+        jour, elle ne reçoit simplement plus de travail. Une demande qui la
+        réclame patiente — puis renonce, si la pause dure. Au-delà de ce délai,
+        le studio refuse tout de suite plutôt que de laisser espérer.</p>
+      <label>patienter au plus
+        <input type="number" id="pauseMinutes" min="0" max="1440" step="5"
+               style="width:5em"> minutes</label>
+      <button id="poserPause">enregistrer</button>
+    </div>
 
     <div class="carte">
       <h2 style="margin-top:0">ajouter une machine</h2>
@@ -648,7 +664,7 @@ async function rafraichir() {
   for (const n of d.noeuds) {
     const tr = document.createElement("tr");
     tr.className = (n.repond ? "" : "perdu ") + "ouvrable";
-    const pastille = n.repond ? "vif" : (n.agent ? "mort" : "");
+    const pastille = n.pause ? "" : (n.repond ? "vif" : (n.agent ? "mort" : ""));
       /* Tout ce qui suit vient du battement de coeur d'une machine a agent,
          et rien ne le filtre a l'arrivee. La console se rafraichit seule
          toutes les 5 s : sans ech(), il n'y avait meme pas un clic a obtenir
@@ -669,7 +685,9 @@ async function rafraichir() {
           ${n.a_jour === null && n.agent
             ? '<div class="ident">version inconnue</div>' : ""}</td>
       <td class="detail">${n.en_travail || 0}</td>
-      <td></td>`;
+      <td>${n.agent ? `<button data-pause="${ech(n.id)}" data-etat="${n.pause ? 1 : 0}">`
+            + (n.pause ? "reprendre" : "pause") + "</button>" : ""}</td>`;
+    if (n.pause) tr.classList.add("endormie");
     const pli = document.createElement("tr");
     pli.className = "pli";
     pli.innerHTML = `<td colspan="6"></td>`;
@@ -710,6 +728,9 @@ async function rafraichir() {
      l'utilisateur ne lit que « je n'ai pas reussi a etoffer ta demande », sans
      cause. Le 31 aout, gemma4:26b etait dans cet etat depuis on ne sait quand. */
   const casses = Object.entries(d.modeles_casses || {});
+  const champ = $("#pauseMinutes");
+  if (champ && document.activeElement !== champ)
+    champ.value = d.pause_propose ?? 30;
   $("#languePanne").innerHTML = !casses.length ? "" : `
     <div class="carte" style="border-color:var(--rouge)">
       <h2 style="margin-top:0">modèle de langage qui ne se charge pas</h2>
@@ -722,6 +743,22 @@ async function rafraichir() {
            <div class="pli-val mono">${ech(pourquoi)}</div></div>`).join("")}
     </div>`;
 }
+
+$("#poserPause").onclick = async () => {
+  await api("/api/admin/reglages", "POST",
+            { pause_propose: Number($("#pauseMinutes").value) });
+  rafraichir();
+};
+
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-pause]");
+  if (!b) return;
+  e.stopPropagation();          // ne pas ouvrir le pli de la machine
+  b.disabled = true;
+  await api("/api/admin/noeuds/" + encodeURIComponent(b.dataset.pause) + "/pause",
+            "POST", { pause: b.dataset.etat !== "1" });
+  rafraichir();
+});
 
 function montrerEntree() {
   $("#entree").style.display = "";
