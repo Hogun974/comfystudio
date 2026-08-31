@@ -3146,9 +3146,15 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     # quand c'est une video faisait proposer de retoucher une image qui n'existe
     # pas.
     if a_une_image == "video":
-        sys_p += ("\nUne VIDEO est fournie par l'utilisateur : les seules "
-                  "intentions possibles sont 'fluidifier' (plus fluide, ou au "
-                  "ralenti) ou 'lecture'.")
+        # PAS « lecture ». Le studio ne sait lire qu'une IMAGE : img_b64 n'est
+        # calcule que pour elle, et le modele de vision recevait donc un
+        # corps sans piece jointe — il decrivait alors ce qu'il imaginait.
+        # Proposer une intention qu'on ne sait pas honorer, c'est demander
+        # au modele de se tromper.
+        sys_p += ("\nUne VIDEO est fournie par l'utilisateur : la seule "
+                  "intention possible est 'fluidifier' (plus fluide, ou au "
+                  "ralenti). Tu ne sais pas REGARDER une video : si on te "
+                  "demande de la decrire, reponds intention 'refus'.")
     elif a_une_image == "audio":
         sys_p += ("\nUn MORCEAU est fourni par l'utilisateur : il veut le "
                   "retoucher, pas en creer un autre. Reponds intention 'audio', "
@@ -3871,7 +3877,17 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
     # plausible, detaillee, entierement inventee, marquee « description
     # produite » et « fini ». Rien ne la signalait.
     if plan["intention"] == "lecture" and a_une_image != "image":
-        plan["intention"] = "image"       # lire exige une image reellement jointe
+        # Ni « image » en silence. Basculer vers une generation, c'etait rendre
+        # une image sans rapport a quelqu'un qui demandait ce que son fichier
+        # CONTIENT — et lui laisser croire que c'etait la reponse. On le dit.
+        if a_une_image:
+            plan["intention"] = "refus"
+            plan["raison"] = (
+                "je sais decrire une image, pas encore un fichier "
+                + {"video": "video", "audio": "audio"}.get(a_une_image, "de ce type")
+                + ". Extrais-en une image et redepose-la, et je te la decris.")
+        else:
+            plan["intention"] = "image"   # lire exige une image reellement jointe
     if plan["intention"] == "image" and (
             plan.get("modele") not in CATALOGUE
             or CATALOGUE[plan["modele"]]["type"] != "image"):

@@ -107,8 +107,16 @@ SANS_REEL = False
 
 def corpus():
     """Tous les exemples, sans doublon. L'ordre des fichiers ne compte pas."""
-    if not os.path.exists(os.path.join(ICI, "corpus_aiguillage.jsonl")):
-        corpus_aiguillage.ecrire(corpus_aiguillage.depuis_gabarits())
+    # On regenere TOUJOURS, et pas seulement quand le fichier manque. Les sept
+    # gabarits « image » ajoutes le 31 aout pour qu'une creation en haute
+    # definition cesse de partir a l'agrandissement ne sont jamais arrives
+    # jusqu'au corpus : le .jsonl datait du 29, il existait, on ne le
+    # reecrivait donc pas — et le correctif est reste inerte. Mesure du 31 aout
+    # une fois le corpus reellement regenere : banc_neuf passe de 82 a 88 % de
+    # justesse, et de 85 a 91 % sur les tranches d'office. La graine est fixe et
+    # l'ecriture prend dix millisecondes : le fichier ne bouge que si les
+    # gabarits ont bouge.
+    corpus_aiguillage.ecrire(corpus_aiguillage.depuis_gabarits())
     tout, vus = [], set()
     for nom in CORPUS:
         for x in _lire(nom):

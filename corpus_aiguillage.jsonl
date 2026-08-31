@@ -1,11 +1,11 @@
 {"texte": "j'aimerais que vois-tu la ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "peux-tu detoure-la maintenant", "intention": "detourer", "source": "gabarit"}
-{"texte": "peux-tu dessine-moi une foret en automne au milieu des champs ?", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu je voudrais une foret en automne, style manga ?", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais retouche le fond s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, anime une scene avec un bol de ramen maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "BON, FLUIDIFIE LA VIDEO ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "et decris-moi cette photo maintenant", "intention": "lecture", "source": "gabarit"}
-{"texte": "la meme, mais au crepuscule", "intention": "image", "source": "gabarit"}
+{"texte": "ET UNE AFFICHE DE UNE GUERRIERE EN ARMURE, EN 4K !", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant un modele 3d de une statuette !", "intention": "objet3d", "source": "gabarit"}
 {"texte": "tu peux rajoute-lui un chapeau maintenant", "intention": "edition", "source": "gabarit"}
 {"texte": "MAINTENANT UN MAILLAGE 3D DE UNE STATUETTE STP", "intention": "objet3d", "source": "gabarit"}
@@ -15,13 +15,13 @@
 {"texte": "elle est saccadee, rends-la plus fluide maintenant", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "peux-tu passe-la en haute resolution !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "qu'est-ce qu'il y a sur cette image ? stp", "intention": "lecture", "source": "gabarit"}
-{"texte": "peux-tu dessine-moi un dragon au crepuscule", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais un vieux phare, illustration", "intention": "image", "source": "gabarit"}
 {"texte": "TU PEUX CHANGE LE CIEL PLUS SOMBRE !", "intention": "edition", "source": "gabarit"}
 {"texte": "stp anime cette photo, fais bouger les nuages ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "j'aimerais retire l'arriere-plan", "intention": "detourer", "source": "gabarit"}
 {"texte": "DETOURE-LA", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais fais-moi une musique jazz ?", "intention": "audio", "source": "gabarit"}
-{"texte": "GENERE UNE IMAGE DE UN CERF MERCI", "intention": "image", "source": "gabarit"}
+{"texte": "stp un fond d'ecran avec une foret en automne au petit matin, plein de details maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "un instrumental electro au piano", "intention": "audio", "source": "gabarit"}
 {"texte": "bon, anime une scene avec un phare breton pour moi", "intention": "video", "source": "gabarit"}
 {"texte": "DECRIS-MOI CETTE PHOTO VITE FAIT", "intention": "lecture", "source": "gabarit"}
@@ -37,13 +37,13 @@
 {"texte": "j'aimerais un maillage 3d de une epee vite fait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "MAINTENANT EXPLIQUE-MOI CE QUI EST REPRESENTE S'IL TE PLAIT", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait une planche avec plusieurs vignettes ?", "intention": "planche", "source": "gabarit"}
-{"texte": "il me faudrait un phare breton devant une plus grande maison pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "bon, la meme, mais dans un atelier merci", "intention": "image", "source": "gabarit"}
 {"texte": "s'il te plait un instrumental une berceuse a l'accordeon merci", "intention": "audio", "source": "gabarit"}
 {"texte": "alors, une planche avec plusieurs vignettes merci", "intention": "planche", "source": "gabarit"}
 {"texte": "ET AMELIORE LA DEFINITION", "intention": "agrandir", "source": "gabarit"}
 {"texte": "il me faudrait une planche avec plusieurs vignettes maintenant", "intention": "planche", "source": "gabarit"}
 {"texte": "TU PEUX UNE PLANCHE AVEC PLUSIEURS VIGNETTES MAINTENANT", "intention": "planche", "source": "gabarit"}
-{"texte": "je voudrais une affiche avec un bol de ramen stp", "intention": "image", "source": "gabarit"}
+{"texte": "s'il te plait un astronaute, photo realiste, tres detaille", "intention": "image", "source": "gabarit"}
 {"texte": "J'AIMERAIS LIS CE QUI EST ECRIT DESSUS STP", "intention": "lecture", "source": "gabarit"}
 {"texte": "que vois-tu la ? !", "intention": "lecture", "source": "gabarit"}
 {"texte": "peux-tu fais-moi une musique rock pour moi", "intention": "audio", "source": "gabarit"}
@@ -51,7 +51,7 @@
 {"texte": "STP UNE PLANCHE AVEC PLUSIEURS VIGNETTES POUR MOI", "intention": "planche", "source": "gabarit"}
 {"texte": "un petit film de un phare breton s'il te plait", "intention": "video", "source": "gabarit"}
 {"texte": "une video de une voiture de sport sur un toit ?", "intention": "video", "source": "gabarit"}
-{"texte": "j'aimerais change l'arriere-plan en rouge s'il te plait", "intention": "edition", "source": "gabarit"}
+{"texte": "et rajoute-lui un chapeau ?", "intention": "edition", "source": "gabarit"}
 {"texte": "bon, une chanson metal avec des cordes !", "intention": "audio", "source": "gabarit"}
 {"texte": "anime cette photo, fais bouger les nuages s'il te plait", "intention": "video_image", "source": "gabarit"}
 {"texte": "BON, UNE PLANCHE AVEC PLUSIEURS VIGNETTES", "intention": "planche", "source": "gabarit"}
@@ -60,7 +60,7 @@
 {"texte": "s'il te plait retire l'arriere-plan pour moi", "intention": "detourer", "source": "gabarit"}
 {"texte": "J'AIMERAIS FAIS-MOI UNE PAGE DE MANGA", "intention": "planche", "source": "gabarit"}
 {"texte": "s'il te plait anime une scene avec un renard roux maintenant", "intention": "video", "source": "gabarit"}
-{"texte": "s'il te plait peux-tu me faire un portrait de vieil homme sous la pluie ? !", "intention": "image", "source": "gabarit"}
+{"texte": "la meme, mais au bord de la mer", "intention": "image", "source": "gabarit"}
 {"texte": "bon, une musique classique de deux minutes !", "intention": "audio", "source": "gabarit"}
 {"texte": "je voudrais fais-moi une page de manga merci", "intention": "planche", "source": "gabarit"}
 {"texte": "s'il te plait un modele 3d de une statuette s'il te plait", "intention": "objet3d", "source": "gabarit"}
@@ -70,14 +70,14 @@
 {"texte": "il me faudrait fluidifie la video !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "alors, un modele 3d de une chaise merci", "intention": "objet3d", "source": "gabarit"}
 {"texte": "un ralenti s'il te plait vite fait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "une danseuse dans la neige, peinture a l'huile", "intention": "image", "source": "gabarit"}
+{"texte": "dessine-moi une cabane en montagne sous la pluie ?", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux retire l'arriere-plan maintenant", "intention": "detourer", "source": "gabarit"}
 {"texte": "il me faudrait une planche de bd en quatre cases stp", "intention": "planche", "source": "gabarit"}
 {"texte": "tu peux upscale ?", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, explique-moi ce qui est represente", "intention": "lecture", "source": "gabarit"}
 {"texte": "et transforme ce dessin en objet 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT ANIME CETTE IMAGE MAINTENANT", "intention": "video_image", "source": "gabarit"}
-{"texte": "peux-tu modifie la couleur de ses yeux en rouge pour moi", "intention": "edition", "source": "gabarit"}
+{"texte": "s'il te plait rajoute-lui un chapeau !", "intention": "edition", "source": "gabarit"}
 {"texte": "et upscale stp", "intention": "agrandir", "source": "gabarit"}
 {"texte": "et fais bouger ce dessin", "intention": "video_image", "source": "gabarit"}
 {"texte": "bon, mets-la sur fond transparent", "intention": "detourer", "source": "gabarit"}
@@ -94,7 +94,7 @@
 {"texte": "je voudrais mets-la en haute definition", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant un petit film de un cerf", "intention": "video", "source": "gabarit"}
 {"texte": "et une bande dessinee de trois cases sur une guerriere en armure stp", "intention": "planche", "source": "gabarit"}
-{"texte": "genere une image de un vieux phare", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait une affiche de une guerriere en armure, en 4k pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais mets-la en haute definition", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant anime cette photo, fais bouger les nuages ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "j'aimerais une video de un portrait de vieil homme dans un atelier pour moi", "intention": "video", "source": "gabarit"}
@@ -107,18 +107,18 @@
 {"texte": "je voudrais fais une statuette en trois dimensions stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais elle est saccadee, rends-la plus fluide s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT UNE BANDE DESSINEE DE TROIS CASES SUR UN PHARE BRETON MERCI", "intention": "planche", "source": "gabarit"}
-{"texte": "fais un renard roux sur un toit stp", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un chat endormi sous un ciel d'orage, de bonne qualite stp", "intention": "image", "source": "gabarit"}
 {"texte": "ENLEVE LE FOND MERCI", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais qu'est-ce qu'il y a sur cette image ? stp", "intention": "lecture", "source": "gabarit"}
 {"texte": "s'il te plait supprime le fond de cette image s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "tu peux ajoute une cicatrice sur sa joue", "intention": "edition", "source": "gabarit"}
 {"texte": "j'aimerais je voudrais un buste imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "je voudrais mets du mouvement dans cette image merci", "intention": "video_image", "source": "gabarit"}
-{"texte": "bon, la meme, mais au petit matin maintenant", "intention": "image", "source": "gabarit"}
-{"texte": "modifie l'arriere-plan en bleu maintenant", "intention": "edition", "source": "gabarit"}
+{"texte": "bon, une affiche de un astronaute, en 4k maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais change la voiture au second plan en bleu pour moi", "intention": "edition", "source": "gabarit"}
 {"texte": "retouche sa veste !", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, supprime le fond de cette image ?", "intention": "detourer", "source": "gabarit"}
-{"texte": "bon, une affiche avec un portrait de vieil homme ?", "intention": "image", "source": "gabarit"}
+{"texte": "bon, un portrait de vieil homme, style bd, tres detaille ?", "intention": "image", "source": "gabarit"}
 {"texte": "UN RALENTI S'IL TE PLAIT POUR MOI", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "BON, ANIME-LA MAINTENANT", "intention": "video_image", "source": "gabarit"}
 {"texte": "tu peux une bande dessinee de trois cases sur un astronaute", "intention": "planche", "source": "gabarit"}
@@ -144,9 +144,9 @@
 {"texte": "mets du mouvement dans cette image ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT CORRIGE SA VESTE !", "intention": "edition", "source": "gabarit"}
 {"texte": "bon, agrandis-la merci", "intention": "agrandir", "source": "gabarit"}
-{"texte": "maintenant une cabane en montagne, peinture a l'huile, format portrait merci", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais une foret en automne au petit matin, en 1920x1080 merci", "intention": "image", "source": "gabarit"}
 {"texte": "bon, une planche de bd en quatre cases merci", "intention": "planche", "source": "gabarit"}
-{"texte": "j'aimerais ajoute une cicatrice sur sa joue s'il te plait", "intention": "edition", "source": "gabarit"}
+{"texte": "ET ENLEVE SA VESTE S'IL TE PLAIT", "intention": "edition", "source": "gabarit"}
 {"texte": "FAIS-MOI UNE MUSIQUE ROCK", "intention": "audio", "source": "gabarit"}
 {"texte": "stp upscale !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "ALORS, ISOLE LE SUJET", "intention": "detourer", "source": "gabarit"}
@@ -154,10 +154,10 @@
 {"texte": "stp decris-moi cette photo", "intention": "lecture", "source": "gabarit"}
 {"texte": "je voudrais un ralenti s'il te plait !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "maintenant un instrumental jazz au saxophone !", "intention": "audio", "source": "gabarit"}
-{"texte": "je voudrais le meme personnage, sous la pluie vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "alors, un chevalier dans un atelier, de bonne qualite vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "un maillage 3d de une epee vite fait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "BON, FAIS UNE CHAISE EN TROIS DIMENSIONS MERCI", "intention": "objet3d", "source": "gabarit"}
-{"texte": "maintenant une affiche avec un bol de ramen", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un bol de ramen au petit matin, en haute definition", "intention": "image", "source": "gabarit"}
 {"texte": "et mets-la en 60 fps maintenant", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "je voudrais une bande dessinee de trois cases sur un ecureuil sur une branche stp", "intention": "planche", "source": "gabarit"}
 {"texte": "tu peux upscale pour moi", "intention": "agrandir", "source": "gabarit"}
@@ -167,9 +167,9 @@
 {"texte": "et fais un vase en trois dimensions merci", "intention": "objet3d", "source": "gabarit"}
 {"texte": "peux-tu compose un morceau metal", "intention": "audio", "source": "gabarit"}
 {"texte": "UNE VIDEO DE UN BOL DE RAMEN SOUS LA PLUIE S'IL TE PLAIT", "intention": "video", "source": "gabarit"}
-{"texte": "BON, LA MEME, MAIS AU MILIEU DES CHAMPS VITE FAIT", "intention": "image", "source": "gabarit"}
+{"texte": "un fond d'ecran avec une ruelle sous la pluie au crepuscule, plein de details stp", "intention": "image", "source": "gabarit"}
 {"texte": "un modele 3d de un buste pour moi", "intention": "objet3d", "source": "gabarit"}
-{"texte": "j'aimerais le meme personnage, au crepuscule !", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait le meme personnage, dans la neige s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "cest quoi cette image ? !", "intention": "lecture", "source": "gabarit"}
 {"texte": "tu peux passe-la au ralenti", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "maintenant une chanson rock avec batterie et basse stp", "intention": "audio", "source": "gabarit"}
@@ -180,7 +180,7 @@
 {"texte": "et mets du mouvement dans cette image !", "intention": "video_image", "source": "gabarit"}
 {"texte": "maintenant passe-la en haute resolution maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "il me faudrait anime une scene avec un heron dans les roseaux s'il te plait", "intention": "video", "source": "gabarit"}
-{"texte": "maintenant mets son chapeau plus sombre merci", "intention": "edition", "source": "gabarit"}
+{"texte": "tu peux ajoute une cicatrice sur sa joue stp", "intention": "edition", "source": "gabarit"}
 {"texte": "MAINTENANT UNE PLANCHE DE BD EN QUATRE CASES", "intention": "planche", "source": "gabarit"}
 {"texte": "il me faudrait une planche de bd en quatre cases !", "intention": "planche", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT UN PETIT FILM DE UN BOL DE RAMEN STP", "intention": "video", "source": "gabarit"}
@@ -188,17 +188,17 @@
 {"texte": "je voudrais enleve le fond", "intention": "detourer", "source": "gabarit"}
 {"texte": "alors, mets-la en 60 fps maintenant", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux une planche avec plusieurs vignettes s'il te plait", "intention": "planche", "source": "gabarit"}
-{"texte": "genere une image de une plage au couchant ?", "intention": "image", "source": "gabarit"}
+{"texte": "genere une image de un heron dans les roseaux stp", "intention": "image", "source": "gabarit"}
 {"texte": "et mets l'eclairage en rouge !", "intention": "edition", "source": "gabarit"}
 {"texte": "j'aimerais isole le sujet !", "intention": "detourer", "source": "gabarit"}
 {"texte": "alors, decris-moi cette photo merci", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait une musique reggae de deux minutes maintenant", "intention": "audio", "source": "gabarit"}
 {"texte": "une chanson classique a la guitare !", "intention": "audio", "source": "gabarit"}
 {"texte": "transforme ce dessin en objet 3d vite fait", "intention": "objet3d", "source": "gabarit"}
-{"texte": "maintenant une guerriere en armure, style cinema, format portrait !", "intention": "image", "source": "gabarit"}
+{"texte": "s'il te plait un fond d'ecran avec un portrait de vieil homme sous la pluie, plein de details !", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant retire larriere-plan", "intention": "detourer", "source": "gabarit"}
 {"texte": "tu peux elle est saccadee, rends-la plus fluide stp", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "rajoute-lui un chapeau s'il te plait", "intention": "edition", "source": "gabarit"}
+{"texte": "sil te plait remplace la couleur du mur par autre chose vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "tu peux isole le sujet stp", "intention": "detourer", "source": "gabarit"}
 {"texte": "il me faudrait decris-moi cette photo merci", "intention": "lecture", "source": "gabarit"}
 {"texte": "stp explique-moi ce qui est represente ?", "intention": "lecture", "source": "gabarit"}
@@ -208,15 +208,15 @@
 {"texte": "alors, fais-moi une page de manga ?", "intention": "planche", "source": "gabarit"}
 {"texte": "un ralenti s'il te plait merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "s'il te plait anime cette photo, fais bouger les nuages", "intention": "video_image", "source": "gabarit"}
-{"texte": "maintenant un cerf, photo realiste, format portrait stp", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un cerf devant une plus grande maison stp", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu detoure le personnage", "intention": "detourer", "source": "gabarit"}
 {"texte": "isole le sujet", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais je voudrais une epee imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais passe-la en haute resolution vite fait", "intention": "agrandir", "source": "gabarit"}
-{"texte": "stp le meme personnage, au bord de la mer vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "bon, le meme personnage, au milieu des champs", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait explique-moi ce qui est represente maintenant", "intention": "lecture", "source": "gabarit"}
 {"texte": "je la veux plus grande vite fait", "intention": "agrandir", "source": "gabarit"}
-{"texte": "S'IL TE PLAIT DESSINE-MOI UNE PLAGE AU COUCHANT AU BORD DE LA MER", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais un chevalier, style manga, qualite professionnelle vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux une musique metal de deux minutes", "intention": "audio", "source": "gabarit"}
 {"texte": "j'aimerais rends la video plus fluide", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT ELLE EST SACCADEE, RENDS-LA PLUS FLUIDE MAINTENANT", "intention": "fluidifier", "source": "gabarit"}
@@ -227,7 +227,7 @@
 {"texte": "STP QU'EST-CE QU'IL Y A SUR CETTE IMAGE ? !", "intention": "lecture", "source": "gabarit"}
 {"texte": "peux-tu anime cette photo, fais bouger les nuages stp", "intention": "video_image", "source": "gabarit"}
 {"texte": "et transforme ce dessin en objet 3d s'il te plait", "intention": "objet3d", "source": "gabarit"}
-{"texte": "stp un ecureuil sur une branche devant une plus grande maison s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "bon, un vieux phare, style bd, format portrait !", "intention": "image", "source": "gabarit"}
 {"texte": "STP QU'EST-CE QU'IL Y A SUR CETTE IMAGE ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "je voudrais anime-la", "intention": "video_image", "source": "gabarit"}
 {"texte": "explique-moi ce qui est represente", "intention": "lecture", "source": "gabarit"}
@@ -256,7 +256,7 @@
 {"texte": "tu peux un modele 3d de un casque maintenant", "intention": "objet3d", "source": "gabarit"}
 {"texte": "il me faudrait je la veux plus grande s'il te plait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "une video de une voiture de sport dans une foret brumeuse ?", "intention": "video", "source": "gabarit"}
-{"texte": "j'aimerais une affiche avec une plage au couchant !", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu je voudrais un dragon, style bd", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux decris-moi cette photo", "intention": "lecture", "source": "gabarit"}
 {"texte": "JE VOUDRAIS UNE MUSIQUE ELECTRO DE DEUX MINUTES MAINTENANT", "intention": "audio", "source": "gabarit"}
 {"texte": "ET DECRIS-MOI CETTE PHOTO !", "intention": "lecture", "source": "gabarit"}
@@ -264,7 +264,7 @@
 {"texte": "sil te plait cest quoi cette image ? ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait un instrumental classique au saxophone stp", "intention": "audio", "source": "gabarit"}
 {"texte": "PEUX-TU UPSCALE MERCI", "intention": "agrandir", "source": "gabarit"}
-{"texte": "s'il te plait le meme personnage, au petit matin", "intention": "image", "source": "gabarit"}
+{"texte": "J'AIMERAIS UNE AFFICHE AVEC UN HERON DANS LES ROSEAUX", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu upscale", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant mets-la sur fond transparent", "intention": "detourer", "source": "gabarit"}
 {"texte": "je voudrais une video de une voiture de sport au crepuscule stp", "intention": "video", "source": "gabarit"}
@@ -276,7 +276,7 @@
 {"texte": "bon, fais-moi une musique classique ?", "intention": "audio", "source": "gabarit"}
 {"texte": "je voudrais une planche avec plusieurs vignettes", "intention": "planche", "source": "gabarit"}
 {"texte": "bon, fais une video : un astronaute au bord de la mer !", "intention": "video", "source": "gabarit"}
-{"texte": "il me faudrait retouche l'eclairage stp", "intention": "edition", "source": "gabarit"}
+{"texte": "s'il te plait ajoute une cicatrice sur sa joue stp", "intention": "edition", "source": "gabarit"}
 {"texte": "tu peux elle est saccadee, rends-la plus fluide !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "TRANSFORME CE DESSIN EN OBJET 3D S'IL TE PLAIT", "intention": "objet3d", "source": "gabarit"}
 {"texte": "maintenant transforme ce dessin en objet 3d vite fait", "intention": "objet3d", "source": "gabarit"}
@@ -289,13 +289,13 @@
 {"texte": "je voudrais une musique folk de deux minutes", "intention": "audio", "source": "gabarit"}
 {"texte": "alors, une bande dessinee de trois cases sur un chat endormi", "intention": "planche", "source": "gabarit"}
 {"texte": "un modele 3d de une theiere !", "intention": "objet3d", "source": "gabarit"}
-{"texte": "la meme, mais au crepuscule ?", "intention": "image", "source": "gabarit"}
+{"texte": "LA MEME, MAIS AU CREPUSCULE ?", "intention": "image", "source": "gabarit"}
 {"texte": "et explique-moi ce qui est represente", "intention": "lecture", "source": "gabarit"}
 {"texte": "une video de un vieux phare sous un ciel d'orage ?", "intention": "video", "source": "gabarit"}
 {"texte": "mets sa veste plus sombre ?", "intention": "edition", "source": "gabarit"}
 {"texte": "tu peux une planche de bd en quatre cases", "intention": "planche", "source": "gabarit"}
 {"texte": "il me faudrait anime cette photo, fais bouger les nuages stp", "intention": "video_image", "source": "gabarit"}
-{"texte": "bon, une affiche avec une plage au couchant stp", "intention": "image", "source": "gabarit"}
+{"texte": "alors, un bol de ramen dans un atelier, de bonne qualite merci", "intention": "image", "source": "gabarit"}
 {"texte": "alors, retire l'arriere-plan", "intention": "detourer", "source": "gabarit"}
 {"texte": "bon, une planche de bd en quatre cases", "intention": "planche", "source": "gabarit"}
 {"texte": "je voudrais retire l'arriere-plan maintenant", "intention": "detourer", "source": "gabarit"}
@@ -303,7 +303,7 @@
 {"texte": "stp une video de un vieux phare dans une foret brumeuse", "intention": "video", "source": "gabarit"}
 {"texte": "STP ELLE EST SACCADEE, RENDS-LA PLUS FLUIDE ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "j'aimerais fais-moi une page de manga maintenant", "intention": "planche", "source": "gabarit"}
-{"texte": "tu peux une ruelle sous la pluie, illustration, format portrait", "intention": "image", "source": "gabarit"}
+{"texte": "LE MEME PERSONNAGE, DANS LA NEIGE MERCI", "intention": "image", "source": "gabarit"}
 {"texte": "s'il te plait une planche de bd en quatre cases", "intention": "planche", "source": "gabarit"}
 {"texte": "bon, qu'est-ce qu'il y a sur cette image ? vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "alors, mets du mouvement dans cette image merci", "intention": "video_image", "source": "gabarit"}
@@ -318,7 +318,7 @@
 {"texte": "UN INSTRUMENTAL ELECTRO AVEC BATTERIE ET BASSE", "intention": "audio", "source": "gabarit"}
 {"texte": "je veux une chanson sur mon ami disparu, folk !", "intention": "audio", "source": "gabarit"}
 {"texte": "PEUX-TU FAIS UNE VIDEO : UNE FORET EN AUTOMNE DANS LA NEIGE S'IL TE PLAIT", "intention": "video", "source": "gabarit"}
-{"texte": "tu peux une affiche avec une guerriere en armure", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux un astronaute, style manga, qualite professionnelle vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais une musique une berceuse de deux minutes pour moi", "intention": "audio", "source": "gabarit"}
 {"texte": "et une sequence video de un ecureuil sur une branche sur un toit", "intention": "video", "source": "gabarit"}
 {"texte": "peux-tu fais bouger ce dessin maintenant", "intention": "video_image", "source": "gabarit"}
@@ -329,7 +329,7 @@
 {"texte": "et fais une chaise en trois dimensions stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "stp mets-la sur fond transparent", "intention": "detourer", "source": "gabarit"}
 {"texte": "tu peux transforme ce dessin en objet 3d maintenant", "intention": "objet3d", "source": "gabarit"}
-{"texte": "alors, un chevalier devant une plus grande maison vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "et peux-tu me faire une ruelle sous la pluie dans un atelier ? maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu anime-la s'il te plait", "intention": "video_image", "source": "gabarit"}
 {"texte": "il me faudrait une chanson electro a l'accordeon", "intention": "audio", "source": "gabarit"}
 {"texte": "tu peux fais-moi une page de manga ?", "intention": "planche", "source": "gabarit"}
@@ -348,21 +348,21 @@
 {"texte": "stp detoure le personnage ?", "intention": "detourer", "source": "gabarit"}
 {"texte": "et passe-la au ralenti", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "peux-tu enleve la couleur du mur pour moi", "intention": "edition", "source": "gabarit"}
-{"texte": "peux-tu un ecureuil sur une branche, en aquarelle, format portrait pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un ecureuil sur une branche devant une plus grande maison merci", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu explique-moi ce qui est represente ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "STP QUE VOIS-TU LA ? ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "fais une video : un phare breton dans une foret brumeuse pour moi", "intention": "video", "source": "gabarit"}
 {"texte": "je voudrais un vase imprimable en 3d vite fait", "intention": "objet3d", "source": "gabarit"}
-{"texte": "maintenant je voudrais un ecureuil sur une branche, peinture a l'huile ?", "intention": "image", "source": "gabarit"}
+{"texte": "stp un bol de ramen devant une plus grande maison", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux mets du mouvement dans cette image ?", "intention": "video_image", "source": "gabarit"}
-{"texte": "genere une image de une foret en automne", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait une voiture de sport, photo realiste, qualite professionnelle stp", "intention": "image", "source": "gabarit"}
 {"texte": "s'il te plait mets-la en haute definition s'il te plait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "ET ANIME UNE SCENE AVEC UNE RUELLE SOUS LA PLUIE", "intention": "video", "source": "gabarit"}
 {"texte": "TU PEUX AGRANDIS-LA", "intention": "agrandir", "source": "gabarit"}
 {"texte": "s'il te plait fais bouger ce dessin pour moi", "intention": "video_image", "source": "gabarit"}
-{"texte": "il me faudrait peux-tu me faire un portrait de vieil homme dans la neige ?", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un fond d'ecran avec un portrait de vieil homme dans la neige, plein de details", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais fais-moi une page de manga merci", "intention": "planche", "source": "gabarit"}
-{"texte": "et un astronaute, en aquarelle, format portrait stp", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu me faire un portrait de vieil homme au bord de la mer ? ?", "intention": "image", "source": "gabarit"}
 {"texte": "et c'est quoi cette image ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "TU PEUX UPSCALE", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, ajoute une cicatrice sur sa joue vite fait", "intention": "edition", "source": "gabarit"}
@@ -389,7 +389,7 @@
 {"texte": "FAIS BOUGER CE DESSIN STP", "intention": "video_image", "source": "gabarit"}
 {"texte": "j'aimerais une video de un heron dans les roseaux sur un toit vite fait", "intention": "video", "source": "gabarit"}
 {"texte": "j'aimerais fais bouger ce dessin", "intention": "video_image", "source": "gabarit"}
-{"texte": "s'il te plait le meme personnage, dans un atelier merci", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux la meme, mais sous la pluie ?", "intention": "image", "source": "gabarit"}
 {"texte": "QUE VOIS-TU LA ? MAINTENANT", "intention": "lecture", "source": "gabarit"}
 {"texte": "agrandis cette image", "intention": "agrandir", "source": "gabarit"}
 {"texte": "une sequence video de un marche de nuit sous un ciel d'orage vite fait", "intention": "video", "source": "gabarit"}
@@ -397,26 +397,26 @@
 {"texte": "alors, fais-moi une page de manga maintenant", "intention": "planche", "source": "gabarit"}
 {"texte": "stp transforme ce dessin en objet 3d s'il te plait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "tu peux un modele 3d de une chaise !", "intention": "objet3d", "source": "gabarit"}
-{"texte": "ajoute une cicatrice sur sa joue vite fait", "intention": "edition", "source": "gabarit"}
+{"texte": "alors, retouche la couleur de ses yeux merci", "intention": "edition", "source": "gabarit"}
 {"texte": "peux-tu mets du mouvement dans cette image stp", "intention": "video_image", "source": "gabarit"}
 {"texte": "j'aimerais explique-moi ce qui est represente", "intention": "lecture", "source": "gabarit"}
 {"texte": "retouche l'eclairage stp", "intention": "edition", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT ELLE EST SACCADEE, RENDS-LA PLUS FLUIDE", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "et peux-tu me faire une ruelle sous la pluie dans un atelier ? ?", "intention": "image", "source": "gabarit"}
+{"texte": "et un fond decran avec une ruelle sous la pluie dans un atelier, plein de details ?", "intention": "image", "source": "gabarit"}
 {"texte": "stp enleve le fond maintenant", "intention": "detourer", "source": "gabarit"}
-{"texte": "maintenant peux-tu me faire un dragon dans la neige ? s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un dragon dans la neige, de bonne qualite s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "stp anime-la merci", "intention": "video_image", "source": "gabarit"}
-{"texte": "stp la meme, mais dans une foret brumeuse maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "DESSINE-MOI UNE DANSEUSE SOUS UN CIEL D'ORAGE", "intention": "image", "source": "gabarit"}
 {"texte": "bon, retouche le fond stp", "intention": "edition", "source": "gabarit"}
-{"texte": "je voudrais remplace la couleur du mur par autre chose", "intention": "edition", "source": "gabarit"}
+{"texte": "retouche leclairage !", "intention": "edition", "source": "gabarit"}
 {"texte": "peux-tu une video de un astronaute au crepuscule maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "tu peux rends la video plus fluide vite fait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "et transforme ce dessin en objet 3d !", "intention": "objet3d", "source": "gabarit"}
-{"texte": "bon, je voudrais un chat endormi, style cinema !", "intention": "image", "source": "gabarit"}
+{"texte": "bon, genere une image de un chat endormi !", "intention": "image", "source": "gabarit"}
 {"texte": "et lis ce qui est ecrit dessus merci", "intention": "lecture", "source": "gabarit"}
 {"texte": "retouche la couleur de ses yeux maintenant", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais enleve le fond !", "intention": "detourer", "source": "gabarit"}
-{"texte": "ET LA MEME, MAIS SOUS UN CIEL D'ORAGE", "intention": "image", "source": "gabarit"}
+{"texte": "UN CERF, ILLUSTRATION, QUALITE PROFESSIONNELLE", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu fais une chaise en trois dimensions", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait mets du mouvement dans cette image vite fait", "intention": "video_image", "source": "gabarit"}
 {"texte": "s'il te plait anime une scene avec une ruelle sous la pluie maintenant", "intention": "video", "source": "gabarit"}
@@ -433,7 +433,7 @@
 {"texte": "stp enleve l'arriere-plan", "intention": "edition", "source": "gabarit"}
 {"texte": "enleve le fond merci", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais une planche avec plusieurs vignettes stp", "intention": "planche", "source": "gabarit"}
-{"texte": "retouche le fond", "intention": "edition", "source": "gabarit"}
+{"texte": "tu peux change la couleur du mur en bleu vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "et un maillage 3d de une epee", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais qu'est-ce qu'il y a sur cette image ? merci", "intention": "lecture", "source": "gabarit"}
 {"texte": "tu peux corrige sa veste maintenant", "intention": "edition", "source": "gabarit"}
@@ -444,13 +444,13 @@
 {"texte": "j'aimerais mets-la en 60 fps", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "ET ENLEVE LE FOND POUR MOI", "intention": "detourer", "source": "gabarit"}
 {"texte": "peux-tu retouche la couleur de ses yeux vite fait", "intention": "edition", "source": "gabarit"}
-{"texte": "tu peux un cerf, illustration, format portrait !", "intention": "image", "source": "gabarit"}
+{"texte": "une affiche de une foret en automne, en 4k", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant je veux une chanson sur mon ami disparu, classique maintenant", "intention": "audio", "source": "gabarit"}
 {"texte": "anime-la maintenant", "intention": "video_image", "source": "gabarit"}
 {"texte": "passe-la en 4k ?", "intention": "agrandir", "source": "gabarit"}
 {"texte": "et anime une scene avec un phare breton s'il te plait", "intention": "video", "source": "gabarit"}
 {"texte": "stp que vois-tu la ? pour moi", "intention": "lecture", "source": "gabarit"}
-{"texte": "et peux-tu me faire un chat endormi dans une foret brumeuse ?", "intention": "image", "source": "gabarit"}
+{"texte": "et un fond d'ecran avec un chat endormi dans une foret brumeuse, plein de details", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu un modele 3d de un casque stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais qu'est-ce qu'il y a sur cette image ? pour moi", "intention": "lecture", "source": "gabarit"}
 {"texte": "bon, un maillage 3d de un buste", "intention": "objet3d", "source": "gabarit"}
@@ -471,28 +471,28 @@
 {"texte": "je voudrais une planche de bd en quatre cases vite fait", "intention": "planche", "source": "gabarit"}
 {"texte": "AJOUTE UNE CICATRICE SUR SA JOUE ?", "intention": "edition", "source": "gabarit"}
 {"texte": "il me faudrait une bande dessinee de trois cases sur une guerriere en armure stp", "intention": "planche", "source": "gabarit"}
-{"texte": "tu peux fais un chevalier dans un atelier", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux peux-tu me faire un chevalier dans un atelier ?", "intention": "image", "source": "gabarit"}
 {"texte": "remplace la voiture au second plan par autre chose s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "et une planche avec plusieurs vignettes ?", "intention": "planche", "source": "gabarit"}
-{"texte": "sil te plait genere une image de un heron dans les roseaux", "intention": "image", "source": "gabarit"}
+{"texte": "UNE AFFICHE DE UNE VOITURE DE SPORT, EN 4K !", "intention": "image", "source": "gabarit"}
 {"texte": "stp un maillage 3d de une epee", "intention": "objet3d", "source": "gabarit"}
 {"texte": "BON, UN MAILLAGE 3D DE UNE CHAISE", "intention": "objet3d", "source": "gabarit"}
 {"texte": "J'AIMERAIS ANIME CETTE IMAGE ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "une chanson classique au piano merci", "intention": "audio", "source": "gabarit"}
 {"texte": "enleve le fond s'il te plait", "intention": "detourer", "source": "gabarit"}
-{"texte": "et corrige le fond vite fait", "intention": "edition", "source": "gabarit"}
+{"texte": "modifie sa veste en nuit etoilee vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "PEUX-TU FAIS UNE VIDEO : UN VIEUX PHARE SOUS LA PLUIE", "intention": "video", "source": "gabarit"}
 {"texte": "j'aimerais mets-la sur fond transparent vite fait", "intention": "detourer", "source": "gabarit"}
 {"texte": "tu peux mets du mouvement dans cette image", "intention": "video_image", "source": "gabarit"}
 {"texte": "tu peux une bande dessinee de trois cases sur un renard roux !", "intention": "planche", "source": "gabarit"}
 {"texte": "fais-moi une musique folk", "intention": "audio", "source": "gabarit"}
 {"texte": "tu peux une planche de bd en quatre cases !", "intention": "planche", "source": "gabarit"}
-{"texte": "bon, genere une image de un vieux phare merci", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais une plage au couchant, en aquarelle, tres detaille !", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu une planche de bd en quatre cases", "intention": "planche", "source": "gabarit"}
 {"texte": "stp elle est saccadee, rends-la plus fluide pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux que vois-tu la ? pour moi", "intention": "lecture", "source": "gabarit"}
 {"texte": "alors, une bande dessinee de trois cases sur une cabane en montagne s'il te plait", "intention": "planche", "source": "gabarit"}
-{"texte": "j'aimerais un bol de ramen dans une foret brumeuse, peinture a l'huile ?", "intention": "image", "source": "gabarit"}
+{"texte": "ALORS, UN PHARE BRETON, EN AQUARELLE, TRES DETAILLE MAINTENANT", "intention": "image", "source": "gabarit"}
 {"texte": "et corrige l'arriere-plan !", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais mets-la en 60 fps !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "fais une video : un portrait de vieil homme au crepuscule", "intention": "video", "source": "gabarit"}
@@ -509,16 +509,16 @@
 {"texte": "tu peux passe-la au ralenti stp", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "une planche avec plusieurs vignettes !", "intention": "planche", "source": "gabarit"}
 {"texte": "rajoute-lui un chapeau stp", "intention": "edition", "source": "gabarit"}
-{"texte": "peux-tu me faire un ecureuil sur une branche au bord de la mer ? !", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant une affiche avec une guerriere en armure pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais une musique pop de deux minutes s'il te plait", "intention": "audio", "source": "gabarit"}
 {"texte": "maintenant anime-la stp", "intention": "video_image", "source": "gabarit"}
-{"texte": "bon, genere une image de une voiture de sport vite fait", "intention": "image", "source": "gabarit"}
-{"texte": "S'IL TE PLAIT PEUX-TU ME FAIRE UN CHEVALIER AU CREPUSCULE ? STP", "intention": "image", "source": "gabarit"}
+{"texte": "un cerf, illustration, qualite professionnelle", "intention": "image", "source": "gabarit"}
+{"texte": "S'IL TE PLAIT UN FOND D'ECRAN AVEC UN CHEVALIER AU CREPUSCULE, PLEIN DE DETAILS STP", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait passe-la en 4k s'il te plait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "bon, un ralenti sil te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT UNE PLANCHE AVEC PLUSIEURS VIGNETTES", "intention": "planche", "source": "gabarit"}
 {"texte": "STP UN MAILLAGE 3D DE UN VASE S'IL TE PLAIT", "intention": "objet3d", "source": "gabarit"}
-{"texte": "il me faudrait fais une cabane en montagne au crepuscule merci", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait peux-tu me faire une cabane en montagne au crepuscule ? merci", "intention": "image", "source": "gabarit"}
 {"texte": "et un maillage 3d de une statuette", "intention": "objet3d", "source": "gabarit"}
 {"texte": "PEUX-TU JE LA VEUX PLUS GRANDE VITE FAIT", "intention": "agrandir", "source": "gabarit"}
 {"texte": "peux-tu une sequence video de une foret en automne sur un toit", "intention": "video", "source": "gabarit"}
@@ -548,9 +548,9 @@
 {"texte": "passe-la en 4k s'il te plait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "bon, une sequence video de une guerriere en armure au petit matin maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "agrandis-la !", "intention": "agrandir", "source": "gabarit"}
-{"texte": "retouche le ciel", "intention": "edition", "source": "gabarit"}
+{"texte": "et retouche son chapeau", "intention": "edition", "source": "gabarit"}
 {"texte": "je veux une chanson sur mon ami disparu, folk s'il te plait", "intention": "audio", "source": "gabarit"}
-{"texte": "tu peux une foret en automne au milieu des champs, en aquarelle", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu je voudrais un astronaute, style cinema pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "alors, retire l'arriere-plan pour moi", "intention": "detourer", "source": "gabarit"}
 {"texte": "bon, agrandis-la", "intention": "agrandir", "source": "gabarit"}
 {"texte": "tu peux que vois-tu la ? maintenant", "intention": "lecture", "source": "gabarit"}
@@ -558,13 +558,13 @@
 {"texte": "mets-la en haute definition pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais un casque imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "tu peux detoure-la", "intention": "detourer", "source": "gabarit"}
-{"texte": "une voiture de sport dans un atelier, illustration maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais le meme personnage, sous la pluie merci", "intention": "image", "source": "gabarit"}
 {"texte": "fais bouger ce dessin !", "intention": "video_image", "source": "gabarit"}
 {"texte": "alors, anime une scene avec une plage au couchant", "intention": "video", "source": "gabarit"}
 {"texte": "peux-tu un maillage 3d de une statuette stp", "intention": "objet3d", "source": "gabarit"}
-{"texte": "j'aimerais je voudrais un ecureuil sur une branche, en noir et blanc pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "stp un cerf, style bd, tres detaille ?", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu rends la video plus fluide s'il te plait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "tu peux un vieux phare au bord de la mer, style manga !", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux un chevalier dans la neige, en haute definition vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "RENDS LA VIDEO PLUS FLUIDE S'IL TE PLAIT", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "je voudrais fais-moi une musique jazz pour moi", "intention": "audio", "source": "gabarit"}
 {"texte": "une musique une berceuse de deux minutes maintenant", "intention": "audio", "source": "gabarit"}
@@ -580,7 +580,7 @@
 {"texte": "j'aimerais une bande dessinee de trois cases sur un astronaute", "intention": "planche", "source": "gabarit"}
 {"texte": "jaimerais isole le sujet sil te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "STP RAJOUTE-LUI UN CHAPEAU", "intention": "edition", "source": "gabarit"}
-{"texte": "MAINTENANT FAIS UN ASTRONAUTE AU CREPUSCULE POUR MOI", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un fond d'ecran avec un renard roux au bord de la mer, plein de details !", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait mets-la en 60 fps s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "elle est saccadee, rends-la plus fluide sil te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "je voudrais une chaise imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
@@ -604,17 +604,17 @@
 {"texte": "je voudrais elle est saccadee, rends-la plus fluide maintenant", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "alors, quest-ce quil y a sur cette image ? vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "bon, fais une video : un ecureuil sur une branche dans la neige s'il te plait", "intention": "video", "source": "gabarit"}
-{"texte": "tu peux genere une image de une foret en automne pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "et un vieux phare au milieu des champs, en haute definition merci", "intention": "image", "source": "gabarit"}
 {"texte": "C'EST QUOI CETTE IMAGE ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "alors, isole le sujet ?", "intention": "detourer", "source": "gabarit"}
 {"texte": "et fais-moi une musique une berceuse", "intention": "audio", "source": "gabarit"}
-{"texte": "peux-tu peux-tu me faire une guerriere en armure sous un ciel d'orage ? !", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais un marche de nuit, style bd, format portrait maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "fais un buste en trois dimensions pour moi", "intention": "objet3d", "source": "gabarit"}
 {"texte": "upscale vite fait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, un modele 3d de un buste !", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais une sequence video de un chevalier sous un ciel d'orage vite fait", "intention": "video", "source": "gabarit"}
-{"texte": "et fais un bol de ramen sous la pluie maintenant", "intention": "image", "source": "gabarit"}
-{"texte": "fais un cerf dans un atelier pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "et genere une image de une cabane en montagne", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais un bol de ramen dans un atelier, en haute definition vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "une musique pop de deux minutes maintenant", "intention": "audio", "source": "gabarit"}
 {"texte": "et mets-la en haute definition stp", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant supprime le fond de cette image !", "intention": "detourer", "source": "gabarit"}
@@ -623,10 +623,10 @@
 {"texte": "un maillage 3d de une theiere maintenant", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais fais-moi une page de manga s'il te plait", "intention": "planche", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT ENLEVE L'ECLAIRAGE MAINTENANT", "intention": "edition", "source": "gabarit"}
-{"texte": "bon, retouche l'arriere-plan !", "intention": "edition", "source": "gabarit"}
+{"texte": "s'il te plait modifie l'eclairage en bleu vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "j'aimerais anime cette photo, fais bouger les nuages !", "intention": "video_image", "source": "gabarit"}
 {"texte": "corrige son chapeau", "intention": "edition", "source": "gabarit"}
-{"texte": "et la meme, mais dans la neige merci", "intention": "image", "source": "gabarit"}
+{"texte": "bon, fais un bol de ramen sur un toit", "intention": "image", "source": "gabarit"}
 {"texte": "sil te plait une planche avec plusieurs vignettes", "intention": "planche", "source": "gabarit"}
 {"texte": "bon, fais une video : un marche de nuit dans une foret brumeuse !", "intention": "video", "source": "gabarit"}
 {"texte": "je voudrais qu'est-ce qu'il y a sur cette image ? vite fait", "intention": "lecture", "source": "gabarit"}
@@ -638,20 +638,20 @@
 {"texte": "IL ME FAUDRAIT RENDS LA VIDEO PLUS FLUIDE POUR MOI", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "stp decris-moi cette photo vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait transforme ce dessin en objet 3d merci", "intention": "objet3d", "source": "gabarit"}
-{"texte": "je voudrais rajoute-lui un chapeau", "intention": "edition", "source": "gabarit"}
+{"texte": "et corrige la voiture au second plan maintenant", "intention": "edition", "source": "gabarit"}
 {"texte": "elle est saccadee, rends-la plus fluide merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "mets du mouvement dans cette image stp", "intention": "video_image", "source": "gabarit"}
-{"texte": "et le meme personnage, sous la pluie stp", "intention": "image", "source": "gabarit"}
+{"texte": "et une affiche de un chat endormi, en 4k stp", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux un maillage 3d de une statuette pour moi", "intention": "objet3d", "source": "gabarit"}
 {"texte": "bon, agrandis cette image maintenant", "intention": "agrandir", "source": "gabarit"}
-{"texte": "dessine-moi une foret en automne sous la pluie pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant genere une image de un chevalier", "intention": "image", "source": "gabarit"}
 {"texte": "JE VOUDRAIS ANIME CETTE IMAGE VITE FAIT", "intention": "video_image", "source": "gabarit"}
 {"texte": "il me faudrait une bande dessinee de trois cases sur un phare breton s'il te plait", "intention": "planche", "source": "gabarit"}
 {"texte": "isole le sujet vite fait", "intention": "detourer", "source": "gabarit"}
 {"texte": "peux-tu fais un vase en trois dimensions stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT UNE VIDEO DE UN CHEVALIER AU PETIT MATIN", "intention": "video", "source": "gabarit"}
 {"texte": "s'il te plait une video de une voiture de sport au petit matin !", "intention": "video", "source": "gabarit"}
-{"texte": "mets la couleur de ses yeux en rouge", "intention": "edition", "source": "gabarit"}
+{"texte": "bon, corrige le ciel", "intention": "edition", "source": "gabarit"}
 {"texte": "passe-la au ralenti", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "ET ANIME UNE SCENE AVEC UNE CABANE EN MONTAGNE ?", "intention": "video", "source": "gabarit"}
 {"texte": "PEUX-TU ELLE EST SACCADEE, RENDS-LA PLUS FLUIDE", "intention": "fluidifier", "source": "gabarit"}
@@ -661,21 +661,21 @@
 {"texte": "stp agrandis-la pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "TU PEUX ISOLE LE SUJET", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais passe-la en haute resolution s'il te plait", "intention": "agrandir", "source": "gabarit"}
-{"texte": "enleve la couleur de ses yeux", "intention": "edition", "source": "gabarit"}
+{"texte": "bon, retouche l'arriere-plan !", "intention": "edition", "source": "gabarit"}
 {"texte": "fluidifie la video vite fait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "BON, METS LE CIEL EN HIVER POUR MOI", "intention": "edition", "source": "gabarit"}
-{"texte": "peux-tu genere une image de une guerriere en armure ?", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais change la voiture au second plan plus sombre pour moi", "intention": "edition", "source": "gabarit"}
+{"texte": "je voudrais dessine-moi une guerriere en armure au milieu des champs", "intention": "image", "source": "gabarit"}
 {"texte": "JE VOUDRAIS SUPPRIME LE FOND DE CETTE IMAGE POUR MOI", "intention": "detourer", "source": "gabarit"}
 {"texte": "bon, anime une scene avec une danseuse", "intention": "video", "source": "gabarit"}
 {"texte": "bon, change son chapeau en nuit etoilee stp", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais une bande dessinee de trois cases sur une danseuse", "intention": "planche", "source": "gabarit"}
-{"texte": "maintenant genere une image de une cabane en montagne ?", "intention": "image", "source": "gabarit"}
-{"texte": "tu peux le meme personnage, dans une foret brumeuse merci", "intention": "image", "source": "gabarit"}
+{"texte": "s'il te plait un vieux phare, style cinema, qualite professionnelle", "intention": "image", "source": "gabarit"}
+{"texte": "et fais une cabane en montagne au petit matin", "intention": "image", "source": "gabarit"}
 {"texte": "bon, un instrumental jazz a l'accordeon vite fait", "intention": "audio", "source": "gabarit"}
 {"texte": "alors, mets la voiture au second plan en hiver stp", "intention": "edition", "source": "gabarit"}
 {"texte": "upscale merci", "intention": "agrandir", "source": "gabarit"}
-{"texte": "il me faudrait peux-tu me faire un chat endormi sous un ciel d'orage ? stp", "intention": "image", "source": "gabarit"}
-{"texte": "le meme personnage, au crepuscule merci", "intention": "image", "source": "gabarit"}
+{"texte": "et un portrait de vieil homme au bord de la mer, en haute definition pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "stp dessine-moi une guerriere en armure sur un toit", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu decris-moi cette photo maintenant", "intention": "lecture", "source": "gabarit"}
 {"texte": "j'aimerais explique-moi ce qui est represente s'il te plait", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait une bande dessinee de trois cases sur un portrait de vieil homme", "intention": "planche", "source": "gabarit"}
@@ -683,27 +683,27 @@
 {"texte": "et elle est saccadee, rends-la plus fluide merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux un ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "peux-tu passe-la en 4k pour moi", "intention": "agrandir", "source": "gabarit"}
-{"texte": "tu peux fais un cerf sous un ciel d'orage stp", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux peux-tu me faire un cerf sous un ciel d'orage ? stp", "intention": "image", "source": "gabarit"}
 {"texte": "alors, une sequence video de un cerf dans un atelier maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "anime une scene avec un dragon !", "intention": "video", "source": "gabarit"}
 {"texte": "alors, mets son chapeau en hiver", "intention": "edition", "source": "gabarit"}
-{"texte": "rajoute-lui un chapeau", "intention": "edition", "source": "gabarit"}
+{"texte": "alors, mets la couleur du mur en rouge !", "intention": "edition", "source": "gabarit"}
 {"texte": "maintenant detoure-la", "intention": "detourer", "source": "gabarit"}
 {"texte": "peux-tu une chanson electro a l'accordeon", "intention": "audio", "source": "gabarit"}
-{"texte": "s'il te plait un vieux phare devant une plus grande maison", "intention": "image", "source": "gabarit"}
-{"texte": "dessine-moi un chat endormi dans un atelier ?", "intention": "image", "source": "gabarit"}
+{"texte": "dessine-moi un astronaute au crepuscule stp", "intention": "image", "source": "gabarit"}
+{"texte": "et un heron dans les roseaux au crepuscule, en haute definition ?", "intention": "image", "source": "gabarit"}
 {"texte": "FAIS-MOI UNE MUSIQUE FOLK S'IL TE PLAIT", "intention": "audio", "source": "gabarit"}
 {"texte": "stp que vois-tu la ? stp", "intention": "lecture", "source": "gabarit"}
 {"texte": "METS DU MOUVEMENT DANS CETTE IMAGE", "intention": "video_image", "source": "gabarit"}
 {"texte": "maintenant ameliore la definition stp", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant passe-la au ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "je voudrais mets le fond en nuit etoilee merci", "intention": "edition", "source": "gabarit"}
-{"texte": "alors, remplace l'eclairage par autre chose vite fait", "intention": "edition", "source": "gabarit"}
-{"texte": "le meme personnage, au milieu des champs", "intention": "image", "source": "gabarit"}
+{"texte": "et corrige le fond vite fait", "intention": "edition", "source": "gabarit"}
+{"texte": "change son chapeau en version doree !", "intention": "edition", "source": "gabarit"}
+{"texte": "un renard roux sous la pluie, en haute definition", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant rajoute-lui un chapeau pour moi", "intention": "edition", "source": "gabarit"}
 {"texte": "tu peux rajoute-lui un chapeau merci", "intention": "edition", "source": "gabarit"}
 {"texte": "peux-tu rends la video plus fluide stp", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "il me faudrait le meme personnage, sur un toit pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un chevalier, style bd, qualite professionnelle pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais c'est quoi cette image ? stp", "intention": "lecture", "source": "gabarit"}
 {"texte": "fais une theiere en trois dimensions", "intention": "objet3d", "source": "gabarit"}
 {"texte": "fluidifie la video sil te plait", "intention": "fluidifier", "source": "gabarit"}
@@ -716,7 +716,7 @@
 {"texte": "stp elle est saccadee, rends-la plus fluide ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "alors, modifie le fond en nuit etoilee stp", "intention": "edition", "source": "gabarit"}
 {"texte": "et detoure-la stp", "intention": "detourer", "source": "gabarit"}
-{"texte": "maintenant peux-tu me faire un marche de nuit au bord de la mer ? vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "stp je voudrais un renard roux, style cinema stp", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais un instrumental une berceuse au saxophone merci", "intention": "audio", "source": "gabarit"}
 {"texte": "peux-tu fais un vase en trois dimensions s'il te plait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "et retouche le fond", "intention": "edition", "source": "gabarit"}
@@ -735,28 +735,28 @@
 {"texte": "lis ce qui est ecrit dessus maintenant", "intention": "lecture", "source": "gabarit"}
 {"texte": "et passe-la au ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "stp anime cette photo, fais bouger les nuages", "intention": "video_image", "source": "gabarit"}
-{"texte": "je voudrais dessine-moi une plage au couchant au petit matin !", "intention": "image", "source": "gabarit"}
+{"texte": "et je voudrais un cerf, style cinema stp", "intention": "image", "source": "gabarit"}
 {"texte": "ET QU'EST-CE QU'IL Y A SUR CETTE IMAGE ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "stp une planche de bd en quatre cases", "intention": "planche", "source": "gabarit"}
 {"texte": "j'aimerais un ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "il me faudrait anime cette image s'il te plait", "intention": "video_image", "source": "gabarit"}
 {"texte": "s'il te plait une sequence video de un vieux phare sous un ciel d'orage merci", "intention": "video", "source": "gabarit"}
-{"texte": "s'il te plait enleve sa veste !", "intention": "edition", "source": "gabarit"}
+{"texte": "je voudrais modifie la couleur de ses yeux plus lumineux s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais detoure le personnage s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais un ralenti s'il te plait ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "j'aimerais agrandis-la en 2x s'il te plait", "intention": "agrandir", "source": "gabarit"}
-{"texte": "peux-tu la meme, mais au milieu des champs", "intention": "image", "source": "gabarit"}
+{"texte": "stp le meme personnage, sous la pluie maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "fais une video : une guerriere en armure dans la neige maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "TU PEUX FAIS BOUGER CE DESSIN", "intention": "video_image", "source": "gabarit"}
-{"texte": "je voudrais une ruelle sous la pluie, illustration, format portrait s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "alors, une cabane en montagne, style cinema, format portrait ?", "intention": "image", "source": "gabarit"}
 {"texte": "alors, une musique pop de deux minutes", "intention": "audio", "source": "gabarit"}
 {"texte": "stp une bande dessinee de trois cases sur une guerriere en armure", "intention": "planche", "source": "gabarit"}
-{"texte": "stp un cerf, photo realiste, format portrait", "intention": "image", "source": "gabarit"}
-{"texte": "un ecureuil sur une branche, en aquarelle, format portrait merci", "intention": "image", "source": "gabarit"}
+{"texte": "alors, un chevalier au petit matin, de bonne qualite", "intention": "image", "source": "gabarit"}
+{"texte": "un ecureuil sur une branche, peinture a l'huile, qualite professionnelle stp", "intention": "image", "source": "gabarit"}
 {"texte": "et passe-la en haute resolution pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant c'est quoi cette image ? vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "et fluidifie la video maintenant", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "bon, la meme, mais dans un atelier", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu le meme personnage, au petit matin !", "intention": "image", "source": "gabarit"}
 {"texte": "UNE SEQUENCE VIDEO DE UN BOL DE RAMEN AU BORD DE LA MER", "intention": "video", "source": "gabarit"}
 {"texte": "maintenant fais une chaise en trois dimensions merci", "intention": "objet3d", "source": "gabarit"}
 {"texte": "une bande dessinee de trois cases sur une ruelle sous la pluie pour moi", "intention": "planche", "source": "gabarit"}
@@ -770,7 +770,7 @@
 {"texte": "maintenant fais une video : un vieux phare sous un ciel d'orage", "intention": "video", "source": "gabarit"}
 {"texte": "stp une bande dessinee de trois cases sur un cerf merci", "intention": "planche", "source": "gabarit"}
 {"texte": "je voudrais elle est saccadee, rends-la plus fluide ?", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "remplace la couleur du mur par autre chose maintenant", "intention": "edition", "source": "gabarit"}
+{"texte": "bon, mets la couleur du mur plus lumineux", "intention": "edition", "source": "gabarit"}
 {"texte": "et ameliore la definition merci", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, une bande dessinee de trois cases sur un dragon merci", "intention": "planche", "source": "gabarit"}
 {"texte": "une bande dessinee de trois cases sur un portrait de vieil homme merci", "intention": "planche", "source": "gabarit"}
@@ -780,7 +780,7 @@
 {"texte": "alors, je voudrais une chaise imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "et fais une video : un cerf dans un atelier", "intention": "video", "source": "gabarit"}
 {"texte": "fais bouger ce dessin", "intention": "video_image", "source": "gabarit"}
-{"texte": "je voudrais une voiture de sport, en noir et blanc, format portrait stp", "intention": "image", "source": "gabarit"}
+{"texte": "UNE VOITURE DE SPORT DEVANT UNE PLUS GRANDE MAISON", "intention": "image", "source": "gabarit"}
 {"texte": "alors, une musique electro de deux minutes pour moi", "intention": "audio", "source": "gabarit"}
 {"texte": "il me faudrait que vois-tu la ? vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "tu peux anime cette photo, fais bouger les nuages vite fait", "intention": "video_image", "source": "gabarit"}
@@ -806,7 +806,7 @@
 {"texte": "corrige sa veste", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, fais-moi une musique folk !", "intention": "audio", "source": "gabarit"}
 {"texte": "s'il te plait fais-moi une page de manga ?", "intention": "planche", "source": "gabarit"}
-{"texte": "j'aimerais genere une image de un bol de ramen maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "UN HERON DANS LES ROSEAUX, ILLUSTRATION, TRES DETAILLE S'IL TE PLAIT", "intention": "image", "source": "gabarit"}
 {"texte": "JE VOUDRAIS COMPOSE UN MORCEAU POP MERCI", "intention": "audio", "source": "gabarit"}
 {"texte": "s'il te plait fais-moi une musique une berceuse pour moi", "intention": "audio", "source": "gabarit"}
 {"texte": "maintenant une chanson blues au piano", "intention": "audio", "source": "gabarit"}
@@ -815,7 +815,7 @@
 {"texte": "JE VOUDRAIS DETOURE LE PERSONNAGE VITE FAIT", "intention": "detourer", "source": "gabarit"}
 {"texte": "J'AIMERAIS PASSE-LA AU RALENTI", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "alors, passe-la en 4k pour moi", "intention": "agrandir", "source": "gabarit"}
-{"texte": "et peux-tu me faire un heron dans les roseaux au crepuscule ?", "intention": "image", "source": "gabarit"}
+{"texte": "et un renard roux au bord de la mer, de bonne qualite ?", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais un petit film de un astronaute", "intention": "video", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT FAIS-MOI UNE PAGE DE MANGA", "intention": "planche", "source": "gabarit"}
 {"texte": "stp un petit film de un astronaute sil te plait", "intention": "video", "source": "gabarit"}
@@ -837,7 +837,7 @@
 {"texte": "peux-tu mets-la en 60 fps pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "j'aimerais lis ce qui est ecrit dessus pour moi", "intention": "lecture", "source": "gabarit"}
 {"texte": "compose un morceau metal", "intention": "audio", "source": "gabarit"}
-{"texte": "alors, mets la couleur du mur en rouge !", "intention": "edition", "source": "gabarit"}
+{"texte": "ajoute une cicatrice sur sa joue s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "il me faudrait un ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "BON, QU'EST-CE QU'IL Y A SUR CETTE IMAGE ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "et passe-la au ralenti merci", "intention": "fluidifier", "source": "gabarit"}
@@ -847,8 +847,8 @@
 {"texte": "modifie larriere-plan en version doree maintenant", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, fais-moi une page de manga merci", "intention": "planche", "source": "gabarit"}
 {"texte": "tu peux une video de une voiture de sport au bord de la mer", "intention": "video", "source": "gabarit"}
-{"texte": "stp un heron dans les roseaux dans un atelier, style manga pour moi", "intention": "image", "source": "gabarit"}
-{"texte": "dessine-moi un renard roux dans la neige stp", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais fais un cerf au petit matin", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais peux-tu me faire un phare breton dans un atelier ? pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait supprime le fond de cette image maintenant", "intention": "detourer", "source": "gabarit"}
 {"texte": "peux-tu un modele 3d de une theiere stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "fais-moi une page de manga stp", "intention": "planche", "source": "gabarit"}
@@ -864,8 +864,8 @@
 {"texte": "s'il te plait une planche avec plusieurs vignettes merci", "intention": "planche", "source": "gabarit"}
 {"texte": "maintenant fais bouger ce dessin ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "bon, un maillage 3d de une chaise stp", "intention": "objet3d", "source": "gabarit"}
-{"texte": "tu peux la meme, mais dans la neige !", "intention": "image", "source": "gabarit"}
-{"texte": "stp la meme, mais sous un ciel d'orage", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux un fond d'ecran avec un vieux phare au crepuscule, plein de details !", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu un chevalier dans un atelier, photo realiste pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais anime une scene avec un cerf", "intention": "video", "source": "gabarit"}
 {"texte": "supprime le fond de cette image maintenant", "intention": "detourer", "source": "gabarit"}
 {"texte": "s'il te plait je veux une chanson sur mon ami disparu, rock merci", "intention": "audio", "source": "gabarit"}
@@ -881,7 +881,7 @@
 {"texte": "bon, anime cette image ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "J'AIMERAIS PASSE-LA EN HAUTE RESOLUTION !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "JE VOUDRAIS AGRANDIS-LA EN 2X MAINTENANT", "intention": "agrandir", "source": "gabarit"}
-{"texte": "alors, une affiche avec un marche de nuit s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "alors, un marche de nuit, en noir et blanc, tres detaille s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "et detoure-la", "intention": "detourer", "source": "gabarit"}
 {"texte": "tu peux mets le fond plus lumineux merci", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais change la couleur de ses yeux plus sombre", "intention": "edition", "source": "gabarit"}
@@ -894,9 +894,9 @@
 {"texte": "bon, je voudrais un casque imprimable en 3d vite fait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "maintenant je la veux plus grande maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais remplace la voiture au second plan par autre chose pour moi", "intention": "edition", "source": "gabarit"}
-{"texte": "tu peux modifie la couleur de ses yeux en version doree", "intention": "edition", "source": "gabarit"}
-{"texte": "JE VOUDRAIS FAIS UNE RUELLE SOUS LA PLUIE SOUS UN CIEL D'ORAGE", "intention": "image", "source": "gabarit"}
-{"texte": "maintenant la meme, mais au bord de la mer", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait retouche l'eclairage stp", "intention": "edition", "source": "gabarit"}
+{"texte": "JE VOUDRAIS UNE AFFICHE AVEC UNE RUELLE SOUS LA PLUIE", "intention": "image", "source": "gabarit"}
+{"texte": "une voiture de sport dans une foret brumeuse, photo realiste stp", "intention": "image", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT METS DU MOUVEMENT DANS CETTE IMAGE", "intention": "video_image", "source": "gabarit"}
 {"texte": "il me faudrait enleve la couleur de ses yeux merci", "intention": "edition", "source": "gabarit"}
 {"texte": "peux-tu anime une scene avec un dragon", "intention": "video", "source": "gabarit"}
@@ -910,7 +910,7 @@
 {"texte": "bon, fluidifie la video s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "j'aimerais une chanson une berceuse avec des cordes", "intention": "audio", "source": "gabarit"}
 {"texte": "maintenant c'est quoi cette image ?", "intention": "lecture", "source": "gabarit"}
-{"texte": "un ecureuil sur une branche devant une plus grande maison s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais dessine-moi un portrait de vieil homme dans un atelier vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait que vois-tu la ? !", "intention": "lecture", "source": "gabarit"}
 {"texte": "alors, change la voiture au second plan en rouge ?", "intention": "edition", "source": "gabarit"}
 {"texte": "stp enleve le fond", "intention": "detourer", "source": "gabarit"}
@@ -926,8 +926,8 @@
 {"texte": "mets-la en 60 fps maintenant", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "bon, fais-moi une page de manga", "intention": "planche", "source": "gabarit"}
 {"texte": "compose un morceau blues !", "intention": "audio", "source": "gabarit"}
-{"texte": "j'aimerais le meme personnage, au petit matin maintenant", "intention": "image", "source": "gabarit"}
-{"texte": "peux-tu une foret en automne, illustration, format portrait maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait le meme personnage, sous la pluie !", "intention": "image", "source": "gabarit"}
+{"texte": "bon, un chat endormi, illustration, tres detaille merci", "intention": "image", "source": "gabarit"}
 {"texte": "ANIME CETTE IMAGE", "intention": "video_image", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT SUPPRIME LE FOND DE CETTE IMAGE POUR MOI", "intention": "detourer", "source": "gabarit"}
 {"texte": "s'il te plait je veux une chanson sur mon ami disparu, metal !", "intention": "audio", "source": "gabarit"}
@@ -939,15 +939,15 @@
 {"texte": "j'aimerais detoure-la", "intention": "detourer", "source": "gabarit"}
 {"texte": "tu peux ameliore la definition pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "agrandis-la en 2x vite fait", "intention": "agrandir", "source": "gabarit"}
-{"texte": "ajoute une cicatrice sur sa joue s'il te plait", "intention": "edition", "source": "gabarit"}
+{"texte": "et rajoute-lui un chapeau", "intention": "edition", "source": "gabarit"}
 {"texte": "j'aimerais que vois-tu la ? s'il te plait", "intention": "lecture", "source": "gabarit"}
-{"texte": "sil te plait change la couleur du mur plus lumineux !", "intention": "edition", "source": "gabarit"}
+{"texte": "il me faudrait rajoute-lui un chapeau stp", "intention": "edition", "source": "gabarit"}
 {"texte": "anime cette image !", "intention": "video_image", "source": "gabarit"}
 {"texte": "s'il te plait fais une chaise en trois dimensions stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais anime-la maintenant", "intention": "video_image", "source": "gabarit"}
 {"texte": "ET ANIME UNE SCENE AVEC UN BOL DE RAMEN", "intention": "video", "source": "gabarit"}
 {"texte": "BON, FAIS UNE VIDEO : UNE VOITURE DE SPORT DANS LA NEIGE POUR MOI", "intention": "video", "source": "gabarit"}
-{"texte": "peux-tu peux-tu me faire un cerf dans une foret brumeuse ?", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu un cerf dans une foret brumeuse, de bonne qualite", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais enleve le fond pour moi", "intention": "detourer", "source": "gabarit"}
 {"texte": "et mets-la sur fond transparent !", "intention": "detourer", "source": "gabarit"}
 {"texte": "et une sequence video de une danseuse sous la pluie", "intention": "video", "source": "gabarit"}
@@ -973,29 +973,29 @@
 {"texte": "je voudrais anime-la !", "intention": "video_image", "source": "gabarit"}
 {"texte": "PEUX-TU AGRANDIS CETTE IMAGE MERCI", "intention": "agrandir", "source": "gabarit"}
 {"texte": "bon, je veux une chanson sur mon ami disparu, jazz stp", "intention": "audio", "source": "gabarit"}
-{"texte": "bon, un heron dans les roseaux devant une plus grande maison", "intention": "image", "source": "gabarit"}
+{"texte": "bon, une affiche avec un marche de nuit", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant un instrumental blues au piano vite fait", "intention": "audio", "source": "gabarit"}
 {"texte": "alors, mets-la sur fond transparent sil te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "anime-la", "intention": "video_image", "source": "gabarit"}
-{"texte": "alors, je voudrais un ecureuil sur une branche, illustration merci", "intention": "image", "source": "gabarit"}
+{"texte": "alors, un ecureuil sur une branche, illustration, format portrait merci", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait detoure-la stp", "intention": "detourer", "source": "gabarit"}
 {"texte": "compose un morceau reggae pour moi", "intention": "audio", "source": "gabarit"}
 {"texte": "stp agrandis-la", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, agrandis-la en 2x", "intention": "agrandir", "source": "gabarit"}
 {"texte": "JE VOUDRAIS SUPPRIME LE FOND DE CETTE IMAGE VITE FAIT", "intention": "detourer", "source": "gabarit"}
-{"texte": "tu peux une guerriere en armure dans un atelier, illustration ?", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais un renard roux sous la pluie, peinture a l'huile s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "stp isole le sujet", "intention": "detourer", "source": "gabarit"}
 {"texte": "peux-tu anime-la !", "intention": "video_image", "source": "gabarit"}
 {"texte": "alors, une sequence video de un heron dans les roseaux au milieu des champs", "intention": "video", "source": "gabarit"}
 {"texte": "je voudrais une sequence video de une plage au couchant dans la neige ?", "intention": "video", "source": "gabarit"}
-{"texte": "tu peux un ecureuil sur une branche, peinture a l'huile, format portrait s'il te plait", "intention": "image", "source": "gabarit"}
-{"texte": "peux-tu me faire une ruelle sous la pluie sous un ciel dorage ?", "intention": "image", "source": "gabarit"}
+{"texte": "MAINTENANT GENERE UNE IMAGE DE UN PORTRAIT DE VIEIL HOMME VITE FAIT", "intention": "image", "source": "gabarit"}
+{"texte": "le meme personnage, sous la pluie merci", "intention": "image", "source": "gabarit"}
 {"texte": "alors, transforme ce dessin en objet 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "maintenant isole le sujet s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "s'il te plait anime une scene avec un cerf", "intention": "video", "source": "gabarit"}
 {"texte": "ALORS, FAIS-MOI UNE PAGE DE MANGA POUR MOI", "intention": "planche", "source": "gabarit"}
 {"texte": "tu peux un ralenti s'il te plait s'il te plait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "peux-tu fais un chevalier dans une foret brumeuse s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "LA MEME, MAIS AU MILIEU DES CHAMPS !", "intention": "image", "source": "gabarit"}
 {"texte": "stp decris-moi cette photo s'il te plait", "intention": "lecture", "source": "gabarit"}
 {"texte": "stp elle est saccadee, rends-la plus fluide s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux detoure le personnage vite fait", "intention": "detourer", "source": "gabarit"}
@@ -1018,13 +1018,13 @@
 {"texte": "je voudrais anime cette photo, fais bouger les nuages", "intention": "video_image", "source": "gabarit"}
 {"texte": "une sequence video de un portrait de vieil homme sous un ciel d'orage vite fait", "intention": "video", "source": "gabarit"}
 {"texte": "tu peux un instrumental classique a la guitare ?", "intention": "audio", "source": "gabarit"}
-{"texte": "J'AIMERAIS UNE AFFICHE AVEC UNE PLAGE AU COUCHANT MERCI", "intention": "image", "source": "gabarit"}
-{"texte": "je voudrais modifie la couleur de ses yeux plus lumineux s'il te plait", "intention": "edition", "source": "gabarit"}
+{"texte": "j'aimerais le meme personnage, au milieu des champs merci", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu modifie la couleur du mur en bleu merci", "intention": "edition", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT UNE CHANSON CLASSIQUE AU SAXOPHONE ?", "intention": "audio", "source": "gabarit"}
 {"texte": "j'aimerais anime cette image pour moi", "intention": "video_image", "source": "gabarit"}
 {"texte": "maintenant une planche avec plusieurs vignettes vite fait", "intention": "planche", "source": "gabarit"}
 {"texte": "un petit film de un bol de ramen maintenant", "intention": "video", "source": "gabarit"}
-{"texte": "tu peux ajoute une cicatrice sur sa joue stp", "intention": "edition", "source": "gabarit"}
+{"texte": "j'aimerais change l'eclairage en version doree", "intention": "edition", "source": "gabarit"}
 {"texte": "maintenant fais-moi une page de manga s'il te plait", "intention": "planche", "source": "gabarit"}
 {"texte": "tu peux anime une scene avec une cabane en montagne", "intention": "video", "source": "gabarit"}
 {"texte": "je voudrais fais une video : un dragon au petit matin", "intention": "video", "source": "gabarit"}
@@ -1032,13 +1032,13 @@
 {"texte": "alors, un petit film de une danseuse s'il te plait", "intention": "video", "source": "gabarit"}
 {"texte": "s'il te plait un modele 3d de une statuette merci", "intention": "objet3d", "source": "gabarit"}
 {"texte": "stp un maillage 3d de un buste ?", "intention": "objet3d", "source": "gabarit"}
-{"texte": "je voudrais change son chapeau en hiver ?", "intention": "edition", "source": "gabarit"}
+{"texte": "je voudrais mets le fond en nuit etoilee merci", "intention": "edition", "source": "gabarit"}
 {"texte": "sil te plait ameliore la definition pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "stp explique-moi ce qui est represente", "intention": "lecture", "source": "gabarit"}
-{"texte": "un chat endormi devant une plus grande maison vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux une danseuse au crepuscule, style bd vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "une chanson une berceuse au piano maintenant", "intention": "audio", "source": "gabarit"}
 {"texte": "maintenant anime cette image", "intention": "video_image", "source": "gabarit"}
-{"texte": "j'aimerais change l'eclairage en version doree", "intention": "edition", "source": "gabarit"}
+{"texte": "bon, rajoute-lui un chapeau merci", "intention": "edition", "source": "gabarit"}
 {"texte": "C'EST QUOI CETTE IMAGE ? VITE FAIT", "intention": "lecture", "source": "gabarit"}
 {"texte": "je voudrais c'est quoi cette image ? !", "intention": "lecture", "source": "gabarit"}
 {"texte": "et fluidifie la video !", "intention": "fluidifier", "source": "gabarit"}
@@ -1058,7 +1058,7 @@
 {"texte": "upscale ?", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, isole le sujet s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais une bande dessinee de trois cases sur un portrait de vieil homme s'il te plait", "intention": "planche", "source": "gabarit"}
-{"texte": "jaimerais peux-tu me faire un dragon au bord de la mer ?", "intention": "image", "source": "gabarit"}
+{"texte": "bon, un chat endormi, photo realiste, tres detaille", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant un modele 3d de une theiere s'il te plait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "mets-la en 60 fps stp", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux fais une video : un renard roux au milieu des champs pour moi", "intention": "video", "source": "gabarit"}
@@ -1078,12 +1078,12 @@
 {"texte": "bon, une planche avec plusieurs vignettes merci", "intention": "planche", "source": "gabarit"}
 {"texte": "je voudrais fais-moi une page de manga", "intention": "planche", "source": "gabarit"}
 {"texte": "peux-tu agrandis cette image merci", "intention": "agrandir", "source": "gabarit"}
-{"texte": "maintenant peux-tu me faire une danseuse sous la pluie ?", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux un marche de nuit devant une plus grande maison", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux je voudrais une epee imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "il me faudrait detoure le personnage ?", "intention": "detourer", "source": "gabarit"}
 {"texte": "et decris-moi cette photo", "intention": "lecture", "source": "gabarit"}
 {"texte": "j'aimerais une sequence video de une guerriere en armure au crepuscule merci", "intention": "video", "source": "gabarit"}
-{"texte": "il me faudrait un cerf devant une plus grande maison", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait genere une image de un cerf", "intention": "image", "source": "gabarit"}
 {"texte": "alors, une planche avec plusieurs vignettes !", "intention": "planche", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT DETOURE-LA", "intention": "detourer", "source": "gabarit"}
 {"texte": "bon, une sequence video de un portrait de vieil homme sous la pluie s'il te plait", "intention": "video", "source": "gabarit"}
@@ -1091,11 +1091,11 @@
 {"texte": "maintenant agrandis-la merci", "intention": "agrandir", "source": "gabarit"}
 {"texte": "bon, detoure le personnage pour moi", "intention": "detourer", "source": "gabarit"}
 {"texte": "alors, fais une theiere en trois dimensions merci", "intention": "objet3d", "source": "gabarit"}
-{"texte": "alors, je voudrais une cabane en montagne, style cinema ?", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu genere une image de un astronaute vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "alors, passe-la en 4k s'il te plait", "intention": "agrandir", "source": "gabarit"}
-{"texte": "alors, le meme personnage, sous la pluie", "intention": "image", "source": "gabarit"}
+{"texte": "alors, une ruelle sous la pluie, style cinema, qualite professionnelle", "intention": "image", "source": "gabarit"}
 {"texte": "et qu'est-ce qu'il y a sur cette image ? stp", "intention": "lecture", "source": "gabarit"}
-{"texte": "un marche de nuit au crepuscule, en noir et blanc s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "et un astronaute devant une plus grande maison !", "intention": "image", "source": "gabarit"}
 {"texte": "s'il te plait isole le sujet s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "maintenant modifie le fond plus sombre pour moi", "intention": "edition", "source": "gabarit"}
 {"texte": "une video de un heron dans les roseaux dans un atelier", "intention": "video", "source": "gabarit"}
@@ -1107,31 +1107,31 @@
 {"texte": "stp mets-la en 60 fps ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "je voudrais une planche de bd en quatre cases", "intention": "planche", "source": "gabarit"}
 {"texte": "j'aimerais fais une video : une plage au couchant sous la pluie !", "intention": "video", "source": "gabarit"}
-{"texte": "et je voudrais une plage au couchant, style bd", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un renard roux au bord de la mer, en haute definition pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "alors, une planche de bd en quatre cases !", "intention": "planche", "source": "gabarit"}
 {"texte": "je voudrais retire l'arriere-plan stp", "intention": "detourer", "source": "gabarit"}
 {"texte": "maintenant un ralenti s'il te plait maintenant", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "TU PEUX PASSE-LA AU RALENTI ?", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "sil te plait retouche sa veste !", "intention": "edition", "source": "gabarit"}
-{"texte": "s'il te plait une affiche avec un phare breton s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait rajoute-lui un chapeau ?", "intention": "edition", "source": "gabarit"}
+{"texte": "s'il te plait un phare breton dans une foret brumeuse, en haute definition s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant passe-la au ralenti vite fait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "s'il te plait peux-tu me faire un vieux phare dans un atelier ? stp", "intention": "image", "source": "gabarit"}
+{"texte": "dessine-moi un marche de nuit au bord de la mer !", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais un vase imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "stp lis ce qui est ecrit dessus pour moi", "intention": "lecture", "source": "gabarit"}
 {"texte": "j'aimerais un modele 3d de une epee ?", "intention": "objet3d", "source": "gabarit"}
 {"texte": "ELLE EST SACCADEE, RENDS-LA PLUS FLUIDE S'IL TE PLAIT", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "il me faudrait rajoute-lui un chapeau stp", "intention": "edition", "source": "gabarit"}
+{"texte": "STP CHANGE LE FOND EN NUIT ETOILEE S'IL TE PLAIT", "intention": "edition", "source": "gabarit"}
 {"texte": "et un modele 3d de une chaise maintenant", "intention": "objet3d", "source": "gabarit"}
 {"texte": "decris-moi cette photo", "intention": "lecture", "source": "gabarit"}
 {"texte": "tu peux change la couleur de ses yeux en rouge pour moi", "intention": "edition", "source": "gabarit"}
-{"texte": "change la couleur de ses yeux plus sombre !", "intention": "edition", "source": "gabarit"}
+{"texte": "j'aimerais enleve la couleur de ses yeux", "intention": "edition", "source": "gabarit"}
 {"texte": "tu peux un ralenti s'il te plait merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "j'aimerais detoure le personnage", "intention": "detourer", "source": "gabarit"}
 {"texte": "il me faudrait mets-la en 60 fps ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "s'il te plait une video de un phare breton dans une foret brumeuse pour moi", "intention": "video", "source": "gabarit"}
 {"texte": "bon, rends la video plus fluide pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "une planche avec plusieurs vignettes stp", "intention": "planche", "source": "gabarit"}
-{"texte": "la meme, mais au bord de la mer merci", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais peux-tu me faire un portrait de vieil homme au petit matin ? maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "stp fais une theiere en trois dimensions merci", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait mets sa veste plus lumineux maintenant", "intention": "edition", "source": "gabarit"}
 {"texte": "passe-la au ralenti vite fait", "intention": "fluidifier", "source": "gabarit"}
@@ -1144,9 +1144,9 @@
 {"texte": "j'aimerais modifie la voiture au second plan plus sombre", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, passe-la en 4k", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais un buste imprimable en 3d pour moi", "intention": "objet3d", "source": "gabarit"}
-{"texte": "stp un dragon devant une plus grande maison pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais une affiche de une ruelle sous la pluie, en 4k maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "et anime cette photo, fais bouger les nuages vite fait", "intention": "video_image", "source": "gabarit"}
-{"texte": "remplace le ciel par autre chose", "intention": "edition", "source": "gabarit"}
+{"texte": "bon, mets sa veste plus lumineux ?", "intention": "edition", "source": "gabarit"}
 {"texte": "fais une statuette en trois dimensions pour moi", "intention": "objet3d", "source": "gabarit"}
 {"texte": "detoure le personnage", "intention": "detourer", "source": "gabarit"}
 {"texte": "peux-tu passe-la au ralenti vite fait", "intention": "fluidifier", "source": "gabarit"}
@@ -1170,7 +1170,7 @@
 {"texte": "s'il te plait une musique reggae de deux minutes merci", "intention": "audio", "source": "gabarit"}
 {"texte": "et une video de une plage au couchant au bord de la mer stp", "intention": "video", "source": "gabarit"}
 {"texte": "remplace le ciel par autre chose pour moi", "intention": "edition", "source": "gabarit"}
-{"texte": "j'aimerais ajoute une cicatrice sur sa joue merci", "intention": "edition", "source": "gabarit"}
+{"texte": "S'IL TE PLAIT AJOUTE UNE CICATRICE SUR SA JOUE MAINTENANT", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais retire l'arriere-plan", "intention": "detourer", "source": "gabarit"}
 {"texte": "et lis ce qui est ecrit dessus !", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait qu'est-ce qu'il y a sur cette image ? !", "intention": "lecture", "source": "gabarit"}
@@ -1183,7 +1183,7 @@
 {"texte": "tu peux une bande dessinee de trois cases sur une danseuse ?", "intention": "planche", "source": "gabarit"}
 {"texte": "peux-tu supprime le fond de cette image merci", "intention": "detourer", "source": "gabarit"}
 {"texte": "je voudrais detoure le personnage", "intention": "detourer", "source": "gabarit"}
-{"texte": "DESSINE-MOI UN PORTRAIT DE VIEIL HOMME SOUS LA PLUIE MAINTENANT", "intention": "image", "source": "gabarit"}
+{"texte": "un heron dans les roseaux, photo realiste, tres detaille pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "peux-tu je veux une chanson sur mon ami disparu, blues", "intention": "audio", "source": "gabarit"}
 {"texte": "bon, une bande dessinee de trois cases sur un chevalier", "intention": "planche", "source": "gabarit"}
 {"texte": "peux-tu une planche avec plusieurs vignettes merci", "intention": "planche", "source": "gabarit"}
@@ -1198,7 +1198,7 @@
 {"texte": "alors, upscale !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "stp mets-la sur fond transparent vite fait", "intention": "detourer", "source": "gabarit"}
 {"texte": "s'il te plait enleve le fond s'il te plait", "intention": "detourer", "source": "gabarit"}
-{"texte": "PEUX-TU UN DRAGON AU PETIT MATIN, STYLE CINEMA", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait une guerriere en armure devant une plus grande maison !", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux qu'est-ce qu'il y a sur cette image ? ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "peux-tu une planche avec plusieurs vignettes s'il te plait", "intention": "planche", "source": "gabarit"}
 {"texte": "bon, detoure le personnage stp", "intention": "detourer", "source": "gabarit"}
@@ -1212,7 +1212,7 @@
 {"texte": "alors, rends la video plus fluide merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "qu'est-ce qu'il y a sur cette image ? !", "intention": "lecture", "source": "gabarit"}
 {"texte": "j'aimerais une bande dessinee de trois cases sur un bol de ramen merci", "intention": "planche", "source": "gabarit"}
-{"texte": "JE VOUDRAIS RAJOUTE-LUI UN CHAPEAU STP", "intention": "edition", "source": "gabarit"}
+{"texte": "je voudrais change l'eclairage plus lumineux ?", "intention": "edition", "source": "gabarit"}
 {"texte": "maintenant anime-la ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "STP AJOUTE UNE CICATRICE SUR SA JOUE", "intention": "edition", "source": "gabarit"}
 {"texte": "il me faudrait modifie sa veste en bleu", "intention": "edition", "source": "gabarit"}
@@ -1226,25 +1226,25 @@
 {"texte": "peux-tu une video de un chevalier au milieu des champs pour moi", "intention": "video", "source": "gabarit"}
 {"texte": "jaimerais mets du mouvement dans cette image merci", "intention": "video_image", "source": "gabarit"}
 {"texte": "je veux une chanson sur mon ami disparu, une berceuse pour moi", "intention": "audio", "source": "gabarit"}
-{"texte": "ALORS, LE MEME PERSONNAGE, AU BORD DE LA MER POUR MOI", "intention": "image", "source": "gabarit"}
+{"texte": "et une affiche avec un vieux phare vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais agrandis cette image maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "il me faudrait anime une scene avec un dragon ?", "intention": "video", "source": "gabarit"}
 {"texte": "alors, mets-la en haute definition stp", "intention": "agrandir", "source": "gabarit"}
 {"texte": "sil te plait agrandis cette image ?", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant corrige le ciel", "intention": "edition", "source": "gabarit"}
-{"texte": "un chat endormi devant une plus grande maison s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais une cabane en montagne, en noir et blanc, qualite professionnelle pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "une chanson pop a l'accordeon maintenant", "intention": "audio", "source": "gabarit"}
-{"texte": "METS L'ARRIERE-PLAN PLUS SOMBRE !", "intention": "edition", "source": "gabarit"}
+{"texte": "s'il te plait retouche la couleur de ses yeux pour moi", "intention": "edition", "source": "gabarit"}
 {"texte": "stp je voudrais une statuette imprimable en 3d ?", "intention": "objet3d", "source": "gabarit"}
 {"texte": "ET FAIS UNE VIDEO : UN CHAT ENDORMI SOUS UN CIEL D'ORAGE POUR MOI", "intention": "video", "source": "gabarit"}
 {"texte": "lis ce qui est ecrit dessus stp", "intention": "lecture", "source": "gabarit"}
-{"texte": "il me faudrait le meme personnage, sous un ciel d'orage stp", "intention": "image", "source": "gabarit"}
+{"texte": "et un astronaute devant une plus grande maison stp", "intention": "image", "source": "gabarit"}
 {"texte": "passe-la en 4k", "intention": "agrandir", "source": "gabarit"}
 {"texte": "tu peux enleve le fond pour moi", "intention": "detourer", "source": "gabarit"}
-{"texte": "s'il te plait retouche la couleur de ses yeux pour moi", "intention": "edition", "source": "gabarit"}
+{"texte": "j'aimerais ajoute une cicatrice sur sa joue s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "tu peux fais-moi une musique reggae pour moi", "intention": "audio", "source": "gabarit"}
-{"texte": "une affiche avec un vieux phare merci", "intention": "image", "source": "gabarit"}
-{"texte": "dessine-moi un chat endormi sous la pluie pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "un vieux phare au milieu des champs, en haute definition merci", "intention": "image", "source": "gabarit"}
+{"texte": "s'il te plait genere une image de un bol de ramen pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "anime une scene avec un marche de nuit pour moi", "intention": "video", "source": "gabarit"}
 {"texte": "bon, compose un morceau blues maintenant", "intention": "audio", "source": "gabarit"}
 {"texte": "j'aimerais ameliore la definition pour moi", "intention": "agrandir", "source": "gabarit"}
@@ -1252,7 +1252,7 @@
 {"texte": "AMELIORE LA DEFINITION MAINTENANT", "intention": "agrandir", "source": "gabarit"}
 {"texte": "j'aimerais une sequence video de un phare breton sous un ciel d'orage merci", "intention": "video", "source": "gabarit"}
 {"texte": "tu peux mets du mouvement dans cette image maintenant", "intention": "video_image", "source": "gabarit"}
-{"texte": "peux-tu modifie la couleur du mur en bleu merci", "intention": "edition", "source": "gabarit"}
+{"texte": "change la couleur de ses yeux plus sombre !", "intention": "edition", "source": "gabarit"}
 {"texte": "il me faudrait detoure-la !", "intention": "detourer", "source": "gabarit"}
 {"texte": "peux-tu agrandis-la en 2x merci", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais passe-la en haute resolution", "intention": "agrandir", "source": "gabarit"}
@@ -1280,7 +1280,7 @@
 {"texte": "TU PEUX LIS CE QUI EST ECRIT DESSUS POUR MOI", "intention": "lecture", "source": "gabarit"}
 {"texte": "s'il te plait passe-la au ralenti !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux fais bouger ce dessin ?", "intention": "video_image", "source": "gabarit"}
-{"texte": "genere une image de un bol de ramen", "intention": "image", "source": "gabarit"}
+{"texte": "et un fond d'ecran avec un chevalier sous la pluie, plein de details pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux qu'est-ce qu'il y a sur cette image ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "bon, modifie le ciel plus lumineux vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais une bande dessinee de trois cases sur un ecureuil sur une branche vite fait", "intention": "planche", "source": "gabarit"}
@@ -1289,7 +1289,7 @@
 {"texte": "MAINTENANT UNE BANDE DESSINEE DE TROIS CASES SUR UN DRAGON !", "intention": "planche", "source": "gabarit"}
 {"texte": "peux-tu enleve le fond s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "j'aimerais une planche avec plusieurs vignettes pour moi", "intention": "planche", "source": "gabarit"}
-{"texte": "il me faudrait un phare breton, photo realiste, format portrait merci", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un phare breton devant une plus grande maison merci", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait fais une statuette en trois dimensions s'il te plait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait mets-la sur fond transparent ?", "intention": "detourer", "source": "gabarit"}
 {"texte": "MAINTENANT UNE SEQUENCE VIDEO DE UNE GUERRIERE EN ARMURE SOUS UN CIEL D'ORAGE !", "intention": "video", "source": "gabarit"}
@@ -1306,7 +1306,7 @@
 {"texte": "tu peux passe-la au ralenti ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "bon, une bande dessinee de trois cases sur un marche de nuit merci", "intention": "planche", "source": "gabarit"}
 {"texte": "il me faudrait que vois-tu la ?", "intention": "lecture", "source": "gabarit"}
-{"texte": "alors, une voiture de sport au crepuscule, illustration sil te plait", "intention": "image", "source": "gabarit"}
+{"texte": "alors, dessine-moi une voiture de sport au crepuscule sil te plait", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait compose un morceau rock pour moi", "intention": "audio", "source": "gabarit"}
 {"texte": "maintenant fais-moi une page de manga pour moi", "intention": "planche", "source": "gabarit"}
 {"texte": "stp que vois-tu la ? vite fait", "intention": "lecture", "source": "gabarit"}
@@ -1328,7 +1328,7 @@
 {"texte": "retire l'arriere-plan pour moi", "intention": "detourer", "source": "gabarit"}
 {"texte": "TU PEUX MODIFIE L'ARRIERE-PLAN EN NUIT ETOILEE S'IL TE PLAIT", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, upscale pour moi", "intention": "agrandir", "source": "gabarit"}
-{"texte": "alors, peux-tu me faire une danseuse au crepuscule ? !", "intention": "image", "source": "gabarit"}
+{"texte": "UNE PLAGE AU COUCHANT SOUS UN CIEL D'ORAGE, PHOTO REALISTE", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais mets-la en haute definition pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "bon, mets du mouvement dans cette image vite fait", "intention": "video_image", "source": "gabarit"}
 {"texte": "JE VOUDRAIS ANIME UNE SCENE AVEC UN CHEVALIER S'IL TE PLAIT", "intention": "video", "source": "gabarit"}
@@ -1351,10 +1351,10 @@
 {"texte": "maintenant agrandis cette image !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "s'il te plait mets du mouvement dans cette image", "intention": "video_image", "source": "gabarit"}
 {"texte": "un ralenti s'il te plait s'il te plait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "AJOUTE UNE CICATRICE SUR SA JOUE STP", "intention": "edition", "source": "gabarit"}
-{"texte": "tu peux un chevalier, photo realiste, format portrait maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "ajoute une cicatrice sur sa joue vite fait", "intention": "edition", "source": "gabarit"}
+{"texte": "j'aimerais un chat endormi, style manga, tres detaille s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "bon, enleve la couleur du mur !", "intention": "edition", "source": "gabarit"}
-{"texte": "il me faudrait genere une image de une foret en automne !", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais une ruelle sous la pluie devant une plus grande maison s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "bon, passe-la en haute resolution pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant enleve la couleur de ses yeux merci", "intention": "edition", "source": "gabarit"}
 {"texte": "stp retouche l'eclairage pour moi", "intention": "edition", "source": "gabarit"}
@@ -1362,7 +1362,7 @@
 {"texte": "et un ralenti s'il te plait ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "detoure-la s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "et mets-la en 60 fps vite fait", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "IL ME FAUDRAIT LE MEME PERSONNAGE, DANS UN ATELIER MAINTENANT", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu je voudrais un vieux phare, en aquarelle", "intention": "image", "source": "gabarit"}
 {"texte": "detoure-la ?", "intention": "detourer", "source": "gabarit"}
 {"texte": "MAINTENANT UN INSTRUMENTAL METAL A LA GUITARE VITE FAIT", "intention": "audio", "source": "gabarit"}
 {"texte": "qu'est-ce qu'il y a sur cette image ? maintenant", "intention": "lecture", "source": "gabarit"}
@@ -1375,7 +1375,7 @@
 {"texte": "alors, une bande dessinee de trois cases sur un dragon", "intention": "planche", "source": "gabarit"}
 {"texte": "tu peux anime cette photo, fais bouger les nuages stp", "intention": "video_image", "source": "gabarit"}
 {"texte": "stp fais-moi une musique reggae", "intention": "audio", "source": "gabarit"}
-{"texte": "s'il te plait dessine-moi un heron dans les roseaux sous la pluie ?", "intention": "image", "source": "gabarit"}
+{"texte": "s'il te plait fais un heron dans les roseaux sous la pluie ?", "intention": "image", "source": "gabarit"}
 {"texte": "stp fais une epee en trois dimensions", "intention": "objet3d", "source": "gabarit"}
 {"texte": "il me faudrait agrandis-la ?", "intention": "agrandir", "source": "gabarit"}
 {"texte": "agrandis-la en 2x merci", "intention": "agrandir", "source": "gabarit"}
@@ -1383,16 +1383,16 @@
 {"texte": "et elle est saccadee, rends-la plus fluide !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "stp detoure-la s'il te plait", "intention": "detourer", "source": "gabarit"}
 {"texte": "il me faudrait je veux une chanson sur mon ami disparu, jazz", "intention": "audio", "source": "gabarit"}
-{"texte": "un chat endormi sous un ciel dorage, illustration", "intention": "image", "source": "gabarit"}
+{"texte": "un chat endormi, style manga, qualite professionnelle ?", "intention": "image", "source": "gabarit"}
 {"texte": "ameliore la definition vite fait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "fais une video : une cabane en montagne au milieu des champs s'il te plait", "intention": "video", "source": "gabarit"}
 {"texte": "tu peux fais bouger ce dessin", "intention": "video_image", "source": "gabarit"}
 {"texte": "STP MODIFIE SA VESTE EN NUIT ETOILEE POUR MOI", "intention": "edition", "source": "gabarit"}
 {"texte": "s'il te plait passe-la au ralenti pour moi", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "s'il te plait peux-tu me faire un astronaute sous la pluie ? ?", "intention": "image", "source": "gabarit"}
+{"texte": "s'il te plait un fond d'ecran avec un astronaute sous la pluie, plein de details ?", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait je voudrais une theiere imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "peux-tu je voudrais un buste imprimable en 3d s'il te plait", "intention": "objet3d", "source": "gabarit"}
-{"texte": "et une affiche avec un portrait de vieil homme pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "un ecureuil sur une branche dans la neige, de bonne qualite s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait detoure le personnage !", "intention": "detourer", "source": "gabarit"}
 {"texte": "J'AIMERAIS DETOURE-LA", "intention": "detourer", "source": "gabarit"}
 {"texte": "et agrandis-la en 2x maintenant", "intention": "agrandir", "source": "gabarit"}
@@ -1417,7 +1417,7 @@
 {"texte": "bon, un instrumental jazz a la guitare maintenant", "intention": "audio", "source": "gabarit"}
 {"texte": "il me faudrait une chanson folk au piano ?", "intention": "audio", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT PASSE-LA AU RALENTI", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "ajoute une cicatrice sur sa joue !", "intention": "edition", "source": "gabarit"}
+{"texte": "MAINTENANT REMPLACE L'ARRIERE-PLAN PAR AUTRE CHOSE VITE FAIT", "intention": "edition", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT UNE PLANCHE AVEC PLUSIEURS VIGNETTES MERCI", "intention": "planche", "source": "gabarit"}
 {"texte": "il me faudrait une planche de bd en quatre cases s'il te plait", "intention": "planche", "source": "gabarit"}
 {"texte": "stp fais-moi une musique reggae merci", "intention": "audio", "source": "gabarit"}
@@ -1426,8 +1426,8 @@
 {"texte": "s'il te plait agrandis-la en 2x s'il te plait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais fais-moi une musique blues", "intention": "audio", "source": "gabarit"}
 {"texte": "bon, un instrumental folk au piano vite fait", "intention": "audio", "source": "gabarit"}
-{"texte": "PEUX-TU UN HERON DANS LES ROSEAUX, ILLUSTRATION, FORMAT PORTRAIT STP", "intention": "image", "source": "gabarit"}
-{"texte": "s'il te plait je voudrais un marche de nuit, en aquarelle merci", "intention": "image", "source": "gabarit"}
+{"texte": "et un astronaute dans la neige, en haute definition vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu me faire un renard roux dans un atelier ? merci", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais une planche avec plusieurs vignettes !", "intention": "planche", "source": "gabarit"}
 {"texte": "s'il te plait enleve la couleur du mur", "intention": "edition", "source": "gabarit"}
 {"texte": "bon, je voudrais un casque imprimable en 3d ?", "intention": "objet3d", "source": "gabarit"}
@@ -1446,24 +1446,24 @@
 {"texte": "fais bouger ce dessin s'il te plait", "intention": "video_image", "source": "gabarit"}
 {"texte": "alors, une chanson reggae au saxophone", "intention": "audio", "source": "gabarit"}
 {"texte": "peux-tu detoure le personnage stp", "intention": "detourer", "source": "gabarit"}
-{"texte": "STP GENERE UNE IMAGE DE UN CERF S'IL TE PLAIT", "intention": "image", "source": "gabarit"}
-{"texte": "genere une image de un chevalier vite fait", "intention": "image", "source": "gabarit"}
-{"texte": "je voudrais une affiche avec un renard roux ?", "intention": "image", "source": "gabarit"}
+{"texte": "STP LA MEME, MAIS AU PETIT MATIN S'IL TE PLAIT", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un chat endormi sur un toit, style manga", "intention": "image", "source": "gabarit"}
+{"texte": "stp une affiche de un chevalier, en 4k maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "et anime cette photo, fais bouger les nuages ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "peux-tu ameliore la definition pour moi", "intention": "agrandir", "source": "gabarit"}
-{"texte": "alors, une affiche avec une ruelle sous la pluie vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "alors, une ruelle sous la pluie, en noir et blanc, tres detaille vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant mets-la en 60 fps !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "peux-tu fais-moi une musique metal ?", "intention": "audio", "source": "gabarit"}
 {"texte": "j'aimerais retouche l'eclairage s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT DECRIS-MOI CETTE PHOTO POUR MOI", "intention": "lecture", "source": "gabarit"}
-{"texte": "alors, peux-tu me faire un chevalier dans un atelier ? vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux la meme, mais dans une foret brumeuse pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "fais un casque en trois dimensions stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais fluidifie la video merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "sil te plait passe-la au ralenti maintenant", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "une video de un marche de nuit sous la pluie", "intention": "video", "source": "gabarit"}
 {"texte": "il me faudrait anime-la s'il te plait", "intention": "video_image", "source": "gabarit"}
 {"texte": "je voudrais une musique pop de deux minutes stp", "intention": "audio", "source": "gabarit"}
-{"texte": "je voudrais le meme personnage, au petit matin !", "intention": "image", "source": "gabarit"}
+{"texte": "un cerf au petit matin, en 1920x1080", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait rends la video plus fluide stp", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "enleve sa veste stp", "intention": "edition", "source": "gabarit"}
 {"texte": "et fais une chaise en trois dimensions", "intention": "objet3d", "source": "gabarit"}
@@ -1478,7 +1478,7 @@
 {"texte": "STP CHANGE LA VOITURE AU SECOND PLAN PLUS LUMINEUX", "intention": "edition", "source": "gabarit"}
 {"texte": "et une sequence video de un chat endormi au crepuscule ?", "intention": "video", "source": "gabarit"}
 {"texte": "et je la veux plus grande", "intention": "agrandir", "source": "gabarit"}
-{"texte": "UNE VOITURE DE SPORT, STYLE CINEMA, FORMAT PORTRAIT", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux une cabane en montagne devant une plus grande maison", "intention": "image", "source": "gabarit"}
 {"texte": "elle est saccadee, rends-la plus fluide !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "peux-tu fais une video : un vieux phare dans la neige maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "bon, lis ce qui est ecrit dessus ?", "intention": "lecture", "source": "gabarit"}
@@ -1495,11 +1495,11 @@
 {"texte": "LIS CE QUI EST ECRIT DESSUS MAINTENANT", "intention": "lecture", "source": "gabarit"}
 {"texte": "alors, mets du mouvement dans cette image vite fait", "intention": "video_image", "source": "gabarit"}
 {"texte": "bon, isole le sujet stp", "intention": "detourer", "source": "gabarit"}
-{"texte": "peux-tu un chevalier devant une plus grande maison maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un vieux phare sous la pluie, en 1920x1080 stp", "intention": "image", "source": "gabarit"}
 {"texte": "stp remplace le ciel par autre chose vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "peux-tu une chanson jazz a l'accordeon", "intention": "audio", "source": "gabarit"}
 {"texte": "peux-tu un petit film de une voiture de sport pour moi", "intention": "video", "source": "gabarit"}
-{"texte": "JE VOUDRAIS LA MEME, MAIS AU PETIT MATIN POUR MOI", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais une plage au couchant devant une plus grande maison pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "et une bande dessinee de trois cases sur un dragon", "intention": "planche", "source": "gabarit"}
 {"texte": "j'aimerais ameliore la definition maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "maintenant qu'est-ce qu'il y a sur cette image ? ?", "intention": "lecture", "source": "gabarit"}
@@ -1520,7 +1520,7 @@
 {"texte": "tu peux un modele 3d de un vase pour moi", "intention": "objet3d", "source": "gabarit"}
 {"texte": "tu peux fais bouger ce dessin s'il te plait", "intention": "video_image", "source": "gabarit"}
 {"texte": "peux-tu transforme ce dessin en objet 3d maintenant", "intention": "objet3d", "source": "gabarit"}
-{"texte": "bon, rajoute-lui un chapeau merci", "intention": "edition", "source": "gabarit"}
+{"texte": "s'il te plait enleve sa veste !", "intention": "edition", "source": "gabarit"}
 {"texte": "il me faudrait upscale maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "AGRANDIS CETTE IMAGE S'IL TE PLAIT", "intention": "agrandir", "source": "gabarit"}
 {"texte": "stp agrandis-la en 2x", "intention": "agrandir", "source": "gabarit"}
@@ -1529,11 +1529,11 @@
 {"texte": "maintenant anime une scene avec un phare breton maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "il me faudrait je veux une chanson sur mon ami disparu, pop !", "intention": "audio", "source": "gabarit"}
 {"texte": "s'il te plait enleve le fond", "intention": "edition", "source": "gabarit"}
-{"texte": "un chevalier devant une plus grande maison s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu le meme personnage, au crepuscule stp", "intention": "image", "source": "gabarit"}
 {"texte": "alors, elle est saccadee, rends-la plus fluide merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "passe-la au ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "je voudrais anime-la maintenant", "intention": "video_image", "source": "gabarit"}
-{"texte": "bon, corrige le ciel", "intention": "edition", "source": "gabarit"}
+{"texte": "stp mets la couleur du mur plus lumineux s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "bon, modifie la voiture au second plan plus sombre", "intention": "edition", "source": "gabarit"}
 {"texte": "CORRIGE LA COULEUR DE SES YEUX", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais une video de une voiture de sport au bord de la mer stp", "intention": "video", "source": "gabarit"}
@@ -1548,7 +1548,7 @@
 {"texte": "maintenant detoure le personnage stp", "intention": "detourer", "source": "gabarit"}
 {"texte": "TU PEUX RETIRE L'ARRIERE-PLAN VITE FAIT", "intention": "detourer", "source": "gabarit"}
 {"texte": "sil te plait fais un buste en trois dimensions", "intention": "objet3d", "source": "gabarit"}
-{"texte": "peux-tu peux-tu me faire une cabane en montagne dans un atelier ?", "intention": "image", "source": "gabarit"}
+{"texte": "une affiche de un vieux phare, en 4k !", "intention": "image", "source": "gabarit"}
 {"texte": "TU PEUX METS-LA EN HAUTE DEFINITION VITE FAIT", "intention": "agrandir", "source": "gabarit"}
 {"texte": "j'aimerais une video de un chevalier dans une foret brumeuse merci", "intention": "video", "source": "gabarit"}
 {"texte": "j'aimerais mets du mouvement dans cette image merci", "intention": "video_image", "source": "gabarit"}
@@ -1559,7 +1559,7 @@
 {"texte": "je voudrais un vase imprimable en 3d sil te plait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait mets la couleur de ses yeux plus sombre pour moi", "intention": "edition", "source": "gabarit"}
 {"texte": "JE VOUDRAIS DETOURE-LA", "intention": "detourer", "source": "gabarit"}
-{"texte": "s'il te plait je voudrais un dragon, illustration maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais un astronaute, style manga, tres detaille", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais une bande dessinee de trois cases sur une ruelle sous la pluie pour moi", "intention": "planche", "source": "gabarit"}
 {"texte": "et ameliore la definition pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "bon, rajoute-lui un chapeau maintenant", "intention": "edition", "source": "gabarit"}
@@ -1572,9 +1572,9 @@
 {"texte": "je voudrais une statuette imprimable en 3d ?", "intention": "objet3d", "source": "gabarit"}
 {"texte": "alors, lis ce qui est ecrit dessus merci", "intention": "lecture", "source": "gabarit"}
 {"texte": "c'est quoi cette image ?", "intention": "lecture", "source": "gabarit"}
-{"texte": "s'il te plait modifie l'eclairage en bleu vite fait", "intention": "edition", "source": "gabarit"}
+{"texte": "mets la couleur de ses yeux en rouge", "intention": "edition", "source": "gabarit"}
 {"texte": "j'aimerais fais une video : un renard roux sous la pluie", "intention": "video", "source": "gabarit"}
-{"texte": "stp une affiche avec un cerf ?", "intention": "image", "source": "gabarit"}
+{"texte": "la meme, mais dans la neige", "intention": "image", "source": "gabarit"}
 {"texte": "FAIS UNE VIDEO : UN PORTRAIT DE VIEIL HOMME DANS LA NEIGE POUR MOI", "intention": "video", "source": "gabarit"}
 {"texte": "il me faudrait un maillage 3d de une statuette ?", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait fais une statuette en trois dimensions", "intention": "objet3d", "source": "gabarit"}
@@ -1583,7 +1583,7 @@
 {"texte": "alors, une musique blues de deux minutes maintenant", "intention": "audio", "source": "gabarit"}
 {"texte": "il me faudrait transforme ce dessin en objet 3d maintenant", "intention": "objet3d", "source": "gabarit"}
 {"texte": "maintenant transforme ce dessin en objet 3d merci", "intention": "objet3d", "source": "gabarit"}
-{"texte": "peux-tu une voiture de sport au crepuscule, en noir et blanc vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu une guerriere en armure devant une plus grande maison vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "stp fais une theiere en trois dimensions", "intention": "objet3d", "source": "gabarit"}
 {"texte": "anime une scene avec une danseuse", "intention": "video", "source": "gabarit"}
 {"texte": "je voudrais une video de un chevalier au petit matin ?", "intention": "video", "source": "gabarit"}
@@ -1606,7 +1606,7 @@
 {"texte": "peux-tu fais une theiere en trois dimensions stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "BON, METS DU MOUVEMENT DANS CETTE IMAGE ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "fais une chaise en trois dimensions maintenant", "intention": "objet3d", "source": "gabarit"}
-{"texte": "ET ENLEVE SA VESTE S'IL TE PLAIT", "intention": "edition", "source": "gabarit"}
+{"texte": "maintenant mets son chapeau plus sombre merci", "intention": "edition", "source": "gabarit"}
 {"texte": "s'il te plait fais-moi une page de manga merci", "intention": "planche", "source": "gabarit"}
 {"texte": "DECRIS-MOI CETTE PHOTO ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait mets du mouvement dans cette image ?", "intention": "video_image", "source": "gabarit"}
@@ -1620,10 +1620,10 @@
 {"texte": "maintenant une bande dessinee de trois cases sur un bol de ramen stp", "intention": "planche", "source": "gabarit"}
 {"texte": "s'il te plait un modele 3d de une epee", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais un instrumental folk a la guitare", "intention": "audio", "source": "gabarit"}
-{"texte": "maintenant peux-tu me faire une cabane en montagne sous la pluie ?", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un fond d'ecran avec une cabane en montagne sous la pluie, plein de details", "intention": "image", "source": "gabarit"}
 {"texte": "alors, fais-moi une musique metal vite fait", "intention": "audio", "source": "gabarit"}
 {"texte": "une bande dessinee de trois cases sur une guerriere en armure", "intention": "planche", "source": "gabarit"}
-{"texte": "je voudrais un portrait de vieil homme dans un atelier, illustration vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu la meme, mais dans la neige", "intention": "image", "source": "gabarit"}
 {"texte": "alors, un instrumental electro avec des cordes ?", "intention": "audio", "source": "gabarit"}
 {"texte": "peux-tu explique-moi ce qui est represente vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "bon, je voudrais une statuette imprimable en 3d merci", "intention": "objet3d", "source": "gabarit"}
@@ -1632,7 +1632,7 @@
 {"texte": "stp je veux une chanson sur mon ami disparu, blues stp", "intention": "audio", "source": "gabarit"}
 {"texte": "JE VOUDRAIS ANIME-LA !", "intention": "video_image", "source": "gabarit"}
 {"texte": "il me faudrait c'est quoi cette image ? ?", "intention": "lecture", "source": "gabarit"}
-{"texte": "et je voudrais un ecureuil sur une branche, style bd s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "et un ecureuil sur une branche, style bd, format portrait s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "lis ce qui est ecrit dessus vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT AGRANDIS-LA VITE FAIT", "intention": "agrandir", "source": "gabarit"}
 {"texte": "anime une scene avec un heron dans les roseaux vite fait", "intention": "video", "source": "gabarit"}
@@ -1647,7 +1647,7 @@
 {"texte": "j'aimerais corrige la couleur de ses yeux stp", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, une sequence video de un portrait de vieil homme sur un toit vite fait", "intention": "video", "source": "gabarit"}
 {"texte": "et retire larriere-plan ?", "intention": "detourer", "source": "gabarit"}
-{"texte": "il me faudrait ajoute une cicatrice sur sa joue maintenant", "intention": "edition", "source": "gabarit"}
+{"texte": "je voudrais modifie le fond plus lumineux vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, elle est saccadee, rends-la plus fluide pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "et mets l'eclairage en hiver", "intention": "edition", "source": "gabarit"}
 {"texte": "une bande dessinee de trois cases sur un ecureuil sur une branche ?", "intention": "planche", "source": "gabarit"}
@@ -1659,7 +1659,7 @@
 {"texte": "tu peux une planche avec plusieurs vignettes vite fait", "intention": "planche", "source": "gabarit"}
 {"texte": "j'aimerais un petit film de une plage au couchant maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "il me faudrait une sequence video de un heron dans les roseaux dans une foret brumeuse", "intention": "video", "source": "gabarit"}
-{"texte": "et dessine-moi une voiture de sport sur un toit vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un vieux phare au milieu des champs, de bonne qualite stp", "intention": "image", "source": "gabarit"}
 {"texte": "alors, fais-moi une page de manga vite fait", "intention": "planche", "source": "gabarit"}
 {"texte": "je voudrais un ralenti s'il te plait vite fait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "s'il te plait que vois-tu la ? maintenant", "intention": "lecture", "source": "gabarit"}
@@ -1673,7 +1673,7 @@
 {"texte": "stp upscale", "intention": "agrandir", "source": "gabarit"}
 {"texte": "STP FLUIDIFIE LA VIDEO !", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "JE VOUDRAIS FAIS-MOI UNE PAGE DE MANGA ?", "intention": "planche", "source": "gabarit"}
-{"texte": "modifie sa veste en nuit etoilee vite fait", "intention": "edition", "source": "gabarit"}
+{"texte": "AJOUTE UNE CICATRICE SUR SA JOUE STP", "intention": "edition", "source": "gabarit"}
 {"texte": "ameliore la definition maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "tu peux un maillage 3d de une statuette ?", "intention": "objet3d", "source": "gabarit"}
 {"texte": "une sequence video de une plage au couchant au bord de la mer !", "intention": "video", "source": "gabarit"}
@@ -1698,11 +1698,11 @@
 {"texte": "fais une theiere en trois dimensions s'il te plait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "il me faudrait mets du mouvement dans cette image merci", "intention": "video_image", "source": "gabarit"}
 {"texte": "stp rajoute-lui un chapeau merci", "intention": "edition", "source": "gabarit"}
-{"texte": "peux-tu peux-tu me faire un bol de ramen sous la pluie ? pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu une plage au couchant, en noir et blanc, tres detaille s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "jaimerais un ralenti sil te plait sil te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "je voudrais mets du mouvement dans cette image", "intention": "video_image", "source": "gabarit"}
 {"texte": "TU PEUX ANIME-LA S'IL TE PLAIT", "intention": "video_image", "source": "gabarit"}
-{"texte": "et rajoute-lui un chapeau", "intention": "edition", "source": "gabarit"}
+{"texte": "enleve la couleur de ses yeux", "intention": "edition", "source": "gabarit"}
 {"texte": "stp fais bouger ce dessin pour moi", "intention": "video_image", "source": "gabarit"}
 {"texte": "alors, une video de un vieux phare sur un toit stp", "intention": "video", "source": "gabarit"}
 {"texte": "fluidifie la video s'il te plait", "intention": "fluidifier", "source": "gabarit"}
@@ -1723,9 +1723,9 @@
 {"texte": "et je veux une chanson sur mon ami disparu, jazz", "intention": "audio", "source": "gabarit"}
 {"texte": "une planche avec plusieurs vignettes ?", "intention": "planche", "source": "gabarit"}
 {"texte": "peux-tu ameliore la definition !", "intention": "agrandir", "source": "gabarit"}
-{"texte": "STP CHANGE LE FOND EN NUIT ETOILEE S'IL TE PLAIT", "intention": "edition", "source": "gabarit"}
+{"texte": "tu peux modifie la couleur de ses yeux en version doree", "intention": "edition", "source": "gabarit"}
 {"texte": "alors, anime cette image ?", "intention": "video_image", "source": "gabarit"}
-{"texte": "stp un dragon, style manga, format portrait", "intention": "image", "source": "gabarit"}
+{"texte": "un marche de nuit, photo realiste, format portrait", "intention": "image", "source": "gabarit"}
 {"texte": "ajoute une cicatrice sur sa joue", "intention": "edition", "source": "gabarit"}
 {"texte": "un ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "alors, fais bouger ce dessin stp", "intention": "video_image", "source": "gabarit"}
@@ -1735,7 +1735,7 @@
 {"texte": "PEUX-TU C'EST QUOI CETTE IMAGE ? MAINTENANT", "intention": "lecture", "source": "gabarit"}
 {"texte": "remplace l'eclairage par autre chose", "intention": "edition", "source": "gabarit"}
 {"texte": "tu peux isole le sujet ?", "intention": "detourer", "source": "gabarit"}
-{"texte": "un dragon sur un toit, style cinema s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "et une affiche avec une ruelle sous la pluie ?", "intention": "image", "source": "gabarit"}
 {"texte": "stp mets-la en 60 fps pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux fais une video : un cerf dans un atelier", "intention": "video", "source": "gabarit"}
 {"texte": "alors, je veux une chanson sur mon ami disparu, metal merci", "intention": "audio", "source": "gabarit"}
@@ -1748,7 +1748,7 @@
 {"texte": "et retire l'arriere-plan !", "intention": "detourer", "source": "gabarit"}
 {"texte": "je voudrais anime cette image ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "tu peux une planche de bd en quatre cases ?", "intention": "planche", "source": "gabarit"}
-{"texte": "il me faudrait un marche de nuit au crepuscule, photo realiste pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "JE VOUDRAIS UN VIEUX PHARE, STYLE BD MAINTENANT", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait elle est saccadee, rends-la plus fluide ?", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "stp enleve le fond merci", "intention": "detourer", "source": "gabarit"}
 {"texte": "maintenant mets du mouvement dans cette image stp", "intention": "video_image", "source": "gabarit"}
@@ -1759,24 +1759,24 @@
 {"texte": "il me faudrait upscale ?", "intention": "agrandir", "source": "gabarit"}
 {"texte": "fais-moi une musique folk stp", "intention": "audio", "source": "gabarit"}
 {"texte": "J'AIMERAIS UPSCALE STP", "intention": "agrandir", "source": "gabarit"}
-{"texte": "il me faudrait la meme, mais sous un ciel d'orage pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "stp une affiche avec un vieux phare !", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait supprime le fond de cette image", "intention": "detourer", "source": "gabarit"}
 {"texte": "MAINTENANT FAIS UNE VIDEO : UN DRAGON DANS LA NEIGE POUR MOI", "intention": "video", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT REMPLACE L'ECLAIRAGE PAR AUTRE CHOSE ?", "intention": "edition", "source": "gabarit"}
 {"texte": "maintenant un maillage 3d de une statuette merci", "intention": "objet3d", "source": "gabarit"}
 {"texte": "stp mets-la en 60 fps merci", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "RETIRE L'ARRIERE-PLAN", "intention": "detourer", "source": "gabarit"}
-{"texte": "s'il te plait ajoute une cicatrice sur sa joue stp", "intention": "edition", "source": "gabarit"}
+{"texte": "rajoute-lui un chapeau", "intention": "edition", "source": "gabarit"}
 {"texte": "s'il te plait anime cette photo, fais bouger les nuages vite fait", "intention": "video_image", "source": "gabarit"}
 {"texte": "un instrumental rock avec des cordes s'il te plait", "intention": "audio", "source": "gabarit"}
 {"texte": "alors, fais un vase en trois dimensions", "intention": "objet3d", "source": "gabarit"}
 {"texte": "peux-tu retire l'arriere-plan", "intention": "detourer", "source": "gabarit"}
 {"texte": "maintenant detoure le personnage vite fait", "intention": "detourer", "source": "gabarit"}
-{"texte": "stp mets la couleur du mur plus lumineux s'il te plait", "intention": "edition", "source": "gabarit"}
+{"texte": "peux-tu modifie la couleur de ses yeux en rouge pour moi", "intention": "edition", "source": "gabarit"}
 {"texte": "upscale !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais que vois-tu la ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "sil te plait retouche la couleur du mur sil te plait", "intention": "edition", "source": "gabarit"}
-{"texte": "MAINTENANT UN MARCHE DE NUIT, PHOTO REALISTE, FORMAT PORTRAIT POUR MOI", "intention": "image", "source": "gabarit"}
+{"texte": "ET UNE FORET EN AUTOMNE DEVANT UNE PLUS GRANDE MAISON MERCI", "intention": "image", "source": "gabarit"}
 {"texte": "s'il te plait lis ce qui est ecrit dessus", "intention": "lecture", "source": "gabarit"}
 {"texte": "alors, upscale vite fait", "intention": "agrandir", "source": "gabarit"}
 {"texte": "J'AIMERAIS UNE PLANCHE DE BD EN QUATRE CASES POUR MOI", "intention": "planche", "source": "gabarit"}
@@ -1803,12 +1803,12 @@
 {"texte": "s'il te plait c'est quoi cette image ? ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "je la veux plus grande stp", "intention": "agrandir", "source": "gabarit"}
 {"texte": "j'aimerais elle est saccadee, rends-la plus fluide pour moi", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "j'aimerais une guerriere en armure dans une foret brumeuse, en noir et blanc ?", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais dessine-moi une guerriere en armure dans une foret brumeuse ?", "intention": "image", "source": "gabarit"}
 {"texte": "UNE SEQUENCE VIDEO DE UN PORTRAIT DE VIEIL HOMME SOUS UN CIEL D'ORAGE POUR MOI", "intention": "video", "source": "gabarit"}
 {"texte": "il me faudrait une sequence video de un renard roux dans une foret brumeuse", "intention": "video", "source": "gabarit"}
 {"texte": "stp un maillage 3d de un casque maintenant", "intention": "objet3d", "source": "gabarit"}
 {"texte": "alors, que vois-tu la ? pour moi", "intention": "lecture", "source": "gabarit"}
-{"texte": "s'il te plait rajoute-lui un chapeau !", "intention": "edition", "source": "gabarit"}
+{"texte": "METS L'ARRIERE-PLAN PLUS SOMBRE !", "intention": "edition", "source": "gabarit"}
 {"texte": "BON, FAIS BOUGER CE DESSIN", "intention": "video_image", "source": "gabarit"}
 {"texte": "une planche de bd en quatre cases stp", "intention": "planche", "source": "gabarit"}
 {"texte": "peux-tu une musique jazz de deux minutes", "intention": "audio", "source": "gabarit"}
@@ -1819,7 +1819,7 @@
 {"texte": "jaimerais detoure-la vite fait", "intention": "detourer", "source": "gabarit"}
 {"texte": "bon, rajoute-lui un chapeau ?", "intention": "edition", "source": "gabarit"}
 {"texte": "decris-moi cette photo !", "intention": "lecture", "source": "gabarit"}
-{"texte": "tu peux le meme personnage, dans la neige ?", "intention": "image", "source": "gabarit"}
+{"texte": "et un chat endormi sous la pluie, photo realiste", "intention": "image", "source": "gabarit"}
 {"texte": "JE LA VEUX PLUS GRANDE !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "j'aimerais un maillage 3d de un buste stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait c'est quoi cette image ?", "intention": "lecture", "source": "gabarit"}
@@ -1828,7 +1828,7 @@
 {"texte": "sil te plait une bande dessinee de trois cases sur un vieux phare", "intention": "planche", "source": "gabarit"}
 {"texte": "s'il te plait fais un casque en trois dimensions", "intention": "objet3d", "source": "gabarit"}
 {"texte": "detoure le personnage stp", "intention": "detourer", "source": "gabarit"}
-{"texte": "stp ajoute une cicatrice sur sa joue maintenant", "intention": "edition", "source": "gabarit"}
+{"texte": "BON, RETOUCHE SA VESTE STP", "intention": "edition", "source": "gabarit"}
 {"texte": "sil te plait je voudrais un casque imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait anime cette image ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "alors, c'est quoi cette image ?", "intention": "lecture", "source": "gabarit"}
@@ -1850,22 +1850,22 @@
 {"texte": "s'il te plait anime-la vite fait", "intention": "video_image", "source": "gabarit"}
 {"texte": "BON, ANIME-LA VITE FAIT", "intention": "video_image", "source": "gabarit"}
 {"texte": "et passe-la au ralenti stp", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "il me faudrait dessine-moi une cabane en montagne dans la neige stp", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais un vieux phare au bord de la mer, en haute definition !", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais enleve le fond maintenant", "intention": "detourer", "source": "gabarit"}
 {"texte": "fluidifie la video stp", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "peux-tu anime cette photo, fais bouger les nuages !", "intention": "video_image", "source": "gabarit"}
 {"texte": "TU PEUX UN MODELE 3D DE UNE EPEE", "intention": "objet3d", "source": "gabarit"}
-{"texte": "je voudrais un bol de ramen, style bd !", "intention": "image", "source": "gabarit"}
+{"texte": "un astronaute dans un atelier, en 1920x1080 !", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais mets la couleur du mur plus sombre maintenant", "intention": "edition", "source": "gabarit"}
-{"texte": "JE VOUDRAIS MODIFIE LE FOND PLUS SOMBRE", "intention": "edition", "source": "gabarit"}
+{"texte": "stp ajoute une cicatrice sur sa joue maintenant", "intention": "edition", "source": "gabarit"}
 {"texte": "bon, fais une video : une cabane en montagne sous la pluie s'il te plait", "intention": "video", "source": "gabarit"}
 {"texte": "j'aimerais fluidifie la video ?", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "j'aimerais enleve la couleur de ses yeux", "intention": "edition", "source": "gabarit"}
+{"texte": "JE VOUDRAIS MODIFIE LE FOND PLUS SOMBRE", "intention": "edition", "source": "gabarit"}
 {"texte": "peux-tu une planche de bd en quatre cases maintenant", "intention": "planche", "source": "gabarit"}
 {"texte": "peux-tu je voudrais une statuette imprimable en 3d", "intention": "objet3d", "source": "gabarit"}
 {"texte": "detoure-la merci", "intention": "detourer", "source": "gabarit"}
 {"texte": "s'il te plait anime-la", "intention": "video_image", "source": "gabarit"}
-{"texte": "tu peux la meme, mais au crepuscule merci", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu un fond d'ecran avec un cerf au crepuscule, plein de details merci", "intention": "image", "source": "gabarit"}
 {"texte": "stp une video de une cabane en montagne sous la pluie", "intention": "video", "source": "gabarit"}
 {"texte": "s'il te plait agrandis cette image", "intention": "agrandir", "source": "gabarit"}
 {"texte": "stp je la veux plus grande", "intention": "agrandir", "source": "gabarit"}
@@ -1879,7 +1879,7 @@
 {"texte": "je voudrais un petit film de un phare breton merci", "intention": "video", "source": "gabarit"}
 {"texte": "mets-la en 60 fps pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "stp je voudrais une chaise imprimable en 3d merci", "intention": "objet3d", "source": "gabarit"}
-{"texte": "il me faudrait genere une image de une cabane en montagne maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "S'IL TE PLAIT GENERE UNE IMAGE DE UN BOL DE RAMEN STP", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais une planche avec plusieurs vignettes vite fait", "intention": "planche", "source": "gabarit"}
 {"texte": "s'il te plait agrandis cette image maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "detoure le personnage s'il te plait", "intention": "detourer", "source": "gabarit"}
@@ -1901,24 +1901,24 @@
 {"texte": "un modele 3d de une chaise maintenant", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait detoure le personnage ?", "intention": "detourer", "source": "gabarit"}
 {"texte": "alors, compose un morceau blues maintenant", "intention": "audio", "source": "gabarit"}
-{"texte": "et genere une image de un chat endormi !", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait une cabane en montagne, en aquarelle, qualite professionnelle", "intention": "image", "source": "gabarit"}
 {"texte": "IL ME FAUDRAIT EXPLIQUE-MOI CE QUI EST REPRESENTE STP", "intention": "lecture", "source": "gabarit"}
 {"texte": "tu peux une bande dessinee de trois cases sur une guerriere en armure", "intention": "planche", "source": "gabarit"}
 {"texte": "JE VOUDRAIS TRANSFORME CE DESSIN EN OBJET 3D STP", "intention": "objet3d", "source": "gabarit"}
-{"texte": "STP LA MEME, MAIS SOUS LA PLUIE MERCI", "intention": "image", "source": "gabarit"}
+{"texte": "UN VIEUX PHARE DANS UNE FORET BRUMEUSE, EN 1920X1080 VITE FAIT", "intention": "image", "source": "gabarit"}
 {"texte": "alors, une musique reggae de deux minutes s'il te plait", "intention": "audio", "source": "gabarit"}
 {"texte": "peux-tu anime cette photo, fais bouger les nuages vite fait", "intention": "video_image", "source": "gabarit"}
 {"texte": "bon, ajoute une cicatrice sur sa joue vite fait", "intention": "edition", "source": "gabarit"}
 {"texte": "stp isole le sujet merci", "intention": "detourer", "source": "gabarit"}
-{"texte": "LE MEME PERSONNAGE, DANS UN ATELIER", "intention": "image", "source": "gabarit"}
+{"texte": "un cerf, style bd, qualite professionnelle s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "retire l'arriere-plan stp", "intention": "detourer", "source": "gabarit"}
 {"texte": "CHANGE LA VOITURE AU SECOND PLAN PLUS LUMINEUX MERCI", "intention": "edition", "source": "gabarit"}
 {"texte": "je voudrais un buste imprimable en 3d ?", "intention": "objet3d", "source": "gabarit"}
 {"texte": "peux-tu supprime le fond de cette image pour moi", "intention": "detourer", "source": "gabarit"}
-{"texte": "BON, LA MEME, MAIS AU PETIT MATIN VITE FAIT", "intention": "image", "source": "gabarit"}
+{"texte": "BON, UN ASTRONAUTE AU CREPUSCULE, DE BONNE QUALITE VITE FAIT", "intention": "image", "source": "gabarit"}
 {"texte": "et un ralenti s'il te plait vite fait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "transforme ce dessin en objet 3d ?", "intention": "objet3d", "source": "gabarit"}
-{"texte": "peux-tu je voudrais un astronaute, photo realiste vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant une danseuse sous la pluie, de bonne qualite", "intention": "image", "source": "gabarit"}
 {"texte": "alors, retouche sa veste ?", "intention": "edition", "source": "gabarit"}
 {"texte": "j'aimerais ameliore la definition !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "peux-tu une sequence video de une cabane en montagne dans une foret brumeuse ?", "intention": "video", "source": "gabarit"}
@@ -1931,11 +1931,11 @@
 {"texte": "une sequence video de un chevalier sous la pluie", "intention": "video", "source": "gabarit"}
 {"texte": "s'il te plait un ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "alors, une sequence video de un renard roux dans un atelier vite fait", "intention": "video", "source": "gabarit"}
-{"texte": "MAINTENANT JE VOUDRAIS UN PORTRAIT DE VIEIL HOMME, STYLE CINEMA VITE FAIT", "intention": "image", "source": "gabarit"}
+{"texte": "et une affiche de un ecureuil sur une branche, en 4k s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux un modele 3d de une theiere stp", "intention": "objet3d", "source": "gabarit"}
 {"texte": "j'aimerais transforme ce dessin en objet 3d s'il te plait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "mets-la en 60 fps", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "alors, un portrait de vieil homme, style manga, format portrait", "intention": "image", "source": "gabarit"}
+{"texte": "alors, un chevalier, en noir et blanc, qualite professionnelle ?", "intention": "image", "source": "gabarit"}
 {"texte": "ET UN PETIT FILM DE UNE DANSEUSE MAINTENANT", "intention": "video", "source": "gabarit"}
 {"texte": "j'aimerais fais une chaise en trois dimensions pour moi", "intention": "objet3d", "source": "gabarit"}
 {"texte": "peux-tu un ralenti sil te plait stp", "intention": "fluidifier", "source": "gabarit"}
@@ -1972,30 +1972,30 @@
 {"texte": "une planche avec plusieurs vignettes vite fait", "intention": "planche", "source": "gabarit"}
 {"texte": "alors, mets-la en 60 fps sil te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "PEUX-TU LIS CE QUI EST ECRIT DESSUS", "intention": "lecture", "source": "gabarit"}
-{"texte": "je voudrais une affiche avec une danseuse pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais une danseuse, style manga, tres detaille pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais agrandis-la en 2x ?", "intention": "agrandir", "source": "gabarit"}
 {"texte": "bon, cest quoi cette image ? ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "ALORS, METS-LA SUR FOND TRANSPARENT !", "intention": "detourer", "source": "gabarit"}
 {"texte": "BON, AGRANDIS CETTE IMAGE", "intention": "agrandir", "source": "gabarit"}
-{"texte": "le meme personnage, au bord de la mer s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "un dragon, photo realiste, qualite professionnelle s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "bon, un ralenti s'il te plait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "tu peux fais-moi une musique folk", "intention": "audio", "source": "gabarit"}
 {"texte": "ANIME-LA ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "AMELIORE LA DEFINITION", "intention": "agrandir", "source": "gabarit"}
 {"texte": "UNE VIDEO DE UNE FORET EN AUTOMNE AU BORD DE LA MER ?", "intention": "video", "source": "gabarit"}
-{"texte": "alors, fais un heron dans les roseaux au petit matin !", "intention": "image", "source": "gabarit"}
+{"texte": "alors, une affiche avec un heron dans les roseaux !", "intention": "image", "source": "gabarit"}
 {"texte": "JE VOUDRAIS PASSE-LA EN HAUTE RESOLUTION VITE FAIT", "intention": "agrandir", "source": "gabarit"}
-{"texte": "tu peux le meme personnage, sous la pluie", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux une affiche de une danseuse, en 4k", "intention": "image", "source": "gabarit"}
 {"texte": "bon, transforme ce dessin en objet 3d merci", "intention": "objet3d", "source": "gabarit"}
-{"texte": "maintenant je voudrais un portrait de vieil homme, peinture a lhuile", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un portrait de vieil homme, peinture a lhuile, format portrait", "intention": "image", "source": "gabarit"}
 {"texte": "stp fluidifie la video stp", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "il me faudrait anime-la !", "intention": "video_image", "source": "gabarit"}
 {"texte": "JE VOUDRAIS ENLEVE LE FOND MAINTENANT", "intention": "detourer", "source": "gabarit"}
 {"texte": "je voudrais une planche de bd en quatre cases s'il te plait", "intention": "planche", "source": "gabarit"}
-{"texte": "il me faudrait peux-tu me faire un astronaute dans une foret brumeuse ?", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait un astronaute dans une foret brumeuse, de bonne qualite", "intention": "image", "source": "gabarit"}
 {"texte": "un petit film de une cabane en montagne", "intention": "video", "source": "gabarit"}
 {"texte": "il me faudrait elle est saccadee, rends-la plus fluide merci", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "s'il te plait je voudrais un bol de ramen, illustration !", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux un heron dans les roseaux devant une plus grande maison maintenant", "intention": "image", "source": "gabarit"}
 {"texte": "s'il te plait je veux une chanson sur mon ami disparu, jazz vite fait", "intention": "audio", "source": "gabarit"}
 {"texte": "maintenant anime cette image !", "intention": "video_image", "source": "gabarit"}
 {"texte": "bon, supprime le fond de cette image", "intention": "detourer", "source": "gabarit"}
@@ -2005,16 +2005,16 @@
 {"texte": "je voudrais passe-la au ralenti pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "je voudrais une musique jazz de deux minutes stp", "intention": "audio", "source": "gabarit"}
 {"texte": "tu peux fais une video : une cabane en montagne dans un atelier ?", "intention": "video", "source": "gabarit"}
-{"texte": "peux-tu genere une image de une foret en automne", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant une guerriere en armure devant une plus grande maison !", "intention": "image", "source": "gabarit"}
 {"texte": "ALORS, METS DU MOUVEMENT DANS CETTE IMAGE ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "il me faudrait decris-moi cette photo ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "il me faudrait une planche avec plusieurs vignettes", "intention": "planche", "source": "gabarit"}
-{"texte": "maintenant la meme, mais sous un ciel d'orage merci", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant fais un phare breton au milieu des champs merci", "intention": "image", "source": "gabarit"}
 {"texte": "j'aimerais rends la video plus fluide stp", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "il me faudrait anime cette photo, fais bouger les nuages", "intention": "video_image", "source": "gabarit"}
 {"texte": "s'il te plait une bande dessinee de trois cases sur un renard roux maintenant", "intention": "planche", "source": "gabarit"}
 {"texte": "J'AIMERAIS RENDS LA VIDEO PLUS FLUIDE POUR MOI", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "BON, RETOUCHE SA VESTE STP", "intention": "edition", "source": "gabarit"}
+{"texte": "retouche le ciel", "intention": "edition", "source": "gabarit"}
 {"texte": "il me faudrait lis ce qui est ecrit dessus pour moi", "intention": "lecture", "source": "gabarit"}
 {"texte": "JE VOUDRAIS ENLEVE LE FOND VITE FAIT", "intention": "detourer", "source": "gabarit"}
 {"texte": "retouche la couleur du mur maintenant", "intention": "edition", "source": "gabarit"}
@@ -2023,7 +2023,7 @@
 {"texte": "maintenant fais-moi une page de manga merci", "intention": "planche", "source": "gabarit"}
 {"texte": "stp detoure-la vite fait", "intention": "detourer", "source": "gabarit"}
 {"texte": "maintenant compose un morceau rock maintenant", "intention": "audio", "source": "gabarit"}
-{"texte": "peux-tu me faire un ecureuil sur une branche dans la neige ? s'il te plait", "intention": "image", "source": "gabarit"}
+{"texte": "S'IL TE PLAIT FAIS UNE PLAGE AU COUCHANT AU BORD DE LA MER", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant elle est saccadee, rends-la plus fluide pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT FAIS-MOI UNE MUSIQUE ROCK", "intention": "audio", "source": "gabarit"}
 {"texte": "maintenant mets-la sur fond transparent maintenant", "intention": "detourer", "source": "gabarit"}
@@ -2033,7 +2033,7 @@
 {"texte": "bon, une bande dessinee de trois cases sur un astronaute", "intention": "planche", "source": "gabarit"}
 {"texte": "et une planche avec plusieurs vignettes merci", "intention": "planche", "source": "gabarit"}
 {"texte": "j'aimerais agrandis-la stp", "intention": "agrandir", "source": "gabarit"}
-{"texte": "la meme, mais sur un toit", "intention": "image", "source": "gabarit"}
+{"texte": "il me faudrait une voiture de sport, photo realiste, tres detaille", "intention": "image", "source": "gabarit"}
 {"texte": "une bande dessinee de trois cases sur un dragon stp", "intention": "planche", "source": "gabarit"}
 {"texte": "maintenant une bande dessinee de trois cases sur un chat endormi ?", "intention": "planche", "source": "gabarit"}
 {"texte": "stp une musique pop de deux minutes", "intention": "audio", "source": "gabarit"}
@@ -2051,10 +2051,10 @@
 {"texte": "c'est quoi cette image ? vite fait", "intention": "lecture", "source": "gabarit"}
 {"texte": "JE VOUDRAIS AJOUTE UNE CICATRICE SUR SA JOUE", "intention": "edition", "source": "gabarit"}
 {"texte": "et retire l'arriere-plan pour moi", "intention": "detourer", "source": "gabarit"}
-{"texte": "j'aimerais je voudrais une foret en automne, en noir et blanc stp", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais genere une image de une foret en automne stp", "intention": "image", "source": "gabarit"}
 {"texte": "bon, decris-moi cette photo ?", "intention": "lecture", "source": "gabarit"}
-{"texte": "tu peux une voiture de sport devant une plus grande maison", "intention": "image", "source": "gabarit"}
-{"texte": "mets le ciel en version doree maintenant", "intention": "edition", "source": "gabarit"}
+{"texte": "j'aimerais un ecureuil sur une branche, en noir et blanc, format portrait pour moi", "intention": "image", "source": "gabarit"}
+{"texte": "et mets sa veste en nuit etoilee s'il te plait", "intention": "edition", "source": "gabarit"}
 {"texte": "BON, ELLE EST SACCADEE, RENDS-LA PLUS FLUIDE", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "s'il te plait rends la video plus fluide", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "il me faudrait detoure-la", "intention": "detourer", "source": "gabarit"}
@@ -2062,9 +2062,9 @@
 {"texte": "j'aimerais fais un buste en trois dimensions", "intention": "objet3d", "source": "gabarit"}
 {"texte": "tu peux une video de un marche de nuit au crepuscule", "intention": "video", "source": "gabarit"}
 {"texte": "EXPLIQUE-MOI CE QUI EST REPRESENTE MERCI", "intention": "lecture", "source": "gabarit"}
-{"texte": "une foret en automne devant une plus grande maison", "intention": "image", "source": "gabarit"}
+{"texte": "LE MEME PERSONNAGE, AU BORD DE LA MER POUR MOI", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux une planche avec plusieurs vignettes !", "intention": "planche", "source": "gabarit"}
-{"texte": "dessine-moi un vieux phare dans la neige", "intention": "image", "source": "gabarit"}
+{"texte": "peux-tu un bol de ramen sous la pluie, de bonne qualite pour moi", "intention": "image", "source": "gabarit"}
 {"texte": "bon, qu'est-ce qu'il y a sur cette image ? pour moi", "intention": "lecture", "source": "gabarit"}
 {"texte": "peux-tu une bande dessinee de trois cases sur un cerf merci", "intention": "planche", "source": "gabarit"}
 {"texte": "detoure-la stp", "intention": "detourer", "source": "gabarit"}
@@ -2072,7 +2072,7 @@
 {"texte": "j'aimerais je veux une chanson sur mon ami disparu, electro", "intention": "audio", "source": "gabarit"}
 {"texte": "alors, anime une scene avec une danseuse maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "remplace l'eclairage par autre chose s'il te plait", "intention": "edition", "source": "gabarit"}
-{"texte": "et peux-tu me faire un phare breton dans une foret brumeuse ? vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "et un fond d'ecran avec un phare breton dans une foret brumeuse, plein de details vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "stp un petit film de un chevalier pour moi", "intention": "video", "source": "gabarit"}
 {"texte": "fais une video : une danseuse au milieu des champs merci", "intention": "video", "source": "gabarit"}
 {"texte": "il me faudrait mets-la en haute definition ?", "intention": "agrandir", "source": "gabarit"}
@@ -2093,7 +2093,7 @@
 {"texte": "il me faudrait mets-la en 60 fps vite fait", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "alors, agrandis-la merci", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, fluidifie la video maintenant", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "stp fais un renard roux dans un atelier", "intention": "image", "source": "gabarit"}
+{"texte": "stp peux-tu me faire un renard roux dans un atelier ?", "intention": "image", "source": "gabarit"}
 {"texte": "et mets-la en haute definition pour moi", "intention": "agrandir", "source": "gabarit"}
 {"texte": "alors, fais-moi une musique classique vite fait", "intention": "audio", "source": "gabarit"}
 {"texte": "stp un maillage 3d de une chaise ?", "intention": "objet3d", "source": "gabarit"}
@@ -2103,7 +2103,7 @@
 {"texte": "et une musique jazz de deux minutes merci", "intention": "audio", "source": "gabarit"}
 {"texte": "il me faudrait anime cette image merci", "intention": "video_image", "source": "gabarit"}
 {"texte": "stp rends la video plus fluide", "intention": "fluidifier", "source": "gabarit"}
-{"texte": "je voudrais je voudrais un heron dans les roseaux, en noir et blanc merci", "intention": "image", "source": "gabarit"}
+{"texte": "et un fond decran avec une voiture de sport dans la neige, plein de details sil te plait", "intention": "image", "source": "gabarit"}
 {"texte": "tu peux anime cette image s'il te plait", "intention": "video_image", "source": "gabarit"}
 {"texte": "bon, supprime le fond de cette image vite fait", "intention": "detourer", "source": "gabarit"}
 {"texte": "il me faudrait anime-la", "intention": "video_image", "source": "gabarit"}
@@ -2114,9 +2114,9 @@
 {"texte": "s'il te plait un petit film de un chevalier pour moi", "intention": "video", "source": "gabarit"}
 {"texte": "un petit film de un marche de nuit s'il te plait", "intention": "video", "source": "gabarit"}
 {"texte": "fais-moi une page de manga", "intention": "planche", "source": "gabarit"}
-{"texte": "peux-tu le meme personnage, au milieu des champs maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "ET UNE AFFICHE DE UNE CABANE EN MONTAGNE, EN 4K POUR MOI", "intention": "image", "source": "gabarit"}
 {"texte": "il me faudrait fais une video : une plage au couchant au petit matin", "intention": "video", "source": "gabarit"}
-{"texte": "UNE DANSEUSE SOUS UN CIEL D'ORAGE, STYLE MANGA", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais un renard roux, style cinema, tres detaille ?", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais detoure-la", "intention": "detourer", "source": "gabarit"}
 {"texte": "PASSE-LA EN HAUTE RESOLUTION !", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais explique-moi ce qui est represente", "intention": "lecture", "source": "gabarit"}
@@ -2155,7 +2155,7 @@
 {"texte": "tu peux supprime le fond de cette image merci", "intention": "detourer", "source": "gabarit"}
 {"texte": "et compose un morceau une berceuse merci", "intention": "audio", "source": "gabarit"}
 {"texte": "il me faudrait decris-moi cette photo", "intention": "lecture", "source": "gabarit"}
-{"texte": "et une affiche avec un renard roux", "intention": "image", "source": "gabarit"}
+{"texte": "maintenant un marche de nuit devant une plus grande maison", "intention": "image", "source": "gabarit"}
 {"texte": "un petit film de un astronaute maintenant", "intention": "video", "source": "gabarit"}
 {"texte": "stp anime-la ?", "intention": "video_image", "source": "gabarit"}
 {"texte": "je voudrais anime cette image s'il te plait", "intention": "video_image", "source": "gabarit"}
@@ -2166,7 +2166,7 @@
 {"texte": "tu peux transforme ce dessin en objet 3d pour moi", "intention": "objet3d", "source": "gabarit"}
 {"texte": "je voudrais fais un vase en trois dimensions vite fait", "intention": "objet3d", "source": "gabarit"}
 {"texte": "s'il te plait remplace sa veste par autre chose !", "intention": "edition", "source": "gabarit"}
-{"texte": "s'il te plait le meme personnage, au bord de la mer", "intention": "image", "source": "gabarit"}
+{"texte": "tu peux une ruelle sous la pluie devant une plus grande maison", "intention": "image", "source": "gabarit"}
 {"texte": "un maillage 3d de une theiere", "intention": "objet3d", "source": "gabarit"}
 {"texte": "fais-moi une page de manga !", "intention": "planche", "source": "gabarit"}
 {"texte": "s'il te plait fais une video : une voiture de sport au bord de la mer", "intention": "video", "source": "gabarit"}
@@ -2177,24 +2177,24 @@
 {"texte": "il me faudrait isole le sujet", "intention": "detourer", "source": "gabarit"}
 {"texte": "UN INSTRUMENTAL JAZZ A L'ACCORDEON", "intention": "audio", "source": "gabarit"}
 {"texte": "S'IL TE PLAIT AGRANDIS-LA MERCI", "intention": "agrandir", "source": "gabarit"}
-{"texte": "un cerf au milieu des champs, illustration maintenant", "intention": "image", "source": "gabarit"}
+{"texte": "j'aimerais un cerf au petit matin, en 1920x1080", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais fluidifie la video pour moi", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "ALORS, ELLE EST SACCADEE, RENDS-LA PLUS FLUIDE", "intention": "fluidifier", "source": "gabarit"}
 {"texte": "j'aimerais anime une scene avec une danseuse ?", "intention": "video", "source": "gabarit"}
 {"texte": "et fais-moi une page de manga ?", "intention": "planche", "source": "gabarit"}
-{"texte": "peux-tu me faire un heron dans les roseaux sous la pluie ?", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais un bol de ramen, photo realiste s'il te plait", "intention": "image", "source": "gabarit"}
 {"texte": "passe-la en 4k stp", "intention": "agrandir", "source": "gabarit"}
-{"texte": "et une plage au couchant, peinture a l'huile, format portrait ?", "intention": "image", "source": "gabarit"}
-{"texte": "il me faudrait un marche de nuit devant une plus grande maison stp", "intention": "image", "source": "gabarit"}
+{"texte": "et une plage au couchant au bord de la mer, en 1920x1080 ?", "intention": "image", "source": "gabarit"}
+{"texte": "s'il te plait un fond d'ecran avec une ruelle sous la pluie sur un toit, plein de details ?", "intention": "image", "source": "gabarit"}
 {"texte": "agrandis cette image maintenant", "intention": "agrandir", "source": "gabarit"}
-{"texte": "bon, la meme, mais dans un atelier ?", "intention": "image", "source": "gabarit"}
-{"texte": "UN DRAGON DEVANT UNE PLUS GRANDE MAISON VITE FAIT", "intention": "image", "source": "gabarit"}
+{"texte": "et une ruelle sous la pluie sur un toit, peinture a l'huile !", "intention": "image", "source": "gabarit"}
+{"texte": "stp un dragon devant une plus grande maison", "intention": "image", "source": "gabarit"}
 {"texte": "maintenant fais-moi une musique pop stp", "intention": "audio", "source": "gabarit"}
 {"texte": "jaimerais passe-la en haute resolution maintenant", "intention": "agrandir", "source": "gabarit"}
 {"texte": "je voudrais lis ce qui est ecrit dessus s'il te plait", "intention": "lecture", "source": "gabarit"}
-{"texte": "RAJOUTE-LUI UN CHAPEAU", "intention": "edition", "source": "gabarit"}
+{"texte": "corrige le fond", "intention": "edition", "source": "gabarit"}
 {"texte": "maintenant supprime le fond de cette image ?", "intention": "detourer", "source": "gabarit"}
 {"texte": "bon, fais-moi une page de manga merci", "intention": "planche", "source": "gabarit"}
-{"texte": "je voudrais peux-tu me faire une guerriere en armure sous la pluie ? vite fait", "intention": "image", "source": "gabarit"}
+{"texte": "je voudrais un fond d'ecran avec une guerriere en armure sous la pluie, plein de details vite fait", "intention": "image", "source": "gabarit"}
 {"texte": "je voudrais c'est quoi cette image ?", "intention": "lecture", "source": "gabarit"}
 {"texte": "enleve sa veste", "intention": "edition", "source": "gabarit"}
