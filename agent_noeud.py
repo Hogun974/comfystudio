@@ -698,6 +698,47 @@ def se_mettre_a_jour_seul(studio, attendue, epinglee):
     return None
 
 
+# Combien de temps insister pour livrer un travail deja fait. Dix minutes
+# couvrent largement le redemarrage d'un studio, qui prend une dizaine de
+# secondes ; au-dela, c'est que le studio n'est pas la, et le travail est perdu
+# de toute façon.
+LIVRAISON_MINUTES = int(os.environ.get("AGENT_LIVRAISON_MINUTES") or 10)
+
+
+def insister(url, jeton, corps=None, brut=None, secondes=60):
+    """Livre au studio, et recommence tant qu'il ne repond pas.
+
+    Un travail DEJA FAIT ne doit pas etre perdu parce que le studio redemarrait
+    a la seconde ou l'on rendait. C'etait le cas : un seul appel, et si le
+    studio ne repondait pas, la carte avait tourne pour rien et l'utilisateur
+    lisait « echec » pour un travail que sa machine avait bel et bien mene a
+    terme.
+
+    On ne recommence que sur un studio MUET ou en panne (0, ou 5xx). Un refus
+    franc — jeton invalide, extension refusee, fichier trop gros — ne se repare
+    pas en le repetant : on rend la main tout de suite.
+    """
+    fin = time.time() + LIVRAISON_MINUTES * 60
+    attente, dit = 2, False
+    while True:
+        st, _ = appeler(url, jeton, corps, brut=brut, secondes=secondes)
+        if st == 200 or (400 <= st < 500):
+            if dit:
+                print(f"  studio revenu — {url.split('/')[-1].split('?')[0]} "
+                      f"livre ({st})", flush=True)
+            return st
+        if time.time() >= fin:
+            print(f"  studio injoignable depuis {LIVRAISON_MINUTES} min — "
+                  f"travail perdu ({st})", flush=True)
+            return st
+        if not dit:
+            print(f"  studio muet ({st}) — on garde le travail et l'on insiste",
+                  flush=True)
+            dit = True
+        time.sleep(attente)
+        attente = min(attente * 2, 30)
+
+
 # ══════════════════════════ boucle ════════════════════════════════════
 def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
            epinglee="", maj_auto=True):
@@ -859,8 +900,8 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                     erreur = erreur or f"fichier illisible : {f['filename']}"
                     continue
                 q = urllib.parse.urlencode({"tid": tid, "nom": f["filename"]})
-                st, _ = appeler(f"{studio}/api/noeud/fichier?{q}", jeton,
-                                brut=octets, secondes=600)
+                st = insister(f"{studio}/api/noeud/fichier?{q}", jeton,
+                              brut=octets, secondes=600)
                 if st == 200:
                     deposes.append({"filename": f["filename"],
                                     "subfolder": f.get("subfolder", ""),
@@ -870,10 +911,10 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                     noter_depot(sorties, f, time.time())
                 else:
                     erreur = erreur or f"envoi refuse par le studio ({st})"
-            appeler(f"{studio}/api/noeud/resultat", jeton,
-                    {"tid": tid, "etat": "erreur" if erreur else "fini",
-                     "erreur": erreur, "secondes": round(secondes, 1),
-                     "fichiers": deposes})
+            insister(f"{studio}/api/noeud/resultat", jeton,
+                     {"tid": tid, "etat": "erreur" if erreur else "fini",
+                      "erreur": erreur, "secondes": round(secondes, 1),
+                      "fichiers": deposes})
             print(f"  travail {tid[:8]} {'echoue' if erreur else 'rendu'} "
                   f"en {secondes:.0f} s — {len(deposes)} fichier(s)", flush=True)
         except KeyboardInterrupt:
