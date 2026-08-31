@@ -144,6 +144,12 @@ ATTENTE = []                # tids en attente, dans l'ordre
 # Il n'en lance toujours qu'un pour l'instant — ce registre ne change aucun
 # comportement, il retire seulement la supposition qui l'interdisait.
 EN_VOL = {}                 # tid -> asyncio.Task
+# Vrai a partir du moment ou le studio s'arrete. Un travailleur annule doit
+# savoir POURQUOI il l'est : une annulation d'utilisateur ne vise que le travail
+# en cours et le travailleur doit continuer a servir la file, tandis que l'arret
+# vise le travailleur lui-meme, qui doit alors vraiment s'arreter au lieu de
+# retourner attendre un travail que plus personne ne lui donnera.
+ARRET = False
 # Le studio n'a plus de carte : il attend des machines, et attendre ne coute
 # rien. Le nombre ne borne donc pas le materiel mais l'appetit — vingt demandes
 # d'un coup n'ouvrent pas vingt analyses simultanees chez le modele de langage.
@@ -6350,6 +6356,13 @@ async def travailleur():
         # Une tache nommee plutot qu'un simple await : c'est le seul moyen
         # d'arreter un travail qui n'a pas encore atteint ComfyUI — analyse,
         # ecriture des paroles, attente d'un fournisseur.
+        # Une demande n'est retiree du fichier que si elle est VRAIMENT finie.
+        # L'arret du studio annule les travailleurs, ce qui passe par le meme
+        # « except CancelledError » qu'une annulation d'utilisateur — et le
+        # « finally » effaçait alors la demande du fichier a la seconde meme ou
+        # la persistance devait la sauver. Mesure : redemarrage en plein rendu,
+        # fichier vide au reveil, demande perdue.
+        fini_pour_de_bon = True
         travail = asyncio.create_task(
             executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
                      job.get("taille"), job.get("priorite", ""), job.get("noeud")))
@@ -6376,13 +6389,24 @@ async def travailleur():
             # sur « sa carte s'arrete des qu'elle nous rappelle », au futur, pour
             # un rendu deja mort. La page relit une fois a huit secondes, ne
             # trouve rien de neuf, et abandonne sans rien dire.
+            # Annulee PAR QUI ? Si l'utilisateur l'a retiree, elle est finie et
+            # ne doit pas revenir. Si c'est l'arret du studio, elle n'a rien
+            # demande a personne : elle reste dans le fichier et repartira au
+            # reveil.
+            fini_pour_de_bon = bool((TACHES.get(tid) or {}).get("annulee"))
             ident_t = (TACHES.get(tid) or {}).get("noeud") or ""
             if est_agent(ident_t) and ETAT_NOEUDS.get(ident_t, {}).get("repond"):
                 TACHES.setdefault(tid, {"etapes": []}).update(etat="erreur")
             else:
                 journal(tid, "interrompue", etat="erreur")
+            if ARRET:
+                # On relaie : sans ce « raise », le travailleur avalait son
+                # propre arret et repartait attendre a la porte. Le « finally »
+                # ci-dessous tourne quand meme.
+                raise
         except Exception as e:                       # filet : la file ne doit jamais mourir
             journal(tid, f"ERREUR inattendue : {e}", etat="erreur")
+            fini_pour_de_bon = True
         finally:
             EN_VOL.pop(tid, None)
             # La progression d'une machine a agent n'a personne pour la remettre
@@ -6390,10 +6414,9 @@ async def travailleur():
             # ligne, la barre du travail suivant demarrait la ou le precedent
             # s'etait arrete.
             AVANCES.pop(tid, None)
-            # Rendue, ratee ou interrompue : dans les trois cas elle ne doit plus
-            # revenir apres un redemarrage.
-            EN_FILE.pop(tid, None)
-            sauver_file()
+            if fini_pour_de_bon:
+                EN_FILE.pop(tid, None)
+                sauver_file()
             FILE_ATTENTE.task_done()
             purger_taches()
 
@@ -8334,6 +8357,8 @@ async def arreter_file(a):
     On parcourt les clefs plutot que de les nommer : le prochain qui ajoute une
     tache de fond n'aura rien a penser ici.
     """
+    global ARRET
+    ARRET = True
     for nom in [k for k in a if str(k).startswith("travailleur")] + ["veilleur",
                                                                      "ecoute"]:
         tache = a.get(nom)
