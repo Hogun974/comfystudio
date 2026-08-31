@@ -1149,11 +1149,11 @@ fetch("/api/machines").then(r => r.json()).then(ns => {
   // La liste arrive apres coup : on repose ce que la conversation demandait,
   // sinon son choix tombait dans le vide faute d'option correspondante.
   poserReglages(reglagesVoulus);
-  sel.addEventListener("change", () => {
-    if (sel.value) localStorage.setItem("machine", sel.value);
-    else localStorage.removeItem("machine");
-    peindreActifs();
-  });
+  // La machine n'est plus memorisee dans le navigateur : elle appartient a la
+  // conversation, et une valeur gardee ici s'invitait dans des conversations
+  // qui ne l'avaient jamais demandee. Le listener de « change » commun a tous
+  // les reglages fait deja le reste.
+  try { localStorage.removeItem("machine"); } catch (e) {}
   peindreActifs();
 }).catch(() => {});
 
@@ -1648,7 +1648,7 @@ function peindreActifs() {
     mot.textContent = (r.nom ? r.nom + " " : "") + r.lire(el.selectedOptions[0]);
     mot.title = "cliquer pour revenir à l'automatique";
     mot.onclick = () => { el.value = ""; accorderTaille(); peindreActifs();
-                          retenirReglages(); };
+                          retenirReglages(CLE_REGLAGE[r.sel]); };
     zone.appendChild(mot);
   }
 }
@@ -1656,10 +1656,16 @@ function peindreActifs() {
    la conversation, sans attendre qu'une demande soit envoyee. Sans cette route,
    on ouvrait le tiroir, on prenait FLUX.1 en 1920x1080, on passait voir une
    autre conversation, et le choix n'existait plus au retour. */
-function retenirReglages() {
+function retenirReglages(cle) {
   if (!convActive) return;
-  const corps = { ...reglagesDemandes(), priorite: $("#priorite").value };
-  reglagesVoulus = { ...corps };
+  // SEULEMENT LA CLE QUI VIENT DE CHANGER. Envoyer les quatre a chaque geste
+  // faisait deux degats : un second onglet reste ouvert sur la meme
+  // conversation effaçait le moteur regle depuis le premier — le serveur
+  // raisonne sur la PRESENCE, et une cle presente et vide efface — et il
+  // ecrivait un murmure « moteur : automatique » que personne n'avait demande.
+  const tout = { ...reglagesDemandes(), priorite: $("#priorite").value };
+  const corps = cle ? { [cle]: tout[cle] } : tout;
+  reglagesVoulus = { ...reglagesVoulus, ...corps };
   const ou = convActive;
   fetch("/api/conversation/" + ou + "/reglages", {
     method: "POST", credentials: "same-origin",
@@ -1672,9 +1678,12 @@ function retenirReglages() {
   }).catch(() => {});   // du confort : la demande les reporte de toute facon
 }
 
+const CLE_REGLAGE = { "#forcer": "modele", "#machine": "noeud",
+                      "#priorite": "priorite", "#taille": "taille" };
 REGLAGES.forEach(r => {
   const el = document.querySelector(r.sel);
-  if (el) el.addEventListener("change", () => { peindreActifs(); retenirReglages(); });
+  if (el) el.addEventListener("change", () => { peindreActifs();
+                                                retenirReglages(CLE_REGLAGE[r.sel]); });
 });
 document.querySelector("#plier").onclick = e => {
   const outils = document.querySelector("#outils");
@@ -1802,12 +1811,14 @@ function poserReglages(r) {
     if (!v || [...el.options].some(o => o.value === v)) el.value = v;
   };
   mettre("#forcer", reglagesVoulus.modele);
-  // Une conversation neuve n'a pas encore de machine : on lui laisse celle
-  // qu'on avait choisie la derniere fois, comme avant. Des qu'elle en a une,
-  // c'est la sienne qui compte — le reglage appartient a la conversation, pas
-  // a la fenetre.
-  mettre("#machine", "noeud" in reglagesVoulus ? reglagesVoulus.noeud
-                                               : localStorage.getItem("machine"));
+  // PLUS DE REPLI SUR LE NAVIGATEUR. Une machine memorisee dans le
+  // localStorage remontait dans les menus, puis dans le corps de la demande, et
+  // la conversation se voyait epingler une machine que personne n'avait choisie
+  // pour elle — avec un murmure « machine : PC » comme si c'etait une decision,
+  // et un echec le jour ou cette machine est eteinte. Depuis que les reglages
+  // appartiennent a la conversation, une conversation neuve part sur
+  // « automatique », et c'est la reponse la moins surprenante.
+  mettre("#machine", reglagesVoulus.noeud);
   mettre("#priorite", reglagesVoulus.priorite);
   mettre("#taille", reglagesVoulus.taille);
   // accorderTaille() est cable sur l'evenement « change » du menu des moteurs,

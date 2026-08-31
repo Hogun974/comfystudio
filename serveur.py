@@ -1850,7 +1850,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # ATTENTE_CARTE a chaque adresse faisait, a trois adresses et trois appels
     # par demande, jusqu'a quatre heures avant le premier repli.
     echeance = time.time() + ATTENTE_CARTE
-    for url, ident in cerveaux:
+    for rang_, (url, ident) in enumerate(cerveaux):
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
         ici = corps_ici(corps, url, tid if len(cerveaux) == 1 else None)
         if ici is None:
@@ -1896,8 +1896,14 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # font perdre un quart d'heure avant d'essayer la machine d'a cote,
             # qui repond en dix-neuf secondes. Mesure du 31 aout : 919 s, dont
             # 900 perdues.
+            # La borne courte n'a de sens QUE s'il reste une machine derriere.
+            # Sur la derniere — ou la seule, quand l'autre est eteinte ou en
+            # pause — elle ne fait plus gagner un repli : elle transforme une
+            # lecture lente en echec sec, et l'utilisateur qui aurait attendu
+            # lit « le modele de vision n'a pas repondu ».
+            reste_ = rang_ + 1 < len(cerveaux)
             rendu = await _ollama_local(
-                ici, url, 300 if ici.get("images") else 900)
+                ici, url, 300 if (ici.get("images") and reste_) else 900)
             # Seulement si on l'a demande CHAUD : sans « garder », Ollama l'a
             # deja relache et il n'y a rien a fermer derriere nous.
             if garder and tid:
@@ -6279,7 +6285,18 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
             break
     else:
         conv["tours"].append(tour)
+    coupes = {t.get("id") for t in conv["tours"][:-60]}
     conv["tours"] = conv["tours"][-60:]
+    # LES MURMURES SUIVENT LEURS ANCRES. Un murmure s'ancre « apres » un tour ;
+    # quand ce tour sort des soixante derniers, la page n'a plus ou le poser et
+    # ne l'affiche nulle part — il reste dans le fichier, invisible, sans que
+    # rien ne le dise. Et c'est justement la conversation longue, celle ou
+    # « pourquoi celle-ci est en 1024 ? » se pose des jours plus tard, qui perd
+    # sa trace. On les rerattache en tete plutot que de les perdre.
+    if coupes:
+        for m in conv.get("murmures") or []:
+            if m.get("apres") in coupes:
+                m["apres"] = None
     # le titre se fixe sur la premiere demande, comme dans une messagerie
     if conv["titre"] == "Nouvelle conversation" and texte:
         conv["titre"] = (texte[:46] + "…") if len(texte) > 46 else texte
@@ -6360,6 +6377,11 @@ async def produire_distant(choix, plan, texte, entree, intention, tid, conv):
     os.makedirs(dossier, exist_ok=True)
     with open(os.path.join(dossier, nom), "wb") as f:
         f.write(octets)
+    # Le temps sur la TACHE, comme pour une machine du parc : sans cette ligne,
+    # une piece produite au loin n'avait jamais de duree, ni dans le detail du
+    # tour ni dans la mediatheque — alors que ce sont justement celles qu'on
+    # paie a la seconde.
+    TACHES.setdefault(tid, {})["secondes"] = round(time.time() - debut, 1)
     journal(tid, f"recu en {time.time() - debut:.0f} s ({len(octets) / 1024:.0f} ko)")
     return [{"filename": nom, "subfolder": sous, "type": "output",
              "noeud": noeud_local()["id"]}]
