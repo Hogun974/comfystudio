@@ -1181,6 +1181,44 @@ async def attendre_carte_libre(tid=None):
             journal(tid, f"toujours en attente de la carte ({int(time.time()-debut)} s)")
         await asyncio.sleep(2)
 
+_OLLAMA_CHEZ = {"quand": 0.0, "noeud": None}
+
+
+def noeud_de_l_ollama():
+    """La machine a agent qui heberge l'Ollama du studio, s'il y en a une.
+
+    On compare l'adresse resolue d'OLLAMA_URL a celle d'ou chaque agent nous
+    parle. C'est la seule correspondance disponible : un agent n'a pas d'adresse
+    joignable — c'est tout l'interet du montage — mais il en a forcement une
+    quand il appelle.
+
+    Sans cela, l'analyse tournait sur une carte que personne n'avait reservee :
+    l'utilisateur voyait une analyse et un rendu se partager le meme GPU, ce que
+    la regle « une carte, une tache » interdit. attendre_carte_libre(), lui, ne
+    regarde que le ComfyUI du studio — celui qui n'existe plus depuis qu'il n'a
+    pas de carte — et rendait donc la main aussitot.
+
+    Recalcule au plus une fois par minute : une resolution DNS a chaque appel du
+    modele de langage serait payee des centaines de fois pour rien.
+    """
+    if time.time() - _OLLAMA_CHEZ["quand"] < 60:
+        return _OLLAMA_CHEZ["noeud"]
+    _OLLAMA_CHEZ["quand"] = time.time()
+    _OLLAMA_CHEZ["noeud"] = None
+    hote = urllib.parse.urlparse(OLLAMA).hostname
+    if hote:
+        import socket
+        try:
+            ip = socket.gethostbyname(hote)
+        except OSError:
+            return None
+        for x in tous_les_noeuds():
+            if x.get("agent") and (ETAT_NOEUDS.get(x["id"]) or {}).get("ip") == ip:
+                _OLLAMA_CHEZ["noeud"] = x["id"]
+                break
+    return _OLLAMA_CHEZ["noeud"]
+
+
 async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
                          modele=None, temperature=0.4, tid=None, garder=0):
     """temperature : 0.4 convient a la description libre d'une image. L'aiguillage
@@ -1204,6 +1242,50 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
                          f" — le modele local prend le relais")
 
     await attendre_carte_libre(tid)
+    # ET la carte de la machine qui HEBERGE cet Ollama : une carte ne fait
+    # qu'une tache a la fois, analyse comprise. attendre_carte_libre() ci-dessus
+    # ne surveille que le ComfyUI du studio, qui n'existe plus.
+    chez = noeud_de_l_ollama()
+    verrou_ol = verrou_noeud(chez) if chez else None
+    if verrou_ol is not None:
+        if verrou_ol.locked() and tid:
+            journal(tid, f"{(noeud(chez) or {}).get('titre', chez)} calcule — "
+                         f"l'analyse attend sa carte ({ATTENTE_LLM} s au plus)")
+        try:
+            await asyncio.wait_for(verrou_ol.acquire(), timeout=ATTENTE_LLM)
+        except asyncio.TimeoutError:
+            # Mieux vaut deux traitements qui se genent qu'un studio arrete :
+            # on le dit, et on passe.
+            if tid:
+                journal(tid, "sa carte reste occupee — analyse lancee malgre tout")
+            verrou_ol = None
+    corps = corps_ollama(texte, image_b64, systeme, json_mode, modele,
+                         temperature, garder)
+    try:
+        return await _ollama_local(corps)
+    except Exception as e:
+        panne = e
+    finally:
+        if verrou_ol is not None:
+            verrou_ol.release()
+    # HORS du verrou. On n'essaie une autre machine QUE si la sienne ne repond
+    # pas : un modele distant est plus lent a charger, et la machine qui le porte
+    # a peut-etre mieux a faire. Depuis qu'un studio peut vivre sans carte, ce cas
+    # n'a rien d'exceptionnel — il suffit que le PC soit eteint.
+    #
+    # Et il faut avoir LACHE la carte avant : poser_a() prend le verrou de la
+    # machine a qui il pose la question, et cette machine peut etre celle dont on
+    # vient d'essayer l'Ollama. Le repli se serait attendu lui-meme.
+    journal(tid, f"modele local injoignable ({type(panne).__name__}) — "
+                 f"on cherche une machine qui en porte un")
+    rendu = await demander_a_un_noeud(corps, tid)
+    if rendu:
+        return rendu
+    raise panne
+
+
+def corps_ollama(texte, image_b64, systeme, json_mode, modele, temperature, garder):
+    """Le corps de la requete, tel qu'Ollama l'attend."""
     # keep_alive 0 par defaut : ComfyUI reprend la carte juste apres, et un
     # modele reste resident tant qu'on ne l'a pas relache. « garder » n'est
     # leve que pour une suite d'appels rapprochee, refermee par liberer_modele.
@@ -1212,51 +1294,50 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
     if systeme: corps["system"] = systeme
     if json_mode: corps["format"] = "json"
     if image_b64: corps["images"] = [image_b64]
+    return corps
+
+
+async def _ollama_local(corps):
+    """L'appel lui-meme, une fois la carte reservee.
+
+    Il ne rattrape rien : le repli sur une autre machine appartient a
+    appeler_ollama, qui doit d'abord relacher la carte — sans quoi le repli
+    demanderait la carte qu'on tient encore, et s'attendrait lui-meme.
+    """
     # 900 s : un gros modele qui deborde sur le processeur met plus longtemps
     # que la minute d'un 7B, et une coupure ici rend une chanson muette.
     to = aiohttp.ClientTimeout(total=900)
-    try:
-        async with aiohttp.ClientSession(timeout=to) as s:
-            async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
-                d = await r.json()
-                rep_ = d.get("response", "")
-                if not rep_.strip() and d.get("error"):
-                    # Ollama a repondu 200 avec un champ « error » : le modele
-                    # existe, il ne se CHARGE pas. Le reessayer a chaque demande
-                    # ne fait que perdre du temps deux fois par appel.
-                    nom_ = corps.get("model") or ""
-                    if nom_ and nom_ not in MODELES_CASSES:
-                        MODELES_CASSES[nom_] = str(d["error"])[:200]
-                        print(f"  [ollama] {nom_} ne se charge pas, il est ecarte "
-                              f"— {MODELES_CASSES[nom_]}", flush=True)
-                        global MODELE_ECRITURE
-                        if MODELE_ECRITURE == nom_:
-                            # Le prochain appel en choisira un autre.
-                            MODELE_ECRITURE = ""
-                if not rep_.strip():
-                    # Une reponse vide est dite a voix haute, comme pour un
-                    # fournisseur distant. Sans cela, « traduction rejetee
-                    # (0 lignes rendues pour 1 attendues) » etait tout ce que le
-                    # journal disait, et le diagnostic ajoute la veille ne
-                    # couvrait que la voie distante : celle-ci jetait
-                    # « done_reason » et « eval_count », les deux seules choses
-                    # qui expliquent un silence.
-                    print(f"  [ollama] reponse vide de {corps.get('model')} — "
-                          f"arret={d.get('done_reason')} "
-                          f"jetons={d.get('eval_count')} "
-                          f"erreur={str(d.get('error'))[:80]}", flush=True)
-                return rep_
-    except Exception as e:
-        # On n'essaie une autre machine QUE si la sienne ne repond pas : un
-        # modele distant est plus lent a charger, et la machine qui le porte a
-        # peut-etre mieux a faire. Depuis qu'un studio peut vivre sans carte, ce
-        # cas n'a rien d'exceptionnel : il suffit que le PC soit eteint.
-        journal(tid, f"modele local injoignable ({type(e).__name__}) — "
-                     f"on cherche une machine qui en porte un")
-        rendu = await demander_a_un_noeud(corps, tid)
-        if rendu:
-            return rendu
-        raise
+    async with aiohttp.ClientSession(timeout=to) as s:
+        async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
+            d = await r.json()
+            rep_ = d.get("response", "")
+            if not rep_.strip() and d.get("error"):
+                # Ollama a repondu 200 avec un champ « error » : le modele
+                # existe, il ne se CHARGE pas. Le reessayer a chaque demande
+                # ne fait que perdre du temps deux fois par appel.
+                nom_ = corps.get("model") or ""
+                if nom_ and nom_ not in MODELES_CASSES:
+                    MODELES_CASSES[nom_] = str(d["error"])[:200]
+                    print(f"  [ollama] {nom_} ne se charge pas, il est ecarte "
+                          f"— {MODELES_CASSES[nom_]}", flush=True)
+                    global MODELE_ECRITURE
+                    if MODELE_ECRITURE == nom_:
+                        # Le prochain appel en choisira un autre.
+                        MODELE_ECRITURE = ""
+            if not rep_.strip():
+                # Une reponse vide est dite a voix haute, comme pour un
+                # fournisseur distant. Sans cela, « traduction rejetee
+                # (0 lignes rendues pour 1 attendues) » etait tout ce que le
+                # journal disait, et le diagnostic ajoute la veille ne
+                # couvrait que la voie distante : celle-ci jetait
+                # « done_reason » et « eval_count », les deux seules choses
+                # qui expliquent un silence.
+                print(f"  [ollama] reponse vide de {corps.get('model')} — "
+                      f"arret={d.get('done_reason')} "
+                      f"jetons={d.get('eval_count')} "
+                      f"erreur={str(d.get('error'))[:80]}", flush=True)
+            return rep_
+
 
 def noeuds_a_llm():
     """Les machines joignables qui portent un modele de langage.
@@ -7200,6 +7281,12 @@ async def api_noeud_annonce(req):
     # « inconnue » et non « a jour ».
     if isinstance(d.get("empreinte"), str):
         etat["empreinte"] = d["empreinte"][:64]
+    # D'ou elle nous parle. Sert a reconnaitre que l'Ollama du studio tourne sur
+    # CETTE machine, et donc a reserver sa carte avant de l'interroger. Relue a
+    # chaque annonce : une machine qui change de reseau change d'adresse, et une
+    # adresse perimee ferait attendre la mauvaise carte.
+    if req.remote:
+        etat["ip"] = req.remote
     # Une annonce « comfy: False » dit : la machine est la, sa carte ne repond
     # pas. On note qu'on l'a vue et ce qu'elle porte cote langage, mais on
     # n'ecrase ni sa carte ni sa memoire par des zeros — ce qu'on savait d'elle
