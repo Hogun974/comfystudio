@@ -162,7 +162,15 @@ VERROUS_MODELE = {}         # (sous-dossier, nom) -> asyncio.Lock
 # d'une machine occupee. Au-dela, elle va voir ailleurs : un rendu dure deux
 # minutes, une question deux secondes, et faire attendre la seconde derriere le
 # premier bloquait un travailleur pour rien.
+# Combien de temps une question accepte d'attendre AVANT d'aller voir une autre
+# machine. Court : ce n'est pas un abandon, c'est un changement de file.
 ATTENTE_LLM = 20
+# Et combien de temps elle attend quand il n'y a PLUS d'autre machine. Une carte
+# ne fait qu'une chose a la fois — c'est la regle, elle ne souffre pas
+# d'exception : on attend que le rendu finisse, on ne s'installe pas a cote de
+# lui. Une demi-heure est la meme patience que pour une soumission ; au-dela,
+# c'est que quelque chose ne se libere plus, et il vaut mieux le dire.
+ATTENTE_CARTE = int(os.environ.get("STUDIO_ATTENTE_CARTE") or 1800)
 
 
 def verrou_noeud(ident):
@@ -1226,9 +1234,13 @@ async def attendre_carte_libre(tid=None):
             journal(tid, "ComfyUI travaille — l'analyse attend que la carte se libere")
             prevenu = True
         if time.time() - debut > ATTENTE_COMFY:
-            if tid:
-                journal(tid, "ComfyUI occupe depuis 20 minutes — analyse lancee malgre tout")
-            return
+            # Plus d'echappatoire ici non plus. Lancer l'analyse « malgre tout »
+            # revenait a la poser a cote d'un rendu sur la meme carte, ce que la
+            # regle interdit sans exception. Vingt minutes d'occupation ne sont
+            # pas une attente, c'est une panne : on la nomme.
+            raise RuntimeError(
+                "ComfyUI occupe cette carte depuis vingt minutes — rien n'a ete "
+                "lance dessus. Regarde ce qu'il calcule.")
         if tid and time.time() - dernier > 60:
             dernier = time.time()
             journal(tid, f"toujours en attente de la carte ({int(time.time()-debut)} s)")
@@ -1326,17 +1338,22 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
     chez = noeud_de_l_ollama()
     verrou_ol = verrou_noeud(chez) if chez else None
     if verrou_ol is not None:
+        titre_ol = (noeud(chez) or {}).get("titre", chez)
         if verrou_ol.locked() and tid:
-            journal(tid, f"{(noeud(chez) or {}).get('titre', chez)} calcule — "
-                         f"l'analyse attend sa carte ({ATTENTE_LLM} s au plus)")
+            journal(tid, f"{titre_ol} calcule — l'analyse attend que sa carte "
+                         f"se libere")
+        # PAS d'echappatoire. La version precedente lançait l'analyse « malgre
+        # tout » au bout de vingt secondes : c'etait s'installer a cote d'un
+        # rendu sur la meme carte, exactement ce que la regle interdit. Une
+        # carte ne fait qu'une chose a la fois, sans exception — on attend la
+        # fin du rendu, et si rien ne se libere en une demi-heure c'est une
+        # panne, qui merite d'etre dite plutot que contournee.
         try:
-            await asyncio.wait_for(verrou_ol.acquire(), timeout=ATTENTE_LLM)
+            await asyncio.wait_for(verrou_ol.acquire(), timeout=ATTENTE_CARTE)
         except asyncio.TimeoutError:
-            # Mieux vaut deux traitements qui se genent qu'un studio arrete :
-            # on le dit, et on passe.
-            if tid:
-                journal(tid, "sa carte reste occupee — analyse lancee malgre tout")
-            verrou_ol = None
+            raise RuntimeError(
+                f"{titre_ol} n'a pas libere sa carte en "
+                f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance dessus.")
     try:
         return await _ollama_local(corps)
     except Exception as e:
@@ -1537,7 +1554,9 @@ async def poser_a(ident, corps, tid=None, secondes=900, patience=None):
     # SUITE. C'est ce qui permet a l'appelant d'essayer les machines l'une apres
     # l'autre sans perdre vingt secondes sur chacune — la premiere libre repond,
     # et l'on n'attend que si toutes travaillent.
-    attente_ = ATTENTE_LLM if patience is None else patience
+    # None : on attend qu'elle se libere, aussi longtemps qu'il faut. Zero : on
+    # ne la prend que si elle est libre a l'instant. Une valeur : ce delai-la.
+    attente_ = ATTENTE_CARTE if patience is None else patience
     verrou = verrou_noeud(ident)
     if verrou.locked() and tid and attente_:
         journal(tid, f"{titre} calcule — la question attend sa carte "
@@ -4258,6 +4277,14 @@ def entrees_a_joindre(g):
     return joint
 
 
+def noeud_qui_travaille(tid):
+    """La machine qui dit calculer deja ce travail, s'il y en a une."""
+    for x in tous_les_noeuds():
+        if tid in ((ETAT_NOEUDS.get(x["id"]) or {}).get("travaux") or []):
+            return x["id"]
+    return None
+
+
 async def soumettre_a_agent(g, tid, ident):
     """Depose le travail et attend que l'agent le rende.
 
@@ -4273,10 +4300,20 @@ async def soumettre_a_agent(g, tid, ident):
         poids = sum(len(v) for v in entrees.values()) * 3 / 4
         journal(tid, f"{len(entrees)} fichier(s) d'entree joints au travail "
                      f"({poids / 1e6:.1f} Mo)")
-    TRAVAUX.setdefault(ident, []).append({"tid": tid, "graphe": g,
-                                          "entrees": entrees})
     titre_ = (noeud(ident) or {}).get("titre", ident)
-    journal(tid, f"travail confie a {titre_} — en attente de sa reponse")
+    # Deja en cours la-bas ? Alors on ne le renvoie pas : on se rebranche sur ce
+    # qui tourne. C'est le cas apres un redemarrage du studio — sa table des
+    # travaux est perdue, reprendre_file() remet la demande en file, et la
+    # machine, elle, n'a jamais cesse de calculer. Sans cette verification la
+    # carte refaisait tout, et le premier resultat arrivait quand meme.
+    deja = noeud_qui_travaille(tid)
+    if deja == ident:
+        journal(tid, f"{titre_} calcule deja cette demande — on attend son "
+                     f"resultat plutot que de la relancer")
+    else:
+        TRAVAUX.setdefault(ident, []).append({"tid": tid, "graphe": g,
+                                              "entrees": entrees})
+        journal(tid, f"travail confie a {titre_} — en attente de sa reponse")
     t0 = time.time()
     try:
         d = await _attendre_le_noeud(attente, ident, titre_, tid)
@@ -5661,6 +5698,15 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                         + (f"a demander a {' ou '.join(ailleurs)}, ou laisser la "
                            f"machine sur « automatique »" if ailleurs else
                            "et aucune autre machine n'en a non plus"))
+        # Une machine dit calculer deja ce travail : c'est elle qu'il faut, et
+        # aucune autre. Apres un redemarrage du studio, le repartiteur aurait
+        # sinon pu en choisir une seconde — deux cartes sur la meme demande, et
+        # le resultat de la premiere arrivant de toute façon.
+        occupee_par = noeud_qui_travaille(tid)
+        if occupee_par and noeud(occupee_par):
+            cible = noeud(occupee_par)
+            journal(tid, f"{cible.get('titre', occupee_par)} n'a jamais arrete "
+                         f"cette demande — on la lui laisse")
         cible = cible or choisir_noeud(cle)
         if cible is None:
             # Peut-etre pas « aucune machine » : peut-etre « pas maintenant ».
@@ -7530,6 +7576,12 @@ async def api_noeud_annonce(req):
     # adresse perimee ferait attendre la mauvaise carte.
     if req.remote:
         etat["ip"] = req.remote
+    # Ce qu'elle calcule en ce moment. Le studio perd sa table des travaux a
+    # chaque redemarrage ; sans cette liste, reprendre_file() renvoyait une
+    # demande dont le rendu tournait encore la-bas, et la carte faisait deux fois
+    # le meme travail — la seconde fois pour rien.
+    if isinstance(d.get("travaux"), list):
+        etat["travaux"] = [t for t in d["travaux"] if isinstance(t, str)][:8]
     # Une annonce « comfy: False » dit : la machine est la, sa carte ne repond
     # pas. On note qu'on l'a vue et ce qu'elle porte cote langage, mais on
     # n'ecrase ni sa carte ni sa memoire par des zeros — ce qu'on savait d'elle

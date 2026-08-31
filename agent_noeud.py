@@ -49,6 +49,14 @@ PAUSE_LONGUE = 20           # apres une erreur : on n'insiste pas
 # non une erreur ordinaire : elle ne doit ni compter comme une panne de la
 # machine, ni la faire ecarter par le repartiteur du studio.
 ANNULE = "annulee par le studio"
+# Ce que CETTE machine calcule en ce moment. Annonce au studio a chaque
+# battement : c'est le seul moyen qu'il ait de savoir, apres un redemarrage,
+# qu'un rendu tourne deja ici — sinon il remet la demande en file et la carte
+# fait deux fois le meme travail, la seconde fois pour rien.
+#
+# Une liste, alors que l'agent est strictement sequentiel : elle porte au plus
+# un element, et rendre une liste evite au studio d'avoir a supposer cela.
+EN_COURS_ICI = []
 CONTEXTE = ssl.create_default_context()
 
 # Dossiers de modeles que le studio veut connaitre. unet_gguf et clip_gguf sont
@@ -798,6 +806,7 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                 # d'annulation. Rien ne le disait — elle repondait, elle rendait
                 # des images, et une fonction entiere manquait en silence.
                 corps["empreinte"] = _mon_empreinte()
+                corps["travaux"] = list(EN_COURS_ICI)
                 # Reevalue a chaque annonce : un modele peut etre telecharge ou
                 # retire pendant que l'agent tourne.
                 if ollama:
@@ -847,6 +856,7 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                 continue
 
             tid = travail["tid"]
+            EN_COURS_ICI[:] = [tid]
             print(f"  travail {tid[:8]} recu", flush=True)
             erreur = deposer_entrees(comfy, travail.get("entrees"),
                                      travail["graphe"])
@@ -890,6 +900,7 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                          "secondes": round(secondes, 1), "fichiers": []})
                 print(f"  travail {tid[:8]} annule par le studio apres "
                       f"{secondes:.0f} s", flush=True)
+                EN_COURS_ICI.clear()
                 continue
 
             # 3. deposer les fichiers produits, puis rendre le resultat
@@ -917,9 +928,14 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
                       "fichiers": deposes})
             print(f"  travail {tid[:8]} {'echoue' if erreur else 'rendu'} "
                   f"en {secondes:.0f} s — {len(deposes)} fichier(s)", flush=True)
+            EN_COURS_ICI.clear()
         except KeyboardInterrupt:
             raise
         except Exception as e:
+            # Vider ici aussi : une liste qui ne se vide pas ferait croire au
+            # studio qu'un rendu tourne encore, et il attendrait un resultat qui
+            # ne viendra jamais.
+            EN_COURS_ICI.clear()
             print(f"  incident : {type(e).__name__} {str(e)[:160]}", flush=True)
             time.sleep(PAUSE_LONGUE)
 
