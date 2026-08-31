@@ -32,13 +32,18 @@ import serveur  # noqa: E402
 BANC = os.path.join(ICI, "banc_formulations.jsonl")
 
 
-def aiguillage_ecrit(texte):
+def aiguillage_ecrit(texte, a_une_image=False):
     """Ce que le studio decide sur la seule formulation, dans SON ordre.
 
     L'ordre est ce qu'on verifie : le recopier ici serait sans valeur. On appelle
     donc les memes fonctions, dans la sequence du fichier serveur.py — toute
     permutation la-bas doit se voir ici.
+
+    « a_une_image » parce que la lecture n'a de sens qu'avec une piece jointe :
+    « decris-la » sans image est une demande de creation, pas de description.
     """
+    if a_une_image and serveur.veut_lire(texte):
+        return "lecture"
     if serveur.veut_detourer(texte):
         return "detourer"
     if serveur.veut_agrandir(texte):
@@ -61,7 +66,7 @@ def main():
                 cas.append((n, json.loads(ligne)))
     fautes = []
     for n, c in cas:
-        obtenu = aiguillage_ecrit(c["texte"])
+        obtenu = aiguillage_ecrit(c["texte"], c.get("image", False))
         if obtenu != c["attendu"]:
             fautes.append((n, c["texte"], c["attendu"], obtenu))
     print(f"  {len(cas) - len(fautes)}/{len(cas)} formulations aiguillees comme prevu")

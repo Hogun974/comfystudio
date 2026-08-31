@@ -32,3 +32,24 @@
 {"texte": "est-ce que tu peux refaire cette image", "attendu": "aucun"}
 {"texte": "ajoute des aurores boreales", "attendu": "aucun"}
 {"texte": "la meme mais plus sombre", "attendu": "aucun"}
+{"texte": "decris cette image", "attendu": "lecture", "image": true}
+{"texte": "decris-la", "attendu": "lecture", "image": true}
+{"texte": "que vois-tu ?", "attendu": "lecture", "image": true}
+{"texte": "qu'est-ce que c'est", "attendu": "lecture", "image": true}
+{"texte": "c'est quoi ca ?", "attendu": "lecture", "image": true}
+{"texte": "analyse cette photo", "attendu": "lecture", "image": true}
+{"texte": "raconte-moi ce que tu vois", "attendu": "lecture", "image": true}
+{"texte": "qu'y a-t-il sur cette image", "attendu": "lecture", "image": true}
+{"texte": "de quoi ca parle", "attendu": "lecture", "image": true}
+{"texte": "explique cette image", "attendu": "lecture", "image": true}
+{"texte": "decris en detail", "attendu": "lecture", "image": true}
+{"texte": "decris cette image", "attendu": "aucun"}
+{"texte": "que vois-tu ?", "attendu": "aucun"}
+{"texte": "decris-la en aquarelle", "attendu": "aucun", "image": true}
+{"texte": "decris-la en noir et blanc", "attendu": "aucun", "image": true}
+{"texte": "analyse et ameliore la lumiere", "attendu": "aucun", "image": true}
+{"texte": "detoure-la", "attendu": "detourer", "image": true}
+{"texte": "enleve le fond", "attendu": "detourer", "image": true}
+{"texte": "agrandis-la", "attendu": "agrandir", "image": true}
+{"texte": "mets un chapeau au personnage", "attendu": "aucun", "image": true}
+{"texte": "un renard dans les hautes herbes au coucher du soleil", "attendu": "aucun", "image": true}

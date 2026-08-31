@@ -3028,6 +3028,15 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "images intercalees dans la video precedente"}
 
+    # AVANT les autres : « decris-la » est sans ambiguite des lors qu'une image
+    # est jointe, et deux des raccourcis suivants mordent sur des formulations
+    # courtes du meme genre.
+    if a_une_image == "image" and veut_lire(texte) and not modele_force:
+        journal(tid, "lecture d'image reconnue — aucune analyse necessaire")
+        return {"intention": "lecture", "modele": None, "prompt": texte,
+                "parametres": {}, "parametres_bruts": {},
+                "raison": "lecture : on decrit ce que l'image montre"}
+
     if veut_detourer(texte) and not modele_force:
         journal(tid, "detourage reconnu — aucune analyse necessaire")
         return {"intention": "detourer", "modele": "detourer", "prompt": texte,
@@ -4780,6 +4789,49 @@ _AGRANDIR_FAIBLE = re.compile(
     r"en (?:4k|8k)\b)", re.I)
 
 _FACTEUR = re.compile(r"([234])\s*(?:x\b|fois\b)|\bx\s*([234])\b", re.I)
+
+
+# « Decris cette image » : la formulation la plus courante quand on joint une
+# image, et de loin la plus chere a faire trancher par un modele — 96 a 222 s
+# d'aiguillage en local, mesures le 31 aout. Et la plus fragile : gemma3:4b,
+# quatre fois plus rapide sur le reste, l'a classee « edition » et l'image n'a
+# jamais ete regardee. Une decision qui depend du modele du jour n'en est pas
+# une ; celle-ci s'ecrit.
+_LIRE = re.compile(
+    r"\b(decri[st]|decrire|raconte|analyse|commente|detaille|explique)\b"
+    r"|\bque\s+(vois|voit)\b"
+    r"|\bqu'?est[- ]ce\s+(que\s+)?(c'est|tu\s+vois|ca\s+represente)"
+    r"|\bc'?est\s+quoi\b"
+    r"|\bqu'?y\s*a[- ]t[- ]il\b"
+    r"|\bde\s+quoi\s+(s'agit|ca\s+parle)")
+# Ce qui trahit une TRANSFORMATION et non une lecture. « decris-la en aquarelle »
+# n'est pas une demande de description, et « analyse et ameliore » non plus.
+_PAS_LIRE = re.compile(
+    r"\b(fai[ts]|transforme|met[st]?|mettre|change|ajoute|enleve|retire|"
+    r"remplace|refai[ts]|redessine|colorie|ameliore|agrandi[st]?|style|"
+    r"maniere|version|comme\s+si)\b"
+    # « decris-la EN AQUARELLE » : le support nomme apres le verbe dit une
+    # transformation, pas une lecture. La liste est courte a dessein — ce
+    # raccourci vise la justesse, pas la couverture : ce qu'il ne reconnait
+    # pas part au modele, comme avant.
+    r"|\ben\s+(aquarelle|peinture|dessin|croquis|manga|bd|3ds?|pixel|"
+    r"anime|huile|encre|noir\s+et\s+blanc|couleurs?|sepia)\b")
+
+
+def veut_lire(texte):
+    """Vrai si la demande porte sur ce que l'image MONTRE.
+
+    N'a de sens qu'avec une image reellement jointe — c'est a l'appelant de le
+    verifier, comme pour les autres raccourcis qui dependent d'une source.
+
+    Court, et sans verbe de transformation : les deux conditions ensemble. Une
+    demande de lecture tient en quelques mots ; passe une ligne, on decrit
+    plutot ce qu'on veut obtenir, et c'est au modele de trancher.
+    """
+    nu = sans_accents(texte or "")
+    if len(nu) > 90 or _PAS_LIRE.search(nu):
+        return False
+    return bool(_LIRE.search(nu))
 
 
 def veut_agrandir(texte):
