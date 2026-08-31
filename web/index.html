@@ -105,6 +105,11 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   .compte button,.lien-admin,.jauge .source{min-height:34px;
     display:inline-flex;align-items:center}
   .nuages button{min-height:32px}
+  /* Les familles de la mediatheque defilaient lateralement, sans rien pour
+     l'annoncer : « objets 3D » etait coupe et personne ne pouvait deviner qu'il
+     fallait glisser. Sur telephone elles passent a la ligne — six etiquettes
+     courtes tiennent en deux rangees, et plus rien n'est cache. */
+  .onglets-media{flex-wrap:wrap;overflow-x:visible}
 }
 /* Sans survol, un bouton qui n'apparait qu'au survol n'apparait jamais. La
    croix qui ferme une conversation etait en opacity:0 : sur telephone, elle
