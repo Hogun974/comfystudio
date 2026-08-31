@@ -731,6 +731,54 @@ def reglages_de(conv):
     return dict(r) if isinstance(r, dict) else {}
 
 
+def _dit_reglage(cle, valeur):
+    """Le nom humain d'un reglage. « realvis » ne veut rien dire trois jours
+    plus tard ; « RealVisXL V5.0 » si."""
+    if not valeur:
+        return "automatique"
+    if cle == "modele":
+        return (CATALOGUE.get(valeur) or MOTEURS_DISTANTS.get(valeur)
+                or {}).get("titre", valeur)
+    if cle == "noeud":
+        return (noeud(valeur) or {}).get("titre", valeur)
+    if cle == "taille":
+        return valeur.replace("x", " × ")
+    if cle == "priorite":
+        return {"rapide": "rapide", "soigne": "soigne"}.get(valeur, valeur)
+    return valeur
+
+
+_NOM_REGLAGE = {"modele": "moteur", "taille": "taille", "priorite": "priorite",
+                "noeud": "machine"}
+
+
+def murmurer(conv, change):
+    """Ecrit dans la conversation qu'un reglage a change.
+
+    Ecrit, et pas seulement affiche : la question « pourquoi cette image est-elle
+    en 1024 ? » se pose des jours plus tard, quand le journal du studio a disparu
+    depuis longtemps. Le changement s'ancre APRES le dernier tour existant, pour
+    se relire a sa place dans le fil.
+
+    Un seul murmure par changement, meme s'il porte sur plusieurs reglages : la
+    page les envoie ensemble, et quatre lignes pour un geste seraient du bruit.
+    """
+    if not change:
+        return None
+    tours = conv.get("tours") or []
+    m = {"quand": time.strftime("%H:%M"),
+         "apres": tours[-1].get("id") if tours else None,
+         "texte": " · ".join(f"{_NOM_REGLAGE.get(k, k)} : {_dit_reglage(k, v)}"
+                             for k, v in change)}
+    liste = conv.setdefault("murmures", [])
+    if not isinstance(liste, list):
+        liste = conv["murmures"] = []
+    liste.append(m)
+    # Meme borne que les tours : une conversation ne doit pas grossir sans fin.
+    conv["murmures"] = liste[-60:]
+    return m
+
+
 def poser_reglages(conv, d):
     """Fusionne ce que la demande dit avec ce que la conversation retient.
 
@@ -742,7 +790,8 @@ def poser_reglages(conv, d):
     garder ferait partir en brouillon les cinq demandes suivantes sans que
     personne l'ait voulu.
     """
-    garde = reglages_de(conv)
+    avant = reglages_de(conv)
+    garde = dict(avant)
     for cle in REGLAGES_CONV:
         if cle not in d:
             continue
@@ -753,8 +802,11 @@ def poser_reglages(conv, d):
             garde.pop(cle, None)
         else:
             garde[cle] = valeur
-    if garde != reglages_de(conv):
+    if garde != avant:
+        change = [(k, garde.get(k)) for k in REGLAGES_CONV
+                  if garde.get(k) != avant.get(k)]
         conv["reglages"] = garde
+        murmurer(conv, change)
         sauver(conv)
     # Ce qui part vraiment : l'heritage, mais le brouillon de CETTE demande
     # l'emporte puisqu'on vient de le demander explicitement.
@@ -767,7 +819,8 @@ def poser_reglages(conv, d):
 def _vide(titre="Nouvelle conversation", proprietaire=None):
     return {"id": uuid.uuid4().hex[:12], "titre": titre, "proprietaire": proprietaire,
             "cree": time.strftime("%Y-%m-%d %H:%M"), "modifie": time.time(),
-            "tours": [], "derniere_sortie": None, "reglages": {}}
+            "tours": [], "derniere_sortie": None, "reglages": {},
+            "murmures": []}
 
 def charger_conversations():
     os.makedirs(DOSSIER_CONV, exist_ok=True)
@@ -7399,8 +7452,13 @@ async def api_conv_reglages(req):
         return web.json_response({"erreur": "priorite inconnue"}, status=400)
     if d.get("noeud") and noeud(d["noeud"]) is None:
         return web.json_response({"erreur": "machine inconnue"}, status=400)
+    avant = (conv.get("murmures") or [])[-1:]
     poser_reglages(conv, d)
-    return web.json_response({"reglages": reglages_de(conv)})
+    apres = (conv.get("murmures") or [])[-1:]
+    # Le murmure tout juste ecrit, s'il y en a un : la page l'ajoute au fil sans
+    # avoir a tout recharger.
+    return web.json_response({"reglages": reglages_de(conv),
+                              "murmure": apres[0] if apres != avant else None})
 
 
 async def api_activer(req):

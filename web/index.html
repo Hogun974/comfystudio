@@ -401,6 +401,14 @@ textarea:focus-visible{outline:2px solid var(--braise);outline-offset:1px;
 .barre button:hover{border-color:var(--braise);color:var(--braise)}
 .barre button.ouvert{border-color:var(--braise);color:var(--braise)}
 .actifs{font:11px var(--mono);color:var(--braise);display:flex;gap:7px;flex-wrap:wrap}
+/* Un changement de reglage n'est pas un echange : ni bulle, ni auteur, ni
+   horodatage en evidence. Il se glisse entre deux tours a la maniere d'une
+   didascalie — assez pale pour qu'on le lise seulement quand on le cherche,
+   assez present pour repondre a « pourquoi celle-ci est en 1024 ? » trois jours
+   plus tard. */
+.murmure{margin:10px 0 10px 2px;font:italic 11.5px/1.5 var(--serif);
+  color:var(--encre-pale);display:flex;gap:8px;align-items:baseline}
+.murmure .quand{font:10.5px var(--mono);opacity:.7;flex:none}
 .actifs .oter{cursor:pointer;border-bottom:1px dotted var(--braise)}
 .outils.replie{display:none}
 .outils select,.outils label.joindre{background:transparent;color:var(--encre-douce);
@@ -988,6 +996,21 @@ function garnirQuestion(bloc, t, cid) {
   champ.focus();
 }
 
+/* Un reglage qui change s'ecrit dans la conversation, et s'y relit. Le studio
+   l'a deja enregistre — on ne fait ici que le poser au bon endroit du fil. */
+function ajouterMurmure(m) {
+  if (!m || !m.texte) return;
+  const el = document.createElement("div");
+  el.className = "murmure";
+  const q = document.createElement("span");
+  q.className = "quand"; q.textContent = m.quand || "";
+  const t = document.createElement("span");
+  t.textContent = m.texte;
+  el.append(q, t);
+  $("#fil").appendChild(el);
+  return el;
+}
+
 /* ── conversations ───────────────────────────────────────────────── */
 async function listerConversations() {
   try {
@@ -1044,9 +1067,15 @@ async function ouvrir(cid) {
   // les menus de la premiere, et la seconde partait avec le mauvais moteur.
   poserReglages(c.reglages);
   $("#fil").innerHTML = "";
-  if (!c.tours || !c.tours.length) messageVide();
+  // Les murmures s'ancrent APRES un tour : celui qui n'en nomme aucun est
+  // anterieur au premier echange, et se lit donc en tete.
+  const murmures = Array.isArray(c.murmures) ? c.murmures : [];
+  const apres = tid => murmures.filter(m => (m.apres || null) === (tid || null));
+  apres(null).forEach(ajouterMurmure);
+  if (!c.tours || !c.tours.length) { if (!murmures.length) messageVide(); }
   else c.tours.forEach(t => { ajouterDemande(t.demande, t.heure);
-                              garnirReponse(ajouterReponse(), t, cid); });
+                              garnirReponse(ajouterReponse(), t, cid);
+                              apres(t.id).forEach(ajouterMurmure); });
   await listerConversations();
   auBas();
 }
@@ -1575,10 +1604,15 @@ function retenirReglages() {
   if (!convActive) return;
   const corps = { ...reglagesDemandes(), priorite: $("#priorite").value };
   reglagesVoulus = { ...corps };
-  fetch("/api/conversation/" + convActive + "/reglages", {
+  const ou = convActive;
+  fetch("/api/conversation/" + ou + "/reglages", {
     method: "POST", credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(corps)
+  }).then(r => r.json()).then(d => {
+    // Seulement si l'on est encore dans la meme conversation : le murmure
+    // appartient a celle qu'on reglait, pas a celle qu'on regarde.
+    if (d && d.murmure && ou === convActive) { ajouterMurmure(d.murmure); auBas(); }
   }).catch(() => {});   // du confort : la demande les reporte de toute facon
 }
 
