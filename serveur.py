@@ -6335,7 +6335,12 @@ async def travailleur():
         # On NE retire PAS de EN_FILE ici : la demande est commencee, pas finie,
         # et un redemarrage pendant son rendu la perdrait — le moment ou elle
         # vaut le plus cher. Elle sort du fichier quand elle est rendue.
-        sauver_file()
+        #
+        # Et l'on n'ecrit PAS le fichier maintenant : a cet instant precis la
+        # demande n'est plus dans ATTENTE et pas encore dans EN_VOL, donc
+        # sauver_file() l'omettrait — c'est exactement ce qui a fait perdre un
+        # rendu au premier essai. On ecrit une fois qu'elle est inscrite, plus
+        # bas.
         if (TACHES.get(tid) or {}).get("annulee"):
             EN_FILE.pop(tid, None)
             sauver_file()
@@ -6349,6 +6354,9 @@ async def travailleur():
             executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
                      job.get("taille"), job.get("priorite", ""), job.get("noeud")))
         EN_VOL[tid] = travail
+        # ICI, et pas avant : la demande appartient maintenant au registre des
+        # travaux en vol, donc le fichier la portera.
+        sauver_file()
         try:
             await travail
         except asyncio.CancelledError:
