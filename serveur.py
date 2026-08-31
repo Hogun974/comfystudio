@@ -1364,7 +1364,8 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
         for petite in noeuds_a_llm():
             if petite == chez:
                 continue          # c'est justement celle qui travaille
-            rendu, souci_ = await poser_a(petite, corps, tid, patience=0)
+            rendu, souci_ = await poser_a(petite, corps, tid, patience=0,
+                                          secondes=ANALYSE_MAX)
             if rendu:
                 return rendu
             if souci_ != "carte occupee":
@@ -1515,6 +1516,12 @@ async def _ollama_local(corps):
 ANALYSE_PETITE = os.environ.get("STUDIO_ANALYSE_PETITE", "1") != "0"
 # Combien de temps Ollama garde le modele en memoire entre deux appels.
 GARDER_LLM = os.environ.get("STUDIO_LLM_GARDER") or "60s"
+# Au-dela, une analyse empruntee ne vaut plus la peine. Mesure du 31 aout : un
+# seul appel au modele du NAS a mis 500 SECONDES — le studio l'avait choisi
+# parce que sa propre carte etait prise, ce qui etait juste, mais rien ne bornait
+# l'emprunt. Attendre cent secondes une carte occupee vaut mieux que cinq cents
+# secondes ailleurs. Passe ce delai on renonce et l'on attend la sienne.
+ANALYSE_MAX = int(os.environ.get("STUDIO_ANALYSE_MAX") or 90)
 
 
 def noeuds_a_llm():
