@@ -243,6 +243,9 @@ main{flex:1;overflow-y:auto;min-width:0}
   color:var(--encre-douce);white-space:nowrap}
 .onglets-media button.ouvert{border-color:var(--braise);color:var(--braise)}
 .onglets-media button:disabled{opacity:.35;cursor:default}
+/* Regarder la production de tout le monde ne doit jamais se faire sans le
+   savoir : la mention est a cote des familles, pas cachee en bas. */
+.vue-admin{font:10.5px var(--mono);color:var(--braise);align-self:center}
 #grilleMedia{flex:1;overflow:auto;padding:16px 18px 40px;display:grid;gap:16px;
   grid-template-columns:repeat(auto-fill,minmax(230px,1fr));align-content:start}
 .media{margin:0;background:var(--plan);border:1px solid var(--trait);
@@ -417,6 +420,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   <header>
     <b>médiathèque</b>
     <span class="onglets-media" id="famillesMedia"></span>
+    <span id="toutLeStudio" class="vue-admin"></span>
     <button type="button" id="fermerMedia" aria-label="fermer">✕</button>
   </header>
   <div id="grilleMedia"></div>
@@ -1077,6 +1081,12 @@ function peindreFamilles() {
 function peindreGrille() {
   const g = document.querySelector("#grilleMedia");
   g.innerHTML = "";
+  // Une vue qui n'est pas la sienne doit se dire. Sans cela, un administrateur
+  // croit regarder sa propre production et tombe sur celle d'un autre.
+  const banniere = document.querySelector("#toutLeStudio");
+  if (banniere)
+    banniere.textContent = mediaCharge.tout
+      ? "vue administrateur — tout ce que ce studio a produit" : "";
   const liste = (mediaCharge.fichiers || []).filter(f => f.famille === familleVue);
   if (!liste.length) {
     g.innerHTML = '<p class="vide-media">rien de ce type pour l\'instant</p>';
@@ -1099,8 +1109,12 @@ function peindreGrille() {
       ? new Date(f.quand * 1000).toLocaleString("fr-FR",
           { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
       : (f.heure || "");
+    // « f.a » n'arrive qu'a un administrateur : le serveur ne le sert a
+    // personne d'autre. Le nom du proprietaire est mis en avant, pour qu'on ne
+    // confonde jamais la piece de quelqu'un d'autre avec la sienne.
     legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
-                      + `<small>${ech(f.moteur || "")} · ${ech(quand)}</small>`;
+                      + `<small>${f.a ? "<b>" + ech(f.a) + "</b> · " : ""}`
+                      + `${ech(f.moteur || "")} · ${ech(quand)}</small>`;
     carte.appendChild(legende);
 
     const actions = document.createElement("div");

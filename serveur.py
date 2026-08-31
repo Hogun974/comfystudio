@@ -6372,7 +6372,7 @@ async def api_file(req):
     calculee sur sa propre file serait fausse.
     """
     pid = qui(req)
-    admin = bool(req.get("compte")) and COMPTES.est_admin(req["compte"])
+    admin = est_admin(req)
     mien = lambda t: TACHES.get(t, {}).get("proprietaire") == pid
     lignes = []
     for tid_vol in list(EN_VOL):
@@ -6404,7 +6404,7 @@ async def api_file(req):
 async def api_file_annuler(req):
     """Retire une demande de la file, ou interrompt celle qui calcule."""
     pid = qui(req)
-    admin = bool(req.get("compte")) and COMPTES.est_admin(req["compte"])
+    admin = est_admin(req)
     tid = req.match_info["tid"]
     t = TACHES.get(tid)
     if not t:
@@ -6721,6 +6721,31 @@ def purger_orphelins():
     _DERNIERS_ORPHELINS[0] = partis
     return partis
 
+def est_admin(req):
+    """Le compte connecte administre-t-il ce studio.
+
+    La meme formule etait recopiee a chaque usage ; elle en a trois de plus
+    aujourd'hui, et une regle de visibilite ne doit pas dependre d'une recopie
+    fidele.
+    """
+    return bool(req.get("compte")) and COMPTES.est_admin(req["compte"])
+
+
+def tous_les_fichiers():
+    """Tout ce que ce studio a produit, pour un administrateur.
+
+    Il voit deja les conversations, les retours et les rendus depuis sa
+    console : lui refuser la mediatheque relevait de l'oubli, pas d'une
+    protection. Les conversations FERMEES en sont exclues comme pour tout le
+    monde — elles attendent leur effacement, elles ne sont plus a personne.
+    """
+    defaut = noeud_local()["id"]
+    return {(f.get("noeud") or defaut, f.get("subfolder", ""), f.get("filename"))
+            for c in CONVERSATIONS.values() if not c.get("ferme")
+            for t in c.get("tours", []) for f in (t.get("fichiers") or [])
+            if f.get("filename")}
+
+
 def mes_fichiers(pid):
     """Tout ce que cet utilisateur a le droit de relire : ce que ses propres
     conversations ont produit, plus ce qu'il a lui-meme televerse.
@@ -6795,13 +6820,20 @@ async def api_mediatheque(req):
     franchirait la frontiere entre utilisateurs.
     """
     pid = qui(req)
+    admin = est_admin(req)
     items = []
     # mes_conversations() et non CONVERSATIONS : elle ecarte les fermees, comme
     # le fait mes_fichiers() du cote du service. Les deux divergeaient, et la
     # mediatheque affichait des vignettes que /api/fichier refusait ensuite —
     # image cassee, telechargement mort, « reprendre » mort, pour un fichier qui
     # est pourtant toujours la.
-    for conv in mes_conversations(pid):
+    #
+    # Un administrateur voit tout le studio, chaque piece nommee par son
+    # proprietaire. Il voit deja les conversations et les retours dans sa
+    # console : lui refuser la mediatheque relevait de l'oubli.
+    vues = ([c for c in CONVERSATIONS.values() if not c.get("ferme")] if admin
+            else mes_conversations(pid))
+    for conv in vues:
         for tour in conv.get("tours", []):
             for f in (tour.get("fichiers") or []):
                 nom = f.get("filename") or ""
@@ -6815,6 +6847,10 @@ async def api_mediatheque(req):
                     "quand": _date_sortie(f, conv),
                     "conversation": conv["id"],
                     "titre": (conv.get("titre") or "")[:60],
+                    # Seulement pour un administrateur : personne d'autre n'a a
+                    # savoir qui a produit quoi.
+                    "a": (dossier_utilisateur(conv.get("proprietaire"))
+                          if admin else None),
                 })
     # Les plus recents d'abord : c'est ce qu'on vient chercher neuf fois sur dix.
     # Trier sur la date du FICHIER et non sur l'ordre de CONVERSATIONS, qui est
@@ -6824,7 +6860,7 @@ async def api_mediatheque(req):
     for it in items:
         compte[it["famille"]] = compte.get(it["famille"], 0) + 1
     return web.json_response({"fichiers": items[:600], "compte": compte,
-                              "total": len(items)})
+                              "total": len(items), "tout": admin})
 
 
 async def api_fichier(req):
@@ -6844,7 +6880,8 @@ async def api_fichier(req):
     ident = req.query.get("noeud") or noeud_local()["id"]
     if genre not in ("output", "input"):
         return web.json_response({"erreur": "inconnu"}, status=404)
-    if noeud(ident) is None or (ident, sous, nom) not in mes_fichiers(qui(req)):
+    permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(qui(req))
+    if noeud(ident) is None or (ident, sous, nom) not in permis:
         return web.json_response({"erreur": "inconnu"}, status=404)
     # Depose ici — par un agent, ou par un fournisseur distant quand cette
     # machine n'a pas de ComfyUI : on sert du disque, sans relais.
