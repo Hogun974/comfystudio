@@ -7174,6 +7174,11 @@ async def api_noeud_annonce(req):
     # Sans cela, une machine bien equipee reste declaree incapable de tout
     # pendant les cinq minutes qui suivent un redemarrage du studio.
     return web.json_response({"ok": True, "intervalle": 10, "titre": x.get("titre"),
+                              # Ce que le studio distribue. L'agent le compare a
+                              # ce qu'il execute et se remplace tout seul — dire
+                              # a une machine qu'elle est perimee ne sert a rien
+                              # si personne ne lit la console.
+                              "empreinte_agent": empreinte_agent(),
                               "modeles_demandes": _inventaire_a_rafraichir(x["id"])})
 
 

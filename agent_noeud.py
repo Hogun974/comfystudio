@@ -19,8 +19,9 @@ office.
 Aucune dependance : seulement la bibliotheque standard. Une machine qui fait
 tourner ComfyUI a forcement un Python.
 """
-import base64
 import argparse
+import ast
+import base64
 import hashlib
 import json
 import os
@@ -622,6 +623,17 @@ def se_mettre_a_jour(studio, empreinte=""):
         print(f"    recue    : {recue}")
         print(f"    attendue : {attendue}")
         return 1
+    # Le fichier n'etait pas relu avant d'ecraser un agent qui fonctionnait :
+    # les scripts shell le faisaient, pas celui-ci. Anodin tant qu'un humain
+    # lançait « --maj » et voyait l'erreur au redemarrage ; inacceptable depuis
+    # que la mise a jour est automatique, ou un telechargement tronque ferait
+    # une brique sans personne pour le voir.
+    try:
+        ast.parse(octets.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError) as e:
+        print(f"  ce que le studio a renvoye n'est pas un agent valide ({e}) "
+              f"— rien n'a ete remplace")
+        return 1
     moi = os.path.abspath(__file__)
     if octets == open(moi, "rb").read():
         print("  deja a jour.")
@@ -641,8 +653,54 @@ def se_mettre_a_jour(studio, empreinte=""):
     return 0
 
 
+# Marqueur transmis a la version suivante par l'environnement : il survit a
+# os.execv, qui remplace le processus sans rien perdre de son environnement.
+# C'est ce qui distingue « je viens d'essayer et ça n'a pas pris » de « je
+# decouvre qu'une version existe ».
+MARQUE_MAJ = "AGENT_MAJ_TENTEE"
+
+
+def se_mettre_a_jour_seul(studio, attendue, epinglee):
+    """Se remplacer par la version du studio, puis redemarrer. Ne rend jamais.
+
+    Rend None quand il n'y a rien a faire — c'est le cas courant, appele a
+    chaque battement.
+    """
+    if not attendue or attendue == _EMPREINTE_AU_DEMARRAGE:
+        return None
+    if epinglee:
+        print(f"  le studio sert un agent different (sha256 {attendue[:12]}…), "
+              f"mais une empreinte est epinglee : rien ne sera remplace",
+              flush=True)
+        return None
+    if os.environ.get(MARQUE_MAJ) == attendue:
+        # Deja essaye pour CETTE empreinte, et nous voila encore differents.
+        # Insister ferait redemarrer la machine en boucle.
+        print(f"  mise a jour deja tentee pour {attendue[:12]}… et l'empreinte "
+              f"ne correspond toujours pas — on s'arrete d'essayer",
+              flush=True)
+        return None
+    print(f"  le studio sert un agent plus recent (sha256 {attendue[:12]}…) "
+          f"— mise a jour", flush=True)
+    if se_mettre_a_jour(studio, attendue) != 0:
+        return None
+    print("  redemarrage sur la nouvelle version", flush=True)
+    os.environ[MARQUE_MAJ] = attendue
+    try:
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)]
+                 + sys.argv[1:])
+    except OSError as e:
+        # execv a echoue : le processus est intact, sur l'ANCIEN code, avec le
+        # nouveau fichier sur le disque. Le dire, et continuer de travailler —
+        # le prochain demarrage prendra la nouvelle version.
+        print(f"  redemarrage impossible ({e}) — la nouvelle version prendra "
+              f"effet au prochain lancement", flush=True)
+    return None
+
+
 # ══════════════════════════ boucle ════════════════════════════════════
-def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama=""):
+def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
+           epinglee="", maj_auto=True):
     print(f"  studio  : {studio}", flush=True)
     print(f"  ComfyUI : {comfy}", flush=True)
     print("  en service — ctrl+C pour arreter\n", flush=True)
@@ -726,6 +784,12 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama=""):
                 # Le studio dit s'il connait nos modeles. Il ne les connait
                 # plus apres chacun de ses redemarrages.
                 reclame_modeles = bool((d or {}).get("modeles_demandes"))
+                # ICI et nulle part ailleurs : le travail precedent est rendu,
+                # le suivant pas encore reclame. C'est le seul instant de la
+                # boucle ou se remplacer ne trahit personne.
+                if maj_auto:
+                    se_mettre_a_jour_seul(studio, (d or {}).get("empreinte_agent"),
+                                          epinglee)
                 if not connu:
                     nom = (d or {}).get("titre") or "?"
                     print(f"  connecte au studio en tant que « {nom} » "
@@ -856,6 +920,10 @@ def main():
                         f"(defaut {GARDE_DEFAUT})")
     a.add_argument("--maj", action="store_true",
                    help="se remplacer par la derniere version servie par le studio")
+    a.add_argument("--sans-maj-auto", action="store_true",
+                   default=bool(os.environ.get("AGENT_SANS_MAJ_AUTO")),
+                   help="ne pas se mettre a jour tout seul quand le studio sert "
+                        "une version plus recente")
     a.add_argument("--empreinte", default=os.environ.get("AGENT_EMPREINTE", ""),
                    help="sha256 attendu de l'agent telecharge par --maj ; "
                         "a relever sur l'hote du studio, pas sur ce lien HTTP")
@@ -899,7 +967,8 @@ def main():
     else:
         print(f"  Langage   : aucun modele joignable (essaye {args.ollama} "
               f"puis les voisins de conteneur)")
-    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder, ollama)
+    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder,
+           ollama, args.empreinte, not args.sans_maj_auto)
     return 0
 
 

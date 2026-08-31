@@ -710,6 +710,32 @@ réclamer un redémarrage.
 En conteneur, un `docker restart` suffit : l'agent va rechercher sa version au
 studio à chaque démarrage.
 
+**Et il n'y a en général rien à faire :** l'agent se met à jour tout seul. Le
+studio lui donne à chaque battement l'empreinte de la version qu'il distribue ;
+si elle diffère de celle qu'il exécute, l'agent la télécharge, la vérifie, se
+remplace et redémarre — quelques secondes, sans intervention.
+
+Quatre précautions, chacune pour un accident qu'on peut nommer :
+
+- **Jamais au milieu d'un rendu.** Le remplacement n'a lieu qu'au battement, une
+  fois le travail précédent rendu et avant d'en réclamer un autre.
+- **Jamais sans avoir lu ce qu'on installe.** Un téléchargement tronqué ferait
+  une brique : ce qui n'est pas du Python analysable est refusé, et l'ancienne
+  version reste à côté en `.precedent`.
+- **Jamais si une empreinte est épinglée.** `--empreinte` veut dire « n'exécute
+  que celle-là » ; la mise à jour automatique se tait alors, et le dit.
+- **Jamais deux fois pour la même.** Si après redémarrage l'empreinte ne
+  correspond toujours pas, l'agent cesse d'essayer. Sans ce garde-fou, un studio
+  qui sert un fichier légèrement différent — fins de ligne, encodage — ferait
+  redémarrer la machine indéfiniment.
+
+`--sans-maj-auto`, ou `AGENT_SANS_MAJ_AUTO=1`, désactive le tout.
+
+C'est du code téléchargé puis exécuté, et en HTTP simple si le studio n'est pas
+derrière TLS : voir [`SECURITY.md`](SECURITY.md). Épingler une empreinte, ou
+couper la mise à jour automatique, est le choix à faire si ce réseau n'est pas
+le vôtre.
+
 ### Ce qui circule
 
 | Sens | Quoi |
