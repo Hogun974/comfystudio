@@ -41,11 +41,25 @@ jobs:
       # « python » autant que « python3 », ce qui laisse les etapes suivantes
       # inchangees. La version y est 3.11 et non 3.12 : c'est plus severe pour ce
       # que fait cette verification, qui est de la syntaxe.
+      #
+      # DEUX FORGES, DEUX ENVIRONNEMENTS. Sur le runner auto-heberge, le travail
+      # tourne dans un conteneur en root et « apt-get » passe. Sur les runners
+      # de GitHub, l'utilisateur n'est PAS root : la meme ligne echoue, et tout
+      # le travail avec. Corriger l'une en cassant l'autre est arrive — d'ou ces
+      # trois lignes qui ne supposent rien.
+      #
+      # On essaie d'abord de creer l'environnement virtuel : la ou python3-venv
+      # est deja installe, ce qui est le cas chez GitHub, il n'y a rien a faire.
       - name: Installer Python et aiohttp
         run: |
-          apt-get update -qq
-          apt-get install -y -qq python3-venv python3-pip
-          python3 -m venv /tmp/venv
+          if ! python3 -m venv /tmp/venv 2>/dev/null; then
+            if [ "$(id -u)" = 0 ]; then
+              apt-get update -qq && apt-get install -y -qq python3-venv python3-pip
+            else
+              sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv python3-pip
+            fi
+            python3 -m venv /tmp/venv
+          fi
           /tmp/venv/bin/pip install --quiet --upgrade pip aiohttp
           echo /tmp/venv/bin >> "$GITHUB_PATH"
 
