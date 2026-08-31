@@ -1779,22 +1779,26 @@ def corps_ici(corps, url, tid=None):
     if voulu == MODELE_POUR_ECRIRE:
         return dict(corps, model=modele_ecriture_de(url))
     if corps.get("images"):
-        # Une image : c'est « sait voir » qu'il faut, pas « est installe ».
-        if _sait_voir_ici(url, voulu):
-            return corps
-        # On substitue, mais UNIQUEMENT par un modele qui sait voir. Mesure du
-        # 31 aout : le modele d'aiguillage rapide (gemma3:4b, 1 s) a bien la
-        # capacite « vision » et a pourtant classe « decris cette image » comme
-        # une demande de rendu — l'image n'a jamais ete regardee. Le modele
-        # lent (qwen2.5vl:7b) l'a lue correctement en 166 s. Choisir selon ce
-        # qu'on demande vaut mieux que choisir une fois pour toutes : le texte
-        # va au rapide, l'image au plus capable de ceux qui voient.
+        # DES QU'IL Y A UNE IMAGE, le meilleur modele voyant de cette machine —
+        # meme si celui qu'on demandait sait voir aussi.
+        #
+        # La capacite n'est pas la competence, et c'est la mesure qui l'a dit.
+        # gemma3:4b declare « vision » et repond en une seconde ; il a pourtant
+        # classe « decris cette image » comme une demande de RENDU, et l'image
+        # n'a jamais ete regardee. qwen2.5vl:7b, deux fois plus gros, l'a lue
+        # correctement. Se contenter de « sait-il voir ? » laissait donc passer
+        # exactement le defaut qu'on croyait fermer.
+        #
+        # Le plus gros, faute de mieux : c'est le seul classement dont on
+        # dispose sans faire passer un examen a chaque modele, et il colle a la
+        # seule mesure qu'on ait. Le texte, lui, garde le modele rapide — c'est
+        # tout l'interet de choisir par appel plutot qu'une fois pour toutes.
         voyant = modele_vision_de(url)
         if not voyant:
             return None
         if voyant != voulu:
-            journal(tid, f"lecture d'image : {voyant} plutot que {voulu}")
-        return dict(corps, model=voyant)
+            journal(tid, f"une image est jointe : {voyant} plutot que {voulu}")
+        return corps if voyant == voulu else dict(corps, model=voyant)
     if _sait_lire_ici(url, voulu):
         return corps
     remplacant = modele_ecriture_de(url)

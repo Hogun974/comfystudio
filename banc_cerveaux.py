@@ -126,7 +126,20 @@ async def main():
     S.MODELE_ECRITURE = ""
 
     corps = {"model": "qwen2.5vl:7b", "prompt": "x", "images": ["…"]}
-    dit(S.corps_ici(corps, PC) is corps, "une image part la ou le modele est")
+    dit(S.corps_ici(corps, PC) is corps,
+        "une image reste sur le meilleur voyant quand c'est deja lui")
+    # Le cas qui a coute une mesure : gemma3:4b DECLARE voir, et aiguille mal.
+    # Une image jointe doit donc passer au plus gros voyant du NAS, pas rester
+    # sur le modele d'aiguillage sous pretexte qu'il a la capacite.
+    corps_g = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
+    S._CERVEAUX[NAS]["modeles"].append({"name": "qwen2.5vl:7b",
+                                        "size": 5_970_000_000,
+                                        "capabilities": ["completion", "vision"]})
+    bascule_g = S.corps_ici(corps_g, NAS)
+    poser()
+    dit(bascule_g is not None and bascule_g["model"] == "qwen2.5vl:7b",
+        "un modele voyant mais petit cede au plus gros voyant",
+        str(bascule_g and bascule_g["model"]))
     # Le NAS n'a pas qwen2.5vl mais il a gemma3:4b, qui voit : on bascule sur
     # lui plutot que d'ecarter la machine. La regle n'est pas « ce modele-la »,
     # elle est « un modele qui voit, ou rien ».
