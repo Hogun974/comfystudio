@@ -6941,6 +6941,17 @@ async def api_etat(req):
     # s'affichait jamais.
     if AVANCES.get(tid, {}).get("total"):
         etat["avance"] = dict(AVANCES[tid])
+    # Esquisse ou non, et deja repassee au propre ou non. Ces deux marques
+    # vivent sur le TOUR et pas sur la tache, si bien que la page ne les
+    # apprenait qu'au rechargement suivant de la conversation — c'est-a-dire pas
+    # au moment ou l'on vient de lancer un brouillon et ou l'on en a justement
+    # besoin. Une page rechargee pendant le calcul voyait la bulle se terminer
+    # sans pastille ni bouton.
+    tour_ = next((t for t in (CONVERSATIONS.get(tache.get("conversation"))
+                              or {}).get("tours", [])
+                  if t.get("id") == tid), None) or {}
+    etat["esquisse"] = bool(tour_.get("esquisse"))
+    etat["au_propre"] = tour_.get("au_propre")
     return web.json_response(etat)
 
 def _ligne_file(tid, pid, admin, rang):
@@ -7459,6 +7470,11 @@ async def api_mediatheque(req):
                     # part une fois la conversation refermee.
                     "prompt": (tour.get("prompt") or "")[:400],
                     "moteur": tour.get("modele"),
+                    # Une esquisse ne se confond pas avec une image finie. Trois
+                    # jours plus tard, rien d'autre ne permet de les distinguer
+                    # dans une mediatheque — meme prompt, meme moteur, meme
+                    # taille, seul le soin change.
+                    "esquisse": bool(tour.get("esquisse")),
                     "heure": tour.get("heure"),
                     "quand": _date_sortie(f, conv),
                     "conversation": conv["id"],
