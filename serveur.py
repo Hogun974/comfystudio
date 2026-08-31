@@ -5720,6 +5720,7 @@ def noter_avis(pid, conv, tour, avis, note):
         "utilisateur": (pid or "")[:12], "conversation": conv["id"],
         "tour": tour.get("id"), "demande": tour.get("demande"),
         "moteur": tour.get("modele"), "type": tour.get("type"),
+        "intention_voulue": tour.get("intention_voulue"),
         "parametres": tour.get("parametres"), "prompt": tour.get("prompt"),
         "paroles": tour.get("paroles"), "raison": tour.get("raison"),
         "etat": tour.get("etat"), "erreur": tour.get("erreur"),
@@ -5749,6 +5750,39 @@ def lire_avis(limite=200):
     return lignes[-limite:][::-1]
 
 
+# Les intentions que l'aiguilleur sait distinguer, en français. Le pouce en bas
+# ne servait a rien de plus qu'a RETIRER un exemple : « ce tour ne prouve
+# rien ». Or c'est le cas le plus precieux — celui ou le studio s'est trompe —
+# et la seule chose qui manquait etait de savoir ce que c'etait VRAIMENT. Une
+# correction vaut dix exemples fabriques : elle porte une formulation que le
+# classifieur a deja ratee.
+INTENTIONS_LISIBLES = {
+    "image": "une image a creer",
+    "edition": "modifier l'image fournie",
+    "planche": "une planche, plusieurs cases",
+    "video": "une video a creer",
+    "video_image": "animer l'image fournie",
+    "audio": "de la musique",
+    "objet3d": "un objet en 3D",
+    "lecture": "decrire l'image fournie",
+    "agrandir": "agrandir sans rien changer",
+    "detourer": "detourer le sujet",
+    "fluidifier": "rendre la video plus fluide",
+}
+
+
+async def api_intentions(_):
+    """Ce qu'on peut repondre a « c'etait plutot quoi ? ».
+
+    On ne rend que les classes que l'aiguilleur connait REELLEMENT : proposer
+    une correction qu'il ne saurait pas apprendre serait demander pour rien.
+    """
+    connues = set((AIGUILLEUR.classes if AIGUILLEUR else {}) or INTENTIONS_LISIBLES)
+    return web.json_response(
+        [{"cle": k, "titre": v} for k, v in INTENTIONS_LISIBLES.items()
+         if k in connues])
+
+
 async def api_avis(req):
     """Pouce en l'air, pouce en bas, et un mot si l'on veut."""
     pid = qui(req)
@@ -5764,11 +5798,23 @@ async def api_avis(req):
     if avis not in (-1, 0, 1):
         return web.json_response({"erreur": "avis attendu : -1, 0 ou 1"}, status=400)
     note = str(d.get("note") or "")[:2000]
+    # « C'etait plutot quoi ? » — la reponse a la seule question qui rende un
+    # pouce en bas utile. Refusee si l'aiguilleur ne connait pas cette classe :
+    # on n'ecrit pas sur un tour une etiquette qu'il ne saura jamais apprendre.
+    voulue = str(d.get("intention") or "")
+    if voulue and voulue not in INTENTIONS_LISIBLES:
+        return web.json_response({"erreur": "intention inconnue"}, status=400)
     for conv in mes_conversations(pid):
         for tour in conv.get("tours", []):
             if tour.get("id") == tid:
                 tour["avis"] = avis
                 tour["note"] = note
+                if voulue:
+                    tour["intention_voulue"] = voulue
+                elif avis != -1:
+                    # Un pouce retire ou repasse en haut efface la correction :
+                    # elle ne valait que pour le reproche.
+                    tour.pop("intention_voulue", None)
                 sauver(conv)
                 if avis:
                     noter_avis(pid, conv, tour, avis, note)
@@ -9501,6 +9547,7 @@ def app():
     a.router.add_get("/api/fichier", api_fichier)
     a.router.add_get("/api/mediatheque", api_mediatheque)
     a.router.add_post("/api/avis", api_avis)
+    a.router.add_get("/api/intentions", api_intentions)
     a.router.add_get("/api/admin/avis", api_admin_avis)
     a.router.add_get("/api/admin/aiguilleur", api_admin_aiguilleur)
     a.router.add_post("/api/admin/aiguilleur", api_admin_aiguilleur)

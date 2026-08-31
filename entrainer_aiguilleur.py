@@ -55,6 +55,13 @@ def moissonner(dossier=None):
     « fini » sans pouce ne prouve rien : le studio a pu se tromper de modalite
     et produire quand meme quelque chose ; l'apprendre reviendrait a lui
     enseigner ses propres erreurs.
+
+    ET LES CORRECTIONS. Un pouce en bas ne faisait qu'ecarter un exemple — « ce
+    tour ne prouve rien ». C'est pourtant le cas le plus precieux : le studio
+    s'est trompe, et l'utilisateur sait sur quoi. Quand il l'a dit, on apprend
+    la bonne classe sur une formulation que le classifieur a DEJA ratee. Ce
+    tour-la n'a pas besoin d'etre « fini » : ce qui l'etiquette est la
+    correction, pas le resultat.
     """
     dossier = dossier or os.path.join(_aiguilleur.ICI_DATA, "conversations")
     if not os.path.isdir(dossier):
@@ -73,6 +80,11 @@ def moissonner(dossier=None):
         for t in conv.get("tours", []):
             texte = (t.get("demande") or "").strip()
             intention = t.get("type")
+            corrigee = t.get("intention_voulue")
+            if texte and corrigee in connues and t.get("avis") == -1:
+                recolte.append({"texte": texte, "intention": corrigee,
+                                "source": "correction"})
+                continue
             if not texte or intention not in connues:
                 continue
             if t.get("etat") != "fini" or t.get("avis") == -1:
@@ -109,6 +121,11 @@ def corpus():
         fabriques[x["intention"]] = fabriques.get(x["intention"], 0) + 1
 
     reels, ajoutes = ([] if SANS_REEL else moissonner()), {}
+    # LES CORRECTIONS D'ABORD. Le plafond par classe est vite atteint, et une
+    # confirmation apprend une formulation que le classifieur trouvait deja ;
+    # une correction en apprend une qu'il a ratee. Si l'une des deux doit sauter,
+    # ce n'est pas celle-la.
+    reels.sort(key=lambda x: x.get("source") != "correction")
     for x in reels:
         cle = x["texte"].strip().lower()
         if cle in vus:

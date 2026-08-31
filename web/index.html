@@ -409,6 +409,15 @@ textarea:focus-visible{outline:2px solid var(--braise);outline-offset:1px;
 .murmure{margin:10px 0 10px 2px;font:italic 11.5px/1.5 var(--serif);
   color:var(--encre-pale);display:flex;gap:8px;align-items:baseline}
 .murmure .quand{font:10.5px var(--mono);opacity:.7;flex:none}
+/* « C'etait plutot quoi ? » — une rangee de mots a cliquer, pas un formulaire.
+   Elle n'apparait qu'apres un pouce en bas, et repondre n'est jamais exige. */
+.avis-quoi{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px}
+.avis-quoi span{font:11.5px var(--mono);color:var(--encre-pale)}
+.avis-quoi .fait{color:var(--vert)}
+.avis-quoi button{background:transparent;border:1px solid var(--trait);
+  border-radius:8px;padding:3px 9px;font:11.5px var(--mono);
+  color:var(--encre-douce);cursor:pointer}
+.avis-quoi button:hover{border-color:var(--braise);color:var(--braise)}
 .actifs .oter{cursor:pointer;border-bottom:1px dotted var(--braise)}
 .outils.replie{display:none}
 .outils select,.outils label.joindre{background:transparent;color:var(--encre-douce);
@@ -910,6 +919,9 @@ function barreAvis(t) {
   zone.appendChild(barre);
 
   let pose = t.avis || 0;
+  // Ce que l'utilisateur dit que ça AURAIT DU etre. Vide tant qu'il n'a rien
+  // corrige, et il n'y est jamais oblige.
+  let corrige = t.intention_voulue || "";
   haut.classList.add("haut"); bas.classList.add("bas");
   const peindre = () => {
     haut.classList.toggle("pris", pose === 1);
@@ -926,7 +938,8 @@ function barreAvis(t) {
     try {
       const r = await fetch("/api/avis", { method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tid: t.id, avis: vise, note: note || "" }) });
+        body: JSON.stringify({ tid: t.id, avis: vise, note: note || "",
+                               ...(corrige ? { intention: corrige } : {}) }) });
       if (!r.ok) throw new Error((await r.json()).erreur || r.status);
       pose = vise; peindre();
       if (vise !== -1) zone.querySelectorAll(".avis-note").forEach(x => x.remove());
@@ -935,7 +948,7 @@ function barreAvis(t) {
 
   haut.onclick = () => { zone.querySelectorAll(".avis-note").forEach(x => x.remove());
                          envoyer(1, ""); };
-  bas.onclick = () => {
+  bas.onclick = async () => {
     // Le pouce part tout de suite : le mot est un bonus, pas un peage.
     envoyer(-1, "");
     if (zone.querySelector(".avis-note")) return;
@@ -951,6 +964,28 @@ function barreAvis(t) {
     f.append(champ, ok);
     zone.appendChild(f);
     champ.focus();
+    // « C'etait plutot quoi ? » — un clic, et c'est le seul retour dont
+    // l'aiguilleur apprenne vraiment : une formulation qu'il a DEJA ratee,
+    // avec sa bonne reponse. Ni obligatoire, ni un formulaire.
+    if (!INTENTIONS.length) {
+      try { INTENTIONS = await (await fetch("/api/intentions")).json(); }
+      catch (e) { INTENTIONS = []; }
+    }
+    if (!Array.isArray(INTENTIONS) || !INTENTIONS.length) return;
+    const q = document.createElement("div");
+    q.className = "avis-quoi";
+    q.innerHTML = "<span>c’était plutôt&nbsp;:</span>";
+    for (const i of INTENTIONS) {
+      if (i.cle === t.type) continue;   // pas la peine de proposer ce qu'il a fait
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = i.titre;
+      b.onclick = () => { corrige = i.cle; envoyer(-1, champ.value.trim());
+                          q.replaceChildren(Object.assign(
+                              document.createElement("span"),
+                              { className: "fait", textContent: "✓ noté — " + i.titre })); };
+      q.appendChild(b);
+    }
+    zone.appendChild(q);
   };
   return zone;
 }
@@ -1004,6 +1039,10 @@ function garnirQuestion(bloc, t, cid) {
 
 /* Un reglage qui change s'ecrit dans la conversation, et s'y relit. Le studio
    l'a deja enregistre — on ne fait ici que le poser au bon endroit du fil. */
+/* Les intentions que l'aiguilleur sait distinguer, chargees une seule fois et
+   seulement si quelqu'un met un pouce en bas. */
+let INTENTIONS = [];
+
 function ajouterMurmure(m) {
   if (!m || !m.texte) return;
   const el = document.createElement("div");
