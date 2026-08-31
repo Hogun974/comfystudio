@@ -1592,7 +1592,8 @@ function peindreActifs() {
     mot.className = "oter";
     mot.textContent = (r.nom ? r.nom + " " : "") + r.lire(el.selectedOptions[0]);
     mot.title = "cliquer pour revenir à l'automatique";
-    mot.onclick = () => { el.value = ""; peindreActifs(); retenirReglages(); };
+    mot.onclick = () => { el.value = ""; accorderTaille(); peindreActifs();
+                          retenirReglages(); };
     zone.appendChild(mot);
   }
 }
@@ -1754,6 +1755,13 @@ function poserReglages(r) {
                                                : localStorage.getItem("machine"));
   mettre("#priorite", reglagesVoulus.priorite);
   mettre("#taille", reglagesVoulus.taille);
+  // accorderTaille() est cable sur l'evenement « change » du menu des moteurs,
+  // et poser .value par programme ne le declenche pas. Sans cet appel, une
+  // conversation quittee sur « Wan 5B » — qui grise les tailles — laissait le
+  // menu des tailles grise dans la conversation SUIVANTE, dont le moteur est
+  // pourtant « automatique ». Il fallait changer de moteur et revenir pour le
+  // debloquer.
+  if (typeof accorderTaille === "function") accorderTaille();
   if (typeof peindreActifs === "function") peindreActifs();
 }
 

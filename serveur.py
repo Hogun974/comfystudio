@@ -60,6 +60,9 @@ MODELE_LLM    = os.environ.get("STUDIO_LLM", "qwen2.5vl:7b")
 # Vide : le plus gros modele installe qui tienne en memoire sera pris au
 # demarrage. Le renseigner impose un choix.
 MODELE_ECRITURE = os.environ.get("STUDIO_LLM_ECRITURE", "")
+# Pose a la main, ou devine ? Un choix explicite ne doit pas etre efface par un
+# echec passager sur une machine.
+MODELE_ECRITURE_IMPOSE = bool(MODELE_ECRITURE)
 MODELE_VISION = os.environ.get("STUDIO_VISION", "qwen2.5vl:7b")
 PORT       = int(os.environ.get("STUDIO_PORT", "8199"))
 # 127.0.0.1 : seule cette machine peut se connecter. 0.0.0.0 : tout le reseau
@@ -631,12 +634,18 @@ def modele_vision_de(url):
     — et parce qu'on ne lit pas une image a chaque demande. Rend "" quand
     aucun modele de cette machine ne sait voir.
     """
+    ident = cerveau(url).get("noeud")
+    # BORNE PAR LA CARTE. « Le plus gros » est un mauvais mandataire de « le
+    # meilleur » : sur le PC, gemma4:26b declare « vision » et pese 18,6 Go pour
+    # une carte de 11 — le studio y aurait charge 18,6 Go la ou qwen2.5vl:7b en
+    # met 6, et c'est justement lui que la mesure du 31 aout a trouve correct.
+    # On ne retient donc que ce que la machine peut tenir, debordement compris.
+    plafond = _vram_utile(ident) if ident else float("inf")
     voyants = [m for m in cerveau(url)["modeles"]
-               if m.get("name") not in MODELES_CASSES
+               if not _casse_ici(url, m.get("name"))
                and _sait_voir_ici(url, m.get("name"))]
-    if not voyants:
-        return ""
-    return max(voyants, key=lambda m: m.get("size", 0))["name"]
+    tenables = [m for m in voyants if m.get("size", 0) / 1e9 <= plafond] or voyants
+    return max(tenables, key=lambda m: m.get("size", 0))["name"] if tenables else ""
 
 
 def modele_ecriture_de(url):
@@ -651,11 +660,22 @@ def modele_ecriture_de(url):
     if MODELE_ECRITURE and _sait_lire_ici(url, MODELE_ECRITURE):
         return MODELE_ECRITURE
     modeles = [m for m in cerveau(url)["modeles"]
-               if m.get("name") not in MODELES_CASSES]
-    # Le plafond ne vaut que pour un Ollama LOCAL : c'est la memoire de CETTE
-    # machine qu'il mesure.
-    plafond = ((memoire_vive() or 16.0) * 0.6
-               if _ollama_ici(url) else float("inf"))
+               if not _casse_ici(url, m.get("name"))]
+    # Le plafond : la memoire de CETTE machine quand l'Ollama est ici, la carte
+    # de la machine du parc quand on la reconnait, et rien du tout sinon —
+    # on ne devine pas ce qu'une machine inconnue peut charger.
+    #
+    # Il ne valait qu'en local, et « rien du tout » ailleurs faisait choisir
+    # gemma4:26b, 18,6 Go, sur une carte de 11 : cent soixante-cinq secondes par
+    # traduction, mesurees. Une machine du parc annonce sa carte et sa RAM ; on
+    # s'en sert.
+    ident_ = cerveau(url).get("noeud")
+    if _ollama_ici(url):
+        plafond = (memoire_vive() or 16.0) * 0.6
+    elif ident_ and _vram_utile(ident_):
+        plafond = _vram_utile(ident_)
+    else:
+        plafond = float("inf")
     tenables = [m for m in modeles if 0 < m.get("size", 0) / 1e9 <= plafond]
     if not tenables:
         return MODELE_LLM
@@ -779,7 +799,7 @@ def murmurer(conv, change):
     return m
 
 
-def poser_reglages(conv, d):
+def poser_reglages(conv, d, ecrire=True):
     """Fusionne ce que la demande dit avec ce que la conversation retient.
 
     PRESENCE et non valeur : une cle absente est heritee, une cle presente —
@@ -802,7 +822,7 @@ def poser_reglages(conv, d):
             garde.pop(cle, None)
         else:
             garde[cle] = valeur
-    if garde != avant:
+    if garde != avant and ecrire:
         change = [(k, garde.get(k)) for k in REGLAGES_CONV
                   if garde.get(k) != avant.get(k)]
         conv["reglages"] = garde
@@ -1858,15 +1878,33 @@ def _echec_de_chargement(texte):
                                 "failed to initialize"))
 
 
-def _ecarter_modele(nom, pourquoi):
-    """Retire un modele du choix, une fois, en le disant."""
+def _casse_ici(url, nom):
+    """Ce modele a-t-il deja echoue A CETTE ADRESSE."""
+    return (url or OLLAMA, nom) in MODELES_CASSES
+
+
+def _ecarter_modele(nom, pourquoi, url=None):
+    """Retire un modele du choix SUR CETTE MACHINE, une fois, en le disant.
+
+    Par machine, et non pour tout le studio. qwen2.5vl:7b fait 5,97 Go : il ne
+    se charge pas sur la GTX 1060 de 5,9 Go et tourne tres bien sur la 2080 Ti.
+    L'ecarter partout au premier echec interdisait, pour tout le studio et
+    jusqu'au redemarrage, le seul modele mesure comme correct en lecture
+    d'image. Tant qu'il n'y avait qu'une adresse la question ne se posait pas.
+    """
     global MODELE_ECRITURE
-    if not nom or nom in MODELES_CASSES:
+    cle = (url or OLLAMA, nom)
+    if not nom or cle in MODELES_CASSES:
         return
-    MODELES_CASSES[nom] = (pourquoi or "")[:200]
-    print(f"  [ollama] {nom} ne se charge pas, il est ecarte "
-          f"— {MODELES_CASSES[nom]}", flush=True)
-    if MODELE_ECRITURE == nom:
+    MODELES_CASSES[cle] = (pourquoi or "")[:200]
+    print(f"  [ollama] {nom} ne se charge pas sur {cle[0]}, il y est ecarte "
+          f"— {MODELES_CASSES[cle]}", flush=True)
+    # Un CACHE s'oublie, un REGLAGE non. « MODELE_ECRITURE » etait un cache
+    # quand cette ligne a ete ecrite ; depuis, STUDIO_LLM_ECRITURE le pose
+    # explicitement. Un seul echec de chargement — une carte pleine par un rendu
+    # concurrent suffit — effaçait alors le choix de l'utilisateur jusqu'au
+    # prochain redemarrage, sans un mot.
+    if MODELE_ECRITURE == nom and not MODELE_ECRITURE_IMPOSE:
         MODELE_ECRITURE = ""      # le prochain appel en choisira un autre
 
 
@@ -1951,14 +1989,14 @@ async def _ollama_local(corps, url=None):
                 # fois, pour la meme panne definitive.
                 brut_ = (await r.text())[:300]
                 if _echec_de_chargement(brut_):
-                    _ecarter_modele(corps.get("model") or "", brut_)
+                    _ecarter_modele(corps.get("model") or "", brut_, url)
                 raise RuntimeError(f"ollama {r.status} : {brut_[:160]}")
             d = await r.json()
             rep_ = d.get("response", "")
             if not rep_.strip() and d.get("error"):
                 # Ollama a repondu 200 avec un champ « error » : le modele
                 # existe, il ne se CHARGE pas.
-                _ecarter_modele(corps.get("model") or "", str(d["error"]))
+                _ecarter_modele(corps.get("model") or "", str(d["error"]), url)
             if not rep_.strip():
                 # Une reponse vide est dite a voix haute, comme pour un
                 # fournisseur distant. Sans cela, « traduction rejetee
@@ -2120,17 +2158,29 @@ async def demander_a_un_noeud(corps, tid=None, secondes=None):
     # attendre deux minutes derriere un rendu alors qu'une autre machine
     # repondait tout de suite. L'ordre relatif est conserve a l'interieur de
     # chaque groupe : le premier de la liste reste le premier des libres.
-    # BORNE. Ce repli passe par l'agent d'une machine, et poser_a() attendait
-    # sa carte jusqu'a ATTENTE_CARTE — une demi-heure, PAR APPEL, et une demande
-    # en fait trois. Le chemin voisin (ANALYSE_PETITE) se donnait deja zero
-    # patience et quatre-vingt-dix secondes de plafond, avec la mesure qui le
-    # justifie ; celui-ci l'avait oublie. On ne fait pas attendre quelqu'un deux
-    # heures pour une analyse.
+    # UNE IMAGE NE PASSE PAS PAR ICI. La regle « jamais un modele qui ne sait pas
+    # voir » vit dans corps_ici(), et ce chemin-la ne la traverse pas : poser_a
+    # remet le corps tel quel a l'agent, qui prend « le premier modele annonce »
+    # quand celui demande manque. Sur le NAS, c'est qwen3:4b — aveugle. On
+    # obtenait alors une description fluide, confiante et entierement inventee,
+    # sans erreur ni ligne de journal. Le studio n'apprend pas d'un agent quels
+    # modeles savent voir : il n'annonce que des noms. Tant que ce n'est pas le
+    # cas, on refuse plutot que d'inventer.
+    if corps.get("images"):
+        journal(tid, "lecture d'image : aucune machine joignable en direct, et "
+                     "on ne devine pas ce que les autres savent voir")
+        return ""
+    # PATIENCE nulle, mais PLAFOND large. Zero patience parce qu'attendre une
+    # demi-heure la carte d'une machine, par appel, ferait deux heures pour une
+    # demande. Mais le plafond de reponse, lui, doit tenir compte de ce que ce
+    # chemin coute vraiment : mesure du 31 aout, 162,6 s par l'agent du NAS. Le
+    # borner a ANALYSE_MAX (90 s) le condamnait a echouer systematiquement sur
+    # cette machine — et il n'y a rien apres lui.
     a_llm = list(noeuds_a_llm())
     libres = [i for i in a_llm if not verrou_noeud(i).locked()]
     for ident in libres + [i for i in a_llm if i not in libres]:
         reponse, erreur = await poser_a(ident, corps, tid,
-                                        secondes or ANALYSE_MAX, patience=0)
+                                        secondes or 900, patience=0)
         if erreur:
             journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} : {erreur}")
             continue
@@ -7113,8 +7163,13 @@ async def api_au_propre(req):
         d = await req.json()
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
+    # ouvrable() et non une formule recopiee : « a moi ET pas fermee ». La
+    # version d'avant acceptait une conversation FERMEE — un second onglet reste
+    # dessus relançait un rendu de plusieurs minutes vers une image que
+    # purger_fermees() effacerait le lendemain — et une conversation orpheline,
+    # que api_conversation refuse pourtant de laisser lire.
     conv = CONVERSATIONS.get(d.get("conversation") or "")
-    if not conv or conv.get("proprietaire") not in (None, pid):
+    if not ouvrable(conv, pid):
         return web.json_response({"erreur": "inconnue"}, status=404)
     tour = next((t for t in conv.get("tours", [])
                  if t.get("id") == d.get("tour")), None)
@@ -7173,9 +7228,13 @@ async def api_generer(req):
         return web.json_response({"erreur": "demande vide"}, status=400)
     pid = qui(req)
     # La conversation d'abord : c'est elle qui porte les reglages, et une
-    # demande qui n'en parle pas herite des siens.
+    # demande qui n'en parle pas herite des siens. Mais on FUSIONNE sans ecrire
+    # tant que la demande n'est pas validee : un « priorite: urgent » refuse en
+    # 400 laissait sinon son reglage sur la conversation, et sauvait au passage
+    # une conversation que conv_de() garde volontairement en memoire — sans quoi
+    # chaque requete sans cookie deposait un fichier de plus.
     conv = conv_de(d.get("conversation"), pid)
-    reglages = poser_reglages(conv, d)
+    reglages = poser_reglages(conv, d, ecrire=False)
     taille = reglages.get("taille") or None
     if taille and taille not in TAILLES:
         return web.json_response({"erreur": "taille non prise en charge"}, status=400)
@@ -7198,6 +7257,8 @@ async def api_generer(req):
     # studio/…png » sortait de ComfyUI/input et faisait decrire l'image d'un autre.
     if image and (os.path.basename(image) != image or ENTREES.get(image) != pid):
         return web.json_response({"erreur": "image inconnue"}, status=404)
+    # Tout est valide : maintenant seulement, la conversation retient.
+    poser_reglages(conv, d)
     tid = uuid.uuid4().hex
     devant = len(ATTENTE) + len(EN_VOL)
     TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": texte,
@@ -8830,7 +8891,15 @@ async def api_admin_noeuds(req):
                               # paroles — sans jamais rien casser franchement.
                               # L'utilisateur ne voyait que « je n'ai pas reussi
                               # a etoffer ta demande », sans cause. Ici, la cause.
-                              "modeles_casses": dict(MODELES_CASSES),
+                              # Une clef (adresse, modele) ne se serialise pas
+                              # en JSON, et « qwen2.5vl:7b » seul ne dirait plus
+                              # la verite depuis qu'un modele peut echouer ici
+                              # et tourner ailleurs. On nomme la machine.
+                              "modeles_casses": {
+                                  f"{nom} — sur "
+                                  + ((noeud(cerveau(u).get('noeud')) or {})
+                                     .get("titre") or u): p
+                                  for (u, nom), p in MODELES_CASSES.items()},
                               "pause_propose": PREFERENCES["pause_propose"],
                               "modele_ecriture": choisir_modele_ecriture(),
                               "silence_max": SILENCE_MAX})

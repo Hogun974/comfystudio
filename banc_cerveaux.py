@@ -39,31 +39,45 @@ MORT = "http://mort.local:11434"
 
 
 def poser(pause_pc=False):
-    """Un parc de deux machines, plus une adresse qui ne repond pas."""
+    """Le parc REEL, releve sur les deux machines le 31 aout.
+
+    Un decor invente ne prouve rien : la premiere version de ce banc donnait la
+    vision a gemma3:4b et la refusait a gemma4:26b — l'inverse de ce que les
+    deux Ollama annoncent. Dix-sept cas passaient sur un parc qui n'existe pas.
+    """
     S.REGISTRE.clear()
     S.REGISTRE["pc"] = {"id": "pc", "titre": "PC (RTX 2080 Ti)", "agent": True,
                         "jeton": "x", "pause": 1.0 if pause_pc else None}
     S.REGISTRE["zima"] = {"id": "zima", "titre": "NAS ZimaOS", "agent": True,
                           "jeton": "y", "pause": None}
     S.ETAT_NOEUDS.clear()
-    S.ETAT_NOEUDS["pc"] = {"repond": True, "vram": 11.0, "vu": S.time.time(),
-                           "ip": "10.0.0.1"}
-    S.ETAT_NOEUDS["zima"] = {"repond": True, "vram": 5.9, "vu": S.time.time(),
-                             "ip": "10.0.0.2"}
-    # Le cache des cerveaux, pose a la main : rien n'est joignable ici.
+    S.ETAT_NOEUDS["pc"] = {"repond": True, "vram": 11.0, "ram": 63.8,
+                           "vu": S.time.time(), "ip": "10.0.0.1"}
+    S.ETAT_NOEUDS["zima"] = {"repond": True, "vram": 5.9, "ram": 23.4,
+                             "vu": S.time.time(), "ip": "10.0.0.2"}
+    # Le cache des cerveaux, pose a la main : rien n'est joignable ici. Noms,
+    # tailles et capacites recopies de /api/tags des deux machines.
     S._CERVEAUX.clear()
-    S._CERVEAUX[PC] = {"quand": S.time.time(), "noeud": "pc",
-                       "modeles": [{"name": "qwen2.5vl:7b", "size": 6_000_000_000,
-                                    "capabilities": ["completion", "vision"]},
-                                   {"name": "gemma4:26b", "size": 18_600_000_000,
-                                    "capabilities": ["completion"]}]}
-    S._CERVEAUX[NAS] = {"quand": S.time.time(), "noeud": "zima",
-                        "modeles": [{"name": "gemma3:4b", "size": 3_340_000_000,
-                                     "capabilities": ["completion", "vision"]},
-                                    {"name": "qwen3:4b", "size": 2_500_000_000,
-                                     "capabilities": ["completion", "thinking"]}]}
+    S._CERVEAUX[PC] = {"quand": S.time.time(), "noeud": "pc", "modeles": [
+        {"name": "gemma4:26b", "size": 18_600_000_000,
+         "capabilities": ["completion", "tools", "thinking", "vision"]},
+        {"name": "qwen2.5vl:7b", "size": 5_970_000_000,
+         "capabilities": ["vision", "completion"]},
+        {"name": "liquidai/lfm2.5-350m:latest", "size": 380_000_000,
+         "capabilities": ["completion"]}]}
+    S._CERVEAUX[NAS] = {"quand": S.time.time(), "noeud": "zima", "modeles": [
+        {"name": "qwen3:4b", "size": 2_500_000_000,
+         "capabilities": ["completion", "tools", "thinking"]},
+        {"name": "mistral:7b", "size": 4_370_000_000,
+         "capabilities": ["completion", "tools"]},
+        {"name": "gemma3:4b", "size": 3_340_000_000,
+         "capabilities": ["completion"]},
+        {"name": "qwen2.5vl:7b", "size": 5_970_000_000,
+         "capabilities": ["vision", "completion"]}]}
     S._CERVEAUX[MORT] = {"quand": S.time.time(), "noeud": None, "modeles": []}
     S.VERROUS_NOEUD.clear()
+    S.MODELES_CASSES.clear()
+    S.MODELE_ECRITURE = ""
 
 
 async def main():
@@ -104,68 +118,85 @@ async def main():
     # ── le modele, par adresse ──────────────────────────────────────────
     poser()
     corps = {"model": S.MODELE_POUR_ECRIRE, "prompt": "x"}
-    dit(S.corps_ici(corps, NAS)["model"] == "gemma3:4b",
-        "l'intention d'ecriture prend le plus gros DU NAS",
+    # Sur le NAS (5,9 Go de carte + 23,4 de RAM, soit 7,9 tenables) le plus gros
+    # qui tienne est qwen2.5vl:7b a 5,97.
+    dit(S.corps_ici(corps, NAS)["model"] == "qwen2.5vl:7b",
+        "l'intention d'ecriture prend le plus gros QUI TIENNE au NAS",
         S.corps_ici(corps, NAS)["model"])
-    dit(S.corps_ici(corps, PC)["model"] == "gemma4:26b",
-        "et le plus gros DU PC", S.corps_ici(corps, PC)["model"])
+    # Sur le PC (11 + 5 = 16 tenables) gemma4:26b pese 18,6 : il est ecarte,
+    # alors que « le plus gros » l'aurait choisi. Mesure du 31 aout : 165 s par
+    # traduction quand il deborde.
+    dit(S.corps_ici(corps, PC)["model"] == "qwen2.5vl:7b",
+        "et ecarte celui qui ne tient pas sur la carte",
+        S.corps_ici(corps, PC)["model"])
 
     corps = {"model": "qwen2.5vl:7b", "prompt": "x"}
     dit(S.corps_ici(corps, PC) is corps, "un modele present passe tel quel")
+    S._CERVEAUX[NAS]["modeles"] = [m for m in S._CERVEAUX[NAS]["modeles"]
+                                   if m["name"] != "qwen2.5vl:7b"]
     remplace = S.corps_ici(corps, NAS)
-    dit(remplace["model"] != "qwen2.5vl:7b",
-        "un modele absent est remplace", remplace["model"])
+    dit(remplace["model"] != "qwen2.5vl:7b", "un modele absent est remplace",
+        remplace["model"])
+    poser()
 
-    # Un reglage global sur un parc qui ne l'est pas : STUDIO_LLM_ECRITURE
-    # nomme un modele que le NAS a et que le PC n'a pas. Le PC ne doit pas en
-    # devenir muet.
-    S.MODELE_ECRITURE = "gemma3:4b"
-    dit(S.modele_ecriture_de(NAS) == "gemma3:4b", "le reglage est suivi la ou il existe")
-    dit(S.modele_ecriture_de(PC) == "gemma4:26b",
-        "et ignore la ou il n'existe pas", S.modele_ecriture_de(PC))
+    # ── un reglage impose sur un parc qui ne l'est pas ──────────────────
+    S.MODELE_ECRITURE = "mistral:7b"          # le NAS l'a, le PC non
+    corps = {"model": S.MODELE_POUR_ECRIRE, "prompt": "x"}
+    dit(S.corps_ici(corps, NAS)["model"] == "mistral:7b",
+        "le reglage est suivi la ou il existe")
+    dit(S.corps_ici(corps, PC)["model"] != "mistral:7b",
+        "et ignore la ou il n'existe pas", S.corps_ici(corps, PC)["model"])
     S.MODELE_ECRITURE = ""
 
+    # ── une image ───────────────────────────────────────────────────────
     corps = {"model": "qwen2.5vl:7b", "prompt": "x", "images": ["…"]}
     dit(S.corps_ici(corps, PC) is corps,
         "une image reste sur le meilleur voyant quand c'est deja lui")
-    # Le cas qui a coute une mesure : gemma3:4b DECLARE voir, et aiguille mal.
-    # Une image jointe doit donc passer au plus gros voyant du NAS, pas rester
-    # sur le modele d'aiguillage sous pretexte qu'il a la capacite.
-    corps_g = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
-    S._CERVEAUX[NAS]["modeles"].append({"name": "qwen2.5vl:7b",
-                                        "size": 5_970_000_000,
-                                        "capabilities": ["completion", "vision"]})
-    bascule_g = S.corps_ici(corps_g, NAS)
-    poser()
-    dit(bascule_g is not None and bascule_g["model"] == "qwen2.5vl:7b",
-        "un modele voyant mais petit cede au plus gros voyant",
-        str(bascule_g and bascule_g["model"]))
-    # Le NAS n'a pas qwen2.5vl mais il a gemma3:4b, qui voit : on bascule sur
-    # lui plutot que d'ecarter la machine. La regle n'est pas « ce modele-la »,
-    # elle est « un modele qui voit, ou rien ».
-    ailleurs = S.corps_ici(corps, NAS)
-    dit(ailleurs is not None and ailleurs["model"] == "gemma3:4b",
-        "une image trouve un modele voyant sur l'autre machine",
-        str(ailleurs and ailleurs["model"]))
+    dit(S.corps_ici(corps, NAS) is corps, "et de meme sur l'autre machine")
 
-    # Installe ne veut pas dire capable : gemma4:26b est bien la sur le PC, et
-    # il ne sait pas voir. Un modele de texte a qui l'on envoie une image ne
-    # refuse pas, il decrit ce qu'il imagine.
-    # Le PC porte gemma4:26b (aveugle) et qwen2.5vl:7b (voyant) : une image
-    # demandee au premier doit basculer sur le second, pas echouer.
+    # gemma4:26b DECLARE la vision et pese 18,6 Go sur une carte de 11 : il ne
+    # doit pas etre choisi pour autant. « Le plus gros voyant » sans borne
+    # l'aurait pris.
     corps = {"model": "gemma4:26b", "prompt": "x", "images": ["…"]}
     bascule = S.corps_ici(corps, PC)
     dit(bascule is not None and bascule["model"] == "qwen2.5vl:7b",
-        "un modele aveugle cede la place a un modele qui voit",
+        "un voyant trop gros pour la carte cede au voyant qui tient",
         str(bascule and bascule["model"]))
+
+    # gemma3:4b n'annonce PAS « vision » dans /api/tags, quoi qu'en dise
+    # /api/show : c'est /api/tags que le studio lit. Une image ne doit donc pas
+    # lui etre confiee.
+    corps = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
+    v = S.corps_ici(corps, NAS)
+    dit(v is not None and v["model"] == "qwen2.5vl:7b",
+        "un modele qui n'annonce pas la vision cede la place",
+        str(v and v["model"]))
+
     # Et sur une machine ou AUCUN modele ne voit, on n'envoie rien.
-    S._CERVEAUX[NAS]["modeles"] = [{"name": "qwen3:4b", "size": 2_500_000_000,
-                                    "capabilities": ["completion"]}]
+    S._CERVEAUX[NAS]["modeles"] = [m for m in S._CERVEAUX[NAS]["modeles"]
+                                   if "vision" not in (m.get("capabilities") or [])]
     dit(S.corps_ici(corps, NAS) is None,
         "aucun modele voyant : l'adresse est ecartee, jamais substituee")
     poser()
-    corps = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
-    dit(S.corps_ici(corps, NAS) is corps, "un modele qui sait voir la reçoit")
+
+    # ── un modele casse l'est SUR UNE MACHINE, pas partout ──────────────
+    S._ecarter_modele("qwen2.5vl:7b", "carte pleine", NAS)
+    corps = {"model": S.MODELE_POUR_ECRIRE, "prompt": "x"}
+    dit(S.corps_ici(corps, NAS)["model"] != "qwen2.5vl:7b",
+        "ecarte la ou il a echoue", S.corps_ici(corps, NAS)["model"])
+    dit(S.corps_ici(corps, PC)["model"] == "qwen2.5vl:7b",
+        "toujours employe la ou il marche", S.corps_ici(corps, PC)["model"])
+
+    # ── un reglage impose ne s'efface pas sur un echec ──────────────────
+    S.MODELE_ECRITURE = "mistral:7b"
+    S.MODELE_ECRITURE_IMPOSE = True
+    S._ecarter_modele("mistral:7b", "carte pleine", NAS)
+    dit(S.MODELE_ECRITURE == "mistral:7b",
+        "un reglage pose a la main survit a un echec", S.MODELE_ECRITURE)
+    S.MODELE_ECRITURE_IMPOSE = False
+    S._ecarter_modele("mistral:7b", "carte pleine", PC)
+    dit(S.MODELE_ECRITURE == "", "un choix devine, lui, se refait")
+    S.MODELE_ECRITURE = ""
 
 asyncio.run(main())
 print(f"\n  {len([o for o in ok if o])} verifications passees, {len(rate)} echouees")
