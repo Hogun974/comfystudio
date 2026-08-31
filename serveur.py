@@ -1286,6 +1286,29 @@ def noeud_de_l_ollama():
 
 async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
                          modele=None, temperature=0.4, tid=None, garder=0):
+    """Un appel au modele de langage, chronometre.
+
+    Une demande en fait trois — aiguillage, enrichissement, traduction — et le
+    journal n'en montrait qu'un seul horodatage : cent secondes disparaissaient
+    entre deux lignes sans qu'on sache lesquelles. On ne peut pas reduire ce
+    qu'on ne mesure pas.
+
+    Le compte est ecrit une seule fois, ici, plutot qu'a chaque appelant : trois
+    endroits a instrumenter, c'est deux occasions d'en oublier un.
+    """
+    depart_ = time.time()
+    try:
+        return await _appeler_llm(texte, image_b64, systeme, json_mode, modele,
+                                  temperature, tid, garder)
+    finally:
+        mis = time.time() - depart_
+        # Sous la seconde, la ligne n'apprend rien et encombre le fil.
+        if tid and mis >= 1:
+            journal(tid, f"  … {mis:.0f} s")
+
+
+async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
+                       modele=None, temperature=0.4, tid=None, garder=0):
     """temperature : 0.4 convient a la description libre d'une image. L'aiguillage
     et la traduction sont des taches de classification, pas de creation — a 0.4 la
     meme demande partait tantot en question, tantot en image (mesure). La part
