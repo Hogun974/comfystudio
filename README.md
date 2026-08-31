@@ -454,25 +454,52 @@ aussi le relais de fichiers — c'est ce qui a décidé du choix.
 Ce qui reste **volontairement commun** : la file d'attente et son compteur.
 Chacun voit « 3 en file », mais seul l'auteur voit le texte de ses demandes.
 
-### Une demande à la fois, même avec plusieurs machines
+### Plusieurs demandes à la fois, une par carte
 
-Le studio ne traite **qu'une demande à la fois**. Cette règle datait du temps où
-il était lui-même la machine à carte : une carte ne se partage pas, et une
-position calculée sur sa propre file aurait été fausse.
+Le studio mène **plusieurs demandes de front**, mais **une seule par carte**.
+Une carte ne se partage pas : deux rendus dessus ne vont pas deux fois plus
+vite, ils rament tous les deux. La règle vaut pour tout ce qui l'occupe — image,
+vidéo, son, maillage, et jusqu'aux questions posées à son modèle de langage.
 
-Elle n'est plus juste dès qu'il y a deux machines. Mesuré : quatre demandes
-envoyées coup sur coup se sont empilées derrière une seule carte, et la seconde
-machine n'a rien reçu — y compris la demande qui lui était **explicitement
-imposée**, qui a attendu son tour derrière du travail destiné à l'autre.
+Mesuré sur deux machines, deux demandes envoyées coup sur coup :
 
-L'analyse par le modèle de langage subit la même file : la demande 2 n'est
-analysée qu'une fois la 1 rendue, alors que cela ne coûterait rien à personne
-de le faire pendant.
+```
+38 s   DEUX en cours : sur NAS ZimaOS (GTX 1060) · sur PC (RTX 2080 Ti)
+79 s   DEUX en cours : sur NAS ZimaOS (GTX 1060) · sur PC (RTX 2080 Ti)
+```
 
-C'est donc à savoir avant de monter un parc : **ajouter une machine augmente ce
-que le studio sait faire, pas ce qu'il fait par heure.** Le correctif — plusieurs
-travaux en vol, un verrou par machine — est en cours ; ce paragraphe disparaîtra
-avec lui.
+Et deux demandes qui visent la **même** carte, sur la même installation :
+
+```
+PC (RTX 2080 Ti) calcule deja pour quelqu'un — on prend le tour suivant
+la carte se libere apres 139 s d'attente
+termine en 62 s
+```
+
+Ce qui a décidé de ce montage : sur deux demandes complètes, 32 secondes hors
+carte pour 304 secondes dessus. **Dix pour cent du temps seulement est de
+l'analyse** — le plafond est la carte, et ajouter une machine ajoute donc bien
+du débit, pas seulement des moteurs.
+
+Trois conséquences visibles :
+
+- **Une carte libre passe devant une grosse carte occupée.** Ce n'est pas
+  toujours le plus rapide pour une demande isolée — attendre deux minutes la
+  grosse carte peut battre un rendu lancé tout de suite sur la petite — mais
+  c'est le plus rapide pour l'ensemble, et le seul choix possible sans prédire
+  une durée qu'on ne connaît pas.
+- **La file distingue trois états** : en attente, *attend une carte*, et en
+  cours. Le deuxième est nouveau : la demande est analysée, sa machine est
+  choisie, et cette machine finit le travail d'un autre.
+- **Une question au modèle de langage n'attend une carte que vingt secondes.**
+  Au-delà, elle va voir une autre machine, ou l'on s'en passe. Sans cette borne,
+  une question de deux secondes attendait derrière un rendu de deux minutes en
+  retenant un travailleur — trois demandes se sont ainsi bloquées mutuellement
+  pendant dix minutes.
+
+`STUDIO_TRAVAILLEURS` fixe le nombre de demandes menées de front (trois par
+défaut). Il ne borne pas le matériel mais l'appétit : vingt demandes d'un coup
+n'ouvrent pas vingt analyses simultanées.
 
 ### Ouvrir au réseau local
 
@@ -1725,6 +1752,7 @@ téléversements. **Sans lui, tout disparaît au redémarrage du conteneur.**
 | `COMFY_MODELES`, `COMFY_ENTREE` | ou directement ces deux dossiers |
 | `COMFY_LANCEUR` | script de démarrage de ComfyUI (hors conteneur) |
 | `STUDIO_PURGE_ORPHELINS` | `1` pour effacer les fichiers que plus aucune conversation ne réclame |
+| `STUDIO_TRAVAILLEURS` | demandes menées de front (3 par défaut) — une seule par carte quoi qu'il arrive |
 | `COMPOSE_PROJECT_NAME` | **le nom qui décide du volume** — à changer pour tout second studio |
 | `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
 
