@@ -758,6 +758,36 @@ voient pas — et une simple requête HTTP traverse tout sans configuration.
 L'agent n'a **aucune dépendance** : la bibliothèque standard suffit. Une machine
 qui fait tourner ComfyUI a forcément un Python.
 
+### Un modèle de langage sur chaque machine
+
+Le studio emprunte le modèle de langage d'une machine pour analyser une demande.
+Depuis qu'une carte ne fait qu'une tâche à la fois, en avoir un **sur chaque
+machine** change la donne : la petite carte réfléchit pendant que la grosse rend.
+Sans cela, toutes les analyses passent par la seule machine qui en porte un, et
+elle devient le goulot.
+
+`noeud.sh` le vérifie et le dit, avec le modèle qui convient à la carte trouvée :
+
+| Carte | Modèle conseillé |
+|---|---|
+| 20 Go et plus | `gemma3:27b` |
+| 11 à 19 Go | `gemma3:12b` |
+| 6 à 10 Go | `qwen3:8b` |
+| moins de 6 Go | `qwen3:4b` |
+
+**Ne prends pas plus gros que la carte** en comptant sur le débordement. Ollama y
+arrive, mais l'analyse précède chaque rendu : mesuré sur une RTX 2080 Ti, un
+modèle de 26 milliards a mis **165 secondes** à rendre son premier mot après
+chargement. Un modèle qui écrit un peu mieux et coûte trois minutes de réveil
+n'est pas le bon choix.
+
+Sur ZimaOS, le service `ollama` est inclus dans `zimaos-comfyui.yml` — il ne
+reste qu'à tirer le modèle une fois l'application installée :
+
+```bash
+docker exec -it ollama ollama pull qwen3:8b
+```
+
 ### Mettre une machine en pause
 
 Le bouton **pause**, dans `/admin`, retire une machine du service sans la

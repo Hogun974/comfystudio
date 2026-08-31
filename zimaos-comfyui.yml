@@ -78,6 +78,57 @@ services:
             en_us: Extra ComfyUI arguments, --lowvram under 8 GB of VRAM
             fr_fr: Arguments ComfyUI, --lowvram sous 8 Go de VRAM
 
+  ollama:
+    # Le modele de langage de CETTE machine. Le studio le lui emprunte pour
+    # analyser une demande — et depuis qu'une carte ne fait qu'une tache a la
+    # fois, avoir un modele ICI change tout : la petite carte peut reflechir
+    # pendant que la grosse rend une image. Sans lui, toutes les analyses
+    # passent par la meme machine, qui devient le goulot.
+    #
+    # Le modele n'est PAS inclus : il se tire au premier usage, une fois
+    # l'application installee, depuis la ligne de commande de la machine —
+    #
+    #   docker exec -it ollama ollama pull qwen3:8b
+    #
+    # 8 milliards de parametres quantifies tiennent dans 6 Go de VRAM et
+    # ecrivent correctement. Sur une carte plus petite, « qwen3:4b ». Sur une
+    # carte de 12 Go ou plus, « gemma3:12b » ou « mistral-small ». Ne pas
+    # prendre plus gros que la carte en esperant le debordement : Ollama y
+    # arrive, mais une analyse de trois minutes devant chaque rendu ne sert
+    # personne.
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    network_mode: bridge
+    ports:
+      - target: 11434
+        published: "11434"
+        protocol: tcp
+    volumes:
+      # Les modeles pesent plusieurs gigaoctets : sans ce volume, chaque
+      # redemarrage du conteneur les retelecharge.
+      - type: bind
+        source: /DATA/AppData/ollama
+        target: /root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    x-casaos:
+      ports:
+        - container: "11434"
+          description:
+            en_us: Ollama API, borrowed by the studio to analyse requests
+            fr_fr: API Ollama, empruntee par le studio pour analyser les demandes
+      volumes:
+        - container: /root/.ollama
+          description:
+            en_us: Downloaded language models
+            fr_fr: Modeles de langage telecharges
+
   agent:
     # L'agent va CHERCHER le travail aupres du studio : il n'ouvre aucun port et
     # n'a besoin d'aucune redirection. Il retelecharge son script a chaque
@@ -87,6 +138,7 @@ services:
     restart: unless-stopped
     depends_on:
       - comfyui
+      - ollama
     environment:
       STUDIO_URL: "http://ADRESSE-DU-STUDIO:8199"   # A REMPLACER
       STUDIO_JETON: "A_REMPLACER"
@@ -104,10 +156,11 @@ services:
       # et non une suppression immediate : il laisse un recours si la copie
       # arrivee au studio se revelait mauvaise.
       COMFY_GARDER_HEURES: "24"
-      # Le modele de langage de cette machine, prete au studio quand le sien ne
-      # repond plus. 127.0.0.1 designerait le conteneur lui-meme : on passe par
-      # la passerelle de l'hote. Laisser tel quel s'il n'y a pas d'Ollama ici —
-      # l'agent le constate et le dit, sans rien casser.
+      # Le modele de langage de cette machine, prete au studio. 127.0.0.1
+      # designerait le conteneur de l'agent lui-meme : on passe par la
+      # passerelle de l'hote, comme pour ComfyUI. Le service « ollama » ci-dessus
+      # le sert ; sans modele tire, l'agent le constate et le dit, sans rien
+      # casser.
       OLLAMA_URL: "http://host.docker.internal:11434"
     volumes:
       # En ecriture : l'agent efface ici ce dont le studio a deja une copie. Il

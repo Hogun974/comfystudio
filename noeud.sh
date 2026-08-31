@@ -12,6 +12,7 @@
 #   bash noeud.sh --studio URL --jeton XXXX     sans aucune question
 #   bash noeud.sh --fond                        laisse tourner en tache de fond
 #   bash noeud.sh --empreinte SHA256            n'installe que cet agent-la
+#   bash noeud.sh --ollama URL                  ou joindre le modele de langage
 #
 # Ce script telecharge du code Python et l'execute. En HTTP simple, quiconque
 # s'intercale sur le reseau choisit ce code. --empreinte (ou AGENT_EMPREINTE)
@@ -23,6 +24,7 @@ cd "$(dirname "$0")"
 STUDIO=""; JETON=""; VERIFIER=0; FOND=0
 EMPREINTE="${AGENT_EMPREINTE:-}"
 COMFY_URL="${COMFY_URL:-http://127.0.0.1:8188}"
+OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 CONFIG="agent_noeud.json"
 AGENT="agent_noeud.py"
 
@@ -32,6 +34,7 @@ while [ $# -gt 0 ]; do
     --jeton)    JETON="${2:-}"; shift 2 ;;
     --sorties)  SORTIES="${2:-}"; shift 2 ;;
     --comfy)    COMFY_URL="${2:-}"; shift 2 ;;
+    --ollama)   OLLAMA_URL="${2:-}"; shift 2 ;;
     --verifier) VERIFIER=1; shift ;;
     --fond)     FOND=1; shift ;;
     --empreinte) EMPREINTE="${2:-}"; shift 2 ;;
@@ -68,6 +71,19 @@ fi
 vert "$($PY -V 2>&1) — $(command -v "$PY")"
 
 # ══════════════════════════ 2. carte et memoire ════════════════════════
+# Le modele de langage a conseiller, d'apres la carte. On ne prend jamais plus
+# gros que la carte en esperant le debordement : Ollama y arrive, mais une
+# analyse de trois minutes devant chaque rendu ne sert personne — mesure sur une
+# 2080 Ti, un modele de 26 milliards a mis 165 s a rendre son premier mot.
+modele_conseille() {
+  go=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null        | head -1 | awk '{printf "%.0f", $1/1024}')
+  if   [ "${go:-0}" -ge 20 ] 2>/dev/null; then echo "gemma3:27b"
+  elif [ "${go:-0}" -ge 11 ] 2>/dev/null; then echo "gemma3:12b"
+  elif [ "${go:-0}" -ge  6 ] 2>/dev/null; then echo "qwen3:8b"
+  else echo "qwen3:4b"
+  fi
+}
+
 titre "Materiel"
 if command -v nvidia-smi >/dev/null 2>&1; then
   CARTE=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)
@@ -139,6 +155,29 @@ if joignable; then
   MOD=$(curl -fsS --max-time 6 "$COMFY_URL/models/diffusion_models" 2>/dev/null |
         "$PY" -c "import json,sys;print(len(json.load(sys.stdin)))" 2>/dev/null)
   gris "modeles de diffusion vus : ${MOD:-0}"
+fi
+
+# ══════════════════════ 3 bis. le modele de langage ════════════════════
+# Le studio emprunte le modele de langage de CETTE machine pour analyser une
+# demande. Depuis qu'une carte ne fait qu'une tache a la fois, en avoir un ici
+# change la donne : la petite carte reflechit pendant que la grosse rend. Sans
+# Ollama sur aucune machine sauf une, toutes les analyses passent par elle et
+# elle devient le goulot.
+titre "Modele de langage"
+if curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" -o /tmp/.ollama.$$ 2>/dev/null; then
+  NBM=$("$PY" -c "import json;print(len(json.load(open('/tmp/.ollama.$$')).get('models',[])))" 2>/dev/null)
+  rm -f /tmp/.ollama.$$
+  if [ "${NBM:-0}" -gt 0 ] 2>/dev/null; then
+    vert "Ollama repond sur $OLLAMA_URL — ${NBM} modele(s)"
+  else
+    souci "Ollama repond mais n'a aucun modele"
+    gris "  ollama pull $(modele_conseille)"
+  fi
+else
+  souci "aucun Ollama sur $OLLAMA_URL"
+  gris "cette machine ne pourra pas analyser : le studio le fera ailleurs"
+  gris "pour l'installer :  curl -fsSL https://ollama.com/install.sh | sh"
+  gris "puis :              ollama pull $(modele_conseille)"
 fi
 
 # ══════════════════════════ 4. le studio ═══════════════════════════════
@@ -225,13 +264,18 @@ if [ -z "$JETON" ]; then
 # celle d'un processus est lisible par tout le monde sur la machine, ce qui
 # annulait le masquage de la saisie.
 ecrire_reglages() {
-  "$PY" - "$CONFIG" "$STUDIO" "$JETON" "$COMFY_URL" "${SORTIES:-}" <<'PYFIN'
+  # L'adresse d'Ollama est retenue comme les autres : sans elle, une machine qui
+  # a bien un modele de langage ne le pretait pas au studio des le second
+  # lancement, celui ou l'on ne repasse plus d'arguments.
+  "$PY" - "$CONFIG" "$STUDIO" "$JETON" "$COMFY_URL" "${SORTIES:-}" "$OLLAMA_URL" <<'PYFIN'
 import json, io, os, sys
-p, studio, jeton, comfy, sorties = sys.argv[1:6]
+p, studio, jeton, comfy, sorties, ollama = sys.argv[1:7]
 c = json.load(io.open(p, encoding="utf-8")) if os.path.exists(p) else {}
 c.update(studio=studio, jeton=jeton, comfy=comfy)
 if sorties:
     c["sorties"] = sorties
+if ollama:
+    c["ollama"] = ollama
 json.dump(c, io.open(p, "w", encoding="utf-8"), indent=1)
 PYFIN
 }
