@@ -1561,14 +1561,23 @@ async def poser_a(ident, corps, tid=None, secondes=900, patience=None):
     if verrou.locked() and tid and attente_:
         journal(tid, f"{titre} calcule — la question attend sa carte "
                      f"({attente_} s au plus)")
-    if not attente_ and verrou.locked():
-        return "", "carte occupee"
-    try:
-        await asyncio.wait_for(verrou.acquire(), timeout=attente_)
-    except asyncio.TimeoutError:
-        if tid:
-            journal(tid, f"{titre} calcule toujours — on cherche ailleurs")
-        return "", "carte occupee"
+    # Un delai de ZERO ne se passe pas a wait_for : il expire avant d'avoir rien
+    # tente, si bien qu'une carte libre repondait « occupee ». Le premier tour
+    # echouait donc toujours, et toutes les analyses finissaient par attendre —
+    # exactement ce que ce tour existe pour eviter. Sur un verrou libre,
+    # acquire() rend la main sans point d'attente : la prise est atomique, et le
+    # test qui la precede reste vrai.
+    if not attente_:
+        if verrou.locked():
+            return "", "carte occupee"
+        await verrou.acquire()
+    else:
+        try:
+            await asyncio.wait_for(verrou.acquire(), timeout=attente_)
+        except asyncio.TimeoutError:
+            if tid:
+                journal(tid, f"{titre} calcule toujours — on cherche ailleurs")
+            return "", "carte occupee"
     try:
         qid = uuid.uuid4().hex
         futur = asyncio.get_event_loop().create_future()
