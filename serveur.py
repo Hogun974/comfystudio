@@ -1365,6 +1365,24 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # Tant qu'elle est libre, router ailleurs ferait perdre deux minutes pour
     # epargner une carte que personne ne reclame.
     chez = noeud_de_l_ollama()
+    # « Je vais jouer un peu, mais le studio doit toujours etre utilisable. »
+    # La pause ne couvrait que les rendus. Or l'Ollama du studio vit, lui aussi,
+    # sur une machine du parc — et c'est la plus grosse, donc celle qu'on met en
+    # pause. Constate le 31 aout : pendant que le PC etait en pause, chaque
+    # traduction y chargeait toujours un modele de 18,6 Go sur une carte de 11,
+    # soit soixante-quinze a cent-soixante secondes de carte prise a quelqu'un
+    # qui jouait. On passe la main a une autre machine, et si personne ne peut,
+    # on le dit — plutot que de s'installer chez elle en silence.
+    if chez and (noeud(chez) or {}).get("pause"):
+        titre_p = (noeud(chez) or {}).get("titre", chez)
+        journal(tid, f"{titre_p} est en pause — son modele de langage avec elle")
+        rendu = await demander_a_un_noeud(corps, tid)
+        if rendu:
+            return rendu
+        raise RuntimeError(
+            f"le modele de langage vit sur {titre_p}, qui est en pause, et "
+            f"aucune autre machine n'en porte. Reveille-la dans /admin, ou "
+            f"autorise le nuage pour cette demande.")
     if (ANALYSE_PETITE and not image_b64 and chez
             and verrou_noeud(chez).locked()):
         for petite in noeuds_a_llm():
@@ -1673,6 +1691,13 @@ async def demander_a_un_noeud(corps, tid=None, secondes=900):
 
 async def liberer_modele(modele):
     """Decharge un modele reste chaud. Sans cela, ComfyUI trouve la carte prise."""
+    # Sur une machine en pause, ce geste fait l'inverse de ce qu'il dit : Ollama
+    # CHARGE le modele pour honorer l'appel avant de le relacher. Rien n'y a ete
+    # laisse chaud par nous, puisqu'on ne s'y adresse plus ; il n'y a donc rien a
+    # decharger.
+    chez_ = noeud_de_l_ollama()
+    if chez_ and (noeud(chez_) or {}).get("pause"):
+        return
     try:
         to = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=to) as s:
