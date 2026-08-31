@@ -4339,10 +4339,18 @@ def entrees_a_joindre(g):
 
 
 def noeud_qui_travaille(tid):
-    """La machine qui dit calculer deja ce travail, s'il y en a une."""
+    """La machine qui dit calculer deja ce travail, s'il y en a une.
+
+    Une machine qui s'est tue ne compte pas : son dernier « je calcule » vaut ce
+    que vaut sa derniere nouvelle. Sans ce controle, un agent tue en plein rendu
+    laissait sa demande marquee « chez lui » pour toujours, et le studio
+    l'attendait une heure au lieu de la confier a quelqu'un d'autre.
+    """
     for x in tous_les_noeuds():
-        if tid in ((ETAT_NOEUDS.get(x["id"]) or {}).get("travaux") or []):
-            return x["id"]
+        e = ETAT_NOEUDS.get(x["id"]) or {}
+        if tid in (e.get("travaux") or []):
+            if time.time() - (e.get("vu") or 0) < SILENCE_MAX:
+                return x["id"]
     return None
 
 
@@ -7848,6 +7856,29 @@ async def api_noeud_progres(req):
     # Seulement pour un travail en vol qui appartient a CETTE machine : une
     # annonce pour le travail d'une autre ecraserait sa barre.
     tid_dit = d.get("tid")
+    # « vu », ici aussi. Pendant un rendu l'agent ne s'annonce plus : sa boucle
+    # est occupee a rendre, et seule cette route bat. Une machine qui calcule
+    # depuis plus de quarante-cinq secondes etait donc declaree perdue, et le
+    # repartiteur repondait « aucune machine ne repond » pendant qu'une carte
+    # tournait. Ce battement-la prouve davantage qu'une annonce : il vient de la
+    # boucle d'echantillonnage de ComfyUI.
+    #
+    # Et l'on retient CE QU'ELLE CALCULE. C'etait annonce, mais l'annonce
+    # n'arrive qu'entre deux travaux — quand la liste est deja vide. Le seul
+    # moment ou cette information existe est donc le seul ou personne ne
+    # l'ecrivait : noeud_qui_travaille() ne pouvait rien rendre, et le
+    # rattachement d'apres redemarrage n'a jamais servi. Mesure du 31 aout : le
+    # studio a repris une demande que le NAS rendait encore, a refait son
+    # analyse, puis a cherche une SECONDE carte pour la meme image.
+    if isinstance(tid_dit, str):
+        etat_ = ETAT_NOEUDS.setdefault(x["id"], {})
+        etat_["vu"] = time.time()
+        # Une demande que le studio connait, et pas n'importe laquelle : ce
+        # qu'on ecrit ici sert a lui rendre un resultat sans verifier a qui le
+        # travail avait ete confie. Une machine ne peut donc pas se declarer
+        # occupee par un identifiant de son choix.
+        if tid_dit in EN_FILE or tid_dit in TACHES:
+            etat_["travaux"] = [tid_dit]
     if (isinstance(tid_dit, str) and tid_dit in EN_VOL
             and (TACHES.get(tid_dit) or {}).get("noeud") == x["id"]):
         AVANCES[tid_dit] = {"fait": int(d.get("fait") or 0),
@@ -7955,7 +7986,13 @@ def rattacher_tardif(tid, d, x):
                 return
             fichiers = [dict(f, noeud=x["id"]) for f in (d.get("fichiers") or [])]
             if d.get("etat") == "fini" and fichiers:
-                tour.update(etat="fini", erreur=None, fichiers=fichiers)
+                # La machine et la duree viennent de l'agent : TACHES est vide
+                # apres un redemarrage, et enregistrer_tour() les y aurait
+                # cherchees en vain. Sans ces deux champs, le detail d'un rendu
+                # rattache restait muet sur qui l'avait fait et en combien de
+                # temps — les deux choses qu'on lui demande.
+                tour.update(etat="fini", erreur=None, fichiers=fichiers,
+                            noeud=x["id"], secondes=d.get("secondes"))
                 print(f"  [{tid[:6]}] rendu de {x['id']} rattache apres "
                       f"redemarrage — {len(fichiers)} fichier(s)", flush=True)
             else:
