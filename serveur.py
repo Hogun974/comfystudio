@@ -823,12 +823,12 @@ async def patienter_pause(cle, tid):
     en_pause_ = dormantes()
     if not en_pause_:
         return None
-    limite = REGLAGES["pause_propose"] * 60
+    limite = PREFERENCES["pause_propose"] * 60
     if all(time.time() - x["pause"] >= limite for x in en_pause_):
         noms = " et ".join(x.get("titre", x["id"]) for x in en_pause_)
         raise RuntimeError(
             f"{noms} pourrait faire ce travail, mais elle est en pause depuis "
-            f"plus de {REGLAGES['pause_propose']} minutes. Reactive-la dans "
+            f"plus de {PREFERENCES['pause_propose']} minutes. Reactive-la dans "
             f"/admin, ou demande quelque chose qu'une autre machine sait faire.")
     noms = " ou ".join(x.get("titre", x["id"]) for x in en_pause_)
     journal(tid, f"{noms} en pause — ta demande attend son retour, "
@@ -846,7 +846,7 @@ async def patienter_pause(cle, tid):
             noms = " et ".join(x.get("titre", x["id"]) for x in restantes)
             raise RuntimeError(
                 f"{noms} est toujours en pause apres "
-                f"{REGLAGES['pause_propose']} minutes — le travail n'est pas "
+                f"{PREFERENCES['pause_propose']} minutes — le travail n'est pas "
                 f"perdu, relance-le quand elle sera revenue.")
 
 
@@ -1294,6 +1294,23 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
             journal(tid, f"{fournisseurs.LLM[loin]['titre']} indisponible ({e})"
                          f" — le modele local prend le relais")
 
+    corps = corps_ollama(texte, image_b64, systeme, json_mode, modele,
+                         temperature, garder)
+    # La plus petite carte capable, AVANT celle du studio. Une analyse tient sur
+    # n'importe quelle carte ; occuper la meilleure pour reflechir, c'est la
+    # retirer du rendu qu'elle seule fait vite.
+    #
+    # Jamais pour une image : le modele de vision n'est pas celui d'ecriture, et
+    # une machine peut porter l'un sans l'autre. On garde alors l'Ollama du
+    # studio, dont on sait ce qu'il contient.
+    if ANALYSE_PETITE and not image_b64:
+        for petite in noeuds_a_llm():
+            rendu, souci_ = await poser_a(petite, corps, tid)
+            if rendu:
+                return rendu
+            journal(tid, f"{(noeud(petite) or {}).get('titre', petite)} : "
+                         f"{souci_ or 'aucune reponse'}")
+
     await attendre_carte_libre(tid)
     # ET la carte de la machine qui HEBERGE cet Ollama : une carte ne fait
     # qu'une tache a la fois, analyse comprise. attendre_carte_libre() ci-dessus
@@ -1312,8 +1329,6 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
             if tid:
                 journal(tid, "sa carte reste occupee — analyse lancee malgre tout")
             verrou_ol = None
-    corps = corps_ollama(texte, image_b64, systeme, json_mode, modele,
-                         temperature, garder)
     try:
         return await _ollama_local(corps)
     except Exception as e:
@@ -1392,18 +1407,31 @@ async def _ollama_local(corps):
             return rep_
 
 
+# Analyser sur la plus PETITE carte capable, plutot que sur la plus grosse.
+# C'est contre-intuitif et c'est le bon sens du parc : une analyse coute
+# quelques secondes a n'importe quelle carte, un rendu coute des minutes a la
+# meilleure. Occuper la grosse pour reflechir, c'est la retirer du travail
+# qu'elle seule sait faire vite. STUDIO_ANALYSE_PETITE=0 revient a l'ancien
+# ordre, si la mesure devait donner tort a la regle.
+ANALYSE_PETITE = os.environ.get("STUDIO_ANALYSE_PETITE", "1") != "0"
+
+
 def noeuds_a_llm():
     """Les machines joignables qui portent un modele de langage.
 
-    Les plus grosses d'abord : a defaut de mesurer leur debit, la memoire est le
-    meilleur indice de ce qu'elles peuvent charger sans ramer.
+    Les plus PETITES d'abord : une analyse tient sur n'importe quelle carte, et
+    laisser les grosses libres pour les rendus vaut mieux que quelques secondes
+    gagnees sur une reflexion. Une machine en pause n'en est pas : son
+    proprietaire s'en sert.
     """
     bons = []
     for x in REGISTRE.values():
         e = ETAT_NOEUDS.get(x["id"]) or {}
+        if x.get("pause"):
+            continue
         if e.get("repond") and e.get("llm") and time.time() - (e.get("vu") or 0) < SILENCE_MAX:
             bons.append((e.get("vram") or 0, x["id"]))
-    return [i for _, i in sorted(bons, reverse=True)]
+    return [i for _, i in sorted(bons, reverse=not ANALYSE_PETITE)]
 
 
 def _modele_du_noeud(ident, voulu):
@@ -7217,29 +7245,34 @@ def compte_de(req):
     return COMPTES.nom_du_jeton(req.cookies.get("studio_compte") or "") or ""
 
 
-FICHIER_REGLAGES = os.path.join(DOSSIER_CONV, "_reglages.json")
+# PREFERENCES et non REGLAGES : ce dernier existe depuis longtemps dans ce
+# fichier, et porte les parametres PAR MOTEUR — etapes, cfg. Le reutiliser ici
+# l'a purement et simplement ecrase : « REGLAGES["klein9b"] » levait un KeyError
+# au milieu d'une generation, et l'utilisateur l'a vu dans la minute.
+FICHIER_PREFERENCES = os.path.join(DOSSIER_CONV, "_reglages.json")
 # Combien de minutes une machine peut rester en pause en continuant de faire
 # patienter les demandes qui la reclament. Au-dela, on refuse plutot que de
 # laisser esperer : personne ne surveille une pause d'une heure.
-REGLAGES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30)}
+PREFERENCES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30)}
 
 
 def charger_reglages():
     try:
-        with open(FICHIER_REGLAGES, encoding="utf-8") as f:
+        with open(FICHIER_PREFERENCES, encoding="utf-8") as f:
             d = json.load(f)
         if isinstance(d, dict):
-            REGLAGES.update({k: int(v) for k, v in d.items() if k in REGLAGES})
+            PREFERENCES.update({k: int(v) for k, v in d.items()
+                                if k in PREFERENCES})
     except (OSError, ValueError, TypeError):
         pass
 
 
 def sauver_reglages():
     try:
-        tmp = FICHIER_REGLAGES + ".tmp"
+        tmp = FICHIER_PREFERENCES + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(REGLAGES, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, FICHIER_REGLAGES)
+            json.dump(PREFERENCES, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, FICHIER_PREFERENCES)
     except OSError:
         pass
 
@@ -7694,7 +7727,7 @@ async def api_admin_noeuds(req):
                               # L'utilisateur ne voyait que « je n'ai pas reussi
                               # a etoffer ta demande », sans cause. Ici, la cause.
                               "modeles_casses": dict(MODELES_CASSES),
-                              "pause_propose": REGLAGES["pause_propose"],
+                              "pause_propose": PREFERENCES["pause_propose"],
                               "modele_ecriture": choisir_modele_ecriture(),
                               "silence_max": SILENCE_MAX})
 
@@ -7811,12 +7844,12 @@ async def api_admin_reglages(req):
             d = {}
         v = d.get("pause_propose")
         if isinstance(v, (int, float)) and 0 <= v <= 1440:
-            REGLAGES["pause_propose"] = int(v)
+            PREFERENCES["pause_propose"] = int(v)
             sauver_reglages()
         else:
             return web.json_response(
                 {"erreur": "une duree en minutes, de 0 a 1440"}, status=400)
-    return web.json_response(dict(REGLAGES))
+    return web.json_response(dict(PREFERENCES))
 
 
 async def api_admin_creer(req):
