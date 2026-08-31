@@ -204,10 +204,20 @@ def sauver_file():
     au lieu de les relancer — voir noeud_qui_travaille().
     """
     tmp = FICHIER_FILE + ".tmp"
-    ordre = list(EN_VOL) + [t for t in ATTENTE if t not in EN_VOL]
+    # EN_FILE fait foi, EN_VOL et ATTENTE ne donnent que l'ORDRE. La version
+    # precedente n'ecrivait que l'intersection, et omettait donc tout travail
+    # present dans EN_FILE sans etre dans l'un des deux — un etat qui existe
+    # reellement : le « finally » du travailleur retire de EN_VOL avant de
+    # decider s'il retire de EN_FILE. Deux travaux en vol, l'utilisateur en
+    # annule un pendant l'arret du studio, et le travailleur de celui-la
+    # reecrivait le fichier alors que l'autre n'etait plus nulle part : file
+    # vide au reveil, exactement le symptome qu'on croyait avoir corrige.
+    ordre = ([t for t in EN_VOL if t in EN_FILE]
+             + [t for t in ATTENTE if t in EN_FILE and t not in EN_VOL])
+    ordre += [t for t in EN_FILE if t not in ordre]
     try:
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump([EN_FILE[t] for t in ordre if t in EN_FILE], f,
+            json.dump([EN_FILE[t] for t in ordre], f,
                       ensure_ascii=False, indent=1)
         os.replace(tmp, FICHIER_FILE)
     except OSError as e:
@@ -228,12 +238,34 @@ async def reprendre_file():
     except Exception as e:
         print(f"  file d'attente illisible ({e}) — on repart a vide", flush=True)
         return
-    repris = 0
+    repris, perdues, finies = 0, 0, 0
     for r in restes if isinstance(restes, list) else []:
+        # « r » vient d'un fichier : rien ne garantit que c'est un objet. Un
+        # « [null] » levait un AttributeError dans un gestionnaire on_startup,
+        # et aiohttp abandonnait le demarrage — un studio en conteneur tournait
+        # alors en boucle de redemarrage, sans autre symptome qu'une trace.
+        if not isinstance(r, dict):
+            perdues += 1
+            continue
         conv = CONVERSATIONS.get(r.get("conversation"))
         if not conv or not isinstance(r.get("tid"), str):
+            # Une conversation illisible emportait sans un mot les demandes qui
+            # l'attendaient, et le sauver_file() de fin enterinait la perte.
+            perdues += 1
             continue
         tid = r["tid"]
+        # Deja reprise : un fichier portant deux fois le meme identifiant aurait
+        # lance deux executer() concurrents sur une seule entree de EN_VOL.
+        if tid in EN_FILE:
+            continue
+        # Deja livree. rattacher_tardif() peut avoir recolle le resultat pendant
+        # que la demande etait encore en file ; la remettre en cours renverrait
+        # a la carte un travail termine, avec une graine neuve — donc une AUTRE
+        # image, qui remplacerait celle qui a ete livree.
+        if any(t.get("id") == tid and t.get("etat") == "fini"
+               for t in conv.get("tours", [])):
+            finies += 1
+            continue
         TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": r.get("texte", ""),
                        "conversation": conv["id"], "proprietaire": r.get("proprietaire"),
                        "image": r.get("image")}
@@ -256,6 +288,21 @@ async def reprendre_file():
     if repris:
         print(f"  {repris} demande(s) reprise(s) de la file d'avant l'arret",
               flush=True)
+    if finies:
+        print(f"  {finies} demande(s) etaient deja livrees — laissees telles "
+              f"quelles", flush=True)
+    if perdues:
+        # On le dit, et on garde le fichier : sans cela la perte etait
+        # silencieuse des deux cotes, pour l'utilisateur comme pour le
+        # diagnostic.
+        try:
+            # Deplace, pas copie : le fichier va etre reecrit juste apres par
+            # sauver_file(), donc rien n'est ecrase et l'original est garde.
+            os.replace(FICHIER_FILE, FICHIER_FILE + ".perdu")
+        except OSError:
+            pass
+        print(f"  {perdues} demande(s) de la file n'ont pas pu etre rattachees "
+              f"— l'ancien fichier est garde sous _file.json.perdu", flush=True)
     sauver_file()
 
 # Par TACHE, et non un jeu de compteurs unique : deux rendus simultanes
@@ -4417,7 +4464,8 @@ async def soumettre_a_agent(g, tid, ident):
     # machine, elle, n'a jamais cesse de calculer. Sans cette verification la
     # carte refaisait tout, et le premier resultat arrivait quand meme.
     deja = noeud_qui_travaille(tid)
-    if deja == ident:
+    rebranche = deja == ident
+    if rebranche:
         journal(tid, f"{titre_} calcule deja cette demande — on attend son "
                      f"resultat plutot que de la relancer")
     else:
@@ -4426,7 +4474,7 @@ async def soumettre_a_agent(g, tid, ident):
         journal(tid, f"travail confie a {titre_} — en attente de sa reponse")
     t0 = time.time()
     try:
-        d = await _attendre_le_noeud(attente, ident, titre_, tid)
+        d = await _attendre_le_noeud(attente, ident, titre_, tid, rebranche)
     except asyncio.TimeoutError:
         raise RuntimeError(f"{titre_} n'a pas rendu de resultat en une heure")
     finally:
@@ -4448,7 +4496,21 @@ async def soumettre_a_agent(g, tid, ident):
     return sorties, d.get("secondes") or (time.time() - t0)
 
 
-async def _attendre_le_noeud(attente, ident, titre, tid):
+def _deja_livre(tid):
+    """Le tour de ce travail s'il a DEJA ete livre, par un autre chemin.
+
+    Il y en a un : rattacher_tardif(), quand une machine rend un resultat que
+    plus personne n'attendait parce que le studio avait redemarre.
+    """
+    for conv in CONVERSATIONS.values():
+        for t in conv.get("tours", []):
+            if (t.get("id") == tid and t.get("etat") == "fini"
+                    and t.get("fichiers")):
+                return t
+    return None
+
+
+async def _attendre_le_noeud(attente, ident, titre, tid, rebranche=False):
     """Attend le resultat, en surveillant que la machine parle encore.
 
     Une heure d'attente seche etait la seule borne. Constate : le ComfyUI d'une
@@ -4471,6 +4533,21 @@ async def _attendre_le_noeud(attente, ident, titre, tid):
             return await asyncio.wait_for(asyncio.shield(attente), timeout=min(5, reste))
         except asyncio.TimeoutError:
             pass
+        # On s'est rebranche sur un rendu deja parti, sans rien deposer : c'est
+        # une promesse qu'on n'a pas faite, et elle peut etre deja tenue ou deja
+        # morte. Il faut donc la reverifier, sinon on attend une heure — pendant
+        # laquelle le verrou de cette carte est tenu pour rien.
+        if rebranche:
+            livre = _deja_livre(tid)
+            if livre:
+                journal(tid, f"{titre} avait deja rendu pendant l'arret — "
+                             f"on reprend son resultat")
+                return {"etat": "fini", "fichiers": livre["fichiers"],
+                        "secondes": livre.get("secondes")}
+            if noeud_qui_travaille(tid) != ident:
+                journal(tid, f"{titre} ne calcule plus cette demande — "
+                             f"on ne l'attend pas davantage")
+                raise PanneNoeud(f"{titre} n'a pas garde cette demande")
         e = ETAT_NOEUDS.get(ident) or {}
         mut = time.time() - (e.get("vu") or 0)
         if mut > 4 * SILENCE_MAX:
@@ -5431,6 +5508,15 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
     }
     for i, ancien in enumerate(conv["tours"]):
         if ancien.get("id") == tid:
+            # UNE LIVRAISON NE SE REMPLACE PAS PAR UNE ERREUR. Le tour peut
+            # avoir ete termine par un autre chemin que celui qui ecrit ici —
+            # rattacher_tardif() recolle le resultat d'une machine qui a fini
+            # pendant que le studio redemarrait, et le travailleur qui refaisait
+            # le meme travail arrivait ensuite avec son echec. L'utilisateur
+            # voyait son image apparaitre, puis disparaitre.
+            if (etat == "erreur" and ancien.get("etat") == "fini"
+                    and ancien.get("fichiers")):
+                return
             # L'avis eventuellement pose ne doit pas etre efface par la mise a
             # jour : il appartient a l'utilisateur, pas au deroulement.
             tour["avis"] = ancien.get("avis", 0)
@@ -7752,8 +7838,15 @@ async def api_noeud_annonce(req):
     # chaque redemarrage ; sans cette liste, reprendre_file() renvoyait une
     # demande dont le rendu tournait encore la-bas, et la carte faisait deux fois
     # le meme travail — la seconde fois pour rien.
-    if isinstance(d.get("travaux"), list):
-        etat["travaux"] = [t for t in d["travaux"] if isinstance(t, str)][:8]
+    # Ecrite a CHAQUE annonce, cle absente valant liste vide. Ne l'ecrire que
+    # lorsqu'elle est presente laissait une revendication vivre pour toujours :
+    # l'annonce « comfy: False », celle d'une machine dont la carte vient de
+    # tomber, ne porte pas cette cle. Le studio croyait donc qu'elle calculait
+    # encore, s'y rebranchait, et attendait une heure une reponse qui ne
+    # viendrait pas — alors qu'une autre machine etait libre. Un agent d'avant
+    # le 31 aout, qui ne connait pas ce champ, produisait le meme blocage.
+    etat["travaux"] = [t for t in (d.get("travaux") or [])
+                       if isinstance(t, str)][:8]
     # Une annonce « comfy: False » dit : la machine est la, sa carte ne repond
     # pas. On note qu'on l'a vue et ce qu'elle porte cote langage, mais on
     # n'ecrase ni sa carte ni sa memoire par des zeros — ce qu'on savait d'elle
@@ -7933,7 +8026,14 @@ async def api_noeud_progres(req):
     # analyse, puis a cherche une SECONDE carte pour la meme image.
     if isinstance(tid_dit, str):
         etat_ = ETAT_NOEUDS.setdefault(x["id"], {})
-        etat_["vu"] = time.time()
+        # « repond » et pas seulement « vu ». Contrairement a la reclamation de
+        # travail, ce battement-ci ne prouve pas que l'agent est la : il prouve
+        # que SA CARTE tourne, puisqu'il sort de la boucle d'echantillonnage de
+        # ComfyUI. Apres un redemarrage du studio, la machine qui reprend son
+        # propre rendu restait sinon marquee muette pendant toute la duree de ce
+        # rendu, et le repartiteur repondait « aucune machine ne repond » a la
+        # demande suivante.
+        etat_.update(vu=time.time(), repond=True, agent=True)
         # Une demande que le studio connait, et pas n'importe laquelle : ce
         # qu'on ecrit ici sert a lui rendre un resultat sans verifier a qui le
         # travail avait ete confie. Une machine ne peut donc pas se declarer
