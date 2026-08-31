@@ -1315,27 +1315,33 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
     # Jamais pour une image : le modele de vision n'est pas celui d'ecriture, et
     # une machine peut porter l'un sans l'autre. On garde alors l'Ollama du
     # studio, dont on sait ce qu'il contient.
-    if ANALYSE_PETITE and not image_b64:
-        # Deux tours. Le premier ne prend que ce qui est libre a l'instant : la
-        # plus petite carte disponible repond, et si elle travaille on passe a la
-        # suivante sans rien attendre. Le second, seulement si toutes
-        # travaillaient, accepte de patienter — c'est la que le plafond de vingt
-        # secondes reprend son sens.
-        for patience in (0, None):
-            for petite in noeuds_a_llm():
-                rendu, souci_ = await poser_a(petite, corps, tid,
-                                              patience=patience)
-                if rendu:
-                    return rendu
-                if souci_ != "carte occupee":
-                    journal(tid, f"{(noeud(petite) or {}).get('titre', petite)} : "
-                                 f"{souci_ or 'aucune reponse'}")
+    # EMPRUNTER COUTE CHER. Mesure du 31 aout, la meme question a chaque
+    # machine : 3,8 s par l'Ollama du studio en direct, 74,8 s en la posant au PC
+    # par son agent, 162,6 s au NAS. Le chemin de l'agent ajoute son sondage, son
+    # chargement de modele et son tour de boucle. Une demande complete est passee
+    # de vingt secondes d'analyse a CINQ MINUTES QUARANTE.
+    #
+    # « La petite carte reflechit pendant que la grosse rend » reste la regle,
+    # mais elle ne vaut qu'a partir du moment ou la carte du studio est prise.
+    # Tant qu'elle est libre, router ailleurs ferait perdre deux minutes pour
+    # epargner une carte que personne ne reclame.
+    chez = noeud_de_l_ollama()
+    if (ANALYSE_PETITE and not image_b64 and chez
+            and verrou_noeud(chez).locked()):
+        for petite in noeuds_a_llm():
+            if petite == chez:
+                continue          # c'est justement celle qui travaille
+            rendu, souci_ = await poser_a(petite, corps, tid, patience=0)
+            if rendu:
+                return rendu
+            if souci_ != "carte occupee":
+                journal(tid, f"{(noeud(petite) or {}).get('titre', petite)} : "
+                             f"{souci_ or 'aucune reponse'}")
 
     await attendre_carte_libre(tid)
     # ET la carte de la machine qui HEBERGE cet Ollama : une carte ne fait
     # qu'une tache a la fois, analyse comprise. attendre_carte_libre() ci-dessus
     # ne surveille que le ComfyUI du studio, qui n'existe plus.
-    chez = noeud_de_l_ollama()
     verrou_ol = verrou_noeud(chez) if chez else None
     if verrou_ol is not None:
         titre_ol = (noeud(chez) or {}).get("titre", chez)
