@@ -1,0 +1,24 @@
+{"id": 1, "famille": "paysage", "intention": "image", "modele": "flux1", "texte": "un lac de montagne au petit matin"}
+{"id": 2, "famille": "paysage", "intention": "image", "modele": "klein4b", "texte": "une lande bretonne battue par le vent en fin d'automne, ajoncs jaunes couches par les rafales, un muret de pierres seches qui court vers la falaise, la mer grise au loin sous un ciel de nuages bas et rapides"}
+{"id": 3, "famille": "paysage", "intention": "image", "modele": "flux1", "texte": "desert de sel"}
+{"id": 4, "famille": "paysage", "intention": "image", "modele": "flux1", "texte": "une riziere en terrasses juste apres la pluie"}
+{"id": 5, "famille": "portrait", "intention": "personnage", "modele": "flux1", "texte": "le portrait d'une vieille femme qui rit"}
+{"id": 6, "famille": "portrait", "intention": "personnage", "modele": "realvis", "texte": "un forgeron de profil devant sa forge, le visage eclaire par le metal en fusion, tablier de cuir use, barbe grise, sueur sur le front, on devine l'atelier sombre derriere lui"}
+{"id": 7, "famille": "portrait", "intention": "personnage", "modele": "flux1", "texte": "portrait d'enfant"}
+{"id": 8, "famille": "portrait", "intention": "personnage", "modele": "flux1", "texte": "une violoncelliste en repetition, vue en contre-plongee"}
+{"id": 9, "famille": "texte_affiche", "intention": "image", "modele": "flux1", "texte": "une devanture de boulangerie avec l'enseigne au-dessus de la porte", "cases": ["Au Bon Pain de Jadis", "ouvert du mardi au dimanche"]}
+{"id": 10, "famille": "texte_affiche", "intention": "image", "modele": "flux1", "texte": "une affiche de concert placardee sur un mur de brique", "cases": ["Fanfare du Vieux Port", "samedi 14 mars, 20h30", "entree libre"]}
+{"id": 11, "famille": "texte_affiche", "intention": "image", "modele": "flux1", "texte": "un panneau de bois plante au bord d'un sentier de randonnee", "cases": ["Attention chutes de pierres"]}
+{"id": 12, "famille": "texte_affiche", "intention": "image", "modele": "flux1", "texte": "la couverture d'un vieux carnet de notes pose sur une table", "cases": ["Journal de bord", "hiver 1923"]}
+{"id": 13, "famille": "objet", "intention": "objet3d", "modele": "objet3d", "texte": "une theiere en fonte japonaise"}
+{"id": 14, "famille": "objet", "intention": "objet3d", "modele": "objet3d", "texte": "vieille machine a ecrire"}
+{"id": 15, "famille": "objet", "intention": "image", "modele": "flux1", "texte": "un etabli de menuisier couvert d'outils, rabot, ciseaux a bois, copeaux repandus, lumiere d'atelier venant d'une verriere sur la gauche, plan large legerement en plongee"}
+{"id": 16, "famille": "objet", "intention": "image", "modele": "realvis", "texte": "une montre a gousset ouverte, gros plan"}
+{"id": 17, "famille": "animal", "intention": "image", "modele": "flux1", "texte": "un vieux hibou perche sur une branche moussue"}
+{"id": 18, "famille": "animal", "intention": "image", "modele": "flux1", "texte": "un blaireau et un herisson qui se croisent sur un chemin de terre a la tombee de la nuit, le blaireau de trois quarts dos, le herisson au premier plan"}
+{"id": 19, "famille": "animal", "intention": "image", "modele": "flux1", "texte": "une mesange bleue sur une mangeoire givree"}
+{"id": 20, "famille": "animal", "intention": "image", "modele": "realvis", "texte": "un sanglier dans les fougeres"}
+{"id": 21, "famille": "animal", "intention": "image", "modele": "flux1", "texte": "une buse variable en vol, vue de dessous, ailes deployees"}
+{"id": 22, "famille": "cadrage", "intention": "image", "modele": "flux1", "texte": "un escalier en colimacon photographie en contre-plongee depuis le rez-de-chaussee"}
+{"id": 23, "famille": "cadrage", "intention": "video", "modele": "wan5b", "texte": "un chevreuil traverse une clairiere, plan large, camera fixe"}
+{"id": 24, "famille": "cadrage", "intention": "video", "modele": "wan5b", "texte": "gros plan sur des mains qui petrissent de la pate a pain, la camera recule lentement pour decouvrir la cuisine entiere, lumiere du matin par la fenetre, farine en suspension dans l'air"}

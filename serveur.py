@@ -1357,12 +1357,46 @@ def corps_ollama(texte, image_b64, systeme, json_mode, modele, temperature, gard
     # keep_alive 0 par defaut : ComfyUI reprend la carte juste apres, et un
     # modele reste resident tant qu'on ne l'a pas relache. « garder » n'est
     # leve que pour une suite d'appels rapprochee, refermee par liberer_modele.
+    # « garder » a zero dechargeait le modele apres CHAQUE appel. Mesure : 3,8 s
+    # par appel contre 0,4 s a chaud — huit a quinze secondes de rechargement pur
+    # avant chaque rendu, une demande en faisant trois (aiguillage,
+    # enrichissement, traduction). C'etait le plus gros gain disponible, et il ne
+    # depend d'aucun modele.
+    #
+    # Une minute, pas davantage : le modele occupe la memoire de la carte tant
+    # qu'il y reste, et cette carte sert aussi a rendre. Une minute couvre la
+    # rafale d'une demande sans immobiliser la machine pour la suivante.
     corps = {"model": modele or MODELE_LLM, "prompt": texte, "stream": False,
-             "keep_alive": garder, "options": {"temperature": temperature}}
+             "keep_alive": garder or GARDER_LLM,
+             "options": {"temperature": temperature}}
     if systeme: corps["system"] = systeme
     if json_mode: corps["format"] = "json"
     if image_b64: corps["images"] = [image_b64]
     return corps
+
+
+def _echec_de_chargement(texte):
+    """Ce message dit-il que le modele n'a pas pu etre charge.
+
+    On n'ecarte pas un modele sur une panne passagere — reseau coupe, Ollama qui
+    redemarre. Ces trois formules sont celles du chargement impossible, et elles
+    ne varient pas d'une version a l'autre.
+    """
+    t = (texte or "").lower()
+    return any(m in t for m in ("error loading model", "process has terminated",
+                                "failed to initialize"))
+
+
+def _ecarter_modele(nom, pourquoi):
+    """Retire un modele du choix, une fois, en le disant."""
+    global MODELE_ECRITURE
+    if not nom or nom in MODELES_CASSES:
+        return
+    MODELES_CASSES[nom] = (pourquoi or "")[:200]
+    print(f"  [ollama] {nom} ne se charge pas, il est ecarte "
+          f"— {MODELES_CASSES[nom]}", flush=True)
+    if MODELE_ECRITURE == nom:
+        MODELE_ECRITURE = ""      # le prochain appel en choisira un autre
 
 
 async def _ollama_local(corps):
@@ -1377,21 +1411,22 @@ async def _ollama_local(corps):
     to = aiohttp.ClientTimeout(total=900)
     async with aiohttp.ClientSession(timeout=to) as s:
         async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
+            if r.status >= 400:
+                # Depuis la mise a jour d'Ollama, un modele qui ne s'initialise
+                # pas rend un 500 au lieu d'un 200 avec un champ « error ». Le
+                # tri ci-dessous ne le voyait donc plus, et le modele etait
+                # redemande a chaque appel — quatorze secondes perdues a chaque
+                # fois, pour la meme panne definitive.
+                brut_ = (await r.text())[:300]
+                if _echec_de_chargement(brut_):
+                    _ecarter_modele(corps.get("model") or "", brut_)
+                raise RuntimeError(f"ollama {r.status} : {brut_[:160]}")
             d = await r.json()
             rep_ = d.get("response", "")
             if not rep_.strip() and d.get("error"):
                 # Ollama a repondu 200 avec un champ « error » : le modele
-                # existe, il ne se CHARGE pas. Le reessayer a chaque demande
-                # ne fait que perdre du temps deux fois par appel.
-                nom_ = corps.get("model") or ""
-                if nom_ and nom_ not in MODELES_CASSES:
-                    MODELES_CASSES[nom_] = str(d["error"])[:200]
-                    print(f"  [ollama] {nom_} ne se charge pas, il est ecarte "
-                          f"— {MODELES_CASSES[nom_]}", flush=True)
-                    global MODELE_ECRITURE
-                    if MODELE_ECRITURE == nom_:
-                        # Le prochain appel en choisira un autre.
-                        MODELE_ECRITURE = ""
+                # existe, il ne se CHARGE pas.
+                _ecarter_modele(corps.get("model") or "", str(d["error"]))
             if not rep_.strip():
                 # Une reponse vide est dite a voix haute, comme pour un
                 # fournisseur distant. Sans cela, « traduction rejetee
@@ -1414,6 +1449,8 @@ async def _ollama_local(corps):
 # qu'elle seule sait faire vite. STUDIO_ANALYSE_PETITE=0 revient a l'ancien
 # ordre, si la mesure devait donner tort a la regle.
 ANALYSE_PETITE = os.environ.get("STUDIO_ANALYSE_PETITE", "1") != "0"
+# Combien de temps Ollama garde le modele en memoire entre deux appels.
+GARDER_LLM = os.environ.get("STUDIO_LLM_GARDER") or "60s"
 
 
 def noeuds_a_llm():
