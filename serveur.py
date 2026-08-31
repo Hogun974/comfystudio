@@ -5844,11 +5844,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         TACHES[tid]["noeud"] = ident
         if len(NOEUDS) > 1:
             journal(tid, f"machine retenue : {cible.get('titre', ident)}")
-        if not tient_vraiment(cle, ident):
-            e = ETAT_NOEUDS.get(ident) or {}
+        # « en offre None » : la taille de la carte vient de l'annonce, et une
+        # machine qui rendait deja avant un redemarrage du studio ne s'est pas
+        # encore reannoncee. Annoncer un debordement qu'on n'a pas constate,
+        # c'est inquieter pour rien — et le rendu qui suivait ce message a mis
+        # 223 s, soit son temps ordinaire.
+        if not tient_vraiment(cle, ident) and (ETAT_NOEUDS.get(ident) or {}).get("vram"):
             journal(tid, f"{CATALOGUE[cle]['titre']} demande "
                          f"{CATALOGUE[cle].get('vram', 0)} Go et la carte en offre "
-                         f"{e.get('vram')} : debordement sur la RAM, plus lent")
+                         f"{ETAT_NOEUDS[ident]['vram']} Go : debordement sur la "
+                         f"RAM, plus lent")
         journal(tid, f"{CATALOGUE[cle]['titre']} — {plan.get('raison','')}", plan=plan)
         # Le telechargement n'est possible que sur le disque du studio : un noeud
         # distant s'approvisionne a la main, et reste inelegible en attendant.
