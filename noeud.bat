@@ -11,6 +11,7 @@ REM   noeud.bat --studio URL --jeton XXXX    sans aucune question
 REM   noeud.bat --sorties CHEMIN             output de ComfyUI, pour le menage
 REM   noeud.bat --fond                       laisse tourner en tache de fond
 REM   noeud.bat --empreinte SHA256           n'installe que cet agent-la
+REM   noeud.bat --ollama URL                 ou joindre le modele de langage
 REM
 REM Ce fichier telecharge du code Python et l'execute. En HTTP simple, quiconque
 REM s'intercale sur le reseau choisit ce code. --empreinte (ou AGENT_EMPREINTE)
@@ -30,6 +31,7 @@ set "VERIFIER=0"
 set "FOND=0"
 if not defined EMPREINTE set "EMPREINTE=%AGENT_EMPREINTE%"
 if not defined COMFY_URL set "COMFY_URL=http://127.0.0.1:8188"
+if not defined OLLAMA_URL set "OLLAMA_URL=http://127.0.0.1:11434"
 set "CONFIG=agent_noeud.json"
 set "AGENT=agent_noeud.py"
 set /a ENNUIS=0
@@ -41,6 +43,7 @@ REM bloc entier avant de l'executer, et shift y perd son effet.
 if /i "%~1"=="--studio" goto :a_studio
 if /i "%~1"=="--jeton" goto :a_jeton
 if /i "%~1"=="--comfy" goto :a_comfy
+if /i "%~1"=="--ollama" goto :a_ollama
 if /i "%~1"=="--sorties" goto :a_sorties
 if /i "%~1"=="--verifier" goto :a_verifier
 if /i "%~1"=="--fond" goto :a_fond
@@ -62,6 +65,12 @@ goto :args
 
 :a_empreinte
 set "EMPREINTE=%~2"
+shift
+shift
+goto :args
+
+:a_ollama
+set "OLLAMA_URL=%~2"
 shift
 shift
 goto :args
@@ -187,6 +196,44 @@ if "%VIVANT%"=="1" (
 call :joignable
 if "%VIVANT%"=="1" for /f "delims=" %%n in ('powershell -NoProfile -Command "try{ (Invoke-RestMethod -TimeoutSec 6 '%COMFY_URL%/models/diffusion_models').Count } catch { 0 }" 2^>nul') do echo       modeles de diffusion vus : %%n
 
+
+echo.
+echo Modele de langage
+echo -----------------
+REM Le studio emprunte le modele de langage de CETTE machine pour analyser une
+REM demande. Depuis qu'une carte ne fait qu'une tache a la fois, en avoir un ici
+REM change la donne : la petite carte reflechit pendant que la grosse rend. Sans
+REM Ollama nulle part sauf sur une machine, toutes les analyses passent par elle.
+REM
+REM Le modele conseille depend de la carte : au-dela du plafond, Ollama deborde
+REM sur la RAM et l'analyse, qui precede CHAQUE rendu, met des minutes.
+set "CONSEIL=qwen3:4b"
+set "GOCARTE="
+for /f "delims=" %%g in ('nvidia-smi --query-gpu^=memory.total --format^=csv^,noheader^,nounits 2^>nul') do if not defined GOCARTE set /a "GOCARTE=%%g/1024"
+if defined GOCARTE (
+  if !GOCARTE! GEQ 6 set "CONSEIL=qwen3:8b"
+  if !GOCARTE! GEQ 11 set "CONSEIL=gemma3:12b"
+  if !GOCARTE! GEQ 20 set "CONSEIL=gemma3:27b"
+)
+set "NBMOD="
+for /f "delims=" %%o in ('powershell -NoProfile -Command "try{ (Invoke-RestMethod -TimeoutSec 6 '%OLLAMA_URL%/api/tags').models.Count } catch { -1 }" 2^>nul') do set "NBMOD=%%o"
+REM Trois ifs et un drapeau, plutot qu'un « else if » enchaine : cmd rattache
+REM le « else » au SECOND if, et l'on saute alors le cas qu'on croyait traiter.
+REM Le piege a deja coute une soiree sur ce meme fichier.
+if not defined NBMOD set "NBMOD=-1"
+if "!NBMOD!"=="-1" (
+  call :souci "aucun Ollama sur !OLLAMA_URL!"
+  echo       cette machine ne pourra pas analyser : le studio le fera ailleurs
+  echo       a installer depuis https://ollama.com/download
+  echo       puis :  ollama pull !CONSEIL!
+)
+if "!NBMOD!"=="0" (
+  call :souci "Ollama repond mais n'a aucun modele"
+  echo       ollama pull !CONSEIL!
+)
+if not "!NBMOD!"=="-1" if not "!NBMOD!"=="0" (
+  echo   [ok] Ollama repond sur !OLLAMA_URL! - !NBMOD! modele^(s^)
+)
 
 echo.
 echo Studio
