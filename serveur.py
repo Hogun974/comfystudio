@@ -9059,14 +9059,22 @@ if __name__ == "__main__":
     charger_cles()
     charger_nuage()
     relever_vram()
-    print(f"  Ecriture  : {choisir_modele_ecriture()}")
+    # Le modele d'ecriture est desormais annonce par adresse, juste au-dessus.
     print("  Aiguilleur: "
           + (f"{len(AIGUILLEUR.classes)} intentions apprises"
              if AIGUILLEUR else "absent — tout passe par le modele de langage"))
     print("=" * 64)
     print("  ComfyStudio")
     print(f"  ComfyUI   : {COMFY}")
-    print(f"  Ollama    : {', '.join(OLLAMAS)}   ({MODELE_LLM})")
+    # Une ligne par adresse, avec le modele d'ecriture de CHACUNE. La ligne
+    # unique annonçait celui de la premiere et laissait croire que c'etait
+    # celui du studio — alors que la machine reellement employee est souvent
+    # une autre, et qu'elle ne porte pas les memes modeles.
+    for i, u in enumerate(OLLAMAS):
+        chez_ = cerveau(u).get("noeud")
+        ou = f"  [{(noeud(chez_) or {}).get('titre', chez_)}]" if chez_ else ""
+        print(f"  {'Ollama    :' if i == 0 else '             '} {u}"
+              f"   ecrit avec {modele_ecriture_de(u)}{ou}")
     print(f"  Modeles   : {RACINE_MODELES}")
     # En conteneur, 127.0.0.1 designe le conteneur : l'adresse n'est utile
     # qu'a lui-meme. Et le port publie sur l'hote n'est pas forcement le notre —
