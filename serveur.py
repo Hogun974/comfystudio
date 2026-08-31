@@ -35,7 +35,18 @@ ICI        = os.path.dirname(os.path.abspath(__file__))
 ICI_DATA   = (os.path.dirname(os.path.abspath(sys.executable))
               if getattr(sys, "frozen", False) else ICI)
 COMFY      = os.environ.get("COMFY_URL", "http://127.0.0.1:8188")
-OLLAMA     = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+# Une adresse, ou plusieurs separees par des virgules. Plusieurs, parce qu'une
+# seule obligeait a choisir une fois pour toutes la machine qui pense — et celle
+# qu'on choisit est la plus grosse, donc celle qu'on met en pause pour jouer.
+# Passer par l'agent d'une autre machine n'est pas un repli acceptable : mesure
+# du 31 aout, la meme question coute 3,8 s en direct, 74,8 s au PC par son agent
+# et 162,6 s au NAS. Le studio parle donc a chaque Ollama en direct, et choisit.
+OLLAMAS = [u.strip().rstrip("/")
+           for u in os.environ.get("OLLAMA_URL", "http://localhost:11434").split(",")
+           if u.strip()] or ["http://localhost:11434"]
+# La premiere reste « OLLAMA » : tout ce qui n'a pas besoin de choisir — la
+# banniere, un dechargement — continue de la nommer sans rien savoir des autres.
+OLLAMA     = OLLAMAS[0]
 # Deux modeles, deux roles. L'aiguillage doit etre rapide : un petit modele suffit
 # a produire du JSON structure. La lecture d'image exige la vision, d'ou un second
 # modele, charge seulement quand une image doit etre decrite.
@@ -477,14 +488,14 @@ def memoire_vive():
         return 0.0
 
 
-def _ollama_ici():
+def _ollama_ici(url=None):
     """Vrai si Ollama tourne sur la machine du studio.
 
     On ne peut pas connaitre la memoire d'une machine qu'on ne fait qu'appeler :
     on lui fait confiance. Une machine ne telecharge pas un modele de vingt-six
     milliards de parametres si elle ne peut pas le charger.
     """
-    hote = (urllib.parse.urlparse(OLLAMA).hostname or "").lower()
+    hote = (urllib.parse.urlparse(url or OLLAMA).hostname or "").lower()
     return hote in ("127.0.0.1", "localhost", "::1", "")
 
 
@@ -502,43 +513,126 @@ MODELES_CASSES = {}
 
 
 def choisir_modele_ecriture():
-    """Le plus gros modele Ollama installe qui tienne raisonnablement ici.
+    """Le modele d'ecriture de la PREMIERE adresse — pour la banniere et pour
+    /admin, qui ont besoin d'un nom a montrer.
 
-    Ollama repartit les couches entre carte et processeur : un modele plus gros
-    que la VRAM tourne quand meme, plus lentement. On borne donc a 60 % de la
-    memoire vive, ce qui laisse de quoi faire tourner ComfyUI a cote — les deux
-    ne s'executent jamais en meme temps, mais ils cohabitent en memoire.
+    Le choix reel se fait par adresse, au moment de l'appel : deux machines ne
+    portent pas les memes modeles, et le plus gros ici peut etre absent la-bas.
+    Voir modele_ecriture_de().
     """
-    global MODELE_ECRITURE
-    if MODELE_ECRITURE:
-        return MODELE_ECRITURE
-    # Le plafond ne vaut que pour un Ollama LOCAL : c'est la memoire de CETTE
-    # machine qu'il mesure. Quand Ollama tourne ailleurs — le cas des que le
-    # studio n'a pas de carte — le borner ici ecartait un modele que la machine
-    # d'en face charge sans effort, et le studio se rabattait sur un 7B qui
-    # ecrit mal.
-    plafond = (memoire_vive() or 16.0) * 0.6 if _ollama_ici() else float("inf")
+    return modele_ecriture_de(OLLAMA)
+
+
+# « Le meilleur modele d'ecriture, la ou tu iras. » Le modele ne peut plus etre
+# choisi par l'appelant : il depend de l'adresse, et l'adresse n'est connue
+# qu'apres. On passe donc une intention, resolue au dernier moment.
+MODELE_POUR_ECRIRE = "@ecriture"
+# modele -> derniere adresse ou on l'a employe, pour savoir ou le decharger.
+_DERNIER_CERVEAU = {}
+# url -> {"quand", "modeles", "noeud"}. Relu rarement : la liste des modeles
+# d'une machine ne change qu'a la main, et resoudre un nom d'hote a chaque appel
+# se paierait des centaines de fois pour rien.
+_CERVEAUX = {}
+FRAICHEUR_CERVEAU = 120
+
+
+def cerveau(url):
+    """Ce que porte cet Ollama, et sur quelle machine du parc il tourne.
+
+    « noeud » vaut None quand on ne reconnait pas la machine : c'est le cas de
+    l'Ollama du studio lui-meme, et d'une machine qui n'a pas d'agent. On ne
+    reserve alors aucune carte — on ne saurait pas laquelle.
+    """
+    c = _CERVEAUX.get(url)
+    if c and time.time() - c["quand"] < FRAICHEUR_CERVEAU:
+        return c
+    c = {"quand": time.time(), "modeles": (c or {}).get("modeles") or [],
+         "noeud": (c or {}).get("noeud")}
     try:
         import urllib.request
 
-        with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=8) as r:
-            modeles = json.load(r).get("models", [])
+        with urllib.request.urlopen(f"{url}/api/tags", timeout=8) as r:
+            c["modeles"] = json.load(r).get("models", []) or []
     except Exception:
-        modeles = []
-    tenables = [m for m in modeles if 0 < m.get("size", 0) / 1e9 <= plafond
-                and m.get("name") not in MODELES_CASSES]
-    if not tenables:
-        MODELE_ECRITURE = MODELE_LLM
+        # On garde ce qu'on savait : une machine qui ne repond pas a CET instant
+        # n'a pas desinstalle ses modeles.
+        pass
+    hote = urllib.parse.urlparse(url).hostname
+    if hote:
+        import socket
+        try:
+            ip = socket.gethostbyname(hote)
+        except OSError:
+            ip = None
+        if ip:
+            c["noeud"] = next((x["id"] for x in tous_les_noeuds()
+                               if x.get("agent")
+                               and (ETAT_NOEUDS.get(x["id"]) or {}).get("ip") == ip),
+                              c.get("noeud"))
+    _CERVEAUX[url] = c
+    return c
+
+
+def _sait_lire_ici(url, modele):
+    """Ce modele est-il installe sur cet Ollama."""
+    return any(m.get("name") == modele for m in cerveau(url)["modeles"])
+
+
+def cerveaux_utilisables():
+    """Les Ollama qu'on a le droit d'employer, dans l'ordre ou les employer.
+
+    Trois regles, dans cet ordre, et ce sont celles de l'utilisateur :
+
+      - une machine EN PAUSE ne pense pas. Son proprietaire s'en sert.
+      - une carte LIBRE passe devant une carte occupee. Attendre deux minutes
+        derriere un rendu quand une autre machine repond tout de suite n'a de
+        sens pour personne.
+      - a egalite, la PLUS PETITE carte. Une analyse tient sur n'importe
+        laquelle ; occuper la meilleure pour reflechir, c'est la retirer du
+        rendu qu'elle seule fait vite.
+    """
+    bons = []
+    for url in OLLAMAS:
+        c = cerveau(url)
+        ident = c.get("noeud")
+        if ident and (noeud(ident) or {}).get("pause"):
+            continue
+        if not c["modeles"]:
+            continue
+        libre = not (ident and verrou_noeud(ident).locked())
+        taille = (ETAT_NOEUDS.get(ident) or {}).get("vram") or 0 if ident else 0
+        bons.append((0 if libre else 1, taille, url, ident))
+    bons.sort(key=lambda x: (x[0], x[1]))
+    return [(url, ident) for _, _, url, ident in bons]
+
+
+def modele_ecriture_de(url):
+    """Le meilleur modele d'ecriture installe sur CET Ollama.
+
+    Par adresse, et non une fois pour toutes : deux machines ne portent pas les
+    memes modeles, et celui qui est le plus gros ici peut etre absent la-bas.
+    """
+    # Le reglage l'emporte — la ou le modele existe. Un parc n'est pas
+    # homogene : imposer gemma3:4b parce qu'une machine l'a rendrait l'autre
+    # muette, alors qu'elle porte autre chose de tenable.
+    if MODELE_ECRITURE and _sait_lire_ici(url, MODELE_ECRITURE):
         return MODELE_ECRITURE
+    modeles = [m for m in cerveau(url)["modeles"]
+               if m.get("name") not in MODELES_CASSES]
+    # Le plafond ne vaut que pour un Ollama LOCAL : c'est la memoire de CETTE
+    # machine qu'il mesure.
+    plafond = ((memoire_vive() or 16.0) * 0.6
+               if _ollama_ici(url) else float("inf"))
+    tenables = [m for m in modeles if 0 < m.get("size", 0) / 1e9 <= plafond]
+    if not tenables:
+        return MODELE_LLM
     gros = max(tenables, key=lambda m: m.get("size", 0))
     courant = next((m for m in modeles if m.get("name") == MODELE_LLM), None)
     # Ne changer que si le gain est net : recharger un modele a peine plus gros
     # coute du temps sans rien apporter a l'ecriture.
     if courant and gros.get("size", 0) < courant.get("size", 0) * 1.5:
-        MODELE_ECRITURE = MODELE_LLM
-    else:
-        MODELE_ECRITURE = gros["name"]
-    return MODELE_ECRITURE
+        return MODELE_LLM
+    return gros["name"]
 
 
 def relever_vram():
@@ -1431,42 +1525,15 @@ async def attendre_carte_libre(tid=None):
             journal(tid, f"toujours en attente de la carte ({int(time.time()-debut)} s)")
         await asyncio.sleep(2)
 
-_OLLAMA_CHEZ = {"quand": 0.0, "noeud": None}
-
-
 def noeud_de_l_ollama():
-    """La machine a agent qui heberge l'Ollama du studio, s'il y en a une.
+    """La machine a agent qui heberge l'adresse PRINCIPALE, s'il y en a une.
 
-    On compare l'adresse resolue d'OLLAMA_URL a celle d'ou chaque agent nous
-    parle. C'est la seule correspondance disponible : un agent n'a pas d'adresse
-    joignable — c'est tout l'interet du montage — mais il en a forcement une
-    quand il appelle.
-
-    Sans cela, l'analyse tournait sur une carte que personne n'avait reservee :
-    l'utilisateur voyait une analyse et un rendu se partager le meme GPU, ce que
-    la regle « une carte, une tache » interdit. attendre_carte_libre(), lui, ne
-    regarde que le ComfyUI du studio — celui qui n'existe plus depuis qu'il n'a
-    pas de carte — et rendait donc la main aussitot.
-
-    Recalcule au plus une fois par minute : une resolution DNS a chaque appel du
-    modele de langage serait payee des centaines de fois pour rien.
+    Il y a maintenant plusieurs adresses et cerveau() les reconnait toutes ;
+    cette fonction ne sert plus qu'aux quelques endroits qui parlent de « l'
+    Ollama du studio » au singulier. Deux facons de reconnaitre une machine,
+    c'etait une de trop.
     """
-    if time.time() - _OLLAMA_CHEZ["quand"] < 60:
-        return _OLLAMA_CHEZ["noeud"]
-    _OLLAMA_CHEZ["quand"] = time.time()
-    _OLLAMA_CHEZ["noeud"] = None
-    hote = urllib.parse.urlparse(OLLAMA).hostname
-    if hote:
-        import socket
-        try:
-            ip = socket.gethostbyname(hote)
-        except OSError:
-            return None
-        for x in tous_les_noeuds():
-            if x.get("agent") and (ETAT_NOEUDS.get(x["id"]) or {}).get("ip") == ip:
-                _OLLAMA_CHEZ["noeud"] = x["id"]
-                break
-    return _OLLAMA_CHEZ["noeud"]
+    return cerveau(OLLAMA).get("noeud")
 
 
 async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
@@ -1549,67 +1616,53 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # mais elle ne vaut qu'a partir du moment ou la carte du studio est prise.
     # Tant qu'elle est libre, router ailleurs ferait perdre deux minutes pour
     # epargner une carte que personne ne reclame.
-    chez = noeud_de_l_ollama()
-    # « Je vais jouer un peu, mais le studio doit toujours etre utilisable. »
-    # La pause ne couvrait que les rendus. Or l'Ollama du studio vit, lui aussi,
-    # sur une machine du parc — et c'est la plus grosse, donc celle qu'on met en
-    # pause. Constate le 31 aout : pendant que le PC etait en pause, chaque
-    # traduction y chargeait toujours un modele de 18,6 Go sur une carte de 11,
-    # soit soixante-quinze a cent-soixante secondes de carte prise a quelqu'un
-    # qui jouait. On passe la main a une autre machine, et si personne ne peut,
-    # on le dit — plutot que de s'installer chez elle en silence.
-    if chez and (noeud(chez) or {}).get("pause"):
-        titre_p = (noeud(chez) or {}).get("titre", chez)
-        journal(tid, f"{titre_p} est en pause — son modele de langage avec elle")
-        rendu = await demander_a_un_noeud(corps, tid)
-        if rendu:
-            return rendu
-        raise RuntimeError(
-            f"le modele de langage vit sur {titre_p}, qui est en pause, et "
-            f"aucune autre machine n'en porte. Reveille-la dans /admin, ou "
-            f"autorise le nuage pour cette demande.")
-    if (ANALYSE_PETITE and not image_b64 and chez
-            and verrou_noeud(chez).locked()):
-        for petite in noeuds_a_llm():
-            if petite == chez:
-                continue          # c'est justement celle qui travaille
-            rendu, souci_ = await poser_a(petite, corps, tid, patience=0,
-                                          secondes=ANALYSE_MAX)
-            if rendu:
-                return rendu
-            if souci_ != "carte occupee":
-                journal(tid, f"{(noeud(petite) or {}).get('titre', petite)} : "
-                             f"{souci_ or 'aucune reponse'}")
-
     await attendre_carte_libre(tid)
-    # ET la carte de la machine qui HEBERGE cet Ollama : une carte ne fait
-    # qu'une tache a la fois, analyse comprise. attendre_carte_libre() ci-dessus
-    # ne surveille que le ComfyUI du studio, qui n'existe plus.
-    verrou_ol = verrou_noeud(chez) if chez else None
-    if verrou_ol is not None:
-        titre_ol = (noeud(chez) or {}).get("titre", chez)
-        if verrou_ol.locked() and tid:
-            journal(tid, f"{titre_ol} calcule — l'analyse attend que sa carte "
-                         f"se libere")
-        # PAS d'echappatoire. La version precedente lançait l'analyse « malgre
-        # tout » au bout de vingt secondes : c'etait s'installer a cote d'un
-        # rendu sur la meme carte, exactement ce que la regle interdit. Une
-        # carte ne fait qu'une chose a la fois, sans exception — on attend la
-        # fin du rendu, et si rien ne se libere en une demi-heure c'est une
-        # panne, qui merite d'etre dite plutot que contournee.
-        try:
-            await asyncio.wait_for(verrou_ol.acquire(), timeout=ATTENTE_CARTE)
-        except asyncio.TimeoutError:
-            raise RuntimeError(
-                f"{titre_ol} n'a pas libere sa carte en "
-                f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance dessus.")
-    try:
-        return await _ollama_local(corps)
-    except Exception as e:
-        panne = e
-    finally:
+    # CHAQUE Ollama en direct, dans l'ordre rendu par cerveaux_utilisables() :
+    # jamais une machine en pause, une carte libre avant une carte occupee, et a
+    # egalite la plus petite. Le detour par l'agent d'une machine reste en
+    # dernier recours — mesure du 31 aout, la meme question coute 3,8 s en
+    # direct, 74,8 s au PC par son agent et 162,6 s au NAS.
+    cerveaux = cerveaux_utilisables()
+    if not cerveaux:
+        journal(tid, _pourquoi_aucun_cerveau())
+    panne = None
+    for url, ident in cerveaux:
+        titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
+        ici = corps_ici(corps, url, tid if len(cerveaux) == 1 else None)
+        if ici is None:
+            # Une image a lire et pas de modele de vision ici : substituer en
+            # rendrait une description inventee, sans que rien ne le dise.
+            continue
+        # La carte de la machine qui heberge cet Ollama : une carte ne fait
+        # qu'une tache a la fois, analyse comprise. PAS d'echappatoire — la
+        # version qui lançait l'analyse « malgre tout » au bout de vingt
+        # secondes s'installait a cote d'un rendu sur la meme carte.
+        verrou_ol = verrou_noeud(ident) if ident else None
         if verrou_ol is not None:
-            verrou_ol.release()
+            if verrou_ol.locked() and tid:
+                journal(tid, f"{titre_ol} calcule — l'analyse attend que sa "
+                             f"carte se libere")
+            try:
+                await asyncio.wait_for(verrou_ol.acquire(), timeout=ATTENTE_CARTE)
+            except asyncio.TimeoutError:
+                panne = RuntimeError(
+                    f"{titre_ol} n'a pas libere sa carte en "
+                    f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance dessus.")
+                continue
+        try:
+            rendu = await _ollama_local(ici, url)
+            _DERNIER_CERVEAU[ici.get("model") or ""] = url
+            return rendu
+        except Exception as e:
+            panne = e
+            if len(cerveaux) > 1:
+                journal(tid, f"{titre_ol} n'a pas repondu "
+                             f"({type(e).__name__}) — on essaie ailleurs")
+        finally:
+            if verrou_ol is not None:
+                verrou_ol.release()
+    if panne is None:
+        panne = RuntimeError(_pourquoi_aucun_cerveau())
     # HORS du verrou. On n'essaie une autre machine QUE si la sienne ne repond
     # pas : un modele distant est plus lent a charger, et la machine qui le porte
     # a peut-etre mieux a faire. Depuis qu'un studio peut vivre sans carte, ce cas
@@ -1673,7 +1726,49 @@ def _ecarter_modele(nom, pourquoi):
         MODELE_ECRITURE = ""      # le prochain appel en choisira un autre
 
 
-async def _ollama_local(corps):
+def corps_ici(corps, url, tid=None):
+    """Le meme corps, avec un modele que CET Ollama porte vraiment.
+
+    Rend None quand cette adresse ne convient pas — le seul cas est celui d'une
+    image a lire sur une machine sans modele de vision. Substituer alors un
+    modele d'ecriture rendrait une description inventee, sans que rien ne
+    l'indique : c'est le pire des trois resultats possibles, devant l'erreur et
+    devant l'absence de reponse.
+    """
+    voulu = corps.get("model") or MODELE_LLM
+    if voulu == MODELE_POUR_ECRIRE:
+        return dict(corps, model=modele_ecriture_de(url))
+    if _sait_lire_ici(url, voulu):
+        return corps
+    if corps.get("images"):
+        return None
+    remplacant = modele_ecriture_de(url)
+    if not remplacant or remplacant == voulu:
+        return corps
+    journal(tid, f"{voulu} n'est pas installe la — {remplacant} a sa place")
+    return dict(corps, model=remplacant)
+
+
+def _pourquoi_aucun_cerveau():
+    """Aucun Ollama utilisable : dire lequel, et pourquoi.
+
+    « Le modele local ne repond pas » n'aide personne quand la cause est une
+    machine que son proprietaire vient de mettre en pause pour jouer.
+    """
+    dorment = []
+    for url in OLLAMAS:
+        ident = cerveau(url).get("noeud")
+        if ident and (noeud(ident) or {}).get("pause"):
+            dorment.append((noeud(ident) or {}).get("titre", ident))
+    if dorment:
+        quoi = ("sont en pause — leurs modeles de langage avec elles"
+                if len(dorment) > 1 else
+                "est en pause — son modele de langage avec elle")
+        return f"{' et '.join(dorment)} {quoi}"
+    return "aucun modele de langage joignable"
+
+
+async def _ollama_local(corps, url=None):
     """L'appel lui-meme, une fois la carte reservee.
 
     Il ne rattrape rien : le repli sur une autre machine appartient a
@@ -1684,7 +1779,7 @@ async def _ollama_local(corps):
     # que la minute d'un 7B, et une coupure ici rend une chanson muette.
     to = aiohttp.ClientTimeout(total=900)
     async with aiohttp.ClientSession(timeout=to) as s:
-        async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
+        async with s.post(f"{url or OLLAMA}/api/generate", json=corps) as r:
             if r.status >= 400:
                 # Depuis la mise a jour d'Ollama, un modele qui ne s'initialise
                 # pas rend un 500 au lieu d'un 200 avec un champ « error ». Le
@@ -1855,17 +1950,24 @@ async def poser_a(ident, corps, tid=None, secondes=900, patience=None):
     return (rep_.get("reponse") or ""), (rep_.get("erreur") or "")
 
 
-async def demander_a_un_noeud(corps, tid=None, secondes=900):
+async def demander_a_un_noeud(corps, tid=None, secondes=None):
     """La premiere machine qui sait repondre. Rend le texte, ou ""."""
     # Celles dont la carte est libre d'abord. Depuis qu'une carte ne fait qu'une
     # chose a la fois, prendre les machines dans l'ordre du registre faisait
     # attendre deux minutes derriere un rendu alors qu'une autre machine
     # repondait tout de suite. L'ordre relatif est conserve a l'interieur de
     # chaque groupe : le premier de la liste reste le premier des libres.
+    # BORNE. Ce repli passe par l'agent d'une machine, et poser_a() attendait
+    # sa carte jusqu'a ATTENTE_CARTE — une demi-heure, PAR APPEL, et une demande
+    # en fait trois. Le chemin voisin (ANALYSE_PETITE) se donnait deja zero
+    # patience et quatre-vingt-dix secondes de plafond, avec la mesure qui le
+    # justifie ; celui-ci l'avait oublie. On ne fait pas attendre quelqu'un deux
+    # heures pour une analyse.
     a_llm = list(noeuds_a_llm())
     libres = [i for i in a_llm if not verrou_noeud(i).locked()]
     for ident in libres + [i for i in a_llm if i not in libres]:
-        reponse, erreur = await poser_a(ident, corps, tid, secondes)
+        reponse, erreur = await poser_a(ident, corps, tid,
+                                        secondes or ANALYSE_MAX, patience=0)
         if erreur:
             journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} : {erreur}")
             continue
@@ -1875,18 +1977,36 @@ async def demander_a_un_noeud(corps, tid=None, secondes=900):
 
 
 async def liberer_modele(modele):
-    """Decharge un modele reste chaud. Sans cela, ComfyUI trouve la carte prise."""
-    # Sur une machine en pause, ce geste fait l'inverse de ce qu'il dit : Ollama
-    # CHARGE le modele pour honorer l'appel avant de le relacher. Rien n'y a ete
-    # laisse chaud par nous, puisqu'on ne s'y adresse plus ; il n'y a donc rien a
-    # decharger.
-    chez_ = noeud_de_l_ollama()
-    if chez_ and (noeud(chez_) or {}).get("pause"):
+    """Decharge un modele reste chaud, LA OU il a servi.
+
+    « La ou il a servi » et pas « a l'adresse principale » : depuis qu'il y a
+    plusieurs Ollama, decharger au mauvais endroit ne libere rien et charge
+    peut-etre le modele ailleurs — Ollama le charge pour honorer l'appel avant
+    de le relacher. On ne s'adresse donc qu'a l'adresse qui l'a vraiment
+    employe, et seulement si elle l'a employe.
+    """
+    url = _DERNIER_CERVEAU.pop(modele, None) if modele != MODELE_POUR_ECRIRE         else None
+    if modele == MODELE_POUR_ECRIRE:
+        # L'intention n'a pas de nom de modele : on decharge ce qui a servi en
+        # dernier a chaque adresse, ce qui est exactement la rafale a refermer.
+        for nom, adresse in list(_DERNIER_CERVEAU.items()):
+            _DERNIER_CERVEAU.pop(nom, None)
+            await liberer_modele_a(adresse, nom)
+        return
+    if url:
+        await liberer_modele_a(url, modele)
+
+
+async def liberer_modele_a(url, modele):
+    """Le dechargement lui-meme, a une adresse precise."""
+    ident = cerveau(url).get("noeud")
+    if ident and (noeud(ident) or {}).get("pause"):
+        # Une machine en pause n'a rien de chaud a nous : on ne s'y adresse plus.
         return
     try:
         to = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=to) as s:
-            await s.post(f"{OLLAMA}/api/generate",
+            await s.post(f"{url}/api/generate",
                          json={"model": modele, "prompt": "", "keep_alive": 0})
     except Exception:
         pass
@@ -2135,7 +2255,7 @@ async def enrichir(plan, texte, tid):
             # encore le petit modele de classement.
             brut = await appeler_ollama(depart, None, systeme, json_mode=False,
                                         temperature=0.4, tid=tid,
-                                        modele=choisir_modele_ecriture())
+                                        modele=MODELE_POUR_ECRIRE)
         except Exception as e:
             journal(tid, f"enrichissement indisponible ({type(e).__name__}) — "
                          f"demande gardee telle quelle")
@@ -2203,7 +2323,7 @@ async def traduire(plan, tid):
             # l'etait pas : traduire avait ete oubliee.
             brut = await appeler_ollama(demande, None, SYS_TRADUCTION,
                                         json_mode=False, temperature=0.1, tid=tid,
-                                        modele=choisir_modele_ecriture())
+                                        modele=MODELE_POUR_ECRIRE)
         except Exception as e:
             return replier_sur_multilingue(
                 plan, tid, f"traduction indisponible ({type(e).__name__})")
@@ -2449,7 +2569,7 @@ async def _morceau(texte, systeme, tid, maxi, mini, libelle):
         try:
             brut = await appeler_ollama(texte, None, systeme, json_mode=False,
                                         temperature=chaleur, tid=tid,
-                                        modele=choisir_modele_ecriture(),
+                                        modele=MODELE_POUR_ECRIRE,
                                         garder="5m")
         except Exception as e:
             # Un appel qui casse ne doit pas condamner la chanson : le modele
@@ -2499,7 +2619,7 @@ async def ecrire_paroles(texte, duree, tid, langue_voulue="fr"):
     finally:
         # Sans ce relachement, les 18 Go du modele d'ecriture restent en
         # memoire et ComfyUI demarre sur une carte deja pleine.
-        await liberer_modele(choisir_modele_ecriture())
+        await liberer_modele(MODELE_POUR_ECRIRE)
 
 
 async def _ecrire_paroles(texte, duree, tid, langue_voulue):
@@ -2518,7 +2638,7 @@ async def _ecrire_paroles(texte, duree, tid, langue_voulue):
             brut = await appeler_ollama(texte, None, SYS_COUPLETS + langue,
                                         json_mode=False, temperature=chaleur,
                                         tid=tid,
-                                        modele=choisir_modele_ecriture(),
+                                        modele=MODELE_POUR_ECRIRE,
                                         garder="5m") or ""
         except Exception:
             brut = ""
@@ -4288,7 +4408,7 @@ async def preparer_cible(texte, tid):
     try:
         brut = await appeler_ollama(texte, None, SYS_CIBLE, json_mode=False,
                                     temperature=0.2, tid=tid,
-                                    modele=choisir_modele_ecriture())
+                                    modele=MODELE_POUR_ECRIRE)
     except Exception as e:
         journal(tid, f"preparation de la cible indisponible ({type(e).__name__})")
         return "", False, ""
@@ -4326,7 +4446,7 @@ async def decrire_zone(texte, tid):
     try:
         brut = await appeler_ollama(texte, None, SYS_ZONE, json_mode=False,
                                     temperature=0.3, tid=tid,
-                                    modele=choisir_modele_ecriture())
+                                    modele=MODELE_POUR_ECRIRE)
     except Exception as e:
         journal(tid, f"description de la zone indisponible ({type(e).__name__})")
         return ""
@@ -8946,7 +9066,7 @@ if __name__ == "__main__":
     print("=" * 64)
     print("  ComfyStudio")
     print(f"  ComfyUI   : {COMFY}")
-    print(f"  Ollama    : {OLLAMA}   ({MODELE_LLM})")
+    print(f"  Ollama    : {', '.join(OLLAMAS)}   ({MODELE_LLM})")
     print(f"  Modeles   : {RACINE_MODELES}")
     # En conteneur, 127.0.0.1 designe le conteneur : l'adresse n'est utile
     # qu'a lui-meme. Et le port publie sur l'hote n'est pas forcement le notre —

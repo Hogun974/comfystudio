@@ -191,6 +191,15 @@ jobs:
       - name: Ce qui reste a la maison, et ce qui est refuse
         run: python banc_adulte.py
 
+      # Les trois regles de repartition posees par l'utilisateur : une machine
+      # en pause ne pense pas, une carte libre passe devant une carte occupee,
+      # et a egalite c'est la plus petite. Plus une regle de surete : une image
+      # a lire ne part jamais sur une machine sans modele de vision, parce
+      # qu'une description inventee ne se signale pas. Aucun Ollama n'est
+      # joignable dans la CI — le banc remplit le cache a la main.
+      - name: Le studio choisit le bon Ollama
+        run: python banc_cerveaux.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.
