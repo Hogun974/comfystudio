@@ -758,6 +758,30 @@ voient pas — et une simple requête HTTP traverse tout sans configuration.
 L'agent n'a **aucune dépendance** : la bibliothèque standard suffit. Une machine
 qui fait tourner ComfyUI a forcément un Python.
 
+### Mettre une machine en pause
+
+Le bouton **pause**, dans `/admin`, retire une machine du service sans la
+retirer du parc. « Je vais jouer un peu, mais le studio doit rester
+utilisable » : elle continue de s'annoncer, garde son jeton, son inventaire et
+sa mise à jour automatique, et ne reçoit simplement plus de travail. Les
+demandes partent sur les autres.
+
+Retirer la machine aurait le même effet immédiat, mais c'est un geste brutal :
+il faut la redéclarer, avec un jeton neuf, et son agent perd sa configuration.
+
+**Une demande qui réclame précisément cette carte ne se perd pas.** Deux cas :
+
+- **pause récente** — la demande attend son retour, le dit dans son journal, et
+  repart dès que la machine revient. L'annuler reste à un clic.
+- **pause plus ancienne que le délai réglé** — le studio refuse tout de suite,
+  en nommant la machine et le geste. Faire patienter une demi-heure pour une
+  carte que personne ne compte rallumer, c'est perdre le temps de quelqu'un
+  poliment.
+
+Le délai se règle sous le tableau des machines — trente minutes par défaut,
+`STUDIO_PAUSE_PROPOSE` pour la valeur de départ. Ce qui est « récent » dépend de
+l'usage qu'on fait de sa machine.
+
 ### Ce qu'un nœud ne peut pas faire
 
 Installer ses propres modèles. Le studio n'écrit que sur son disque : une
@@ -1800,6 +1824,7 @@ téléversements. **Sans lui, tout disparaît au redémarrage du conteneur.**
 | `COMFY_LANCEUR` | script de démarrage de ComfyUI (hors conteneur) |
 | `STUDIO_PURGE_ORPHELINS` | `1` pour effacer les fichiers que plus aucune conversation ne réclame |
 | `STUDIO_TRAVAILLEURS` | demandes menées de front (3 par défaut) — une seule par carte quoi qu'il arrive |
+| `STUDIO_PAUSE_PROPOSE` | minutes qu'une demande patiente pour une machine en pause (30) |
 | `COMPOSE_PROJECT_NAME` | **le nom qui décide du volume** — à changer pour tout second studio |
 | `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
 
