@@ -7517,6 +7517,13 @@ async def api_admin_noeuds(req):
                     "en_travail": len(TRAVAUX.get(local["id"], [])),
                     "moteurs": moteurs_du_noeud(local["id"])}
     return web.json_response({"noeuds": [ligne_locale] + noeuds_agents(),
+                              # Un modele qui refuse de se charger degrade tout
+                              # ce qui s'ecrit — enrichissement, traduction,
+                              # paroles — sans jamais rien casser franchement.
+                              # L'utilisateur ne voyait que « je n'ai pas reussi
+                              # a etoffer ta demande », sans cause. Ici, la cause.
+                              "modeles_casses": dict(MODELES_CASSES),
+                              "modele_ecriture": choisir_modele_ecriture(),
                               "silence_max": SILENCE_MAX})
 
 

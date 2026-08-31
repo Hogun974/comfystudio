@@ -162,6 +162,7 @@ td .detail{display:block;max-width:34ch}
       <thead><tr><th>machine</th><th>carte</th><th>moteurs</th><th>vue</th><th>file</th><th></th></tr></thead>
       <tbody id="liste"></tbody>
     </table></div>
+    <div id="languePanne"></div>
 
     <div class="carte">
       <h2 style="margin-top:0">ajouter une machine</h2>
@@ -704,6 +705,22 @@ async function rafraichir() {
   if (!d.noeuds.length) {
     corps.innerHTML = '<tr><td colspan="6" class="vide">aucune machine</td></tr>';
   }
+  /* Un modele de langage qui refuse de se charger ne casse rien franchement :
+     il degrade tout ce qui s'ecrit — enrichissement, traduction, paroles — et
+     l'utilisateur ne lit que « je n'ai pas reussi a etoffer ta demande », sans
+     cause. Le 31 aout, gemma4:26b etait dans cet etat depuis on ne sait quand. */
+  const casses = Object.entries(d.modeles_casses || {});
+  $("#languePanne").innerHTML = !casses.length ? "" : `
+    <div class="carte" style="border-color:var(--rouge)">
+      <h2 style="margin-top:0">modèle de langage qui ne se charge pas</h2>
+      <p class="aide">Ollama le connaît, il refuse de le charger. Le studio l'a
+        écarté et écrit avec ${ech(d.modele_ecriture || "?")} à la place — ce qui
+        marche, mais moins bien si c'est un petit modèle. Mets Ollama à jour, ou
+        installe un modèle d'écriture compatible.</p>
+      ${casses.map(([nom, pourquoi]) =>
+        `<div class="pli-ligne"><b>${ech(nom)}</b>
+           <div class="pli-val mono">${ech(pourquoi)}</div></div>`).join("")}
+    </div>`;
 }
 
 function montrerEntree() {
