@@ -186,12 +186,22 @@ EN_FILE = {}                # tid -> de quoi refaire la demande apres un arret
 
 
 def sauver_file():
-    """Ecrit ce qui reste a faire. Appele a chaque entree et a chaque sortie :
-    une file qui ne se sauve qu'a l'arret ne survit pas a une coupure."""
+    """Ecrit ce qui reste a faire — y compris ce qui est DEJA COMMENCE.
+
+    Le travailleur retirait la demande du fichier des qu'il la prenait : un
+    redemarrage pendant un rendu la perdait donc entierement, alors que c'est
+    exactement le moment ou elle vaut le plus cher. Elle n'est retiree qu'une
+    fois rendue.
+
+    Les travaux en vol d'abord : ils etaient partis les premiers, ils repartent
+    les premiers. Et si une machine les calcule encore, le studio s'y rebranche
+    au lieu de les relancer — voir noeud_qui_travaille().
+    """
     tmp = FICHIER_FILE + ".tmp"
+    ordre = list(EN_VOL) + [t for t in ATTENTE if t not in EN_VOL]
     try:
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump([EN_FILE[t] for t in ATTENTE if t in EN_FILE], f,
+            json.dump([EN_FILE[t] for t in ordre if t in EN_FILE], f,
                       ensure_ascii=False, indent=1)
         os.replace(tmp, FICHIER_FILE)
     except OSError as e:
@@ -6315,13 +6325,13 @@ async def travailleur():
         tid = job["tid"]
         if tid in ATTENTE:
             ATTENTE.remove(tid)
-        # Retirer de ATTENTE ne suffit pas : cette liste sert l'affichage, le
-        # travail dort dans la file asyncio, qui ne se laisse pas fouiller. Sans
-        # cette lecture, une demande « retiree » etait calculee quand meme et son
-        # resultat surgissait bien plus tard.
-        EN_FILE.pop(tid, None)
+        # On NE retire PAS de EN_FILE ici : la demande est commencee, pas finie,
+        # et un redemarrage pendant son rendu la perdrait — le moment ou elle
+        # vaut le plus cher. Elle sort du fichier quand elle est rendue.
         sauver_file()
         if (TACHES.get(tid) or {}).get("annulee"):
+            EN_FILE.pop(tid, None)
+            sauver_file()
             FILE_ATTENTE.task_done()
             continue
 
@@ -6365,6 +6375,10 @@ async def travailleur():
             # ligne, la barre du travail suivant demarrait la ou le precedent
             # s'etait arrete.
             AVANCES.pop(tid, None)
+            # Rendue, ratee ou interrompue : dans les trois cas elle ne doit plus
+            # revenir apres un redemarrage.
+            EN_FILE.pop(tid, None)
+            sauver_file()
             FILE_ATTENTE.task_done()
             purger_taches()
 
