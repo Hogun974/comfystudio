@@ -1326,8 +1326,11 @@ ajuster();
 setInterval(async () => {
   try {
     const f = await (await fetch("/api/file")).json();
-    const n = f.en_attente + (f.occupe ? 1 : 0);
-    const moi = (f.a_moi || 0) + (f.en_cours ? 1 : 0);
+    // « occupe ? 1 : 0 » etait juste du temps ou un seul travail pouvait
+    // courir. Depuis qu'il y en a plusieurs, le compteur annonçait « 1 en file »
+    // pendant que le panneau en montrait trois.
+    const n = (f.en_attente || 0) + (f.en_vol || 0);
+    const moi = f.a_moi || 0;
     $("#etatFile").innerHTML = n
       ? `<span class="file-vive">${n} en file${moi && moi < n ? ` · ${moi} à toi` : ""}</span>`
       : "";

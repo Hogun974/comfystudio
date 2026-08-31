@@ -6387,7 +6387,13 @@ async def api_file(req):
         "en_cours": next((t for t in EN_VOL if mien(t)), None),
         "occupe": bool(EN_VOL),
         "en_attente": len(ATTENTE),
-        "a_moi": sum(1 for t in ATTENTE if mien(t)),
+        # Les travaux EN VOL comptent aussi. Le compteur de l'en-tete ajoutait
+        # « 1 si occupe » a la file d'attente : c'etait juste du temps ou un seul
+        # travail pouvait courir. Avec trois travailleurs, l'utilisateur lisait
+        # « 1 en file » et voyait trois lignes dans le panneau — le compteur et
+        # la liste ne comptaient pas la meme chose.
+        "en_vol": len(EN_VOL),
+        "a_moi": sum(1 for t in list(ATTENTE) + list(EN_VOL) if mien(t)),
         "admin": admin,
         "lignes": lignes,
         # conserve : d'anciennes pages peuvent encore le lire
