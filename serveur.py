@@ -4969,28 +4969,61 @@ async def soumettre(g, tid, ident=None):
                 raise RuntimeError("delai depasse")
             await asyncio.sleep(2)
 
-_MINEUR = re.compile(r"\b(enfant|gamin|gamine|fillette|garconnet|bambin|b[ée]b[ée]|mineur|"
-                     r"coll[ée]gien|coll[ée]gienne|[ée]col(ier|iere)|child|kid|toddler|infant|"
-                     r"minor|preteen|pre-teen|loli|shota|underage|schoolgirl|schoolboy|"
-                     r"\b(\d|1[0-7])\s*ans?\b|\b(\d|1[0-7])\s*years?\s*old\b)", re.I)
-# « \b » AUX DEUX BOUTS. Il manquait a la fin : « nu » mordait donc sur tout mot
-# commençant par ces deux lettres, et « sex » de meme. Neuf faux positifs sur un
-# corpus de treize demandes ordinaires — nuit, nuage, nuance, numerique, nuee,
-# nutriments, sexagenaire. Une scene de nuit etait classee adulte, donc tenue en
-# local, donc traduite par un modele de vingt-cinq milliards de parametres :
-# mesure du 31 aout, soixante-quinze a cent-soixante-cinq secondes par demande
-# la ou le nuage en met cinq. Le prompt qui a mis la puce a l'oreille disait
-# « nuanced lighting ».
-#
-# Les formes derivees sont ecrites plutot que devinees par un prefixe : « sexy »
-# ne se deduit plus de « sex », « nudes » plus de « nude ». Verifie dans les deux
-# sens — aucun terme adulte de l'ancien motif n'est perdu.
-_SEXUEL = re.compile(
-    r"\b(nu|nue|nus|nues|nudit[ée]|nudites|seins|fesses|sexe|sexes|sexuel|sexuels|"
-    r"sexuelle|sexuelles|[ée]rotique|[ée]rotiques|porno|pornos|pornographique|"
-    r"pornographiques|explicit|explicite|explicites|nsfw|nude|nudes|naked|topless|"
-    r"lingerie|breast|breasts|nipple|nipples|genital|genitals|genitalia|penis|"
-    r"vagina|sex|sexy|erotic|erotica|porn|hentai|rating_explicit)\b", re.I)
+# UNE FRONTIERE QUI TIENT COMPTE DU SOULIGNE. « \b » ne separe pas « nude » de
+# « _body » : le souligne est un caractere de mot. Or les moteurs a etiquettes
+# reçoivent exactement cela — « nude_body », « explicit_content ». Et « \b » a
+# droite laissait passer « nuee », l'accent n'etant pas une lettre pour [a-z].
+# « [^\W_] » veut dire « une lettre ou un chiffre, souligne exclu » : c'est la
+# seule frontiere qui convienne aux deux ecritures.
+_BORD = r"(?<![^\W_])"
+_FIN = r"(?![^\W_])"
+
+
+def _motif(racines, mots):
+    """Un motif de surete : des racines permissives, des mots stricts.
+
+    Les deux formes sont necessaires, et l'histoire de ce fichier le prouve.
+    « \b(nu|…) » sans frontiere a droite mordait sur « nuit » et « nuage » —
+    neuf faux positifs sur treize demandes ordinaires, et cent soixante
+    secondes perdues par demande. Puis, en fermant la frontiere des deux cotes
+    et en ecrivant les formes a la main, les derivees ANGLAISES ont disparu :
+    « a child in a sexual pose » n'etait plus refuse, parce que « sexual »
+    n'etait pas dans la liste et que « sex » ne mordait plus dessus.
+
+    La bonne reponse n'est ni l'un ni l'autre : une racine sans ambiguite prend
+    ce qui la suit (« sexual », « sexuellement », « nudity », « nudism »), un
+    mot court ou ambigu s'arrete ou il finit (« nu », « sex », « kid »).
+    """
+    return re.compile(
+        _BORD + "(?:" + "|".join([r + r"\w*" for r in racines] + mots) + ")"
+        + _FIN, re.I)
+
+
+# Volontairement large, et large dans le bon sens : ce motif ne refuse rien a
+# lui seul, il ne refuse qu'en presence de l'autre.
+_MINEUR = _motif(
+    racines=[r"enfant", r"gamin", r"fillette", r"gar[cç]onnet", r"bambin",
+             r"b[ée]b[ée]", r"mineur", r"coll[ée]gien", r"[ée]col[ie]",
+             r"child", r"toddler", r"infant", r"preteen", r"pre-teen",
+             r"underage", r"schoolgirl", r"schoolboy", r"adolescent",
+             r"teenager", r"pr[ée]pub", r"prepub", r"loli", r"shota"],
+    mots=[r"kid", r"kids", r"minor", r"minors", r"teen", r"teens", r"ado",
+          r"ados", r"(?:\d|1[0-7])\s*ans?", r"(?:\d|1[0-7])\s*years?\s*old"])
+
+# Ce qui est adulte ne sort pas de la maison. Le meme motif sert au garde-fou,
+# ou il ne pese qu'avec _MINEUR — d'ou l'importance de ne rien laisser filer
+# cote anglais : le prompt envoye a la carte est TOUJOURS traduit en anglais,
+# et les moteurs a etiquettes reçoivent du danbooru colle par des soulignes.
+_SEXUEL = _motif(
+    racines=[r"sexuel", r"sexual", r"nudit", r"nudis", r"pornograph", r"porno",
+             r"[ée]roti", r"naked", r"nipple", r"breast", r"genital", r"fesse",
+             r"topless", r"lingerie", r"hentai", r"sexting"],
+    # Ceux-la et pas un caractere de plus : « nu » ne doit pas mordre sur
+    # « nuit », ni « sex » sur « sexagenaire », ni « explicit » sur
+    # « explicitement ».
+    mots=[r"nu", r"nue", r"nus", r"nues", r"nude", r"nudes", r"sex", r"sexe",
+          r"sexes", r"sexy", r"porn", r"porns", r"seins", r"penis", r"vagina",
+          r"nsfw", r"explicit", r"explicite", r"explicites"])
 
 # Fichiers d'entree deja pousses sur un noeud distant : (nom, id) -> nom reel
 # la-bas. ComfyUI renomme en « x (1).png » quand le nom existe deja, il faut
