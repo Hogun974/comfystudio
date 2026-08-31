@@ -39,22 +39,29 @@ def aiguillage_ecrit(texte, a_une_image=False):
     donc les memes fonctions, dans la sequence du fichier serveur.py — toute
     permutation la-bas doit se voir ici.
 
-    « a_une_image » parce que la lecture n'a de sens qu'avec une piece jointe :
-    « decris-la » sans image est une demande de creation, pas de description.
+    « a_une_image » porte la FAMILLE de la piece jointe, comme dans le studio —
+    « image », « video », « audio » ou False. Le banc passait un booleen, donc
+    il ne pouvait pas montrer qu'une video declenchait une lecture.
+
+    L'ORDRE EST CELUI DE serveur.py, et il ne l'etait pas : les trois retouches
+    localisees s'executent AVANT tous les raccourcis testes ici, et la lecture
+    APRES la fluidification. Un banc qui recopie un ordre faux ne prouve rien —
+    55/55 en vert ne disait alors rien de la sequence reelle.
     """
-    if a_une_image and serveur.veut_lire(texte):
+    if a_une_image == "image" and not serveur.veut_detourer(texte):
+        for reconnait, quoi in ((serveur.veut_zone_nommee, "retoucher_zone"),
+                                (serveur.veut_retoucher_fond, "retoucher_fond"),
+                                (serveur.veut_retoucher_sujet, "retoucher_sujet")):
+            if reconnait(texte):
+                return quoi
+    if serveur.veut_fluidifier(texte) or serveur.veut_ralenti(texte):
+        return "fluidifier"
+    if a_une_image == "image" and serveur.veut_lire(texte):
         return "lecture"
     if serveur.veut_detourer(texte):
         return "detourer"
     if serveur.veut_agrandir(texte):
         return "agrandir"
-    if serveur.veut_fluidifier(texte) or serveur.veut_ralenti(texte):
-        return "fluidifier"
-    for reconnait, quoi in ((serveur.veut_zone_nommee, "retoucher_zone"),
-                            (serveur.veut_retoucher_fond, "retoucher_fond"),
-                            (serveur.veut_retoucher_sujet, "retoucher_sujet")):
-        if reconnait(texte):
-            return quoi
     return "aucun"
 
 
@@ -66,7 +73,7 @@ def main():
                 cas.append((n, json.loads(ligne)))
     fautes = []
     for n, c in cas:
-        obtenu = aiguillage_ecrit(c["texte"], c.get("image", False))
+        obtenu = aiguillage_ecrit(c["texte"], c.get("image") or False)
         if obtenu != c["attendu"]:
             fautes.append((n, c["texte"], c["attendu"], obtenu))
     print(f"  {len(cas) - len(fautes)}/{len(cas)} formulations aiguillees comme prevu")

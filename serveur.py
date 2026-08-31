@@ -3811,7 +3811,14 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
         plan["raison"] = "reprise de l'image precedente detectee"
     if plan["intention"] in ("edition", "video_image") and not source:
         plan["intention"] = "image"
-    if plan["intention"] == "lecture" and not a_une_image:
+    # UNE IMAGE, et pas « une piece jointe ». « a_une_image » porte la famille :
+    # « video » et « audio » sont vrais eux aussi, et le prompt systeme annonce
+    # justement « lecture » comme intention possible pour une video. On partait
+    # alors decrire un fichier que le modele de vision n'a jamais reçu —
+    # img_b64 n'est calcule que pour une image — et il rendait une description
+    # plausible, detaillee, entierement inventee, marquee « description
+    # produite » et « fini ». Rien ne la signalait.
+    if plan["intention"] == "lecture" and a_une_image != "image":
         plan["intention"] = "image"       # lire exige une image reellement jointe
     if plan["intention"] == "image" and (
             plan.get("modele") not in CATALOGUE
@@ -4832,7 +4839,11 @@ _FACTEUR = re.compile(r"([234])\s*(?:x\b|fois\b)|\bx\s*([234])\b", re.I)
 # jamais ete regardee. Une decision qui depend du modele du jour n'en est pas
 # une ; celle-ci s'ecrit.
 _LIRE = re.compile(
-    r"\b(decri[st]|decrire|raconte|analyse|commente|detaille|explique)\b"
+    # « detaille » est parti : avec une image jointe, « detaille davantage le
+    # visage » demande PLUS DE DETAIL, pas une description. Un verbe ambigu
+    # dans un raccourci ecrit coute plus qu'il ne rapporte — les autres
+    # suffisent, et ce qu'on ne reconnait pas part au modele.
+    r"\b(decri[st]|decrire|raconte|analyse|commente|explique)\b"
     r"|\bque\s+(vois|voit)\b"
     r"|\bqu'?est[- ]ce\s+(que\s+)?(c'est|tu\s+vois|ca\s+represente)"
     r"|\bc'?est\s+quoi\b"
@@ -4848,6 +4859,11 @@ _PAS_LIRE = re.compile(
     # transformation, pas une lecture. La liste est courte a dessein — ce
     # raccourci vise la justesse, pas la couverture : ce qu'il ne reconnait
     # pas part au modele, comme avant.
+    # Les verbes de transformation les plus courants manquaient : mesure,
+    # « analyse cette photo et corrige les couleurs » partait en description.
+    r"|\b(corrige|supprime|efface|recadre|eclairci[st]?|assombri[st]?|floute?s?|"
+    r"applique|rends|augmente|reduis|nettoie|repare|detoure|isole|recolore|"
+    r"agrandis|reduis|coupe|rogne)\b"
     r"|\ben\s+(aquarelle|peinture|dessin|croquis|manga|bd|3ds?|pixel|"
     r"anime|huile|encre|noir\s+et\s+blanc|couleurs?|sepia)\b")
 
@@ -4861,11 +4877,23 @@ def veut_lire(texte):
     Court, et sans verbe de transformation : les deux conditions ensemble. Une
     demande de lecture tient en quelques mots ; passe une ligne, on decrit
     plutot ce qu'on veut obtenir, et c'est au modele de trancher.
+
+    ET AUCUN AUTRE RACCOURCI NE DOIT REPONDRE VRAI. Allonger la liste des verbes
+    interdits ne suffisait pas — mesure : « decris cette image puis supprime le
+    fond » declenchait a la fois la lecture et le detourage, et la lecture etant
+    placee avant, l'utilisateur recevait un paragraphe de texte au lieu de son
+    image detouree. Une phrase qui reveille deux raccourcis est ambigue : elle
+    appartient au modele, pas a une expression reguliere.
     """
     nu = sans_accents(texte or "")
     if len(nu) > 90 or _PAS_LIRE.search(nu):
         return False
-    return bool(_LIRE.search(nu))
+    if not _LIRE.search(nu):
+        return False
+    return not (veut_detourer(texte) or veut_agrandir(texte)
+                or veut_fluidifier(texte) or veut_ralenti(texte)
+                or veut_zone_nommee(texte) or veut_retoucher_fond(texte)
+                or veut_retoucher_sujet(texte))
 
 
 def veut_agrandir(texte):
@@ -6421,10 +6449,21 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # pour cette demande, le raccourci ne se serait pas declenche.
         if modele_force and (plan.get("intention") == "lecture"
                              or (plan.get("raccourci") and not modele_choisi)):
-            journal(tid, f"{CATALOGUE.get(modele_force, {}).get('titre', modele_force)}"
+            # Le NOM du moteur de la conversation, pas celui de son repli local.
+            # « force_loin » a deja remplace modele_force par le repli plus haut :
+            # sur une conversation reglee sur Veo, le message annonçait
+            # « Wan 2.2 5B », et l'on cherchait le reglage au mauvais endroit.
+            dit_ = force_loin or modele_force
+            journal(tid, f"{(CATALOGUE.get(dit_) or MOTEURS_DISTANTS.get(dit_) or {}).get('titre', dit_)}"
                          f" est le moteur de cette conversation, mais cette "
                          f"demande n'en a pas besoin")
             modele_force = None
+            # ET LE MOTEUR DISTANT AVEC. Sans cette ligne, « loin = force_loin »
+            # reprenait la main six lignes plus bas : une video jointe avec
+            # « rends-la fluide », sur une conversation reglee sur Veo, partait
+            # produire une video NEUVE chez Veo — facturee a la seconde, et sans
+            # rapport avec la demande.
+            force_loin = None
         if modele_force:
             plan["modele"] = modele_force
             plan["modele_impose"] = True
@@ -6559,6 +6598,13 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             journal(tid, f"reprise de l'image precedente : {image}")
 
         if intention == "lecture":
+            # CEINTURE. La bretelle est plus haut (normaliser) ; celle-ci existe
+            # parce qu'une description inventee ne se signale pas, et qu'il y a
+            # deux chemins pour arriver ici — le raccourci ecrit et le modele.
+            if not img_b64:
+                raise RuntimeError(
+                    "il n'y a pas d'image a lire : joins une image, ou dis ce "
+                    "que tu veux produire.")
             journal(tid, f"lecture de l'image par {MODELE_VISION}…")
             try:
                 desc = await appeler_ollama(
@@ -7470,6 +7516,14 @@ async def api_generer(req):
     # une conversation que conv_de() garde volontairement en memoire — sans quoi
     # chaque requete sans cookie deposait un fichier de plus.
     conv = conv_de(d.get("conversation"), pid)
+    # CHOISI MAINTENANT, ou seulement herite ? La page renvoie toujours l'etat
+    # de ses menus — qu'elle vient elle-meme de remplir depuis la conversation.
+    # « une cle modele presente » ne prouvait donc rien, et le drapeau valait
+    # vrai des que la conversation portait un moteur : la distinction etait
+    # inerte, et le raccourci de lecture restait desarme. On la deduit du seul
+    # signal fiable — la valeur DIFFERE de ce que la conversation retenait —
+    # et avant que poser_reglages n'ecrive, sinon elle ne differe jamais.
+    choisi = bool(d.get("modele")) and d["modele"] != reglages_de(conv).get("modele")
     reglages = poser_reglages(conv, d, ecrire=False)
     taille = reglages.get("taille") or None
     if taille and taille not in TAILLES:
@@ -7506,9 +7560,6 @@ async def api_generer(req):
     if devant:
         journal(tid, f"en file d'attente — {devant} demande(s) devant")
     ATTENTE.append(tid)
-    # « modele_choisi » : ce moteur a-t-il ete demande POUR CETTE demande, ou
-    # herite de la conversation ? Les raccourcis ecrits en dependent.
-    choisi = bool(d.get("modele"))
     EN_FILE[tid] = {"tid": tid, "texte": texte, "conversation": conv["id"],
                     "proprietaire": pid, "image": image, "modele": modele,
                     "taille": taille, "priorite": priorite, "noeud": machine,
