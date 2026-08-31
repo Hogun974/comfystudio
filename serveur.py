@@ -5328,6 +5328,13 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         "prompt": (plan or {}).get("prompt"), "modele": cle, "type": intention,
         "parametres": (plan or {}).get("parametres"), "raison": (plan or {}).get("raison"),
         "fichiers": sorties or [], "description": TACHES.get(tid, {}).get("description"),
+        # La machine et le temps. Ils vivaient dans le journal du studio, qui se
+        # perd a chaque redemarrage, et dans le fil de la tache, qui s'efface au
+        # bout de deux cents demandes. Sur le tour, ils survivent aussi longtemps
+        # que le rendu qu'ils expliquent — et « pourquoi celle-ci a mis quatre
+        # minutes » est une question qu'on se pose une semaine plus tard.
+        "noeud": TACHES.get(tid, {}).get("noeud"),
+        "secondes": TACHES.get(tid, {}).get("secondes"),
         "etat": etat, "erreur": erreur,
         # Les paroles ne sont ni le prompt ni la description : sans elles, un
         # pouce en bas sur une chanson ne dirait pas ce qui a deplu.
@@ -6140,6 +6147,7 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             conv["derniere_sortie"] = {"noeud": sorties[0].get("noeud"),
                                        "filename": sorties[0]["filename"],
                                        "subfolder": sorties[0].get("subfolder", "")}
+        TACHES.setdefault(tid, {})["secondes"] = secondes
         enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, "fini")
         journal(tid, f"termine en {secondes:.0f} s", etat="fini")
     except Exception as e:

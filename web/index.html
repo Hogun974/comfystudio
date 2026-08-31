@@ -629,9 +629,18 @@ function plein(f) {
   voile.append(el, fermer);
   document.body.appendChild(voile);
 
+  // « parti » et non le hash : history.back() est ASYNCHRONE, et location.hash
+  // vaut encore « #vue » a l'instant ou l'on revient. Un clic sur la croix
+  // declenchait deux fois partir() — son propre gestionnaire, puis celui du
+  // voile ou le clic remonte — donc DEUX retours arriere. Le second sortait de
+  // la page : on se retrouvait dans /admin, d'ou l'on venait.
+  let parti = false;
   const partir = () => {
+    if (parti) return;
+    parti = true;
     voile.remove();
     document.removeEventListener("keydown", auClavier);
+    removeEventListener("popstate", partir);
     // On ne retire l'entree d'historique que si c'est bien la notre : un retour
     // arriere l'a peut-etre deja consommee.
     if (location.hash === "#vue") history.back();
@@ -640,10 +649,12 @@ function plein(f) {
   // Une entree d'historique, pour que le bouton retour du telephone ferme
   // l'image au lieu de quitter la page.
   history.pushState({ vue: 1 }, "", "#vue");
-  addEventListener("popstate", partir, { once: true });
+  addEventListener("popstate", partir);
   document.addEventListener("keydown", auClavier);
   voile.onclick = e => { if (e.target !== el) partir(); };
-  fermer.onclick = partir;
+  // stopPropagation en plus du drapeau : deux verrous pour la meme porte, parce
+  // que celle-ci donnait sur une page que personne n'avait demandee.
+  fermer.onclick = e => { e.stopPropagation(); partir(); };
 }
 
 function garnirReponse(bloc, t, cid) {
@@ -729,6 +740,14 @@ function garnirReponse(bloc, t, cid) {
   if (par && Object.keys(par).length)
     morceaux.push("réglages : " + Object.entries(par).map(([k, v]) => `${k}=${v}`).join(", "));
   if (t.raison) morceaux.push("choix : " + t.raison);
+  // La machine et le temps : « pourquoi celle-ci a mis quatre minutes » est une
+  // question qu'on se pose une semaine plus tard, quand le journal du studio a
+  // depuis longtemps oublie.
+  const machine = t.noeud
+    || [...new Set((t.fichiers || []).map(f => f.noeud).filter(Boolean))].join(", ");
+  const combien = t.secondes ? `${Math.round(t.secondes)} s` : "";
+  if (machine || combien)
+    morceaux.push("rendu : " + [machine, combien].filter(Boolean).join(" · "));
   const prompt = p.prompt || t.prompt;
   if (prompt) morceaux.push("prompt envoyé :\n" + prompt
                           + (p.negatif ? "\n\nécarté : " + p.negatif : ""));
