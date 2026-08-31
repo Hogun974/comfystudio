@@ -3057,7 +3057,8 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
 
     if veut_fluidifier(texte) and not modele_choisi:
         journal(tid, "fluidite video reconnue — aucune analyse necessaire")
-        return {"intention": "fluidifier", "modele": "fluidifier", "prompt": texte,
+        return {"intention": "fluidifier", "modele": "fluidifier", "raccourci": True,
+                "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "images intercalees dans la video precedente"}
 
@@ -3068,19 +3069,19 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
         journal(tid, "lecture d'image reconnue — aucune analyse necessaire")
         return {"intention": "lecture", "modele": None, "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
-                "raison": "lecture : on decrit ce que l'image montre"}
+                "raison": "lecture : on decrit ce que l'image montre", "raccourci": True}
 
     if veut_detourer(texte) and not modele_choisi:
         journal(tid, "detourage reconnu — aucune analyse necessaire")
         return {"intention": "detourer", "modele": "detourer", "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
-                "raison": "detourage : le sujet est isole, le fond devient transparent"}
+                "raison": "detourage : le sujet est isole, le fond devient transparent", "raccourci": True}
 
     if veut_agrandir(texte) and not modele_choisi:
         journal(tid, "agrandissement reconnu — aucune analyse necessaire")
         return {"intention": "agrandir", "modele": "agrandir", "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
-                "raison": "agrandissement : l'image est reprise telle quelle"}
+                "raison": "agrandissement : l'image est reprise telle quelle", "raccourci": True}
 
     loin = "" if image_b64 else llm_distant_possible(texte, pid)
     # La raison du local n'est plus dite ici : appeler_ollama la dit pour TOUS
@@ -6361,6 +6362,23 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                                    modele_force=modele_force, taille=taille,
                                    priorite=priorite,
                                    modele_choisi=modele_choisi)
+        # UN MOTEUR IMPOSE NE RECOUVRE PAS UNE LECTURE. Decrire une image ne
+        # produit rien : aucun moteur ne s'y applique, et lui en coller un
+        # ramenait l'intention a « image ». Le raccourci tirait donc bien, et la
+        # ligne suivante defaisait son travail — la demande repartait en
+        # generation, l'enrichissement etait appele sans l'image et repondait
+        # « je ne vois pas d'image attachee ». Constate deux fois : par la
+        # recette, puis apres une premiere correction incomplete.
+        #
+        # Et plus largement : un moteur seulement HERITE de la conversation ne
+        # defait pas ce qu'un raccourci ecrit a tranche. S'il avait ete choisi
+        # pour cette demande, le raccourci ne se serait pas declenche.
+        if modele_force and (plan.get("intention") == "lecture"
+                             or (plan.get("raccourci") and not modele_choisi)):
+            journal(tid, f"{CATALOGUE.get(modele_force, {}).get('titre', modele_force)}"
+                         f" est le moteur de cette conversation, mais cette "
+                         f"demande n'en a pas besoin")
+            modele_force = None
         if modele_force:
             plan["modele"] = modele_force
             plan["modele_impose"] = True
