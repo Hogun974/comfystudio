@@ -530,8 +530,13 @@ def choisir_modele_ecriture():
 # choisi par l'appelant : il depend de l'adresse, et l'adresse n'est connue
 # qu'apres. On passe donc une intention, resolue au dernier moment.
 MODELE_POUR_ECRIRE = "@ecriture"
-# modele -> derniere adresse ou on l'a employe, pour savoir ou le decharger.
-_DERNIER_CERVEAU = {}
+# tid -> (adresse, modele) laisse CHAUD par cette demande. Sur la tache et non
+# dans un dictionnaire global indexe par nom : deux demandes simultanees
+# emploient le meme modele, parfois sur deux machines, et un registre partage ne
+# peut pas dire lequel decharger. Pire, la branche « tout decharger » vidait le
+# registre entier — la chanson de l'un dechargeait, donc RECHARGEAIT, le modele
+# de vision de l'autre, sur la carte que son rendu allait reclamer.
+_CHAUD = {}
 # url -> {"quand", "modeles", "noeud"}. Relu rarement : la liste des modeles
 # d'une machine ne change qu'a la main, et resoudre un nom d'hote a chaque appel
 # se paierait des centaines de fois pour rien.
@@ -539,18 +544,10 @@ _CERVEAUX = {}
 FRAICHEUR_CERVEAU = 120
 
 
-def cerveau(url):
-    """Ce que porte cet Ollama, et sur quelle machine du parc il tourne.
-
-    « noeud » vaut None quand on ne reconnait pas la machine : c'est le cas de
-    l'Ollama du studio lui-meme, et d'une machine qui n'a pas d'agent. On ne
-    reserve alors aucune carte — on ne saurait pas laquelle.
-    """
-    c = _CERVEAUX.get(url)
-    if c and time.time() - c["quand"] < FRAICHEUR_CERVEAU:
-        return c
-    c = {"quand": time.time(), "modeles": (c or {}).get("modeles") or [],
-         "noeud": (c or {}).get("noeud")}
+def _relever_cerveau(url):
+    """Interroge cet Ollama. BLOQUANT — a n'appeler que hors boucle."""
+    c = _CERVEAUX.setdefault(url, {"quand": 0.0, "modeles": [], "noeud": None,
+                                   "en_cours": False})
     try:
         import urllib.request
 
@@ -572,7 +569,51 @@ def cerveau(url):
                                if x.get("agent")
                                and (ETAT_NOEUDS.get(x["id"]) or {}).get("ip") == ip),
                               c.get("noeud"))
-    _CERVEAUX[url] = c
+    c["quand"] = time.time()
+    c["en_cours"] = False
+    return c
+
+
+async def _rafraichir_cerveau(url):
+    """Le meme relevé, hors de la boucle d'evenements."""
+    try:
+        await asyncio.get_running_loop().run_in_executor(
+            None, _relever_cerveau, url)
+    except Exception:
+        (_CERVEAUX.get(url) or {})["en_cours"] = False
+
+
+def cerveau(url):
+    """Ce que porte cet Ollama, et sur quelle machine du parc il tourne.
+
+    NE BLOQUE JAMAIS. La version precedente faisait un urlopen synchrone de huit
+    secondes depuis la boucle d'evenements : une machine eteinte gelait tout le
+    studio a chaque expiration du cache — plus de page servie, plus de /api/etat,
+    et surtout plus d'annonce d'agent reçue, assez pour approcher SILENCE_MAX sur
+    des machines qui allaient tres bien. Le fichier portait deja la mise en garde
+    deux fonctions plus bas, pour le demarrage.
+
+    On rend donc ce qu'on sait, et l'on va chercher la suite a cote. Un
+    inventaire perime d'une minute ne coute rien : il ne change qu'a la main.
+
+    « noeud » vaut None quand on ne reconnait pas la machine : c'est le cas de
+    l'Ollama du studio lui-meme, et d'une machine qui n'a pas d'agent. On ne
+    reserve alors aucune carte — on ne saurait pas laquelle.
+    """
+    c = _CERVEAUX.get(url)
+    if c is None:
+        c = _CERVEAUX[url] = {"quand": 0.0, "modeles": [], "noeud": None,
+                              "en_cours": False}
+    if time.time() - c["quand"] >= FRAICHEUR_CERVEAU and not c.get("en_cours"):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # Hors boucle : le demarrage. C'est le seul moment ou bloquer est
+            # acceptable, et c'est aussi lui qui remplit le cache pour que la
+            # premiere demande ne trouve pas une liste vide.
+            return _relever_cerveau(url)
+        c["en_cours"] = True
+        asyncio.get_running_loop().create_task(_rafraichir_cerveau(url))
     return c
 
 
@@ -1790,6 +1831,10 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     if not cerveaux:
         journal(tid, _pourquoi_aucun_cerveau())
     panne = None
+    # UNE echeance pour toute la boucle, et non une par adresse. Attendre
+    # ATTENTE_CARTE a chaque adresse faisait, a trois adresses et trois appels
+    # par demande, jusqu'a quatre heures avant le premier repli.
+    echeance = time.time() + ATTENTE_CARTE
     for url, ident in cerveaux:
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
         ici = corps_ici(corps, url, tid if len(cerveaux) == 1 else None)
@@ -1806,16 +1851,35 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             if verrou_ol.locked() and tid:
                 journal(tid, f"{titre_ol} calcule — l'analyse attend que sa "
                              f"carte se libere")
+            reste = echeance - time.time()
+            if reste <= 0:
+                panne = panne or RuntimeError(
+                    f"aucune carte ne s'est liberee en "
+                    f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance.")
+                continue
             try:
-                await asyncio.wait_for(verrou_ol.acquire(), timeout=ATTENTE_CARTE)
+                await asyncio.wait_for(verrou_ol.acquire(), timeout=reste)
             except asyncio.TimeoutError:
                 panne = RuntimeError(
                     f"{titre_ol} n'a pas libere sa carte en "
                     f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance dessus.")
                 continue
+            # LA PAUSE A PU ARRIVER PENDANT L'ATTENTE. On a pu patienter une
+            # demi-heure derriere un rendu ; entre-temps son proprietaire a très
+            # bien pu mettre la machine en pause pour jouer, et le filtre du
+            # debut de boucle date d'avant l'attente. Charger un modele
+            # maintenant, ce serait exactement ce que la pause interdit.
+            if (noeud(ident) or {}).get("pause"):
+                journal(tid, f"{titre_ol} est passee en pause pendant l'attente "
+                             f"— on cherche ailleurs")
+                verrou_ol.release()
+                continue
         try:
             rendu = await _ollama_local(ici, url)
-            _DERNIER_CERVEAU[ici.get("model") or ""] = url
+            # Seulement si on l'a demande CHAUD : sans « garder », Ollama l'a
+            # deja relache et il n'y a rien a fermer derriere nous.
+            if garder and tid:
+                _CHAUD[tid] = (url, ici.get("model") or "")
             return rendu
         except Exception as e:
             panne = e
@@ -2189,25 +2253,16 @@ async def demander_a_un_noeud(corps, tid=None, secondes=None):
     return ""
 
 
-async def liberer_modele(modele):
-    """Decharge un modele reste chaud, LA OU il a servi.
+async def liberer_modele(tid):
+    """Referme la rafale de CETTE demande : decharge ce qu'elle a laisse chaud.
 
-    « La ou il a servi » et pas « a l'adresse principale » : depuis qu'il y a
-    plusieurs Ollama, decharger au mauvais endroit ne libere rien et charge
-    peut-etre le modele ailleurs — Ollama le charge pour honorer l'appel avant
-    de le relacher. On ne s'adresse donc qu'a l'adresse qui l'a vraiment
-    employe, et seulement si elle l'a employe.
+    Par demande, et non par nom de modele : deux demandes emploient le meme
+    modele, parfois sur deux machines, et l'on ne saurait pas laquelle refermer.
+    Rien a faire si elle n'a rien laisse chaud — c'est le cas ordinaire.
     """
-    url = _DERNIER_CERVEAU.pop(modele, None) if modele != MODELE_POUR_ECRIRE         else None
-    if modele == MODELE_POUR_ECRIRE:
-        # L'intention n'a pas de nom de modele : on decharge ce qui a servi en
-        # dernier a chaque adresse, ce qui est exactement la rafale a refermer.
-        for nom, adresse in list(_DERNIER_CERVEAU.items()):
-            _DERNIER_CERVEAU.pop(nom, None)
-            await liberer_modele_a(adresse, nom)
-        return
-    if url:
-        await liberer_modele_a(url, modele)
+    ou = _CHAUD.pop(tid, None)
+    if ou:
+        await liberer_modele_a(ou[0], ou[1])
 
 
 async def liberer_modele_a(url, modele):
@@ -2832,7 +2887,7 @@ async def ecrire_paroles(texte, duree, tid, langue_voulue="fr"):
     finally:
         # Sans ce relachement, les 18 Go du modele d'ecriture restent en
         # memoire et ComfyUI demarre sur une carte deja pleine.
-        await liberer_modele(MODELE_POUR_ECRIRE)
+        await liberer_modele(tid)
 
 
 async def _ecrire_paroles(texte, duree, tid, langue_voulue):
@@ -3610,6 +3665,15 @@ PRIORITES = ("", "brouillon", "rapide", "soigne")
 # Il ne dit quand meme rien a l'aiguilleur, contrairement a « rapide » : un
 # brouillon rendu par un AUTRE moteur ne dirait rien du moteur qu'on juge.
 _FACTEUR_ETAPES = {"brouillon": 0.25, "rapide": 0.6, "soigne": 1.35}
+# LA OU LE BROUILLON VEUT DIRE QUELQUE CHOSE. Le facteur ne passe que par
+# appliquer_parametres : le detourage, l'agrandissement et la fluidification ne
+# reçoivent pas de parametres du tout, et les trois retouches ecrasent les
+# etapes juste apres. Marquer « esquisse » sur ces intentions-la promettait un
+# rendu de quatorze secondes qui en mettait deux cents, posait le bouton
+# « refaire en soigne » — et ce bouton echouait, faute d'image source a
+# reprendre. On ne marque donc que ce qui tient la promesse et se refait sans
+# source.
+ESQUISSE_POSSIBLE = ("image", "planche", "video", "audio")
 
 def appliquer_parametres(plan):
     """Fusionne les reglages proposes par le LLM avec les defauts du modele,
@@ -6007,14 +6071,16 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         # soin. Sans elle, « passer au propre » rendrait une autre image — et
         # l'esquisse n'aurait servi a rien.
         "graine": TACHES.get(tid, {}).get("graine"),
-        "esquisse": (plan or {}).get("priorite") == "brouillon" or None,
+        "esquisse": ((plan or {}).get("priorite") == "brouillon"
+                     and (plan or {}).get("intention") in ESQUISSE_POSSIBLE) or None,
         # Le plan entier, mais SEULEMENT pour une esquisse : c'est ce qui permet
         # de la repasser au propre a l'identique, sans refaire l'analyse — donc
         # sans risquer un autre prompt, donc une autre image. L'ecrire sur tous
         # les tours grossirait chaque conversation pour un usage que personne
         # n'en a.
-        "plan": (plan or None) if (plan or {}).get("priorite") == "brouillon"
-                else None,
+        "plan": (plan or None) if ((plan or {}).get("priorite") == "brouillon"
+                                   and (plan or {}).get("intention")
+                                   in ESQUISSE_POSSIBLE) else None,
         "etat": etat, "erreur": erreur,
         # Les paroles ne sont ni le prompt ni la description : sans elles, un
         # pouce en bas sur une chanson ne dirait pas ce qui a deplu.
@@ -6223,6 +6289,11 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             if plan["intention"] == "image":
                 plan = caler_taille(plan, texte, taille)
         intention = plan.get("intention", "image")
+        # Le dire plutot que de laisser croire. Un brouillon demande sur une
+        # retouche coute son temps plein : le nombre d'etapes n'y est pas suivi.
+        if priorite == "brouillon" and intention not in ESQUISSE_POSSIBLE:
+            journal(tid, "le brouillon ne change rien pour ce genre de "
+                         "demande — elle est rendue au soin habituel")
         if intention == "refus":
             raise RuntimeError(plan.get("raison") or "demande refusee")
         if intention == "question":
