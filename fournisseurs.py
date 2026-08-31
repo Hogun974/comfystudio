@@ -23,6 +23,7 @@ enregistre nulle part et ne les journalise jamais.
 """
 import asyncio
 import base64
+import contextvars
 import json
 import re
 
@@ -253,6 +254,40 @@ def _pourquoi(d, statut):
     return f"HTTP {statut}" + (f" : {str(detail)[:200]}" if detail else "")
 
 
+# Ce que le dernier appel a coute, tel que le fournisseur l'a compte lui-meme.
+# Une ContextVar et non une variable de module : deux demandes se chevauchent
+# sans arret dans ce studio, et un compteur partage attribuerait les jetons de
+# l'une a l'autre. Une coroutine voit ce que ses propres appels y ont pose.
+_JETONS = contextvars.ContextVar("jetons", default=(None, None))
+
+
+def _compter_jetons(fournisseur, d):
+    """(entree, sortie) tels que le fournisseur les rend, ou (None, None).
+
+    On ne DEDUIT rien : compter les caracteres pour en faire des jetons donne un
+    nombre qui a l'air juste et qui ne l'est pas. Quand l'API se tait — Veo et
+    Meshy ne rendent qu'un nom de tache — l'appelant le saura et pourra le dire.
+    """
+    try:
+        if fournisseur == "anthropic":
+            u = d.get("usage") or {}
+            return (u.get("input_tokens"), u.get("output_tokens"))
+        if fournisseur == "google" or "usageMetadata" in d:
+            u = d.get("usageMetadata") or {}
+            # candidatesTokenCount manque sur une reponse bloquee, alors que
+            # l'invite, elle, a bien ete lue et facturee.
+            return (u.get("promptTokenCount"), u.get("candidatesTokenCount"))
+        u = d.get("usage") or {}
+        return (u.get("prompt_tokens"), u.get("completion_tokens"))
+    except AttributeError:
+        return (None, None)
+
+
+def jetons_du_dernier_appel():
+    """(entree, sortie) du dernier appel abouti dans cette coroutine."""
+    return _JETONS.get()
+
+
 async def _poster(url, corps, entetes, fournisseur):
     """Un envoi, avec un second essai si un champ facultatif est refuse."""
     for reste in (True, False):
@@ -265,6 +300,10 @@ async def _poster(url, corps, entetes, fournisseur):
                     except ValueError:
                         d = {}
                     if r.status == 200:
+                        # Pose meme quand le fournisseur ne dit rien : sans
+                        # cela, un appel muet heriterait du decompte du
+                        # precedent, dans la meme coroutine.
+                        _JETONS.set(_compter_jetons(fournisseur, d))
                         return d
                     pourquoi = _pourquoi(d, r.status)
         except asyncio.TimeoutError:

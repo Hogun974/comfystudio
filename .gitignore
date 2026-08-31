@@ -23,6 +23,9 @@ agent_noeud.json
 # Retours des utilisateurs : contiennent leurs demandes
 avis.jsonl
 
+# Appels distants consignes : noms de comptes et rythme d'usage de chacun
+nuage.jsonl
+
 # Sauvegardes de conversations : elles contiennent les demandes de
 # l'utilisateur ET les fichiers _cles.json / _admin.json / _noeuds.json.
 # Une seule s'est retrouvee dans un commit, avec de vraies cles d'API dedans.

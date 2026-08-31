@@ -15,6 +15,12 @@ import hashlib
 import mimetypes
 import urllib.parse
 import unicodedata
+# Le journal des appels distants s'ecrit depuis un fil a lui. Une ecriture
+# disque synchrone dans la boucle d'evenements suspend TOUTES les demandes en
+# cours le temps que le disque reponde, et ce studio tourne en conteneur, sur
+# un volume monte dont la latence n'est pas la notre.
+import queue
+import threading
 
 # La console Windows ecrit en cp1252 : un seul ideogramme dans un prompt faisait
 # echouer print() et emportait toute la requete. On force l'UTF-8 en sortie.
@@ -2015,10 +2021,20 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     loin = ("" if image_b64
             else llm_distant_possible(texte, (TACHES.get(tid) or {}).get("proprietaire")))
     if loin:
+        _depart_loin = time.time()
         try:
             rendu = await fournisseurs.texte(
                 loin, cle_de(loin), texte, systeme, temperature, json_mode,
                 modele_de(loin) or None)
+            # Ce que cet appel aura coute, tel que le fournisseur le compte
+            # lui-meme. Les octets en plus des jetons : Mammouth et les
+            # agregateurs ne rendent pas toujours d'usage, et une reponse
+            # mesuree en octets vaut mieux qu'une case vide.
+            consigner_appel_distant(
+                loin, "llm", (TACHES.get(tid) or {}).get("proprietaire"),
+                time.time() - _depart_loin,
+                octets=len(rendu.encode("utf-8")),
+                jetons=fournisseurs.jetons_du_dernier_appel())
             return rendu
         except fournisseurs.EchecFournisseur as e:
             # Le message du fournisseur remonte tel quel : « modele inconnu » et
@@ -3683,6 +3699,232 @@ def sauver_nuage():
         print(f"  interrupteurs du nuage non enregistres : {e}", flush=True)
 
 
+# ── Ce que le nuage aura coute ───────────────────────────────────────────
+#
+# Un appel distant se paie, et rien ici ne le disait : ni combien, ni par qui,
+# ni pour quoi. On consigne donc ce qui est VERIFIABLE — la date, le
+# fournisseur, la modalite, le compte, les jetons quand l'API les rend, les
+# octets recus, la duree. Aucun prix en euros : les tarifs changent d'un
+# trimestre a l'autre, ce fichier ne les suivrait pas, et un chiffre faux en
+# euros est pire que pas de chiffre du tout. La conversion appartient a qui
+# tient la facture — au moins il saura par quoi multiplier.
+#
+# Meme format que avis.jsonl, pour la meme raison : une ligne, un objet. Le
+# fichier se relit entierement meme si l'ecriture a ete coupee au milieu de la
+# derniere ligne — ce qui arrive quand on arrete le conteneur.
+FICHIER_COUTS = os.path.join(DOSSIER_DONNEES, "nuage.jsonl")
+
+# mois "AAAA-MM" -> compte -> "fournisseur/modalite" -> mesures cumulees.
+COMPTEUR = {}
+
+# La page ne montre que le mois en cours et le precedent. Garder plus, en
+# memoire comme sur le disque, ce serait un compteur qui grossit sans fin sur
+# un studio qui tourne des mois d'affilee.
+MOIS_GARDES = 2
+
+# Au-dela, le fichier est reecrit sans les mois hors de portee de la vue. Deux
+# Mio font environ dix mille appels : bien plus qu'un studio n'en fait en deux
+# mois, donc un seuil qu'on n'atteint qu'anormalement.
+TAILLE_COUTS = 2 * 1024 ** 2
+
+# Le garde-fou de dernier recours, quand meme deux mois ne tiennent pas dans la
+# taille : on garde les lignes les plus recentes. Une comptabilite bornee et
+# amputee vaut mieux qu'un disque plein.
+LIGNES_COUTS = 20000
+
+# File bornee, et on jette plutot que d'attendre : un disque bloque doit couter
+# une ligne de comptabilite, jamais figer une generation en cours.
+_A_ECRIRE = queue.Queue(maxsize=2000)
+_ECRIVAIN = None
+
+
+def _mois(quand=None):
+    return time.strftime("%Y-%m", time.localtime(quand))
+
+
+def mois_montres():
+    """Le mois en cours et le precedent, du plus recent au plus ancien."""
+    m = time.localtime()
+    annee, mois, liste = m.tm_year, m.tm_mon, []
+    for _ in range(MOIS_GARDES):
+        liste.append(f"{annee:04d}-{mois:02d}")
+        mois -= 1
+        if mois == 0:
+            annee, mois = annee - 1, 12
+    return liste
+
+
+def _cumuler(ligne):
+    """Ajoute une ligne — relue au demarrage ou fraiche — aux totaux en memoire."""
+    gardes = mois_montres()
+    mois = ligne.get("mois") or _mois()
+    if mois not in gardes:
+        return
+    # Le studio tourne des mois d'affilee sans redemarrer : sans cette purge,
+    # chaque mois ecoule laisserait sa table derriere lui pour toujours.
+    for passe in [m for m in COMPTEUR if m not in gardes]:
+        del COMPTEUR[passe]
+    par_compte = (COMPTEUR.setdefault(mois, {})
+                  .setdefault(ligne.get("compte") or "anonyme", {}))
+    mesures = par_compte.setdefault(
+        f"{ligne.get('fournisseur')}/{ligne.get('modalite')}",
+        {"appels": 0, "jetons_entree": 0, "jetons_sortie": 0,
+         "sans_jetons": 0, "octets": 0, "secondes": 0.0})
+    mesures["appels"] += 1
+    entree, sortie = ligne.get("jetons_entree"), ligne.get("jetons_sortie")
+    if entree is None and sortie is None:
+        # Combien d'appels dont on ne SAIT PAS le cout en jetons. Sans ce
+        # nombre, une somme basse passerait pour une petite facture alors
+        # qu'elle ne compte que les fournisseurs bavards.
+        mesures["sans_jetons"] += 1
+    else:
+        mesures["jetons_entree"] += int(entree or 0)
+        mesures["jetons_sortie"] += int(sortie or 0)
+    mesures["octets"] += int(ligne.get("octets") or 0)
+    mesures["secondes"] += float(ligne.get("secondes") or 0)
+
+
+def charger_compteur():
+    """Relit le journal des appels distants au demarrage.
+
+    Une ligne illisible est sautee sans un mot : c'est le prix du format qui
+    survit a une ecriture coupee, et une comptabilite a laquelle il manque la
+    derniere ligne vaut mieux qu'un studio qui refuse de demarrer.
+    """
+    COMPTEUR.clear()
+    gardes = set(mois_montres())
+    try:
+        with open(FICHIER_COUTS, encoding="utf-8") as f:
+            for l in f:
+                l = l.strip()
+                if not l:
+                    continue
+                try:
+                    d = json.loads(l)
+                except ValueError:
+                    continue
+                if isinstance(d, dict) and d.get("mois") in gardes:
+                    _cumuler(d)
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        print(f"  journal des couts illisible ({e}) — compteur reparti de zero",
+              flush=True)
+
+
+def _tailler():
+    """Reecrit le fichier sans les mois que la page ne montre plus.
+
+    On ne tronque pas a l'aveugle : on jette d'abord ce qui est deja hors de
+    portee de la vue, ce qui laisse intact tout ce qui reste consultable. Le
+    plafond en nombre de lignes n'intervient que si deux mois d'appels ne
+    tiennent toujours pas — et il fait alors perdre les plus vieux d'entre eux
+    au prochain demarrage. C'est assume : le disque passe avant.
+    """
+    try:
+        if os.path.getsize(FICHIER_COUTS) < TAILLE_COUTS:
+            return
+    except OSError:
+        return
+    gardes = set(mois_montres())
+    tenues = []
+    try:
+        with open(FICHIER_COUTS, encoding="utf-8") as f:
+            for l in f:
+                try:
+                    d = json.loads(l)
+                except ValueError:
+                    continue
+                if isinstance(d, dict) and d.get("mois") in gardes:
+                    tenues.append(l if l.endswith(chr(10)) else l + chr(10))
+        tmp = FICHIER_COUTS + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.writelines(tenues[-LIGNES_COUTS:])
+        os.replace(tmp, FICHIER_COUTS)
+    except OSError as e:
+        print(f"journal des couts non taille : {e}", flush=True)
+
+
+def _fil_ecriture():
+    """Le seul fil qui touche au fichier : ni verrou, ni lignes entremelees."""
+    while True:
+        ligne = _A_ECRIRE.get()
+        try:
+            with open(FICHIER_COUTS, "a", encoding="utf-8") as f:
+                f.write(json.dumps(ligne, ensure_ascii=False) + chr(10))
+            _tailler()
+        except OSError as e:
+            print(f"cout non enregistre : {e}", flush=True)
+        finally:
+            _A_ECRIRE.task_done()
+
+
+def consigner_appel_distant(fournisseur, modalite, pid, secondes,
+                            octets=0, jetons=(None, None)):
+    """Un appel distant ABOUTI, et ce qu'on peut en mesurer objectivement.
+
+    Appele apres coup, jamais avant : un appel qui echoue n'est pas facture, et
+    le compter fermerait le robinet pour une depense qui n'a pas eu lieu — la
+    panne du fournisseur se paierait deux fois.
+    """
+    global _ECRIVAIN
+    entree, sortie = jetons if jetons else (None, None)
+    ligne = {
+        "quand": time.strftime("%Y-%m-%d %H:%M:%S"), "mois": _mois(),
+        "fournisseur": fournisseur, "modalite": modalite,
+        # Le NOM du compte quand il y en a un : douze caracteres hexadecimaux
+        # ne se reconnaissent pas dans un tableau. Meme regle que les dossiers
+        # de sortie, pour que la facture et la mediatheque se lisent ensemble.
+        "compte": dossier_utilisateur(pid),
+        "jetons_entree": entree, "jetons_sortie": sortie,
+        "octets": int(octets or 0), "secondes": round(float(secondes or 0), 1),
+    }
+    # Le total en memoire d'abord : c'est lui que le plafond interroge, et il ne
+    # doit pas dependre du moment ou le disque aura repondu.
+    _cumuler(ligne)
+    # Demarrage au premier appel : un studio qui ne sort jamais de la maison n'a
+    # pas a porter un fil de plus. Sans verrou, parce que seule la boucle
+    # d'evenements appelle cette fonction — un seul fil, donc pas de course.
+    if _ECRIVAIN is None:
+        _ECRIVAIN = threading.Thread(target=_fil_ecriture, daemon=True,
+                                     name="couts-nuage")
+        _ECRIVAIN.start()
+    try:
+        _A_ECRIRE.put_nowait(ligne)
+    except queue.Full:
+        print("journal des couts sature — une ligne perdue", flush=True)
+
+
+def appels_du_mois(compte, mois=None):
+    """Combien d'appels distants ce compte a faits ce mois-ci."""
+    par_compte = (COMPTEUR.get(mois or _mois()) or {}).get(compte) or {}
+    return sum(m["appels"] for m in par_compte.values())
+
+
+def plafond_atteint(pid):
+    """Vrai si ce compte a epuise son quota d'appels distants du mois.
+
+    Zero veut dire « aucun plafond », et c'est le reglage d'origine : un studio
+    qui se mettrait a refuser le nuage sans qu'on le lui ait demande serait une
+    mauvaise surprise, pas une protection.
+    """
+    limite = PREFERENCES.get("plafond_nuage") or 0
+    if limite <= 0:
+        return False
+    return appels_du_mois(dossier_utilisateur(pid)) >= limite
+
+
+def etat_plafond(pid):
+    """Ou en est ce compte de son quota, ou None s'il n'y en a pas."""
+    limite = PREFERENCES.get("plafond_nuage") or 0
+    if limite <= 0:
+        return None
+    compte = dossier_utilisateur(pid)
+    faits = appels_du_mois(compte)
+    return {"compte": compte, "mois": _mois(), "limite": limite,
+            "faits": faits, "atteint": faits >= limite}
+
+
 def fournisseur_dispo(modalite):
     """Le fournisseur joignable pour cette modalite, ou "".
 
@@ -3706,6 +3948,13 @@ def nuage_actif(pid, modalite="llm"):
     fournisseur, l'interrupteur est allume ; sinon il est eteint. Un clic
     l'inverse, pour ce navigateur seulement.
     """
+    # LE PLAFOND PASSE PAR ICI, ET NULLE PART AILLEURS. C'est deja le point de
+    # passage de toutes les decisions « au loin ou a la maison » —
+    # llm_distant_possible, choix_distant, l'interrupteur de la barre du haut.
+    # Lui ajouter un second chemin, c'est un jour en oublier un, et laisser une
+    # modalite depenser apres la fermeture du robinet.
+    if plafond_atteint(pid):
+        return False
     defaut = CHOIX.get(modalite, "local") != "local"
     return (NUAGE.get(pid) or {}).get(modalite, defaut)
 
@@ -3748,7 +3997,9 @@ async def api_nuage(req):
             "possible": bool(dispo),
             "titre": conf.get("titre", "local"),
         })
-    return web.json_response({"modalites": etat})
+    # Le plafond voyage avec l'etat des interrupteurs : c'est la seule reponse
+    # qui dise a la fois « eteint » et pourquoi.
+    return web.json_response({"modalites": etat, "plafond": etat_plafond(pid)})
 
 
 def choix_distant(intention, texte, plan, pid=None):
@@ -6111,6 +6362,11 @@ def raison_du_local(texte, image_b64=None, pid=None):
     choix = CHOIX.get("llm", "local")
     if choix == "local":
         return ""
+    # AVANT « nuage coupe » : le plafond eteint justement l'interrupteur, et
+    # sans cette ligne l'utilisateur lirait qu'il l'a coupe lui-meme.
+    if pid is not None and plafond_atteint(pid):
+        return (f"plafond du mois atteint ({PREFERENCES.get('plafond_nuage')} "
+                f"appels distants) : le modele local est utilise")
     if pid is not None and not nuage_actif(pid):
         return "nuage coupe : le modele local est utilise"
     if pid is not None and not fournisseur_dispo("llm"):
@@ -6464,6 +6720,39 @@ async def api_admin_avis(req):
     })
 
 
+async def api_admin_couts(req):
+    """Ce que le nuage a coute, par compte et par fournisseur, sur deux mois.
+
+    Des nombres bruts et aucun prix. Un tableau de bord qui afficherait des
+    euros les afficherait faux le jour ou un tarif change, sans que personne ne
+    s'en apercoive ; ici, qui veut des euros multiplie par le tarif de sa
+    facture, et sait au moins par quoi il multiplie.
+    """
+    if not admin_ok(req):
+        return web.json_response({"erreur": "acces refuse"}, status=403)
+    mois = []
+    for m in mois_montres():
+        comptes = []
+        for compte, par_cle in (COMPTEUR.get(m) or {}).items():
+            detail = []
+            for cle, mesures in sorted(par_cle.items()):
+                fourn, _, modalite = cle.partition("/")
+                detail.append(dict(mesures, fournisseur=fourn, modalite=modalite))
+            comptes.append({
+                "compte": compte, "detail": detail,
+                "appels": sum(x["appels"] for x in detail),
+                "jetons_entree": sum(x["jetons_entree"] for x in detail),
+                "jetons_sortie": sum(x["jetons_sortie"] for x in detail),
+                "sans_jetons": sum(x["sans_jetons"] for x in detail),
+                "octets": sum(x["octets"] for x in detail),
+                "secondes": round(sum(x["secondes"] for x in detail), 1),
+            })
+        mois.append({"mois": m,
+                     "comptes": sorted(comptes, key=lambda c: -c["appels"])})
+    return web.json_response({"mois": mois,
+                              "plafond": PREFERENCES.get("plafond_nuage", 0)})
+
+
 def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erreur=None):
     """Ecrit le tour, ou met a jour celui qui porte deja cet identifiant.
 
@@ -6637,6 +6926,13 @@ async def produire_distant(choix, plan, texte, entree, intention, tid, conv):
     # tour ni dans la mediatheque — alors que ce sont justement celles qu'on
     # paie a la seconde.
     TACHES.setdefault(tid, {})["secondes"] = round(time.time() - debut, 1)
+    # Le proprietaire de la CONVERSATION et non celui de la tache : les deux
+    # sont le meme, mais c'est la conversation qui porte l'information jusqu'ici
+    # sans dependre de l'etat de TACHES au moment ou l'on ecrit.
+    consigner_appel_distant(conf["fournisseur"], conf["type"],
+                            conv.get("proprietaire"), time.time() - debut,
+                            octets=len(octets),
+                            jetons=fournisseurs.jetons_du_dernier_appel())
     journal(tid, f"recu en {time.time() - debut:.0f} s ({len(octets) / 1024:.0f} ko)")
     return [{"filename": nom, "subfolder": sous, "type": "output",
              "noeud": noeud_local()["id"]}]
@@ -6927,6 +7223,17 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         if loin and not moteur_distant_pret(loin):
             journal(tid, f"aucune cle pour {loin} — calcul en local")
             plan["raison"] = "cle absente : repli sur le moteur local"
+            loin = ""
+        # Le plafond vaut AUSSI pour un moteur distant choisi a la main dans la
+        # liste : choix_distant passe par nuage_actif, force_loin non. Sans
+        # cette ligne, le robinet se rouvrait d'un clic dans le menu des
+        # moteurs. La demande en cours n'est pas cassee pour autant : le repli
+        # local du moteur distant a deja ete pose plus haut.
+        if loin and plafond_atteint(conv.get("proprietaire")):
+            journal(tid, f"plafond du mois atteint "
+                         f"({PREFERENCES.get('plafond_nuage')} appels distants) "
+                         f"— la generation reste sur cette machine")
+            plan["raison"] = "plafond du nuage atteint : repli sur le moteur local"
             loin = ""
         if loin:
             # Le dire AVANT l'appel : c'est la seule trace qui distingue « parti
@@ -9023,8 +9330,13 @@ FICHIER_PREFERENCES = os.path.join(DOSSIER_CONV, "_reglages.json")
 # le lendemain matin, et c'est la plus longue absence au bout de laquelle une
 # image qui arrive toute seule fait encore plaisir plutot que peur. A zero, on
 # retrouve le refus immediat d'avant — pour qui prefere qu'un refus soit un refus.
+#
+# « plafond_nuage » : combien d'appels distants un compte peut faire dans le
+# mois. Zero, le defaut, veut dire aucune limite — le studio se comporte alors
+# exactement comme avant.
 PREFERENCES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30),
-               "armee_heures": int(os.environ.get("STUDIO_ARMEE_HEURES") or 12)}
+               "armee_heures": int(os.environ.get("STUDIO_ARMEE_HEURES") or 12),
+               "plafond_nuage": int(os.environ.get("STUDIO_PLAFOND_NUAGE") or 0)}
 
 
 def charger_reglages():
@@ -9679,9 +9991,10 @@ async def api_admin_pause(req):
 async def api_admin_reglages(req):
     """Les reglages qui n'ont pas leur place dans une variable d'environnement.
 
-    Deux, et ils se suivent : combien de temps une machine en pause fait
-    patienter la demande qui la reclame, puis combien de temps cette demande
-    reste gardee en attente de son retour.
+    Trois : combien de temps une machine en pause fait patienter la demande qui
+    la reclame, combien de temps cette demande reste ensuite gardee en attente
+    de son retour, et combien d'appels distants un compte peut faire dans le
+    mois avant de revenir au local.
     """
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
@@ -9695,7 +10008,8 @@ async def api_admin_reglages(req):
         # seul reglage, aurait refuse en 400 toute requete venue d'un champ
         # ajoute apres elle.
         bornes = {"pause_propose": (0, 1440, "une duree en minutes, de 0 a 1440"),
-                  "armee_heures": (0, 168, "une duree en heures, de 0 a 168")}
+                  "armee_heures": (0, 168, "une duree en heures, de 0 a 168"),
+                  "plafond_nuage": (0, 100000, "un nombre d'appels, de 0 a 100000")}
         change = False
         for clef, (bas, haut, dit_) in bornes.items():
             if clef not in d:
@@ -9997,6 +10311,7 @@ def app():
     a.router.add_post("/api/avis", api_avis)
     a.router.add_get("/api/intentions", api_intentions)
     a.router.add_get("/api/admin/avis", api_admin_avis)
+    a.router.add_get("/api/admin/couts", api_admin_couts)
     a.router.add_get("/api/admin/aiguilleur", api_admin_aiguilleur)
     a.router.add_post("/api/admin/aiguilleur", api_admin_aiguilleur)
     a.router.add_get("/api/admin/cles", api_admin_cles)
@@ -10025,6 +10340,7 @@ if __name__ == "__main__":
     charger_comptes()
     charger_cles()
     charger_nuage()
+    charger_compteur()
     relever_vram()
     # Le modele d'ecriture est desormais annonce par adresse, juste au-dessus.
     print("  Aiguilleur: "
