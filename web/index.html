@@ -499,6 +499,12 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       <option value="moteur">moteur</option>
       <option value="a">propriétaire</option>
       <option value="demande">demande (A→Z)</option>
+      <option value="-secondes">le plus long d'abord</option>
+    </select>
+    <select id="soinMedia" aria-label="Brouillon ou fini">
+      <option value="">brouillons et finies</option>
+      <option value="finies">images finies</option>
+      <option value="brouillons">brouillons</option>
     </select>
     <select id="moteurMedia" aria-label="Moteur"></select>
     <select id="machineMedia" aria-label="Machine"></select>
@@ -1282,7 +1288,7 @@ async function ouvrirMediatheque() {
   if (mediaCharge.tout)
     garnirChoix(quiSel, tous.map(f => f.a), "tout le monde");
   for (const id of ["#chercheMedia", "#triMedia", "#moteurMedia",
-                    "#machineMedia", "#quiMedia"])
+                    "#machineMedia", "#quiMedia", "#soinMedia"])
     $(id).oninput = peindreGrille;
   peindreGrille();
 }
@@ -1319,12 +1325,16 @@ function trierEtFiltrer(liste) {
   const moteur = $("#moteurMedia").value;
   const machine = $("#machineMedia").value;
   const qui = $("#quiMedia").value;
+  // Trente pieces plus tard, « lesquelles sont finies ? » est la premiere
+  // question qu'on se pose devant une mediatheque ou l'on a beaucoup essaye.
+  const soin = $("#soinMedia").value;
   const tri = $("#triMedia").value;
 
   const gardees = liste.filter(f =>
     (!moteur || f.moteur === moteur)
     && (!machine || f.noeud === machine)
     && (!qui || f.a === qui)
+    && (!soin || (soin === "brouillons" ? !!f.esquisse : !f.esquisse))
     // La recherche porte sur ce que l'utilisateur a ECRIT, sur ce qui a ete
     // ENVOYE au moteur, et sur le nom du fichier : les trois façons dont on se
     // souvient d'une image qu'on a produite il y a trois semaines.
@@ -1399,7 +1409,13 @@ function peindreGrille() {
     legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
                       + `<small>${f.a ? "<b>" + ech(f.a) + "</b> · " : ""}`
                       + `${f.esquisse && !vignette ? "brouillon · " : ""}`
-                      + `${ech(f.moteur || "")} · ${ech(quand)}</small>`;
+                      + `${ech(f.moteur || "")}`
+                      // La taille et le temps : « pourquoi celle-ci a mis
+                      // quatre minutes » se repond neuf fois sur dix par la
+                      // resolution, et rien ne la montrait nulle part.
+                      + `${f.taille ? " · " + ech(f.taille.replace("x", " × ")) : ""}`
+                      + `${f.secondes ? " · " + Math.round(f.secondes) + " s" : ""}`
+                      + ` · ${ech(quand)}</small>`;
     // Replie : le prompt envoye fait souvent dix lignes, et on ne le cherche
     // que lorsqu'un rendu surprend. Deplie, il repond a « pourquoi cette
     // image-la ».

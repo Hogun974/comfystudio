@@ -6059,6 +6059,12 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         "id": tid, "heure": time.strftime("%H:%M"), "demande": texte,
         "prompt": (plan or {}).get("prompt"), "modele": cle, "type": intention,
         "parametres": (plan or {}).get("parametres"), "raison": (plan or {}).get("raison"),
+        # LA TAILLE RENDUE. Elle vivait dans le plan, qui ne survit pas au tour,
+        # et nulle part ailleurs : « pourquoi celle-ci a mis quatre minutes ? »
+        # se repond neuf fois sur dix par la resolution, et rien ne la montrait.
+        "taille": (f"{(plan or {}).get('largeur')}x{(plan or {}).get('hauteur')}"
+                   if (plan or {}).get("largeur") and (plan or {}).get("hauteur")
+                   else None),
         "fichiers": sorties or [], "description": TACHES.get(tid, {}).get("description"),
         # La machine et le temps. Ils vivaient dans le journal du studio, qui se
         # perd a chaque redemarrage, et dans le fil de la tache, qui s'efface au
@@ -7945,6 +7951,8 @@ async def api_mediatheque(req):
                     # dans une mediatheque — meme prompt, meme moteur, meme
                     # taille, seul le soin change.
                     "esquisse": bool(tour.get("esquisse")),
+                    "taille": tour.get("taille"),
+                    "secondes": tour.get("secondes"),
                     "heure": tour.get("heure"),
                     "quand": _date_sortie(f, conv),
                     "conversation": conv["id"],
