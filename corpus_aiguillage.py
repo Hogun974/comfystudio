@@ -77,6 +77,19 @@ GABARITS = [
     ("le meme personnage, {lieu}", "image"),
     ("la meme, mais {lieu}", "image"),
     ("{sujet} devant une plus grande maison", "image"),
+    # Une CREATION qui parle de definition, de qualite ou de detail. Le
+    # classifieur voyait « 1920x1080 », « haute definition », « bonne qualite »
+    # et concluait « agrandir » — le 31 aout, une demande de fond d'ecran Halo
+    # est partie a l'agrandissement, avec assez de confiance pour court-circuiter
+    # le modele de langage. Les mots de la definition appartiennent aux deux
+    # intentions : ce qui les separe est qu'on DECRIT un sujet.
+    ("{sujet} {lieu}, en 1920x1080", "image"),
+    ("{sujet} {lieu}, en haute definition", "image"),
+    ("{sujet}, {style}, tres detaille", "image"),
+    ("{sujet} {lieu}, de bonne qualite", "image"),
+    ("un fond d'ecran avec {sujet} {lieu}, plein de details", "image"),
+    ("{sujet}, {style}, qualite professionnelle", "image"),
+    ("une affiche de {sujet}, en 4k", "image"),
     # edition
     ("change {cible} {changement}", "edition"),
     ("mets {cible} {changement}", "edition"),

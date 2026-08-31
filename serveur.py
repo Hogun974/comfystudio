@@ -2261,7 +2261,32 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     # Le classifieur, en second rideau : les expressions ci-dessous couvrent
     # les formulations courantes, lui rattrape les autres — « il me faudrait
     # des mouvements plus naturels » n'etait prevu par aucune.
-    if AIGUILLEUR and not modele_force and not a_une_image:
+    # Agrandir, detourer, fluidifier portent tous les trois sur une image qui
+    # EXISTE. Sans image jointe ni sortie precedente dans la conversation, ces
+    # intentions n'ont aucun sens, et le classifieur n'a pas a pouvoir les
+    # proposer : le 31 aout, « un magnifique fond d'ecran du jeu Halo avec
+    # Masterchief, pleins de details en bonne qualite et en 1920x1080 » a ete
+    # classe « agrandir » avec assez de confiance pour court-circuiter le
+    # modele. L'utilisateur a reçu « aucune image a agrandir » pour une demande
+    # de CREATION — le studio avait refuse de produire ce qu'on lui demandait,
+    # sur la foi d'une devinette.
+    #
+    # Le garde-fou est structurel plutot que lexical : aucune formule ajoutee au
+    # corpus ne rendra jamais un agrandissement possible sans image.
+    source_dispo = a_une_image or bool(conv.get("derniere_sortie"))
+    # Et une demande COURTE. Le critere est deja celui de veut_agrandir() :
+    # « une demande de creation decrit un sujet, et c'est long ; une demande
+    # d'agrandissement tient en quelques mots ». Il valait pour les expressions
+    # ecrites, il vaut tout autant pour le classifieur, qui voit « 1920x1080 »,
+    # « haute definition », « bonne qualite » et conclut « agrandir » sans
+    # remarquer qu'on lui a decrit un sujet pendant cent quinze caracteres.
+    #
+    # Au-dela, on n'ecarte pas l'intention : on la fait confirmer par le modele
+    # de langage, dont c'est le travail. Le raccourci n'existe que pour epargner
+    # dix secondes sur les cas evidents.
+    court = len((texte or "").strip()) <= 70
+    if (AIGUILLEUR and not modele_force and not a_une_image
+            and source_dispo and court):
         propose, marge = AIGUILLEUR.classer(texte)
         if propose in SANS_ECRITURE and marge >= _aiguilleur.MARGE_SURE \
                 and not (veut_fluidifier(texte) or veut_detourer(texte)

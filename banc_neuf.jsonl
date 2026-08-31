@@ -42,3 +42,8 @@
 {"texte": "Est-ce que tu saurais me faire entendre ce message vocal ?", "intention": "lecture"}
 {"texte": "Il me faudrait passer ce morceau pour vérifier le rendu final.", "intention": "lecture"}
 {"texte": "Diffusion du fichier, s'il te plaît", "intention": "lecture"}
+{"texte": "Un magnifique fond d'ecran du jeu Halo avec Masterchief, pleins de details du jeu en bonne qualite et en 1920x1080", "intention": "image"}
+{"texte": "un paysage de montagne en 4k avec beaucoup de details", "intention": "image"}
+{"texte": "une affiche de film en haute definition, tres detaillee", "intention": "image"}
+{"texte": "un portrait de studio en 1920x1080, qualite professionnelle", "intention": "image"}
+{"texte": "une voiture de sport rouge, rendu de tres bonne qualite", "intention": "image"}
