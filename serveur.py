@@ -7371,6 +7371,38 @@ async def api_conversation(req):
         return web.json_response({"erreur": "inconnue"}, status=404)
     return web.json_response(conv_de(cid, pid))
 
+async def api_conv_reglages(req):
+    """Pose les reglages d'une conversation sans rien lancer.
+
+    Choisir un moteur dans le menu, c'est deja decider — et ce choix se perdait
+    tant qu'aucune demande n'etait envoyee : les reglages n'etaient ecrits que
+    par /api/generer. On ouvrait le tiroir, on prenait FLUX.1 en 1920x1080, on
+    passait voir une autre conversation, et le choix n'existait plus au retour.
+    """
+    pid = qui(req)
+    cid = req.match_info["cid"]
+    conv = CONVERSATIONS.get(cid)
+    if not ouvrable(conv, pid):
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    # Les memes controles que pour une demande : un reglage qui nomme un moteur
+    # inconnu ne doit pas dormir sur une conversation en attendant de la faire
+    # echouer plus tard.
+    if d.get("modele") and d["modele"] not in CATALOGUE             and d["modele"] not in MOTEURS_DISTANTS:
+        return web.json_response({"erreur": "moteur inconnu"}, status=400)
+    if d.get("taille") and d["taille"] not in TAILLES:
+        return web.json_response({"erreur": "taille non prise en charge"}, status=400)
+    if d.get("priorite") and d["priorite"] not in PRIORITES:
+        return web.json_response({"erreur": "priorite inconnue"}, status=400)
+    if d.get("noeud") and noeud(d["noeud"]) is None:
+        return web.json_response({"erreur": "machine inconnue"}, status=400)
+    poser_reglages(conv, d)
+    return web.json_response({"reglages": reglages_de(conv)})
+
+
 async def api_activer(req):
     pid = qui(req)
     cid = req.match_info["cid"]
@@ -9141,6 +9173,7 @@ def app():
     a.router.add_get("/api/conversation", api_conversation)
     a.router.add_get("/api/conversation/{cid}", api_conversation)
     a.router.add_post("/api/conversation/{cid}/activer", api_activer)
+    a.router.add_post("/api/conversation/{cid}/reglages", api_conv_reglages)
     a.router.add_delete("/api/conversation/{cid}", api_supprimer)
     a.router.add_get("/api/fichier", api_fichier)
     a.router.add_get("/api/mediatheque", api_mediatheque)

@@ -1563,13 +1563,28 @@ function peindreActifs() {
     mot.className = "oter";
     mot.textContent = (r.nom ? r.nom + " " : "") + r.lire(el.selectedOptions[0]);
     mot.title = "cliquer pour revenir à l'automatique";
-    mot.onclick = () => { el.value = ""; peindreActifs(); };
+    mot.onclick = () => { el.value = ""; peindreActifs(); retenirReglages(); };
     zone.appendChild(mot);
   }
 }
+/* Choisir dans un menu, c'est deja decider : le reglage part tout de suite sur
+   la conversation, sans attendre qu'une demande soit envoyee. Sans cette route,
+   on ouvrait le tiroir, on prenait FLUX.1 en 1920x1080, on passait voir une
+   autre conversation, et le choix n'existait plus au retour. */
+function retenirReglages() {
+  if (!convActive) return;
+  const corps = { ...reglagesDemandes(), priorite: $("#priorite").value };
+  reglagesVoulus = { ...corps };
+  fetch("/api/conversation/" + convActive + "/reglages", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(corps)
+  }).catch(() => {});   // du confort : la demande les reporte de toute facon
+}
+
 REGLAGES.forEach(r => {
   const el = document.querySelector(r.sel);
-  if (el) el.addEventListener("change", peindreActifs);
+  if (el) el.addEventListener("change", () => { peindreActifs(); retenirReglages(); });
 });
 document.querySelector("#plier").onclick = e => {
   const outils = document.querySelector("#outils");
