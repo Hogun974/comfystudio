@@ -105,9 +105,8 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   .compte button,.lien-admin,.jauge .source{min-height:34px;
     display:inline-flex;align-items:center}
   .nuages button{min-height:32px}
-  /* Meme mesure pour la barre sous le champ : « brouillon » y est desormais une
-     action qu'on repete, et ses voisins montent avec lui — un bouton plus haut
-     que les deux d'a cote se lit comme une erreur d'alignement. */
+  /* Meme mesure pour la barre sous le champ et pour la rangee sous une
+     esquisse : une cible plus petite que 34 px se manque au pouce. */
   .barre button,.au-propre button{min-height:34px}
   /* « joindre un fichier » est un <label>, pas un <button> : sans cette ligne il
      restait a 26 px a cote de deux boutons montes a 34, et la barre paraissait
@@ -386,21 +385,21 @@ textarea:focus-visible{outline:2px solid var(--braise);outline-offset:1px;
 .envoyer:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
 .envoyer:disabled{opacity:.4;cursor:default}
 .envoyer:focus-visible{outline:2px solid var(--braise-vive);outline-offset:2px}
+/* Le brouillon a cote de la fleche, et non dans la barre : c'est le geste qu'on
+   repete quand on cherche, il doit etre sous le pouce. Creux la ou l'envoi est
+   plein — deux boutons pleins cote a cote poseraient « lequel je presse ? » a
+   chaque demande. Le signe « ≈ » dit le a-peu-pres, ce qu'un brouillon est. */
+.envoyer.esquisser{background:transparent;color:var(--braise);
+  border:1px dashed var(--braise);font-size:22px;width:44px}
+.envoyer.esquisser:hover:not(:disabled){background:var(--braise-sourde);
+  border-style:solid}
 .outils{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:10px}
-/* Barre repliee : deux boutons et, s'il y a lieu, ce qui est actif. */
+/* Barre repliee : joindre, reglages, et ce qui est actif. */
 .barre{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:9px}
 .barre button{background:transparent;border:1px solid var(--trait);border-radius:8px;
   padding:4px 10px;font:11.5px var(--mono);color:var(--encre-douce);cursor:pointer}
 .barre button:hover{border-color:var(--braise);color:var(--braise)}
 .barre button.ouvert{border-color:var(--braise);color:var(--braise)}
-/* Le brouillon est une ACTION, pas un reglage : il part tout de suite, comme la
-   fleche. Il est donc dans la barre visible et non dans le tiroir des reglages,
-   et son trait discontinu reprend celui de la pastille qu'il produira. */
-.barre button.brouillon{border-style:dashed;border-color:var(--braise);
-  color:var(--braise)}
-.barre button.brouillon:hover:not(:disabled){border-style:solid;
-  background:var(--braise-sourde)}
-.barre button.brouillon:disabled{opacity:.45;cursor:default}
 .actifs{font:11px var(--mono);color:var(--braise);display:flex;gap:7px;flex-wrap:wrap}
 .actifs .oter{cursor:pointer;border-bottom:1px dotted var(--braise)}
 .outils.replie{display:none}
@@ -526,11 +525,12 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     <div class="champ">
       <textarea id="txt" rows="1" aria-label="Décris ce que tu veux"
         placeholder="un renard dans les hautes herbes au coucher du soleil…"></textarea>
+      <button type="button" class="envoyer esquisser" id="lancerBrouillon"
+        title="Un rendu au quart des étapes : quelques secondes au lieu de quelques minutes. De quoi juger le prompt, le moteur et l'ambiance. Attention : la version soignée traitera le même sujet mais n'aura PAS le même cadrage — le nombre d'étapes change le calcul."
+        aria-label="Brouillon">≈</button>
       <button class="envoyer" id="go" title="Générer (Ctrl+Entrée)" aria-label="Générer">↑</button>
     </div>
     <div class="barre">
-      <button type="button" id="lancerBrouillon" class="brouillon"
-        title="Un rendu au quart des étapes : quelques secondes au lieu de quelques minutes. De quoi juger le prompt, le moteur et l'ambiance. Attention : la version soignée traitera le même sujet mais n'aura PAS le même cadrage — le nombre d'étapes change le calcul.">brouillon</button>
       <label class="joindre" for="img" style="border:1px solid var(--trait);
         border-radius:8px;padding:4px 10px;font:11.5px var(--mono);
         color:var(--encre-douce);cursor:pointer">joindre un fichier</label>
@@ -973,8 +973,8 @@ function garnirQuestion(bloc, t, cid) {
       const r = await fetch("/api/generer", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texte: complet, conversation: cid,
-                               taille: $("#taille").value,
-                               priorite: $("#priorite").value })
+                               priorite: $("#priorite").value,
+                               ...reglagesDemandes() })
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la demande");
@@ -1039,6 +1039,10 @@ async function ouvrir(cid) {
   // pas une condition pour afficher.
   fetch("/api/conversation/" + cid + "/activer", { method: "POST" }).catch(() => {});
   const c = await (await fetch("/api/conversation/" + cid)).json();
+  // Ses reglages a elle, remis dans les menus. Sans cette ligne, passer d'une
+  // conversation en FLUX.1 1920x1080 a une autre en RealVis 1024x720 gardait
+  // les menus de la premiere, et la seconde partait avec le mauvais moteur.
+  poserReglages(c.reglages);
   $("#fil").innerHTML = "";
   if (!c.tours || !c.tours.length) messageVide();
   else c.tours.forEach(t => { ajouterDemande(t.demande, t.heure);
@@ -1068,8 +1072,9 @@ fetch("/api/machines").then(r => r.json()).then(ns => {
                   + (x.repond ? "" : " (ne repond pas)");
     sel.appendChild(o);
   }
-  const garde = localStorage.getItem("machine");
-  if (garde && sel.querySelector(`option[value="${CSS.escape(garde)}"]`)) sel.value = garde;
+  // La liste arrive apres coup : on repose ce que la conversation demandait,
+  // sinon son choix tombait dans le vide faute d'option correspondante.
+  poserReglages(reglagesVoulus);
   sel.addEventListener("change", () => {
     if (sel.value) localStorage.setItem("machine", sel.value);
     else localStorage.removeItem("machine");
@@ -1090,6 +1095,7 @@ fetch("/api/modeles").then(r => r.json()).then(ms => {
     sel.appendChild(o);
   });
   $("#jaugeModeles").innerHTML = `<b>${prets}/${locaux}</b> moteurs prêts`;
+  poserReglages(reglagesVoulus);   // meme raison que pour les machines
 }).catch(() => { $("#jaugeModeles").innerHTML = "<b>serveur injoignable</b>"; })
   .finally(async () => {
     const d = await (await fetch("/api/conversations")).json();
@@ -1659,6 +1665,49 @@ $("#retirer").onclick = detacher;
    priorite change. Deux copies auraient diverge des la premiere correction —
    c'est deja arrive avec la reponse a une precision, qui a longtemps oublie la
    taille choisie. */
+/* Ce qu'une demande emporte, ecrit UNE fois.
+
+   Le formulaire de reponse a une precision n'envoyait que la taille et la
+   priorite : le moteur impose et la machine choisie disparaissaient des qu'on
+   repondait a une question. Deux chemins d'envoi, deux listes de champs, et la
+   seconde avait oublie la moitie de la premiere. Il n'y en a plus qu'une.
+
+   Le serveur les retient sur la conversation : une demande qui tait un reglage
+   herite du sien. Envoyer les quatre a chaque fois reste le bon geste — c'est
+   ce que l'utilisateur a sous les yeux qui fait foi. */
+function reglagesDemandes() {
+  return { modele: $("#forcer").value, taille: $("#taille").value,
+           noeud: $("#machine").value || null };
+}
+
+/* Remet les menus dans l'etat de la conversation ouverte. Une conversation
+   travaille en FLUX.1 1920x1080, une autre en RealVis 1024x720 : les menus
+   etaient a la fenetre, donc partages par toutes, et changer de conversation
+   emportait le reglage de la precedente. */
+let reglagesVoulus = {};
+function poserReglages(r) {
+  reglagesVoulus = r || {};
+  const mettre = (sel, val) => {
+    const el = $(sel);
+    if (!el) return;
+    const v = val || "";
+    // Le menu des moteurs se remplit apres coup : tant que l'option n'existe
+    // pas, on ne pose rien plutot que d'ecraser par du vide — poserReglages est
+    // rappele quand la liste arrive.
+    if (!v || [...el.options].some(o => o.value === v)) el.value = v;
+  };
+  mettre("#forcer", reglagesVoulus.modele);
+  // Une conversation neuve n'a pas encore de machine : on lui laisse celle
+  // qu'on avait choisie la derniere fois, comme avant. Des qu'elle en a une,
+  // c'est la sienne qui compte — le reglage appartient a la conversation, pas
+  // a la fenetre.
+  mettre("#machine", "noeud" in reglagesVoulus ? reglagesVoulus.noeud
+                                               : localStorage.getItem("machine"));
+  mettre("#priorite", reglagesVoulus.priorite);
+  mettre("#taille", reglagesVoulus.taille);
+  if (typeof peindreActifs === "function") peindreActifs();
+}
+
 async function lancerDemande(priorite) {
   const texte = $("#txt").value.trim();
   if (!texte && !imageJointe) return;
@@ -1671,10 +1720,8 @@ async function lancerDemande(priorite) {
   try {
     const r = await fetch("/api/generer", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texte, image: imageJointe, modele: $("#forcer").value,
-                             taille: $("#taille").value, priorite,
-                             noeud: $("#machine").value || null,
-                             conversation: monConv })
+      body: JSON.stringify({ texte, image: imageJointe, priorite,
+                             ...reglagesDemandes(), conversation: monConv })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la demande");

@@ -713,10 +713,61 @@ async def sonder_noeud(x):
 async def sonder_noeuds():
     await asyncio.gather(*(sonder_noeud(x) for x in NOEUDS))
 
+# Les reglages appartiennent a la CONVERSATION, et non a la page. Une
+# conversation travaille en FLUX.1 1920x1080, une autre en RealVis 1024x720, et
+# chacune garde le sien tant que son proprietaire ne le change pas.
+#
+# Ils vivaient dans les menus de la page, donc dans un seul jeu partage par
+# toutes les conversations — et surtout, chaque chemin d'envoi devait penser a
+# les recopier. Le formulaire de reponse a une precision n'envoyait que la
+# taille et la priorite : le moteur impose et la machine choisie disparaissaient
+# a la seconde ou l'on repondait a une question. Constate par l'utilisateur.
+# Sur la conversation, aucun chemin ne peut plus les oublier.
+REGLAGES_CONV = ("modele", "taille", "priorite", "noeud")
+
+
+def reglages_de(conv):
+    r = (conv or {}).get("reglages")
+    return dict(r) if isinstance(r, dict) else {}
+
+
+def poser_reglages(conv, d):
+    """Fusionne ce que la demande dit avec ce que la conversation retient.
+
+    PRESENCE et non valeur : une cle absente est heritee, une cle presente —
+    meme vide — remplace. C'est la seule facon de distinguer « je n'en parle
+    pas » de « remets sur automatique », et les deux arrivent.
+
+    « brouillon » ne se retient jamais. C'est un geste, pas un reglage : le
+    garder ferait partir en brouillon les cinq demandes suivantes sans que
+    personne l'ait voulu.
+    """
+    garde = reglages_de(conv)
+    for cle in REGLAGES_CONV:
+        if cle not in d:
+            continue
+        valeur = d.get(cle) or None
+        if cle == "priorite" and valeur == "brouillon":
+            continue
+        if valeur is None:
+            garde.pop(cle, None)
+        else:
+            garde[cle] = valeur
+    if garde != reglages_de(conv):
+        conv["reglages"] = garde
+        sauver(conv)
+    # Ce qui part vraiment : l'heritage, mais le brouillon de CETTE demande
+    # l'emporte puisqu'on vient de le demander explicitement.
+    effectif = dict(garde)
+    if d.get("priorite") == "brouillon":
+        effectif["priorite"] = "brouillon"
+    return effectif
+
+
 def _vide(titre="Nouvelle conversation", proprietaire=None):
     return {"id": uuid.uuid4().hex[:12], "titre": titre, "proprietaire": proprietaire,
             "cree": time.strftime("%Y-%m-%d %H:%M"), "modifie": time.time(),
-            "tours": [], "derniere_sortie": None}
+            "tours": [], "derniere_sortie": None, "reglages": {}}
 
 def charger_conversations():
     os.makedirs(DOSSIER_CONV, exist_ok=True)
@@ -7068,20 +7119,24 @@ async def api_generer(req):
     if not texte and not image:
         return web.json_response({"erreur": "demande vide"}, status=400)
     pid = qui(req)
-    taille = d.get("taille") or None
+    # La conversation d'abord : c'est elle qui porte les reglages, et une
+    # demande qui n'en parle pas herite des siens.
+    conv = conv_de(d.get("conversation"), pid)
+    reglages = poser_reglages(conv, d)
+    taille = reglages.get("taille") or None
     if taille and taille not in TAILLES:
         return web.json_response({"erreur": "taille non prise en charge"}, status=400)
-    modele = d.get("modele") or None
+    modele = reglages.get("modele") or None
     if modele and modele not in CATALOGUE and modele not in MOTEURS_DISTANTS:
         return web.json_response({"erreur": "moteur inconnu"}, status=400)
     if modele in MOTEURS_DISTANTS and not moteur_distant_pret(modele):
         return web.json_response(
             {"erreur": "ce moteur demande une cle d API, a poser dans /admin"},
             status=400)
-    priorite = d.get("priorite") or ""
+    priorite = reglages.get("priorite") or ""
     if priorite not in PRIORITES:
         return web.json_response({"erreur": "priorite inconnue"}, status=400)
-    machine = d.get("noeud") or None
+    machine = reglages.get("noeud") or None
     if machine and noeud(machine) is None:
         return web.json_response({"erreur": "machine inconnue"}, status=400)
     # Une image appartient a celui qui l'a televersee. Deux pieges ici :
@@ -7090,7 +7145,6 @@ async def api_generer(req):
     # studio/…png » sortait de ComfyUI/input et faisait decrire l'image d'un autre.
     if image and (os.path.basename(image) != image or ENTREES.get(image) != pid):
         return web.json_response({"erreur": "image inconnue"}, status=404)
-    conv = conv_de(d.get("conversation"), pid)
     tid = uuid.uuid4().hex
     devant = len(ATTENTE) + len(EN_VOL)
     TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": texte,
@@ -7302,8 +7356,11 @@ async def api_conversations(req):
     liste = sorted(mes_conversations(pid), key=lambda c: c.get("modifie", 0), reverse=True)
     return web.json_response({
         "courante": COURANTE.get(pid) or (liste[0]["id"] if liste else None),
+        # Les reglages voyagent avec la liste : la page les remet dans ses menus
+        # au changement de conversation, sans un second aller-retour.
         "conversations": [{"id": c["id"], "titre": c["titre"], "cree": c["cree"],
-                           "tours": len(c["tours"])} for c in liste]})
+                           "tours": len(c["tours"]),
+                           "reglages": reglages_de(c)} for c in liste]})
 
 async def api_conversation(req):
     """Lecture pure : ne change pas la conversation courante du serveur.
