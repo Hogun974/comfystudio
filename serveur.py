@@ -743,6 +743,71 @@ def journal(tid, msg, **extra):
 # retelecharges — plusieurs dizaines de gigaoctets pour rien.
 _JUMEAUX_GGUF = {"diffusion_models": "unet_gguf", "text_encoders": "clip_gguf"}
 MODELES_NOEUD = {}          # id -> {"quand": t, "dossiers": {nom: set(fichiers)}}
+FICHIER_PARC = os.path.join(DOSSIER_CONV, "_parc.json")
+# L'instant du reveil. Pendant les premieres secondes, le studio ne sait encore
+# rien de personne : les machines s'annoncent toutes les dix secondes et il faut
+# les attendre plutot que de conclure a leur absence.
+DEMARRE = time.time()
+_PARC_ECRIT = [0.0]
+
+
+def sauver_parc():
+    """Ce que le studio sait des machines : carte, memoire, modeles portes.
+
+    Rien de vivant — ni « repond », ni « vu ». Une capacite ne change pas parce
+    que le studio a redemarre ; une presence, si. Sans ce fichier, un studio qui
+    redemarre ne sait plus rien de personne pendant dix a vingt secondes, et
+    refuse pendant ce temps des demandes qu'une machine declaree savait faire.
+    Constate le 31 aout : « realvis » demande, le NAS l'a, refus immediat.
+    """
+    if time.time() - _PARC_ECRIT[0] < 30:
+        return
+    _PARC_ECRIT[0] = time.time()
+    d = {}
+    for ident, e in ETAT_NOEUDS.items():
+        garde = {k: e[k] for k in ("carte", "vram", "ram", "libre")
+                 if e.get(k) is not None}
+        inv = MODELES_NOEUD.get(ident)
+        if inv and inv.get("dossiers"):
+            garde["dossiers"] = {k: sorted(v)
+                                 for k, v in inv["dossiers"].items()}
+            garde["quand"] = inv.get("quand")
+        if garde:
+            d[ident] = garde
+    try:
+        tmp = FICHIER_PARC + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, FICHIER_PARC)
+    except OSError:
+        pass
+
+
+def charger_parc():
+    """Relit ce qu'on savait des machines. Aucune n'est declaree presente."""
+    try:
+        with open(FICHIER_PARC, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not isinstance(d, dict):
+        return
+    for ident, garde in d.items():
+        if not isinstance(garde, dict):
+            continue
+        e = ETAT_NOEUDS.setdefault(ident, {})
+        for k in ("carte", "vram", "ram", "libre"):
+            if k in garde:
+                e[k] = garde[k]
+        # Muette jusqu'a preuve du contraire : la premiere annonce dira si elle
+        # est la. Ce fichier dit ce qu'elle SAIT FAIRE, pas qu'elle est reveillee.
+        e.setdefault("repond", False)
+        e.setdefault("vu", 0)
+        if isinstance(garde.get("dossiers"), dict):
+            MODELES_NOEUD[ident] = {
+                "quand": garde.get("quand") or 0,
+                "dossiers": {k: set(v) for k, v in garde["dossiers"].items()
+                             if isinstance(v, list)}}
 FRAICHEUR_MODELES = 60      # secondes
 
 def _dossiers_a_lire(sous, nom):
@@ -902,7 +967,13 @@ async def patienter_machine(cle, tid):
                 continue
             # La meme tolerance que _attendre_le_noeud : un agent occupe peut
             # manquer plusieurs battements, un agent mort n'en donne plus aucun.
-            if time.time() - (e.get("vu") or 0) < 4 * SILENCE_MAX:
+            # Vivante, ou pas encore revenue d'un redemarrage du studio. Dans
+            # les premieres secondes ETAT_NOEUDS ne porte que ce qui vient du
+            # disque, et « vu » vaut zero pour tout le monde : conclure a
+            # l'absence a cet instant, c'est refuser une demande parce que le
+            # studio vient de repartir.
+            if (time.time() - (e.get("vu") or 0) < 4 * SILENCE_MAX
+                    or time.time() - DEMARRE < 4 * SILENCE_MAX):
                 vues.append(x)
         return vues
 
@@ -7927,6 +7998,11 @@ async def api_noeud_annonce(req):
     if isinstance(dossiers, dict) and any(dossiers.values()):
         MODELES_NOEUD[x["id"]] = {"quand": time.time(),
                                   "dossiers": {k: set(v) for k, v in dossiers.items()}}
+    # Ce qu'on vient d'apprendre d'elle, garde pour le prochain reveil. Ecrit au
+    # plus une fois toutes les trente secondes : trois machines qui battent
+    # toutes les dix secondes ecriraient sinon ce fichier neuf fois par minute
+    # pour rien.
+    sauver_parc()
     # Tant qu'on ne connait pas ses modeles, on les reclame a chaque battement.
     # Sans cela, une machine bien equipee reste declaree incapable de tout
     # pendant les cinq minutes qui suivent un redemarrage du studio.
@@ -8689,6 +8765,7 @@ if __name__ == "__main__":
     charger_conversations()
     charger_entrees()
     charger_registre()
+    charger_parc()
     charger_reglages()
     charger_comptes()
     charger_cles()
