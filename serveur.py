@@ -4774,9 +4774,24 @@ _MINEUR = re.compile(r"\b(enfant|gamin|gamine|fillette|garconnet|bambin|b[ée]b[
                      r"coll[ée]gien|coll[ée]gienne|[ée]col(ier|iere)|child|kid|toddler|infant|"
                      r"minor|preteen|pre-teen|loli|shota|underage|schoolgirl|schoolboy|"
                      r"\b(\d|1[0-7])\s*ans?\b|\b(\d|1[0-7])\s*years?\s*old\b)", re.I)
-_SEXUEL = re.compile(r"\b(nu|nue|nus|nues|nudit[ée]|seins|fesses|sexe|sexuel|sexuelle|[ée]rotique|"
-                     r"porno|pornographique|explicit|nsfw|nude|naked|topless|lingerie|breasts|"
-                     r"nipples|genital|penis|vagina|sex|erotic|porn|hentai|rating_explicit)", re.I)
+# « \b » AUX DEUX BOUTS. Il manquait a la fin : « nu » mordait donc sur tout mot
+# commençant par ces deux lettres, et « sex » de meme. Neuf faux positifs sur un
+# corpus de treize demandes ordinaires — nuit, nuage, nuance, numerique, nuee,
+# nutriments, sexagenaire. Une scene de nuit etait classee adulte, donc tenue en
+# local, donc traduite par un modele de vingt-cinq milliards de parametres :
+# mesure du 31 aout, soixante-quinze a cent-soixante-cinq secondes par demande
+# la ou le nuage en met cinq. Le prompt qui a mis la puce a l'oreille disait
+# « nuanced lighting ».
+#
+# Les formes derivees sont ecrites plutot que devinees par un prefixe : « sexy »
+# ne se deduit plus de « sex », « nudes » plus de « nude ». Verifie dans les deux
+# sens — aucun terme adulte de l'ancien motif n'est perdu.
+_SEXUEL = re.compile(
+    r"\b(nu|nue|nus|nues|nudit[ée]|nudites|seins|fesses|sexe|sexes|sexuel|sexuels|"
+    r"sexuelle|sexuelles|[ée]rotique|[ée]rotiques|porno|pornos|pornographique|"
+    r"pornographiques|explicit|explicite|explicites|nsfw|nude|nudes|naked|topless|"
+    r"lingerie|breast|breasts|nipple|nipples|genital|genitals|genitalia|penis|"
+    r"vagina|sex|sexy|erotic|erotica|porn|hentai|rating_explicit)\b", re.I)
 
 # Fichiers d'entree deja pousses sur un noeud distant : (nom, id) -> nom reel
 # la-bas. ComfyUI renomme en « x (1).png » quand le nom existe deja, il faut
