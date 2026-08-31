@@ -11,6 +11,7 @@ Portable : rien n'est installe, tout tient sous D:\\ComfyStudio et s'appuie sur
 le Python embarque de ComfyUI.
 """
 import asyncio, base64, json, os, re, secrets, shlex, subprocess, sys, time, uuid
+import hashlib
 import mimetypes
 import urllib.parse
 import unicodedata
@@ -1176,7 +1177,21 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
     try:
         async with aiohttp.ClientSession(timeout=to) as s:
             async with s.post(f"{OLLAMA}/api/generate", json=corps) as r:
-                return (await r.json()).get("response", "")
+                d = await r.json()
+                rep_ = d.get("response", "")
+                if not rep_.strip():
+                    # Une reponse vide est dite a voix haute, comme pour un
+                    # fournisseur distant. Sans cela, « traduction rejetee
+                    # (0 lignes rendues pour 1 attendues) » etait tout ce que le
+                    # journal disait, et le diagnostic ajoute la veille ne
+                    # couvrait que la voie distante : celle-ci jetait
+                    # « done_reason » et « eval_count », les deux seules choses
+                    # qui expliquent un silence.
+                    print(f"  [ollama] reponse vide de {corps.get('model')} — "
+                          f"arret={d.get('done_reason')} "
+                          f"jetons={d.get('eval_count')} "
+                          f"erreur={str(d.get('error'))[:80]}", flush=True)
+                return rep_
     except Exception as e:
         # On n'essaie une autre machine QUE si la sienne ne repond pas : un
         # modele distant est plus lent a charger, et la machine qui le porte a
@@ -1611,8 +1626,20 @@ async def traduire(plan, tid):
                         for n, t in enumerate(textes, 1))
     for essai in (1, 2):
         try:
+            # Le modele d'ECRITURE, pas celui d'aiguillage. Sans ce
+            # parametre, la voie locale prenait MODELE_LLM — le petit modele qui
+            # sert a classer les demandes — et degenerait : ideogrammes inseres
+            # dans l'anglais, series de « @@@@@ », identifiants de code
+            # hallucines. Meme corpus de vingt demandes, meme consigne, seul le
+            # modele change : 10 a 30 % de traductions acceptees avec le petit,
+            # 95 % avec celui d'ecriture, 100 % par un fournisseur distant.
+            #
+            # Un commentaire d'enrichir() disait qu'elle « etait la derniere des
+            # trois a utiliser encore le petit modele de classement ». Elle ne
+            # l'etait pas : traduire avait ete oubliee.
             brut = await appeler_ollama(demande, None, SYS_TRADUCTION,
-                                        json_mode=False, temperature=0.1, tid=tid)
+                                        json_mode=False, temperature=0.1, tid=tid,
+                                        modele=choisir_modele_ecriture())
         except Exception as e:
             return replier_sur_multilingue(
                 plan, tid, f"traduction indisponible ({type(e).__name__})")
@@ -7068,6 +7095,11 @@ def noeuds_agents():
                       "vu_il_y_a": round(time.time() - vu) if vu else None,
                       "carte": e.get("carte"), "vram": e.get("vram"),
                       "moteurs": moteurs_du_noeud(x["id"]),
+                      # None quand la machine ne dit rien : un agent d'avant le
+                      # 31 aout n'annonce pas d'empreinte, et « inconnue » est
+                      # plus honnete que « perime » ou que « a jour ».
+                      "a_jour": (None if not e.get("empreinte")
+                                 else e["empreinte"] == empreinte_agent()),
                       "en_travail": len(TRAVAUX.get(x["id"], []))})
     return liste
 
@@ -7107,6 +7139,13 @@ async def api_noeud_annonce(req):
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     etat = ETAT_NOEUDS.setdefault(x["id"], {})
+    # L'empreinte du code qui tourne la-bas. Les agents d'avant le 31 aout n'en
+    # envoient pas : absente, on ne conclut rien plutot que de les declarer
+    # perimes sur une absence — mais ils le sont, et c'est justement pourquoi ils
+    # ne l'annoncent pas. Le doute profite a la machine ; l'administration montre
+    # « inconnue » et non « a jour ».
+    if isinstance(d.get("empreinte"), str):
+        etat["empreinte"] = d["empreinte"][:64]
     # Une annonce « comfy: False » dit : la machine est la, sa carte ne repond
     # pas. On note qu'on l'a vue et ce qu'elle porte cote langage, mais on
     # n'ecrase ni sa carte ni sa memoire par des zeros — ce qu'on savait d'elle
@@ -7580,6 +7619,31 @@ async def page_admin(req):
 
 # Les scripts qu'une machine-noeud a besoin de recuperer. Servis par le studio
 # lui-meme : poser un noeud, c'est une commande, et le mettre a jour aussi.
+_EMPREINTE_SERVIE = {"quand": 0.0, "valeur": ""}
+
+
+def empreinte_agent():
+    """Le sha256 de l'agent que ce studio distribue.
+
+    Relue quand le fichier change — sous PyInstaller il ne change jamais, hors
+    conteneur il change a chaque « git pull ». On compare le mtime plutot que de
+    relire 40 ko a chaque battement de chaque machine.
+    """
+    chemin = os.path.join(ICI, "agent_noeud.py")
+    try:
+        quand = os.path.getmtime(chemin)
+    except OSError:
+        return ""
+    if quand != _EMPREINTE_SERVIE["quand"]:
+        try:
+            with open(chemin, "rb") as f:
+                _EMPREINTE_SERVIE["valeur"] = hashlib.sha256(f.read()).hexdigest()
+        except OSError:
+            return ""
+        _EMPREINTE_SERVIE["quand"] = quand
+    return _EMPREINTE_SERVIE["valeur"]
+
+
 SCRIPTS_NOEUD = {"agent": "agent_noeud.py", "noeud.sh": "noeud.sh",
                  "noeud.bat": "noeud.bat",
                  # a coller dans « installer une application personnalisee »
