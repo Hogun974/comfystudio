@@ -578,6 +578,24 @@ def _sait_lire_ici(url, modele):
     return any(m.get("name") == modele for m in cerveau(url)["modeles"])
 
 
+def _sait_voir_ici(url, modele):
+    """Ce modele sait-il REGARDER une image, et pas seulement lire du texte.
+
+    Installe ne veut pas dire capable. Un modele de texte a qui l'on envoie une
+    image ne refuse pas : il decrit ce qu'il imagine, et rien ne le signale —
+    ni erreur, ni ligne de journal. C'est le pire des trois resultats
+    possibles. Ollama declare la capacite dans /api/tags depuis sa mise a jour ;
+    quand il ne la declare pas du tout, on ne bloque rien plutot que de rendre
+    la lecture d'image impossible sur une version plus ancienne.
+    """
+    for m in cerveau(url)["modeles"]:
+        if m.get("name") != modele:
+            continue
+        capacites = m.get("capabilities")
+        return True if capacites is None else ("vision" in capacites)
+    return False
+
+
 def cerveaux_utilisables():
     """Les Ollama qu'on a le droit d'employer, dans l'ordre ou les employer.
 
@@ -1745,10 +1763,12 @@ def corps_ici(corps, url, tid=None):
     voulu = corps.get("model") or MODELE_LLM
     if voulu == MODELE_POUR_ECRIRE:
         return dict(corps, model=modele_ecriture_de(url))
+    if corps.get("images"):
+        # Une image : c'est « sait voir » qu'il faut, pas « est installe ». Et
+        # jamais de substitution — la machine convient ou l'on va ailleurs.
+        return corps if _sait_voir_ici(url, voulu) else None
     if _sait_lire_ici(url, voulu):
         return corps
-    if corps.get("images"):
-        return None
     remplacant = modele_ecriture_de(url)
     if not remplacant or remplacant == voulu:
         return corps

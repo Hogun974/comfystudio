@@ -53,11 +53,15 @@ def poser(pause_pc=False):
     # Le cache des cerveaux, pose a la main : rien n'est joignable ici.
     S._CERVEAUX.clear()
     S._CERVEAUX[PC] = {"quand": S.time.time(), "noeud": "pc",
-                       "modeles": [{"name": "qwen2.5vl:7b", "size": 6_000_000_000},
-                                   {"name": "gemma4:26b", "size": 18_600_000_000}]}
+                       "modeles": [{"name": "qwen2.5vl:7b", "size": 6_000_000_000,
+                                    "capabilities": ["completion", "vision"]},
+                                   {"name": "gemma4:26b", "size": 18_600_000_000,
+                                    "capabilities": ["completion"]}]}
     S._CERVEAUX[NAS] = {"quand": S.time.time(), "noeud": "zima",
-                        "modeles": [{"name": "gemma3:4b", "size": 3_340_000_000},
-                                    {"name": "qwen3:4b", "size": 2_500_000_000}]}
+                        "modeles": [{"name": "gemma3:4b", "size": 3_340_000_000,
+                                     "capabilities": ["completion", "vision"]},
+                                    {"name": "qwen3:4b", "size": 2_500_000_000,
+                                     "capabilities": ["completion", "thinking"]}]}
     S._CERVEAUX[MORT] = {"quand": S.time.time(), "noeud": None, "modeles": []}
     S.VERROUS_NOEUD.clear()
 
@@ -124,7 +128,16 @@ async def main():
     corps = {"model": "qwen2.5vl:7b", "prompt": "x", "images": ["…"]}
     dit(S.corps_ici(corps, PC) is corps, "une image part la ou le modele est")
     dit(S.corps_ici(corps, NAS) is None,
-        "une image ne part JAMAIS sur une machine sans modele de vision")
+        "une image ne part JAMAIS sur une machine sans ce modele")
+
+    # Installe ne veut pas dire capable : gemma4:26b est bien la sur le PC, et
+    # il ne sait pas voir. Un modele de texte a qui l'on envoie une image ne
+    # refuse pas, il decrit ce qu'il imagine.
+    corps = {"model": "gemma4:26b", "prompt": "x", "images": ["…"]}
+    dit(S.corps_ici(corps, PC) is None,
+        "un modele installe mais AVEUGLE ne reçoit pas l'image")
+    corps = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
+    dit(S.corps_ici(corps, NAS) is corps, "un modele qui sait voir la reçoit")
 
 asyncio.run(main())
 print(f"\n  {len([o for o in ok if o])} verifications passees, {len(rate)} echouees")
