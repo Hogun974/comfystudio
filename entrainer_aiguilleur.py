@@ -63,12 +63,20 @@ def moissonner(dossier=None):
     tour-la n'a pas besoin d'etre « fini » : ce qui l'etiquette est la
     correction, pas le resultat.
     """
-    dossier = dossier or os.path.join(_aiguilleur.ICI_DATA, "conversations")
+    # LA MEME REGLE QUE LE STUDIO. « STUDIO_DONNEES a toujours designe
+    # DIRECTEMENT le dossier des conversations » — c'est ecrit dans serveur.py,
+    # et ce n'etait pas suivi ici : on cherchait dans ICI_DATA/conversations,
+    # soit /app/conversations dans le conteneur, qui n'existe pas. Mesure :
+    # moissonner() rendait ZERO exemple en production. Tout le travail du pouce
+    # — les confirmations depuis des semaines, les corrections d'hier — n'est
+    # jamais arrive jusqu'au corpus, et rien ne le disait.
+    dossier = dossier or os.environ.get("STUDIO_DONNEES") or os.path.join(
+        _aiguilleur.ICI_DATA, "conversations")
     if not os.path.isdir(dossier):
         return []
     connues = set(corpus_aiguillage.__dict__.get("_CLASSES", []) or
                   {e for _, e in corpus_aiguillage.GABARITS})
-    recolte = []
+    recolte, par_personne = [], {}
     for nom in os.listdir(dossier):
         if not nom.endswith(".json") or nom.startswith("_"):
             continue
@@ -77,13 +85,25 @@ def moissonner(dossier=None):
                 conv = json.load(f)
         except Exception:
             continue
+        # A QUI EST CETTE CONVERSATION. Le corpus est partage par tout le
+        # studio : sans ce compte, n'importe qui etiquette le classifieur de
+        # tout le monde — « un renard dans les hautes herbes », pouce en bas,
+        # « c'etait plutot : de la musique », et le mot part en « audio »
+        # pondere huit fois pour les autres. Et meme sans malveillance, celui
+        # qui corrige beaucoup un jour monopolise l'apport reel.
+        qui_ = conv.get("proprietaire") or "?"
         for t in conv.get("tours", []):
             texte = (t.get("demande") or "").strip()
             intention = t.get("type")
             corrigee = t.get("intention_voulue")
             if texte and corrigee in connues and t.get("avis") == -1:
+                # Le meme filtre d'etat que pour une confirmation : un tour
+                # jamais execute, ou reste a l'etat « question », ne dit rien de
+                # ce que l'utilisateur voulait vraiment.
+                if t.get("etat") not in ("fini", "erreur"):
+                    continue
                 recolte.append({"texte": texte, "intention": corrigee,
-                                "source": "correction"})
+                                "source": "correction", "qui": qui_})
                 continue
             if not texte or intention not in connues:
                 continue
@@ -94,7 +114,7 @@ def moissonner(dossier=None):
             if not impose and t.get("avis") != 1:
                 continue
             recolte.append({"texte": texte, "intention": intention,
-                            "source": "reel"})
+                            "source": "reel", "qui": qui_})
     return recolte
 
 

@@ -1019,6 +1019,7 @@ function garnirQuestion(bloc, t, cid) {
     const nouveau = ajouterReponse();
     auBas();
     try {
+      if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }
       const r = await fetch("/api/generer", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texte: complet, conversation: cid,
@@ -1111,6 +1112,9 @@ async function ouvrir(cid) {
   // conversation en FLUX.1 1920x1080 a une autre en RealVis 1024x720 gardait
   // les menus de la premiere, et la seconde partait avec le mauvais moteur.
   poserReglages(c.reglages);
+  // Changer de conversation n'est pas choisir un moteur : les menus qu'on vient
+  // de remplir viennent d'elle, pas d'un geste.
+  moteurChoisi = false;
   $("#fil").innerHTML = "";
   // Les murmures s'ancrent APRES un tour : celui qui n'en nomme aucun est
   // anterieur au premier echange, et se lit donc en tete.
@@ -1667,7 +1671,7 @@ function retenirReglages(cle) {
   const corps = cle ? { [cle]: tout[cle] } : tout;
   reglagesVoulus = { ...reglagesVoulus, ...corps };
   const ou = convActive;
-  fetch("/api/conversation/" + ou + "/reglages", {
+  reglageEnVol = fetch("/api/conversation/" + ou + "/reglages", {
     method: "POST", credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(corps)
@@ -1682,8 +1686,10 @@ const CLE_REGLAGE = { "#forcer": "modele", "#machine": "noeud",
                       "#priorite": "priorite", "#taille": "taille" };
 REGLAGES.forEach(r => {
   const el = document.querySelector(r.sel);
-  if (el) el.addEventListener("change", () => { peindreActifs();
-                                                retenirReglages(CLE_REGLAGE[r.sel]); });
+  if (el) el.addEventListener("change", () => {
+    if (r.sel === "#forcer") moteurChoisi = true;
+    peindreActifs(); retenirReglages(CLE_REGLAGE[r.sel]);
+  });
 });
 document.querySelector("#plier").onclick = e => {
   const outils = document.querySelector("#outils");
@@ -1790,8 +1796,15 @@ $("#retirer").onclick = detacher;
    herite du sien. Envoyer les quatre a chaque fois reste le bon geste — c'est
    ce que l'utilisateur a sous les yeux qui fait foi. */
 function reglagesDemandes() {
-  return { modele: $("#forcer").value, taille: $("#taille").value,
-           noeud: $("#machine").value || null };
+  // PLUS LES REGLAGES. Ils vivent sur la conversation, et le menu les y pose
+  // des qu'il change. Les repeter dans la demande refaisait le degat qu'on
+  // croyait avoir ferme : le serveur raisonne sur la PRESENCE, donc un second
+  // onglet reste ouvert avec ses menus d'avant effaçait le moteur du premier —
+  // simplement au moment d'envoyer un message au lieu de bouger un menu. Ne
+  // part ici que ce qui appartient a CETTE demande.
+  const c = { modele_choisi: moteurChoisi };
+  moteurChoisi = false;
+  return c;
 }
 
 /* Remet les menus dans l'etat de la conversation ouverte. Une conversation
@@ -1799,6 +1812,15 @@ function reglagesDemandes() {
    etaient a la fenetre, donc partages par toutes, et changer de conversation
    emportait le reglage de la precedente. */
 let reglagesVoulus = {};
+// Le moteur a-t-il ete choisi POUR LA PROCHAINE DEMANDE ? Seule la page le
+// sait : le menu poste son reglage des qu'il change, donc au moment de
+// l'envoi la conversation porte deja la valeur et le serveur ne peut plus
+// distinguer « choisi » de « herite ». Pose au changement, efface a l'envoi.
+let moteurChoisi = false;
+// La derniere ecriture de reglage en vol. La demande l'attend : sans cela une
+// demande envoyee dans la foulee d'un changement de menu partait avec l'ancien
+// reglage de la conversation.
+let reglageEnVol = null;
 function poserReglages(r) {
   reglagesVoulus = r || {};
   const mettre = (sel, val) => {
@@ -1841,6 +1863,9 @@ async function lancerDemande(priorite) {
   auBas();
   $("#txt").value = ""; ajuster();
   try {
+    // Le reglage qu'on vient de changer doit etre arrive avant la demande,
+    // sinon elle part avec celui d'avant.
+    if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }
     const r = await fetch("/api/generer", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texte, image: imageJointe, priorite,

@@ -1367,11 +1367,20 @@ FRAICHEUR_DUREES = 120
 ASSEZ_DE_MESURES = 3
 
 
-def _relever_durees():
+def _relever_durees(pid=None):
     """Range les durees passees par (machine, moteur, taille), puis par
-    (machine, moteur), puis par moteur seul — du plus precis au plus general."""
+    (machine, moteur), puis par moteur seul — du plus precis au plus general.
+
+    PAR PERSONNE. Le journal dit « d'apres TES rendus precedents » : il ne peut
+    pas compter ceux d'un autre compte. C'etait faux — CONVERSATIONS porte tout
+    le studio — et ça revelait accessoirement le volume d'activite de quelqu'un
+    d'autre. Un chiffre annonce comme personnel qui ne l'est pas fait perdre la
+    confiance des qu'il ne colle pas.
+    """
     table = {}
     for conv in CONVERSATIONS.values():
+        if pid is not None and conv.get("proprietaire") != pid:
+            continue
         for t in conv.get("tours") or []:
             s_ = t.get("secondes")
             cle_, ou = t.get("modele"), t.get("noeud")
@@ -1383,18 +1392,19 @@ def _relever_durees():
                 continue
             for k in ((ou, cle_, t.get("taille")), (ou, cle_), (cle_,)):
                 table.setdefault(k, []).append(float(s_))
-    _DUREES["table"], _DUREES["quand"] = table, time.time()
     return table
 
 
-def duree_typique(ident, cle, taille=None):
+def duree_typique(ident, cle, taille=None, pid=None):
     """Combien ça a pris les fois d'avant, ou None si l'on ne sait pas.
 
     La mediane et non la moyenne : un rendu qui a attendu une carte occupee
     tirerait la moyenne sans rien dire de ce qui va se passer maintenant.
     """
-    if time.time() - _DUREES["quand"] > FRAICHEUR_DUREES:
-        _relever_durees()
+    if (time.time() - _DUREES["quand"] > FRAICHEUR_DUREES
+            or _DUREES.get("qui") != pid):
+        _DUREES["table"], _DUREES["quand"] = _relever_durees(pid), time.time()
+        _DUREES["qui"] = pid
     for k in ((ident, cle, taille), (ident, cle), (cle,)):
         v = _DUREES["table"].get(k)
         if v and len(v) >= ASSEZ_DE_MESURES:
@@ -1942,12 +1952,16 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # font perdre un quart d'heure avant d'essayer la machine d'a cote,
             # qui repond en dix-neuf secondes. Mesure du 31 aout : 919 s, dont
             # 900 perdues.
-            # La borne courte n'a de sens QUE s'il reste une machine derriere.
-            # Sur la derniere — ou la seule, quand l'autre est eteinte ou en
-            # pause — elle ne fait plus gagner un repli : elle transforme une
-            # lecture lente en echec sec, et l'utilisateur qui aurait attendu
-            # lit « le modele de vision n'a pas repondu ».
-            reste_ = rang_ + 1 < len(cerveaux)
+            # « Reste-t-il un repli » ne se compte pas en RANGS. Une adresse
+            # plus loin dans la liste peut n'avoir aucun modele qui sache voir —
+            # corps_ici() rend None et la boucle passe — ou etre passee en
+            # pause. On comptait donc un repli qui n'existait pas, et la borne
+            # courte transformait une lecture lente en echec sec : « le modele
+            # de vision n'a pas repondu » au bout de cinq minutes, la ou neuf
+            # cents secondes auraient rendu la description.
+            reste_ = any(corps_ici(corps, u) is not None
+                         and not (i and (noeud(i) or {}).get("pause"))
+                         for u, i in cerveaux[rang_ + 1:])
             rendu = await _ollama_local(
                 ici, url, 300 if (ici.get("images") and reste_) else 900)
             # Seulement si on l'a demande CHAUD : sans « garder », Ollama l'a
@@ -5873,7 +5887,12 @@ async def api_intentions(_):
     On ne rend que les classes que l'aiguilleur connait REELLEMENT : proposer
     une correction qu'il ne saurait pas apprendre serait demander pour rien.
     """
-    connues = set((AIGUILLEUR.classes if AIGUILLEUR else {}) or INTENTIONS_LISIBLES)
+    # Sans aiguilleur, RIEN. « or INTENTIONS_LISIBLES » faisait exactement
+    # l'inverse de ce que la docstring promet : les onze classes proposees a un
+    # studio qui n'a aucun classifieur pour les apprendre. La page n'affiche
+    # alors pas la question, ce qui est la bonne reponse — mieux vaut ne pas
+    # demander que demander pour rien.
+    connues = set((AIGUILLEUR.classes if AIGUILLEUR else {}) or {})
     return web.json_response(
         [{"cle": k, "titre": v} for k, v in INTENTIONS_LISIBLES.items()
          if k in connues])
@@ -6343,6 +6362,11 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
             # grande image identique.
             if ancien.get("au_propre"):
                 tour["au_propre"] = ancien["au_propre"]
+            # La correction du pouce non plus : elle appartient a
+            # l'utilisateur, pas au deroulement. Un tour en erreur corrige puis
+            # repris par la file au redemarrage la perdait sans un mot.
+            if ancien.get("intention_voulue"):
+                tour["intention_voulue"] = ancien["intention_voulue"]
             conv["tours"][i] = tour
             break
     else:
@@ -6754,7 +6778,14 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                                                "filename": sorties[0]["filename"],
                                                "subfolder": sorties[0]["subfolder"]}
                 plan["parametres"] = {"fournisseur": MOTEURS_DISTANTS[loin]["titre"]}
-                enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, "fini")
+                # LE MOTEUR REELLEMENT EMPLOYE, et non son repli local. « cle »
+                # porte encore le moteur du catalogue qui aurait servi si le
+                # fournisseur avait echoue : le tour l'enregistrait, et le devis
+                # comptait donc trois videos rendues au loin comme des mesures
+                # de Wan 2.2 5B — « compte 200 s » annonce pour une carte qui
+                # n'a jamais rien fait de tel.
+                enregistrer_tour(conv, tid, texte, plan, intention, loin,
+                                 sorties, "fini")
                 journal(tid, "resultat recu", etat="fini")
                 return
 
@@ -6886,9 +6917,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # qu'on se pose avant, et rien n'y repondait. Le studio a pourtant la
         # reponse : chaque tour termine porte sa machine, son moteur, sa taille
         # et sa duree. On la lit.
-        mediane_, combien_ = duree_typique(
+        # Pas de devis pour un brouillon : il coute un quart des etapes, et
+        # l'annonce lui donnerait le prix d'une image finie — quatre fois trop.
+        mediane_, combien_ = (None, 0) if priorite == "brouillon" else duree_typique(
             ident, cle, f"{plan.get('largeur')}x{plan.get('hauteur')}"
-            if plan.get("largeur") else None)
+            if plan.get("largeur") else None,
+            pid=(TACHES.get(tid) or {}).get("proprietaire"))
         if mediane_:
             journal(tid, f"d'apres tes {combien_} rendus precedents, compte "
                          + (f"{mediane_ / 60:.0f} min" if mediane_ >= 90
@@ -7612,14 +7646,24 @@ async def api_generer(req):
     # une conversation que conv_de() garde volontairement en memoire — sans quoi
     # chaque requete sans cookie deposait un fichier de plus.
     conv = conv_de(d.get("conversation"), pid)
-    # CHOISI MAINTENANT, ou seulement herite ? La page renvoie toujours l'etat
-    # de ses menus — qu'elle vient elle-meme de remplir depuis la conversation.
-    # « une cle modele presente » ne prouvait donc rien, et le drapeau valait
-    # vrai des que la conversation portait un moteur : la distinction etait
-    # inerte, et le raccourci de lecture restait desarme. On la deduit du seul
-    # signal fiable — la valeur DIFFERE de ce que la conversation retenait —
-    # et avant que poser_reglages n'ecrive, sinon elle ne differe jamais.
-    choisi = bool(d.get("modele")) and d["modele"] != reglages_de(conv).get("modele")
+    # CHOISI MAINTENANT, ou seulement herite ? Deux versions se sont trompees
+    # avant celle-ci, et toutes deux DEDUISAIENT.
+    #
+    # « une cle modele presente » : toujours vrai, la page renvoie l'etat de ses
+    # menus, qu'elle vient de remplir depuis la conversation.
+    # « la valeur differe de celle de la conversation » : toujours FAUX, parce
+    # que le menu poste son reglage des qu'il change — au moment de la demande,
+    # la conversation porte deja la valeur. Et cette version-la etait pire que
+    # la premiere : a faux permanent, un moteur explicitement choisi se faisait
+    # jeter par les raccourcis.
+    #
+    # Le serveur ne peut pas savoir : seule la page sait laquelle des deux
+    # choses elle fait. Elle le dit. On garde la comparaison en repli pour un
+    # client qui n'est pas la page — imparfaite, mais mieux que rien.
+    if "modele_choisi" in d:
+        choisi = bool(d.get("modele_choisi"))
+    else:
+        choisi = bool(d.get("modele")) and d["modele"] != reglages_de(conv).get("modele")
     reglages = poser_reglages(conv, d, ecrire=False)
     taille = reglages.get("taille") or None
     if taille and taille not in TAILLES:
