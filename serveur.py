@@ -1304,12 +1304,20 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
     # une machine peut porter l'un sans l'autre. On garde alors l'Ollama du
     # studio, dont on sait ce qu'il contient.
     if ANALYSE_PETITE and not image_b64:
-        for petite in noeuds_a_llm():
-            rendu, souci_ = await poser_a(petite, corps, tid)
-            if rendu:
-                return rendu
-            journal(tid, f"{(noeud(petite) or {}).get('titre', petite)} : "
-                         f"{souci_ or 'aucune reponse'}")
+        # Deux tours. Le premier ne prend que ce qui est libre a l'instant : la
+        # plus petite carte disponible repond, et si elle travaille on passe a la
+        # suivante sans rien attendre. Le second, seulement si toutes
+        # travaillaient, accepte de patienter — c'est la que le plafond de vingt
+        # secondes reprend son sens.
+        for patience in (0, None):
+            for petite in noeuds_a_llm():
+                rendu, souci_ = await poser_a(petite, corps, tid,
+                                              patience=patience)
+                if rendu:
+                    return rendu
+                if souci_ != "carte occupee":
+                    journal(tid, f"{(noeud(petite) or {}).get('titre', petite)} : "
+                                 f"{souci_ or 'aucune reponse'}")
 
     await attendre_carte_libre(tid)
     # ET la carte de la machine qui HEBERGE cet Ollama : une carte ne fait
@@ -1467,8 +1475,14 @@ def noeuds_a_llm():
         if x.get("pause"):
             continue
         if e.get("repond") and e.get("llm") and time.time() - (e.get("vu") or 0) < SILENCE_MAX:
-            bons.append((e.get("vram") or 0, x["id"]))
-    return [i for _, i in sorted(bons, reverse=not ANALYSE_PETITE)]
+            # LIBRE d'abord, petite ensuite. Prendre la plus petite sans regarder
+            # si elle travaille faisait s'empiler trois demandes sur elle pendant
+            # que la grosse dormait — la regle « la petite reflechit » devenait
+            # « une seule machine reflechit ».
+            occupee = 1 if verrou_noeud(x["id"]).locked() else 0
+            taille = e.get("vram") or 0
+            bons.append((occupee, taille if ANALYSE_PETITE else -taille, x["id"]))
+    return [i for _, _, i in sorted(bons)]
 
 
 def _modele_du_noeud(ident, voulu):
@@ -1487,7 +1501,7 @@ def _modele_du_noeud(ident, voulu):
     return (proche or dispo)[0]
 
 
-async def poser_a(ident, corps, tid=None, secondes=900):
+async def poser_a(ident, corps, tid=None, secondes=900, patience=None):
     """Pose une question au modele de langage d'UNE machine.
 
     Le studio depose, l'agent vient chercher : le meme chemin que les rendus,
@@ -1519,12 +1533,19 @@ async def poser_a(ident, corps, tid=None, secondes=900):
     # acquire() puis un « finally », et non « async with » : il faut pouvoir
     # borner la PRISE. Le relacher pour le reprendre aussitot laisserait passer
     # quelqu'un entre les deux, ce qui viderait le verrou de son sens.
+    # « patience » a zero : on ne prend cette carte que si elle est libre TOUT DE
+    # SUITE. C'est ce qui permet a l'appelant d'essayer les machines l'une apres
+    # l'autre sans perdre vingt secondes sur chacune — la premiere libre repond,
+    # et l'on n'attend que si toutes travaillent.
+    attente_ = ATTENTE_LLM if patience is None else patience
     verrou = verrou_noeud(ident)
-    if verrou.locked() and tid:
+    if verrou.locked() and tid and attente_:
         journal(tid, f"{titre} calcule — la question attend sa carte "
-                     f"({ATTENTE_LLM} s au plus)")
+                     f"({attente_} s au plus)")
+    if not attente_ and verrou.locked():
+        return "", "carte occupee"
     try:
-        await asyncio.wait_for(verrou.acquire(), timeout=ATTENTE_LLM)
+        await asyncio.wait_for(verrou.acquire(), timeout=attente_)
     except asyncio.TimeoutError:
         if tid:
             journal(tid, f"{titre} calcule toujours — on cherche ailleurs")
