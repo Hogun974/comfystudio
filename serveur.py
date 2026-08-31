@@ -283,7 +283,7 @@ async def reprendre_file():
                                 "image": r.get("image"), "modele": r.get("modele"),
                                 "taille": r.get("taille"),
                                 "priorite": r.get("priorite", ""),
-                                "noeud": r.get("noeud")})
+                                "noeud": r.get("noeud"), "plan": r.get("plan")})
         repris += 1
     if repris:
         print(f"  {repris} demande(s) reprise(s) de la file d'avant l'arret",
@@ -3257,10 +3257,21 @@ REGLAGES = {
     "objet3d":   {"etapes": 20, "cfg": 5.5, "finesse": 256},
 }
 
-PRIORITES = ("", "rapide", "soigne")
+PRIORITES = ("", "brouillon", "rapide", "soigne")
 # Facteur applique au nombre d'etapes. Les bornes par intention gardent la main :
 # « rapide » ne peut pas descendre sous le minimum qui produit encore une image.
-_FACTEUR_ETAPES = {"rapide": 0.6, "soigne": 1.35}
+#
+# « brouillon » n'est pas un « rapide » plus fort. Quand on cherche une image on
+# cherche un cadrage, une lumiere, une posture ; les details ne comptent qu'a la
+# fin, et on les paie pourtant a chaque essai — 249 s mesurees pour une image
+# dont on ne sait pas encore si la composition convient. Un quart des etapes,
+# MEME moteur, MEME graine, MEME taille : le chemin de debruitage est le meme,
+# simplement plus grossier, donc la composition tient et les details tombent.
+#
+# C'est pour cela que « brouillon », contrairement a « rapide », ne dit rien a
+# l'aiguilleur : un brouillon rendu par un autre moteur ne predirait pas l'image
+# finale, et ne servirait donc a rien.
+_FACTEUR_ETAPES = {"brouillon": 0.25, "rapide": 0.6, "soigne": 1.35}
 
 def appliquer_parametres(plan):
     """Fusionne les reglages proposes par le LLM avec les defauts du modele,
@@ -5654,6 +5665,18 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         # minutes » est une question qu'on se pose une semaine plus tard.
         "noeud": TACHES.get(tid, {}).get("noeud"),
         "secondes": TACHES.get(tid, {}).get("secondes"),
+        # La graine, pour pouvoir refaire EXACTEMENT la meme image avec tout le
+        # soin. Sans elle, « passer au propre » rendrait une autre image — et
+        # l'esquisse n'aurait servi a rien.
+        "graine": TACHES.get(tid, {}).get("graine"),
+        "esquisse": (plan or {}).get("priorite") == "brouillon" or None,
+        # Le plan entier, mais SEULEMENT pour une esquisse : c'est ce qui permet
+        # de la repasser au propre a l'identique, sans refaire l'analyse — donc
+        # sans risquer un autre prompt, donc une autre image. L'ecrire sur tous
+        # les tours grossirait chaque conversation pour un usage que personne
+        # n'en a.
+        "plan": (plan or None) if (plan or {}).get("priorite") == "brouillon"
+                else None,
         "etat": etat, "erreur": erreur,
         # Les paroles ne sont ni le prompt ni la description : sans elles, un
         # pouce en bas sur une chanson ne dirait pas ce qui a deplu.
@@ -5676,6 +5699,12 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
             # jour : il appartient a l'utilisateur, pas au deroulement.
             tour["avis"] = ancien.get("avis", 0)
             tour["note"] = ancien.get("note", "")
+            # Une esquisse deja passee au propre le reste : cette marque ne se
+            # deduit d'aucun plan, elle a ete posee par un geste de
+            # l'utilisateur. La perdre reproposerait le bouton, et une seconde
+            # grande image identique.
+            if ancien.get("au_propre"):
+                tour["au_propre"] = ancien["au_propre"]
             conv["tours"][i] = tour
             break
     else:
@@ -5800,7 +5829,7 @@ def prefixe_sortie(conv, intention, horod, suffixe):
 
 
 async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
-                   priorite="", noeud_force=None):
+                   priorite="", noeud_force=None, plan_impose=None):
     try:
         # Le tour a deja ete pose a la mise en file ; on le rafraichit pour
         # qu'il porte l'heure du debut reel du travail.
@@ -5821,11 +5850,20 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
 
         # « quoi » plutot que « oui/non » : la suite du raisonnement n'est pas la
         # meme selon qu'on a joint une image, une video ou un morceau.
-        plan = await aiguiller(texte, tid, conv, img_b64,
-                               a_une_image=(famille_du_fichier(image) if image
-                                            else False),
-                               modele_force=modele_force, taille=taille,
-                               priorite=priorite)
+        if plan_impose:
+            # Rien a decider : ce plan a deja ete etabli, et son image regardee.
+            # Refaire l'analyse rendrait un AUTRE prompt, donc une autre image —
+            # et l'esquisse n'aurait servi a rien. Trois appels au modele de
+            # langage economises au passage.
+            plan = dict(plan_impose)
+            journal(tid, "on reprend l'esquisse telle quelle : meme prompt, "
+                         "meme graine, tout le soin")
+        else:
+            plan = await aiguiller(texte, tid, conv, img_b64,
+                                   a_une_image=(famille_du_fichier(image) if image
+                                                else False),
+                                   modele_force=modele_force, taille=taille,
+                                   priorite=priorite)
         if modele_force:
             plan["modele"] = modele_force
             plan["modele_impose"] = True
@@ -5887,8 +5925,9 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # un appel Ollama complet pour rien.
         # Ni "lecture" ni "agrandir" n'envoient de texte a un moteur : traduire
         # couterait un appel complet pour un champ que personne ne lira.
-        if plan.get("intention") not in ("lecture", "agrandir", "detourer",
-                                         "fluidifier"):
+        if (not plan_impose
+                and plan.get("intention") not in ("lecture", "agrandir",
+                                                  "detourer", "fluidifier")):
             # Enrichir AVANT de traduire : traduire une demande de six mots
             # rendrait six mots anglais, et le moteur n'aurait toujours rien a
             # se mettre sous la dent.
@@ -6171,7 +6210,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         if a_prendre:
             MODELES_NOEUD.pop(ident, None)      # le cache ne connait pas l'arrivant
 
-        seed = int.from_bytes(os.urandom(4), "big") % (2**31)
+        # Imposee quand on repasse une esquisse au propre : c'est elle qui fait
+        # que la grande image est bien celle qu'on a choisie en petit.
+        seed = int(plan.get("graine") or 0) or int.from_bytes(os.urandom(4), "big") % (2**31)
+        TACHES.setdefault(tid, {})["graine"] = seed
         # Le compteur de ComfyUI (_00001_, _00002_…) repart de zero SUR CHAQUE
         # MACHINE : deux noeuds produiraient le meme nom le meme jour, et le
         # relais servirait silencieusement l'image de l'autre. L'identifiant du
@@ -6680,7 +6722,8 @@ async def travailleur():
         fini_pour_de_bon = True
         travail = asyncio.create_task(
             executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
-                     job.get("taille"), job.get("priorite", ""), job.get("noeud")))
+                     job.get("taille"), job.get("priorite", ""), job.get("noeud"),
+                     job.get("plan")))
         EN_VOL[tid] = travail
         # ICI, et pas avant : la demande appartient maintenant au registre des
         # travaux en vol, donc le fichier la portera.
@@ -6759,6 +6802,69 @@ async def api_reprendre(req):
     except Exception as e:
         return web.json_response({"erreur": str(e)}, status=502)
     return web.json_response({"image": copie})
+
+
+async def api_au_propre(req):
+    """Refait une esquisse avec tout le soin, et rien d'autre de change.
+
+    Le pari de l'esquisse ne tient que si la grande image est bien celle qu'on a
+    choisie en petit : meme moteur, meme prompt, meme graine, meme taille, et
+    seulement le nombre d'etapes qui remonte. On ne repasse donc pas par
+    l'analyse — elle rendrait un autre prompt, et l'esquisse n'aurait servi a
+    rien. Trois appels au modele de langage economises au passage.
+    """
+    pid = qui(req)
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    conv = CONVERSATIONS.get(d.get("conversation") or "")
+    if not conv or conv.get("proprietaire") not in (None, pid):
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    tour = next((t for t in conv.get("tours", [])
+                 if t.get("id") == d.get("tour")), None)
+    if not tour:
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    if tour.get("au_propre"):
+        return web.json_response(
+            {"erreur": "cette esquisse a deja ete passee au propre"}, status=409)
+    plan_ = tour.get("plan")
+    if not tour.get("esquisse") or not isinstance(plan_, dict):
+        return web.json_response(
+            {"erreur": "ce tour n'est pas une esquisse qu'on sache refaire"},
+            status=400)
+    if tour.get("etat") != "fini":
+        return web.json_response(
+            {"erreur": "l'esquisse n'est pas terminee"}, status=409)
+    plan = dict(plan_)
+    # Les etapes se recalculent depuis la proposition BRUTE du modele : c'est
+    # exactement ce que la demande aurait donne sans le cran « brouillon ».
+    plan["priorite"] = ""
+    plan = appliquer_parametres(plan)
+    plan["graine"] = tour.get("graine")
+    texte = tour.get("demande") or ""
+    tid = uuid.uuid4().hex
+    devant = len(ATTENTE) + len(EN_VOL)
+    TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": texte,
+                   "conversation": conv["id"], "proprietaire": pid, "image": None}
+    enregistrer_tour(conv, tid, texte, {}, None, None, [], "en cours")
+    # La marque sur l'esquisse, pour ne pas la reproposer indefiniment. Posee
+    # AVANT la mise en file : si le studio s'arrete entre les deux, mieux vaut un
+    # bouton disparu qu'une seconde grande image identique.
+    tour["au_propre"] = tid
+    sauver(conv)
+    if devant:
+        journal(tid, f"en file d'attente — {devant} demande(s) devant")
+    ATTENTE.append(tid)
+    EN_FILE[tid] = {"tid": tid, "texte": texte, "conversation": conv["id"],
+                    "proprietaire": pid, "image": None, "modele": None,
+                    "taille": None, "priorite": "", "noeud": None, "plan": plan}
+    sauver_file()
+    await FILE_ATTENTE.put({"tid": tid, "texte": texte, "conv": conv, "taille": None,
+                            "image": None, "modele": None, "priorite": "",
+                            "noeud": None, "plan": plan})
+    return web.json_response({"id": tid, "conversation": conv["id"],
+                              "position": devant})
 
 
 async def api_generer(req):
@@ -8760,6 +8866,7 @@ def app():
     a.router.add_post("/api/comfy/arreter", api_comfy_arreter)
     a.router.add_post("/api/televerser", api_televerser)
     a.router.add_post("/api/generer", api_generer)
+    a.router.add_post("/api/au_propre", api_au_propre)
     a.router.add_get("/api/machines", api_machines)
     a.router.add_get("/api/etat/{tid}", api_etat)
     a.router.add_get("/api/file", api_file)
