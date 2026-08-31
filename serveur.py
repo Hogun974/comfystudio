@@ -1345,6 +1345,22 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             journal(tid, f"{fournisseurs.LLM[loin]['titre']} indisponible ({e})"
                          f" — le modele local prend le relais")
 
+    # POURQUOI cet appel n'est pas parti au loin. La question s'est posee ce
+    # matin et le journal ne savait pas y repondre : l'analyse est partie chez
+    # Anthropic en 5 s, et l'appel SUIVANT — meme demande, meme compte, sans
+    # image — est reste local pour soixante-quinze secondes, sans un mot. Une
+    # chaine dont on ignore quel maillon est local ne se regle pas. La raison
+    # etait deja calculee, mais seule l'analyse la disait : les deux autres
+    # appels de la chaine se taisaient.
+    if not loin and tid:
+        pourquoi_ = raison_du_local(texte, image_b64,
+                                    (TACHES.get(tid) or {}).get("proprietaire"))
+        if not pourquoi_ and fournisseur_dispo("llm"):
+            # Un fournisseur est configure et pourtant on reste ici : le dire
+            # sans savoir pourquoi vaut mieux que se taire.
+            pourquoi_ = "cet appel reste sur le modele local"
+        if pourquoi_:
+            journal(tid, pourquoi_)
     corps = corps_ollama(texte, image_b64, systeme, json_mode, modele,
                          temperature, garder)
     # La plus petite carte capable, AVANT celle du studio. Une analyse tient sur
@@ -2468,9 +2484,9 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                 "raison": "agrandissement : l'image est reprise telle quelle"}
 
     loin = "" if image_b64 else llm_distant_possible(texte, pid)
-    pourquoi = raison_du_local(texte, image_b64, pid)
-    if pourquoi:
-        journal(tid, pourquoi)
+    # La raison du local n'est plus dite ici : appeler_ollama la dit pour TOUS
+    # les appels de la chaine, celui-ci compris. La repeter ferait deux lignes
+    # identiques a la suite.
     journal(tid, "analyse par " + (fournisseurs.LLM[loin]["titre"] if loin
                                    else MODELE_LLM) + "…")
     sys_p = SYSTEME.format(catalogue=catalogue_texte(), contexte=bloc_contexte(conv))
