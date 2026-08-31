@@ -45,6 +45,13 @@ ORDINAIRES = [
     "un vaincu qui se releve",
     "la nuque d'une statue",
     "numero sept",
+    # Des demandes reellement passees par ce studio le 31 aout, pendant que le
+    # motif venait d'etre reecrit. « seinen » est a une lettre de « seins », et
+    # c'est un genre de manga : le classer adulte aurait tenu la demande en
+    # local pour rien, plusieurs minutes.
+    "Dark fantasy seinen art style, alluring character",
+    "Atmospheric chiaroscuro portrait, female silhouette",
+    "un manga seinen des annees 90",
 ]
 
 # ── ce qui doit etre reconnu : francais, anglais, et etiquettes booru ────
