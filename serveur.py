@@ -624,6 +624,21 @@ def cerveaux_utilisables():
     return [(url, ident) for _, _, url, ident in bons]
 
 
+def modele_vision_de(url):
+    """Le meilleur modele de CETTE adresse qui sache regarder une image.
+
+    Le plus gros, parce que la vision est la tache ou la taille se voit le plus
+    — et parce qu'on ne lit pas une image a chaque demande. Rend "" quand
+    aucun modele de cette machine ne sait voir.
+    """
+    voyants = [m for m in cerveau(url)["modeles"]
+               if m.get("name") not in MODELES_CASSES
+               and _sait_voir_ici(url, m.get("name"))]
+    if not voyants:
+        return ""
+    return max(voyants, key=lambda m: m.get("size", 0))["name"]
+
+
 def modele_ecriture_de(url):
     """Le meilleur modele d'ecriture installe sur CET Ollama.
 
@@ -1764,9 +1779,22 @@ def corps_ici(corps, url, tid=None):
     if voulu == MODELE_POUR_ECRIRE:
         return dict(corps, model=modele_ecriture_de(url))
     if corps.get("images"):
-        # Une image : c'est « sait voir » qu'il faut, pas « est installe ». Et
-        # jamais de substitution — la machine convient ou l'on va ailleurs.
-        return corps if _sait_voir_ici(url, voulu) else None
+        # Une image : c'est « sait voir » qu'il faut, pas « est installe ».
+        if _sait_voir_ici(url, voulu):
+            return corps
+        # On substitue, mais UNIQUEMENT par un modele qui sait voir. Mesure du
+        # 31 aout : le modele d'aiguillage rapide (gemma3:4b, 1 s) a bien la
+        # capacite « vision » et a pourtant classe « decris cette image » comme
+        # une demande de rendu — l'image n'a jamais ete regardee. Le modele
+        # lent (qwen2.5vl:7b) l'a lue correctement en 166 s. Choisir selon ce
+        # qu'on demande vaut mieux que choisir une fois pour toutes : le texte
+        # va au rapide, l'image au plus capable de ceux qui voient.
+        voyant = modele_vision_de(url)
+        if not voyant:
+            return None
+        if voyant != voulu:
+            journal(tid, f"lecture d'image : {voyant} plutot que {voulu}")
+        return dict(corps, model=voyant)
     if _sait_lire_ici(url, voulu):
         return corps
     remplacant = modele_ecriture_de(url)

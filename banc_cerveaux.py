@@ -127,15 +127,30 @@ async def main():
 
     corps = {"model": "qwen2.5vl:7b", "prompt": "x", "images": ["…"]}
     dit(S.corps_ici(corps, PC) is corps, "une image part la ou le modele est")
-    dit(S.corps_ici(corps, NAS) is None,
-        "une image ne part JAMAIS sur une machine sans ce modele")
+    # Le NAS n'a pas qwen2.5vl mais il a gemma3:4b, qui voit : on bascule sur
+    # lui plutot que d'ecarter la machine. La regle n'est pas « ce modele-la »,
+    # elle est « un modele qui voit, ou rien ».
+    ailleurs = S.corps_ici(corps, NAS)
+    dit(ailleurs is not None and ailleurs["model"] == "gemma3:4b",
+        "une image trouve un modele voyant sur l'autre machine",
+        str(ailleurs and ailleurs["model"]))
 
     # Installe ne veut pas dire capable : gemma4:26b est bien la sur le PC, et
     # il ne sait pas voir. Un modele de texte a qui l'on envoie une image ne
     # refuse pas, il decrit ce qu'il imagine.
+    # Le PC porte gemma4:26b (aveugle) et qwen2.5vl:7b (voyant) : une image
+    # demandee au premier doit basculer sur le second, pas echouer.
     corps = {"model": "gemma4:26b", "prompt": "x", "images": ["…"]}
-    dit(S.corps_ici(corps, PC) is None,
-        "un modele installe mais AVEUGLE ne reçoit pas l'image")
+    bascule = S.corps_ici(corps, PC)
+    dit(bascule is not None and bascule["model"] == "qwen2.5vl:7b",
+        "un modele aveugle cede la place a un modele qui voit",
+        str(bascule and bascule["model"]))
+    # Et sur une machine ou AUCUN modele ne voit, on n'envoie rien.
+    S._CERVEAUX[NAS]["modeles"] = [{"name": "qwen3:4b", "size": 2_500_000_000,
+                                    "capabilities": ["completion"]}]
+    dit(S.corps_ici(corps, NAS) is None,
+        "aucun modele voyant : l'adresse est ecartee, jamais substituee")
+    poser()
     corps = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
     dit(S.corps_ici(corps, NAS) is corps, "un modele qui sait voir la reçoit")
 
