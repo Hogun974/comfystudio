@@ -689,6 +689,27 @@ Le script **vérifie que ce qu'il a reçu est du Python valide avant de
 remplacer** : une page d'erreur du studio écraserait sinon un agent qui
 fonctionnait. L'ancienne version reste à côté, en `.precedent`.
 
+**Il faut le faire.** Un agent périmé ne ressemble pas à une panne : il répond,
+il rend des images, et il lui manque en silence tout ce qui a été ajouté depuis.
+Le 31 août, l'annulation d'un rendu n'atteignait pas une machine pour cette
+seule raison — le studio demandait l'arrêt, la carte continuait, et le studio
+écartait poliment le résultat tardif. Rien, nulle part, ne disait pourquoi.
+
+Chaque agent annonce donc l'empreinte du code qu'il exécute, et `/admin`
+affiche **« agent périmé — redémarre-le »** quand elle diffère de celle que le
+studio distribue. Un agent antérieur à cette date n'annonce rien : la console
+dit alors « version inconnue », ce qui est plus honnête que de conclure d'un
+silence.
+
+L'empreinte est celle du code **en cours d'exécution**, relevée au démarrage, et
+non celle du fichier sur le disque : `--maj` remplace le fichier sous les pieds
+d'un processus qui continue l'ancien code jusqu'à son redémarrage. Mettre à jour
+sans relancer ne change donc rien, et la console continue — à juste titre — de
+réclamer un redémarrage.
+
+En conteneur, un `docker restart` suffit : l'agent va rechercher sa version au
+studio à chaque démarrage.
+
 ### Ce qui circule
 
 | Sens | Quoi |
