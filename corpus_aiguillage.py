@@ -223,9 +223,20 @@ def depuis_gabarits(par_classe=200, graine=20260829):
 
 
 def ecrire(exemples, chemin=FICHIER):
-    with open(chemin, "w", encoding="utf-8") as f:
+    """Ecrit le corpus, en une seule fois vue du dehors.
+
+    Un fichier temporaire puis os.replace : depuis que le corpus est
+    regenere a CHAQUE entrainement, deux reentrainements lances coup sur
+    coup — deux onglets d'administration, un double-clic — se croisaient.
+    L'un tronquait le fichier pendant que l'autre le relisait, et le
+    second apprenait sur un corpus ampute puis ecrivait son modele, que le
+    studio rechargeait aussitot. Rien ne le disait.
+    """
+    tmp = chemin + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         for x in exemples:
             f.write(json.dumps(x, ensure_ascii=False) + "\n")
+    os.replace(tmp, chemin)
     return chemin
 
 

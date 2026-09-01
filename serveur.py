@@ -1442,7 +1442,20 @@ def armer(tid, e):
     ARMEES[tid] = {"quand": time.time(), "depuis": depuis, "cle": e.cle,
                    "noeuds": list(e.noeuds), "titres": list(e.titres),
                    "jusqua": depuis + heures * 3600}
+    # DEJA EXPIREE. « depuis » est persiste dans la file : un studio arrete
+    # vingt heures avec une demande armee a douze la remet en file au reveil,
+    # refait une analyse complete au modele de langage, et annonçait
+    # « pendant encore -480 min » avant de la tuer trente secondes plus tard.
+    # On ne l'arme pas, on la termine — et l'analyse est economisee.
     reste = depuis + heures * 3600 - time.time()
+    if reste <= 0:
+        ARMEES.pop(tid, None)
+        journal(tid, f"{' et '.join(e.titres)} n'est pas revenue dans le delai "
+                     f"prevu — la demande est abandonnee", etat="erreur")
+        echouer(tid, "la machine n'est pas revenue a temps")
+        EN_FILE.pop(tid, None)
+        sauver_file()
+        return
     journal(tid, f"{' et '.join(e.titres)} pourrait faire ce travail, mais elle "
                  f"est en pause depuis plus de {PREFERENCES['pause_propose']} "
                  f"minutes. Ta demande est gardee en attente : elle partira "
@@ -1468,7 +1481,21 @@ async def _relancer_armee(tid, msg):
         return False
     r = EN_FILE.get(tid)
     conv = CONVERSATIONS.get((r or {}).get("conversation"))
-    if not r or not conv or (TACHES.get(tid) or {}).get("annulee"):
+    if (TACHES.get(tid) or {}).get("annulee"):
+        return False
+    if not r or not conv:
+        # NI ZOMBIE, NI SILENCE. La conversation peut avoir ete purgee pendant
+        # l'attente — purger_fermees() tourne dans le meme veilleur, et
+        # « armee_heures » monte a 168. On sortait alors sans rien dire, en
+        # laissant l'entree dans EN_FILE : elle etait reecrite dans _file.json
+        # a chaque sauvegarde, la tache restait « en cours » pour toujours, et
+        # au demarrage suivant reprendre_file() la comptait perdue puis
+        # deplaçait TOUT le fichier en .perdu.
+        journal(tid, "la conversation de cette demande a disparu pendant "
+                     "l'attente — elle est abandonnee", etat="erreur")
+        echouer(tid, "conversation fermee pendant l'attente")
+        EN_FILE.pop(tid, None)
+        sauver_file()
         return False
     journal(tid, msg, etat="en cours")
     ATTENTE.append(tid)
@@ -2014,6 +2041,21 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
         # Sous la seconde, la ligne n'apprend rien et encombre le fil.
         if tid and mis >= 1:
             journal(tid, f"  … {mis:.0f} s")
+
+
+def consigner_appel_distant(*a, **kw):
+    """Le meme, mais qui ne peut pas emporter la demande avec lui.
+
+    L'image est deja generee, payee et ecrite sur le disque quand on arrive
+    ici : perdre le rendu parce qu'un fournisseur a rendu un decompte de jetons
+    inattendu serait payer deux fois. Une comptabilite fausse vaut mieux qu'un
+    rendu perdu — et elle le dit.
+    """
+    try:
+        return _consigner_sans_filet(*a, **kw)
+    except Exception as e:
+        print(f"  cout non consigne ({type(e).__name__} : {str(e)[:120]})",
+              flush=True)
 
 
 async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
@@ -3736,7 +3778,16 @@ TAILLE_COUTS = 2 * 1024 ** 2
 # Le garde-fou de dernier recours, quand meme deux mois ne tiennent pas dans la
 # taille : on garde les lignes les plus recentes. Une comptabilite bornee et
 # amputee vaut mieux qu'un disque plein.
-LIGNES_COUTS = 20000
+#
+# DERIVE DU SEUIL, et non pose a cote. A 20 000 lignes de 198 octets, le
+# garde-fou en gardait 3,96 Mo pour un seuil de 2 : la taille ne redescendait
+# jamais dessous, donc _tailler() relisait et reecrivait le fichier ENTIER a
+# chaque appel distant. Mesure : 11 091 lignes, aucune retiree, 97 ms par
+# appel — et sur un volume monte dont la latence n'est pas la notre, la file
+# bornee sature et l'on perd des lignes. Le seuil et le garde-fou doivent
+# parler de la meme chose.
+OCTETS_PAR_LIGNE = 256          # mesure : 198 octets, on arrondit vers le haut
+LIGNES_COUTS = TAILLE_COUTS // OCTETS_PAR_LIGNE
 
 # File bornee, et on jette plutot que d'attendre : un disque bloque doit couter
 # une ligne de comptabilite, jamais figer une generation en cours.
@@ -3818,6 +3869,9 @@ def charger_compteur():
               flush=True)
 
 
+_TAILLE_FAITE = [0.0]
+
+
 def _tailler():
     """Reecrit le fichier sans les mois que la page ne montre plus.
 
@@ -3832,6 +3886,13 @@ def _tailler():
             return
     except OSError:
         return
+    # Une seule taille par minute au plus. _fil_ecriture appelle celle-ci apres
+    # CHAQUE ligne : quand le fichier reste au-dessus du seuil — un mois en
+    # cours plus gros que la vue, par exemple — c'est une relecture complete
+    # par appel distant.
+    if time.time() - _TAILLE_FAITE[0] < 60:
+        return
+    _TAILLE_FAITE[0] = time.time()
     gardes = set(mois_montres())
     tenues = []
     try:
@@ -3865,7 +3926,7 @@ def _fil_ecriture():
             _A_ECRIRE.task_done()
 
 
-def consigner_appel_distant(fournisseur, modalite, pid, secondes,
+def _consigner_sans_filet(fournisseur, modalite, pid, secondes,
                             octets=0, jetons=(None, None)):
     """Un appel distant ABOUTI, et ce qu'on peut en mesurer objectivement.
 
@@ -6708,23 +6769,33 @@ def _mesurer_aiguilleur():
             "classes": par, "bancs": bancs}
 
 
+_VERROU_AIGUILLEUR = asyncio.Lock()
+
+
 async def api_admin_aiguilleur(req):
     """Etat de l'aiguilleur, et reentrainement a la demande."""
     if not admin_ok(req):
         return web.json_response({"erreur": "jeton invalide"}, status=403)
     global AIGUILLEUR
     if req.method == "POST":
-        try:
-            rendu = await asyncio.get_event_loop().run_in_executor(
-                None, _mesurer_aiguilleur)
-        except Exception as e:
+        # UN SEUL A LA FOIS. Deux POST concurrents partaient dans deux fils du
+        # pool : l'un regenerait le corpus pendant que l'autre le relisait.
+        # Depuis que corpus() reecrit toujours le fichier, la course est reelle.
+        if _VERROU_AIGUILLEUR.locked():
             return web.json_response(
-                {"erreur": f"entrainement impossible : {e}"}, status=500)
-        # Recharge depuis le disque : le studio doit se servir de ce qui vient
-        # d'etre ecrit, pas d'un objet garde en memoire.
-        AIGUILLEUR = _aiguilleur.charger()
-        rendu["ok"] = True
-        return web.json_response(rendu)
+                {"erreur": "un entrainement est deja en cours"}, status=409)
+        async with _VERROU_AIGUILLEUR:
+            try:
+                rendu = await asyncio.get_event_loop().run_in_executor(
+                    None, _mesurer_aiguilleur)
+            except Exception as e:
+                return web.json_response(
+                    {"erreur": f"entrainement impossible : {e}"}, status=500)
+            # Recharge depuis le disque : le studio doit se servir de ce qui
+            # vient d'etre ecrit, pas d'un objet garde en memoire.
+            AIGUILLEUR = _aiguilleur.charger()
+            rendu["ok"] = True
+            return web.json_response(rendu)
     return web.json_response({
         "present": bool(AIGUILLEUR),
         "classes": (AIGUILLEUR.classes if AIGUILLEUR else {}),
@@ -7563,6 +7634,11 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             if plan.get("largeur") else None,
             pid=(TACHES.get(tid) or {}).get("proprietaire"))
         if mediane_:
+            # SUR LA TACHE, et pas seulement dans le journal. La page lisait la
+            # phrase française pour en tirer le chiffre : reformuler cette
+            # ligne aurait fait disparaitre la pastille en silence.
+            TACHES.setdefault(tid, {})["devis"] = {"secondes": round(mediane_),
+                                                   "mesures": combien_}
             journal(tid, f"d'apres tes {combien_} rendus precedents, compte "
                          + (f"{mediane_ / 60:.0f} min" if mediane_ >= 90
                             else f"{mediane_:.0f} s"))
@@ -8497,6 +8573,13 @@ async def api_etat(req):
                   if t.get("id") == tid), None) or {}
     etat["esquisse"] = bool(tour_.get("esquisse"))
     etat["au_propre"] = tour_.get("au_propre")
+    # ARMEE, et pour combien de temps encore. La marque ne vivait que sur
+    # /api/file : la bulle dependait donc d'un sondage separe, et une page
+    # rechargee affichait « en cours » pendant deux secondes et demie — assez
+    # pour le lire et le croire.
+    a_ = ARMEES.get(tid)
+    if a_:
+        etat["armee"] = {"reste_h": max(0.0, (a_["jusqua"] - time.time()) / 3600)}
     return web.json_response(etat)
 
 def _ligne_file(tid, pid, admin, rang):
@@ -9603,20 +9686,50 @@ FICHIER_PREFERENCES = os.path.join(DOSSIER_CONV, "_reglages.json")
 # « plafond_nuage » : combien d'appels distants un compte peut faire dans le
 # mois. Zero, le defaut, veut dire aucune limite — le studio se comporte alors
 # exactement comme avant.
+# Les memes bornes a la lecture et a l'ecriture : deux tables se seraient
+# separees, et c'est par la que le fichier acceptait ce que le POST refusait.
+BORNES_REGLAGES = {
+    "pause_propose": (0, 1440, "une duree en minutes, de 0 a 1440"),
+    "armee_heures": (0, 168, "une duree en heures, de 0 a 168"),
+    "plafond_nuage": (0, 100000, "un nombre d'appels, de 0 a 100000")}
 PREFERENCES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30),
                "armee_heures": int(os.environ.get("STUDIO_ARMEE_HEURES") or 12),
                "plafond_nuage": int(os.environ.get("STUDIO_PLAFOND_NUAGE") or 0)}
 
 
 def charger_reglages():
+    """Relit les reglages, CLEF PAR CLEF.
+
+    La comprehension d'avant etait evaluee entierement avant l'update : une
+    seule valeur illisible — un « null » laisse par une version anterieure —
+    et les TROIS reglages repartaient a leur defaut, en silence. Les
+    quarante-cinq minutes posees par l'administrateur disparaissaient sans que
+    rien ne le dise.
+
+    Et les memes bornes qu'a l'ecriture, dont le refus des booleens :
+    « isinstance(True, int) » vaut vrai, donc un JSON portant « true » posait
+    le reglage a une heure. Le POST s'en protegeait, la lecture non.
+    """
     try:
         with open(FICHIER_PREFERENCES, encoding="utf-8") as f:
             d = json.load(f)
-        if isinstance(d, dict):
-            PREFERENCES.update({k: int(v) for k, v in d.items()
-                                if k in PREFERENCES})
-    except (OSError, ValueError, TypeError):
-        pass
+    except (OSError, ValueError):
+        return
+    if not isinstance(d, dict):
+        return
+    for k, v in d.items():
+        if k not in PREFERENCES or k not in BORNES_REGLAGES:
+            continue
+        bas, haut, _ = BORNES_REGLAGES[k]
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            print(f"  reglage « {k} » illisible dans le fichier — on garde "
+                  f"{PREFERENCES[k]}", flush=True)
+            continue
+        if not bas <= v <= haut:
+            print(f"  reglage « {k} » hors bornes ({v}) — on garde "
+                  f"{PREFERENCES[k]}", flush=True)
+            continue
+        PREFERENCES[k] = int(v)
 
 
 def sauver_reglages():
@@ -10276,11 +10389,8 @@ async def api_admin_reglages(req):
         # que la sienne. Exiger pause_propose, comme le faisait la version d'un
         # seul reglage, aurait refuse en 400 toute requete venue d'un champ
         # ajoute apres elle.
-        bornes = {"pause_propose": (0, 1440, "une duree en minutes, de 0 a 1440"),
-                  "armee_heures": (0, 168, "une duree en heures, de 0 a 168"),
-                  "plafond_nuage": (0, 100000, "un nombre d'appels, de 0 a 100000")}
         change = False
-        for clef, (bas, haut, dit_) in bornes.items():
+        for clef, (bas, haut, dit_) in BORNES_REGLAGES.items():
             if clef not in d:
                 continue
             v = d.get(clef)

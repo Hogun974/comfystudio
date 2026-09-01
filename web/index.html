@@ -54,7 +54,12 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
 /* Interrupteurs de cloud : un par modalite, allumes quand la demande part
    chez un fournisseur. Eteints, ils restent visibles — savoir qu'on POURRAIT
    passer au cloud vaut mieux qu'un bouton qui disparait. */
-.nuages{display:flex;gap:4px;align-items:center}
+/* Le repli n'est pas un ornement : la mention du plafond s'ajoute au bout de
+   la rangee, et cinq interrupteurs plus « nuage 120/120 » depassaient 375 px
+   d'un bloc. La jauge qui les porte se replie deja ; encore faut-il que cette
+   rangee-ci accepte de se couper. */
+.nuages{display:flex;gap:4px;align-items:center;flex-wrap:wrap;
+  justify-content:flex-end}
 /* La file, au survol ET au clic : un telephone n'a pas de survol, et c'est la
    moitie des usages. Position fixe plutot qu'ancree au bouton — ancre, le
    panneau sortait de l'ecran a droite sur un telephone. */
@@ -108,6 +113,10 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   /* Meme mesure pour la barre sous le champ et pour la rangee sous une
      esquisse : une cible plus petite que 34 px se manque au pouce. */
   .barre button,.au-propre button{min-height:34px}
+  /* Meme regle pour « retirer » dans la bulle : c'est le seul geste possible
+     sur une demande armee, et le manquer au pouce la laisse armee douze heures
+     de plus. */
+  .bandeau-tech .retirer-armee{min-height:34px}
   /* « joindre un fichier » est un <label>, pas un <button> : sans cette ligne il
      restait a 26 px a cote de deux boutons montes a 34, et la barre paraissait
      de travers. */
@@ -130,6 +139,16 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
 .nuages button:hover{border-color:var(--trait-vif);color:var(--encre)}
 .nuages button.allume{color:var(--braise);border-color:var(--braise)}
 .nuages button.eteint{opacity:.45}
+/* PLAFOND DU MOIS. nuage_actif() refuse tant que le quota n'est pas repasse au
+   mois suivant : l'interrupteur se repeignait donc eteint apres chaque clic, et
+   un bouton qui ne repond pas se lit « en panne », pas « plafond atteint ». Le
+   trait discontinu et le curseur ordinaire disent que ce bouton-la n'attend pas
+   de clic, et la mention a cote dit pourquoi — une infobulle n'existe pas sous
+   un doigt, et c'est justement sur telephone qu'on rouvre le studio le soir. */
+.nuages button.plafonne{opacity:.3;border-style:dashed;cursor:default}
+.nuages .plafond{border:1px solid var(--trait);border-radius:20px;padding:1px 8px;
+  font:10.5px/1.6 var(--mono);color:var(--encre-pale);white-space:nowrap}
+.nuages .plafond.atteint{color:var(--rouge);border-color:var(--rouge)}
 /* Compte : discret, a droite de la barre. Rien ne s'affiche tant qu'aucun
    compte n'existe sur cette installation. */
 .compte{display:flex;align-items:center;gap:6px;font:11px var(--mono)}
@@ -221,6 +240,33 @@ main{flex:1;overflow-y:auto;min-width:0}
 .puce.cours{color:var(--braise-vive);border-color:var(--braise-vive)}
 .puce.fini{color:var(--vert);border-color:var(--vert)}
 .puce.attente{color:var(--encre-pale);border-style:dashed}
+/* LE DEVIS. Ni la braise (qui dit « ça se passe maintenant ») ni le vert (qui
+   dit « c'est acquis ») : c'est une mediane de rendus passes, donc une
+   indication. Le pointille le dit sans un mot de plus, et il se distingue du
+   tirete de « en attente » aussi bien sur le creux clair que sur le sombre. */
+.puce.devis{color:var(--encre-pale);border-style:dotted}
+/* Passe le temps annonce, garder « ≈ 4 min » sous les yeux d'un rendu qui en
+   est a six ferait mentir le studio. La braise reprend la main : quelque chose
+   sort de l'ordinaire, sans pour autant etre une panne. C'est « braise-vive »
+   et non « braise » : sur le creux clair, la seconde mesure 3,97:1 — sous les
+   4,5:1 qu'un texte de 11 px reclame — la que la vive donne 5,8:1. Le pointille
+   reste, il suffit a distinguer la pastille de celle du travail en cours. */
+.puce.devis.depasse{color:var(--braise-vive);border-color:var(--braise)}
+/* Armee : la demande n'est ni en cours ni dans la file, elle attend le retour
+   d'une machine en pause. Le meme tirete pale que « en attente » — c'est bien
+   une attente — mais avec le ⏸ que le panneau de file lui donne deja a la place
+   de son rang, pour qu'on reconnaisse la meme demande aux deux endroits. */
+.puce.armee{color:var(--encre-pale);border-style:dashed;white-space:normal}
+/* Le seul recours de l'utilisateur, la ou il regarde. Il existait deja dans le
+   panneau de file, qu'il faut ouvrir — et le compteur qui l'ouvre restait vide
+   quand la seule demande en jeu etait armee : le recours etait donc
+   inatteignable pendant douze heures. */
+.bandeau-tech .retirer-armee{background:transparent;border:1px solid var(--trait-vif);
+  border-radius:7px;padding:2px 9px;font:11px var(--mono);color:var(--encre-pale);
+  cursor:pointer}
+.bandeau-tech .retirer-armee:hover:not(:disabled){border-color:var(--rouge);
+  color:var(--rouge)}
+.bandeau-tech .retirer-armee:disabled{opacity:.4;cursor:default}
 /* Un brouillon reussi n'a aucune marque propre : meme cadre, meme legende
    qu'une image finie. Le trait discontinu dit « pas encore fini » sans mot de
    plus, et il tient dans les deux themes — la braise est la seule couleur qui
@@ -599,6 +645,13 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 const $ = s => document.querySelector(s);
 let imageJointe = null, apercuURL = null, convActive = null;
 const suivis = new Map();           // tid -> {bloc, minuteur}
+/* Les demandes ARMEES, relevees au passage du compteur de file. /api/etat ne
+   dit pas qu'une demande est armee — sa tache reste « en cours », c'est ce qui
+   permet de la relancer telle quelle au reveil — et la bulle affichait donc
+   « en cours · 431 s », compteur qui monte, pour un travail qui ne partira
+   peut-etre que dans onze heures. Seul /api/file porte la marque : on la releve
+   la, plutot que de deviner d'apres le texte du journal. */
+const armees = new Map();           // tid -> heures restantes avant expiration
 /* Les esquisses lancees DEPUIS CETTE PAGE. /api/etat sert l'etat de la tache, ou
    la marque « esquisse » n'est pas : elle est posee sur le TOUR, donc visible
    seulement apres rechargement de la conversation. Sans ce releve, la pastille
@@ -1194,14 +1247,29 @@ async function peindreNuages() {
   // Sans session, /api/nuage rend un 401 dont le corps n'a pas de « modalites ».
   // Boucler dessus levait une erreur avant meme l'affichage du formulaire.
   if (!Array.isArray(d.modalites)) return;
+  // Le plafond du mois, quand il y en a un : au-dela, nuage_actif() refuse pour
+  // TOUTES les modalites a la fois, et aucun clic n'y changera rien avant le
+  // premier du mois. Un interrupteur qu'on laisserait cliquable ferait croire a
+  // une panne — il repasse eteint sans rien dire, appel apres appel.
+  const q = d.plafond || null;
+  // « plafonne » et non « bloque » : bloque() est deja le nom d'une fonction de
+  // cette page — celle qui fabrique le depliant des details. Une locale du meme
+  // nom la masquerait ici, et la prochaine ligne qui l'appellerait dans
+  // peindreNuages appellerait un booleen.
+  const plafonne = !!(q && q.atteint);
   for (const m of d.modalites) {
     if (!m.possible) continue;
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = m.signe;
-    b.className = m.actif ? "allume" : "eteint";
-    b.title = `${m.libelle} : ${m.actif ? m.titre : "cette machine"}`
-            + `\n(cliquer pour ${m.actif ? "revenir en local" : "passer par " + m.titre})`;
+    b.className = (m.actif ? "allume" : "eteint") + (plafonne ? " plafonne" : "");
+    b.disabled = plafonne;
+    b.title = plafonne
+      ? `${m.libelle} : plafond du mois atteint (${q.faits} appels distants sur `
+        + `${q.limite}). Le studio reste sur cette machine jusqu'au mois `
+        + `prochain ; le plafond se regle dans /admin.`
+      : `${m.libelle} : ${m.actif ? m.titre : "cette machine"}`
+        + `\n(cliquer pour ${m.actif ? "revenir en local" : "passer par " + m.titre})`;
     b.onclick = async () => {
       b.disabled = true;
       try {
@@ -1214,6 +1282,21 @@ async function peindreNuages() {
 
     };
     zone.appendChild(b);
+  }
+  // Ecrit, pas seulement en infobulle : sur telephone il n'y a pas de survol, et
+  // c'est la que le compte se lit le moins bien. Affiche des qu'un plafond
+  // existe et non seulement une fois atteint — savoir qu'on en est a 118 sur
+  // 120 evite de lancer la video de six minutes qui sera refusee.
+  if (q) {
+    const mention = document.createElement("span");
+    mention.className = "plafond" + (q.atteint ? " atteint" : "");
+    mention.textContent = q.atteint ? `plafond atteint · ${q.faits}/${q.limite}`
+                                    : `nuage ${q.faits}/${q.limite}`;
+    mention.title = `${q.faits} appel(s) distant(s) ce mois-ci (${q.mois}) sur `
+      + `${q.limite} pour le compte ${q.compte}.`
+      + (q.atteint ? " Les demandes restent sur cette machine jusqu'au mois "
+                   + "prochain." : "");
+    zone.appendChild(mention);
   }
 }
 peindreNuages();
@@ -1733,7 +1816,12 @@ peindreActifs();
 $("#txt").addEventListener("input", ajuster);
 ajuster();
 
-setInterval(async () => {
+/* Le compteur de l'en-tete, et le releve des demandes armees qui va avec.
+   Appele tout de suite ET toutes les 2,5 s : la premiere passe attendait le
+   premier tour de minuteur, si bien qu'une page rechargee sur une demande armee
+   la montrait « en cours », chronometre qui monte, pendant deux secondes et
+   demie — juste assez pour la lire et la croire. */
+async function releverFile() {
   try {
     const f = await (await fetch("/api/file")).json();
     // « occupe ? 1 : 0 » etait juste du temps ou un seul travail pouvait
@@ -1741,11 +1829,35 @@ setInterval(async () => {
     // pendant que le panneau en montrait trois.
     const n = (f.en_attente || 0) + (f.en_vol || 0);
     const moi = f.a_moi || 0;
-    $("#etatFile").innerHTML = n
-      ? `<span class="file-vive">${n} en file${moi && moi < n ? ` · ${moi} à toi` : ""}</span>`
+    // Les demandes armees ne sont NI dans la file NI sur une carte : elles
+    // attendent le retour d'une machine en pause, pendant des heures. Le
+    // compteur les ignorait, donc il restait vide — et comme c'est lui qui
+    // ouvre le panneau, et le panneau qui porte le bouton « retirer », une
+    // demande armee toute seule etait invisible ET irretirable jusqu'au
+    // lendemain. Le serveur sert « armees » exactement pour cette ligne.
+    const dort = f.armees || 0;
+    // Le ⏸ plutot qu'une phrase : c'est le signe que la meme demande porte deja
+    // a la place de son rang dans le panneau, et l'en-tete tient sur une ligne
+    // de telephone.
+    const bouts = [];
+    if (n) bouts.push(`${n} en file`);
+    if (dort) bouts.push(`⏸ ${dort}`);
+    if (moi && moi < n + dort) bouts.push(`${moi} à toi`);
+    const etat = $("#etatFile");
+    etat.innerHTML = bouts.length
+      ? `<span class="file-vive">${bouts.join(" · ")}</span>` : "";
+    etat.title = dort
+      ? `${dort} demande(s) attendent le retour d'une machine en pause et `
+        + `repartiront toutes seules. Ouvrir la file pour les retirer.`
       : "";
+    // Releve au passage : la bulle de la conversation s'en sert pour ne pas
+    // faire courir un chronometre sur une demande qui ne calcule pas.
+    armees.clear();
+    for (const l of f.lignes || []) if (l.armee) armees.set(l.tid, l.reste_h || 0);
   } catch (e) { /* sans effet */ }
-}, 2500);
+}
+releverFile();
+setInterval(releverFile, 2500);
 
 /* ── tiroir des conversations sur petit ecran ──────────────────────
    La barre laterale etait simplement masquee sous 820 px : sur telephone,
@@ -1905,10 +2017,65 @@ $("#go").onclick = () => lancerDemande($("#priorite").value);
 // vient de le demander explicitement, c'est le geste le plus recent.
 $("#lancerBrouillon").onclick = () => lancerDemande("brouillon");
 
+/* LE DEVIS, releve dans le journal de la demande.
+
+   Le studio l'annonce des qu'il a retenu une machine : « d'apres tes 6 rendus
+   precedents, compte 4 min » (duree_typique, serveur.py — la mediane de rendus
+   comparables, et rien du tout en dessous de trois mesures). Cette ligne
+   n'apparaissait que dans le depliant « details », ferme — c'est-a-dire nulle
+   part au moment ou la question se pose, devant la barre qui avance.
+
+   Elle est relue dans le texte parce que /api/etat ne sert pas ce chiffre
+   autrement : il n'y a pas de champ « devis », seulement des etapes. Le releve
+   est donc muet des que la phrase ne correspond plus — une estimation devinee
+   de travers vaut moins que pas d'estimation. */
+const RE_DEVIS = /rendus\s+pr[eé]c[eé]dents,\s*compte\s+(\d+(?:[.,]\d+)?)\s*(min|s)\b/i;
+function lireDevis(etapes) {
+  // Depuis la fin : une demande relancee au reveil d'une machine peut porter
+  // deux devis, et c'est le dernier qui parle du rendu en cours.
+  for (let i = (etapes || []).length - 1; i >= 0; i--) {
+    const m = RE_DEVIS.exec(etapes[i].msg || "");
+    if (!m) continue;
+    const combien = parseFloat(m[1].replace(",", "."));
+    const sur = /tes\s+(\d+)\s+rendus/.exec(etapes[i].msg);
+    return { secondes: combien * (m[2] === "min" ? 60 : 1),
+             mot: `${m[1]} ${m[2]}`, mesures: sur ? sur[1] : "" };
+  }
+  return null;
+}
+
+/* Le seul recours sur une demande armee, pose la ou l'utilisateur regarde. Le
+   panneau de file en a un depuis toujours, mais il faut l'ouvrir, et l'on n'y
+   pense pas quand on attend devant sa bulle. */
+function boutonRetirerArmee(id) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "retirer-armee";
+  b.textContent = "retirer";
+  b.title = "retirer cette demande de l'attente : elle ne repartira pas toute "
+          + "seule au retour de la machine";
+  b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await fetch("/api/file/" + encodeURIComponent(id),
+                  { method: "DELETE", credentials: "same-origin" });
+      // Rien a repeindre ici : le sondage voit l'etat « erreur » au tour
+      // suivant et garnit la bulle avec « retiree de la file », bouton
+      // « relancer » compris.
+    } catch (e) { b.disabled = false; }
+  };
+  return b;
+}
+
 /* Le sondage est indexe par tache : plusieurs demandes peuvent courir
    en parallele, y compris dans des conversations differentes. */
 function suivre(id, bloc, cid) {
   const depart = Date.now();
+  // L'instant ou le devis est apparu, et non « depart » : entre les deux il y a
+  // la file et l'analyse, qui ne sont pas comptees dans la mediane. Compare a
+  // depart, un rendu parti quatrieme aurait ete declare « plus long que
+  // d'habitude » avant meme d'avoir commence.
+  let vuDevis = 0;
   const ancien = suivis.get(id);
   if (ancien) { clearInterval(ancien.minuteur); suivis.delete(id); }
   const minuteur = setInterval(async () => {
@@ -1919,7 +2086,29 @@ function suivre(id, bloc, cid) {
       if (!Array.isArray(t.etapes)) throw new Error("réponse inattendue du serveur");
       const visible = cid === convActive && document.body.contains(bloc);
 
-      if (visible && t.etat === "en cours") {
+      if (visible && t.etat === "en cours" && armees.has(id)) {
+        // ARMEE : ni dans la file, ni sur une carte. Le chronometre et la
+        // derniere ligne de journal n'ont plus rien a dire — ils diraient meme
+        // le contraire de ce qui se passe. On repeint la pastille une seule
+        // fois : le bouton « retirer » se trouverait sinon remplace toutes les
+        // 1,2 s, et un clic tombe entre deux remplacements ne part jamais.
+        const puces = bloc.querySelector(".bandeau-tech");
+        let p = puces.querySelector(".puce.armee");
+        if (!p) {
+          puces.innerHTML = (esquissesLancees.has(id)
+              ? '<span class="puce esquisse">brouillon</span>' : "")
+            + '<span class="puce armee"></span>';
+          p = puces.querySelector(".puce.armee");
+          puces.appendChild(boutonRetirerArmee(id));
+        }
+        const h = armees.get(id) || 0;
+        // « encore 11 h » : sans cela, « attend une machine » ne dit pas si
+        // l'on parle de dix minutes ou d'une nuit — donc pas si l'on peut
+        // aller se coucher. Meme formulation que dans le panneau de file.
+        p.textContent = "⏸ attend le retour d'une machine en pause"
+          + (h > 0 ? ` — repart toute seule, encore ${h < 1.5
+              ? Math.round(h * 60) + " min" : Math.round(h) + " h"}` : "");
+      } else if (visible && t.etat === "en cours") {
         const derniere = t.etapes[t.etapes.length - 1];
         const puces = bloc.querySelector(".bandeau-tech");
         // Le pourcentage existait deja — dans le panneau de file, qu'il faut
@@ -1933,6 +2122,11 @@ function suivre(id, bloc, cid) {
         const pct = t.avance && t.avance.total
           ? Math.round(t.avance.fait * 100 / t.avance.total) : null;
         const secondes = Math.round((Date.now() - depart) / 1000);
+        // « Combien de temps ? » est la question qu'on se pose EN REGARDANT la
+        // barre : la reponse se met a cote, pas dans le depliant.
+        const devis = lireDevis(t.etapes);
+        if (devis && !vuDevis) vuDevis = Date.now();
+        const depasse = devis && (Date.now() - vuDevis) / 1000 > devis.secondes;
         // Deux rendus peuvent courir de front ; savoir lequel est l'esquisse dit
         // lequel va revenir dans une minute et lequel dans quatre.
         puces.innerHTML = (esquissesLancees.has(id)
@@ -1941,6 +2135,14 @@ function suivre(id, bloc, cid) {
               ? `<span class="puce attente">en file — ${t.position} devant</span>`
               : `<span class="puce cours">${ech((derniere ? derniere.msg : "…").slice(0, 64))}`
                 + `${pct === null ? "" : ` · ${pct} %`} · ${secondes} s</span>`
+                + (devis
+                   ? `<span class="puce devis${depasse ? " depasse" : ""}" title="${
+                        ech(devis.mesures ? `mediane de tes ${devis.mesures} rendus`
+                              + ` comparables : ${devis.mot}. Une indication, pas`
+                              + ` une promesse.`
+                            : `d'apres tes rendus precedents : ${devis.mot}`)
+                      }">${depasse ? "plus long que d’habitude"
+                                   : "≈ " + ech(devis.mot)}</span>` : "")
                 + (pct === null ? ""
                    : `<span class="avance"><i style="width:${pct}%"></i></span>`));
       }
@@ -1956,6 +2158,13 @@ function suivre(id, bloc, cid) {
         if (t.etat === "erreur" && derniere) t.erreur = derniere.msg;
         if (visible) { garnirReponse(bloc, t); auBas(); }
         listerConversations();
+        // Le compte d'appels distants n'avance qu'ici : une demande finie est le
+        // seul moment ou « nuage 118/120 » peut etre devenu faux. Sans ce
+        // rappel, la mention et les interrupteurs restaient sur l'etat du
+        // chargement de la page, et l'on retombait sur le bouton qui « ne fait
+        // rien » — cette fois avec une mention qui affirme qu'il reste de la
+        // marge.
+        peindreNuages();
         // Une machine a agent confirme l'arret de sa carte une a deux secondes
         // plus tard, par une ligne de journal de plus. Le sondage s'arrete
         // juste au-dessus et ne la verrait jamais : la bulle resterait sur

@@ -154,22 +154,38 @@ def corpus():
     # une correction en apprend une qu'il a ratee. Si l'une des deux doit sauter,
     # ce n'est pas celle-la.
     reels.sort(key=lambda x: x.get("source") != "correction")
+    # LE PLAFOND SE PARTAGE ENTRE LES PERSONNES. Le champ « qui » etait ecrit
+    # par moissonner() puis jamais relu : le plafond restait par classe, et
+    # quatre corrections d'un seul compte evinçaient toutes les confirmations
+    # des autres dans cette classe — mesure : 27 exemplaires pour l'un, zero
+    # pour l'autre. Le tri « corrections d'abord » rendait meme la chose plus
+    # certaine qu'avant. Le corpus est partage : sa place l'est aussi.
+    gens = {x.get("qui") for x in reels} or {None}
+    par_personne = {}
     for x in reels:
         cle = x["texte"].strip().lower()
         if cle in vus:
             continue
         plafond = int(fabriques.get(x["intention"], 0) * PART_REELLE)
+        # Sa part a lui : le plafond de la classe divise par le nombre de
+        # personnes qui y ont contribue, et au moins POIDS_REEL pour que la
+        # premiere demande de quelqu'un ne soit pas jetee d'office.
+        sa_part = max(POIDS_REEL, plafond // max(1, len(gens)))
+        cle_p = (x.get("qui"), x["intention"])
         deja = ajoutes.get(x["intention"], 0)
-        if deja >= plafond:
+        sien = par_personne.get(cle_p, 0)
+        if deja >= plafond or sien >= sa_part:
             continue
         vus.add(cle)
-        combien = min(POIDS_REEL, plafond - deja)
+        combien = min(POIDS_REEL, plafond - deja, sa_part - sien)
         ajoutes[x["intention"]] = deja + combien
+        par_personne[cle_p] = sien + combien
         tout += [x] * combien
     if ajoutes:
         print(f"  {len(reels)} demandes reelles recoltees, "
               f"{sum(ajoutes.values())} exemplaires retenus "
-              f"(plafond : {PART_REELLE:.0%} par classe)")
+              f"(plafond : {PART_REELLE:.0%} par classe, partage entre "
+              f"{len(gens)} personne(s))")
     # Le drapeau voyage avec la liste : c'est lui qui decide du fichier ecrit,
     # donc de ce qui peut etre publie.
     return tout, bool(ajoutes)
