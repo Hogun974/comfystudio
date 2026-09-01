@@ -321,7 +321,13 @@ async def reprendre_file():
                                 # une graine qui n'avait produit aucune image, et
                                 # « refaire en soigne » serait reparti d'un
                                 # fantome. Releve par la recette.
-                                "graine": r.get("graine")})
+                                "graine": r.get("graine"),
+                                # COMBIEN DE TIRAGES RESTENT A LANCER. Le premier
+                                # l'a ramene a 1 des qu'il a lance les autres :
+                                # sans cela, un studio redemarre trois fois
+                                # pendant une file chargee aurait relance N-1
+                                # travaux a chaque reveil.
+                                "variantes": r.get("variantes", 1)})
         repris += 1
     if repris:
         print(f"  {repris} demande(s) reprise(s) de la file d'avant l'arret",
@@ -4209,6 +4215,24 @@ _FACTEUR_ETAPES = {"brouillon": 0.25, "rapide": 0.6, "soigne": 1.35}
 # reprendre. On ne marque donc que ce qui tient la promesse et se refait sans
 # source.
 ESQUISSE_POSSIBLE = ("image", "planche", "video", "audio")
+# LA OU PLUSIEURS TIRAGES VEULENT DIRE QUELQUE CHOSE. Meme arbitrage que
+# ESQUISSE_POSSIBLE juste au-dessus, et la meme question tranchee : une retouche,
+# un detourage, un agrandissement, une fluidification partent d'une image DONNEE.
+# Quatre tirages de la meme retouche rendent quatre fois la meme chose au bruit
+# pres — la graine n'y decide plus la composition, elle n'ajuste qu'un debruitage
+# deja contraint par l'image d'origine — et coutent quatre fois le temps de carte.
+# On ne multiplie que ce qui est invente : une creation.
+#
+# La video et l'audio sont eligibles a l'esquisse mais PAS aux variantes, et ce
+# n'est pas un oubli : une video coute six minutes, une animation douze. Quatre
+# d'entre elles fermeraient les deux machines pour trois quarts d'heure sur un
+# seul geste, et le studio n'a que trois travailleurs.
+VARIANTES_POSSIBLE = ("image", "planche")
+# Combien de tirages une demande peut porter. Quatre, pas davantage : c'est N
+# rendus et non un. A quatorze secondes l'esquisse sur la petite carte, quatre
+# tiennent dans la minute ; a deux minutes l'image finie, quatre occupent les
+# deux machines quatre minutes durant — et la file de tout le monde avec.
+VARIANTES_MAX = 4
 
 def appliquer_parametres(plan):
     """Fusionne les reglages proposes par le LLM avec les defauts du modele,
@@ -6782,6 +6806,12 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         # soin. Sans elle, « passer au propre » rendrait une autre image — et
         # l'esquisse n'aurait servi a rien.
         "graine": TACHES.get(tid, {}).get("graine"),
+        # A QUEL GROUPE DE TIRAGES CE TOUR APPARTIENT, s'il en est un :
+        # {"groupe": tid du premier, "rang": 1..N, "sur": N}. Sur le tour et pas
+        # seulement sur la tache : les taches s'effacent au bout de deux cents
+        # demandes, et c'est la conversation rechargee trois jours plus tard qui
+        # doit encore savoir que ces quatre images etaient un seul geste.
+        "variantes": (TACHES.get(tid) or {}).get("variantes"),
         "esquisse": ((plan or {}).get("priorite") == "brouillon"
                      and (plan or {}).get("intention") in ESQUISSE_POSSIBLE) or None,
         # Le plan entier, mais SEULEMENT pour une esquisse : c'est ce qui permet
@@ -6825,6 +6855,18 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
             # repris par la file au redemarrage la perdait sans un mot.
             if ancien.get("intention_voulue"):
                 tour["intention_voulue"] = ancien["intention_voulue"]
+            # Le groupe de variantes se pose une fois et ne bouge plus. Il vit
+            # sur la tache, qui ne survit pas a une reprise apres redemarrage :
+            # sans cette ligne, un tour repris se reecrivait sans son groupe et
+            # sortait de la rangee — trois images cote a cote, la quatrieme
+            # toute seule plus bas, sans que rien ne l'explique.
+            if ancien.get("variantes"):
+                tour["variantes"] = ancien["variantes"]
+            # La variante RETENUE, elle, est un geste de l'utilisateur : elle
+            # ne se deduit d'aucun plan et ne doit pas etre effacee par une
+            # reecriture du tour.
+            if ancien.get("choisie"):
+                tour["choisie"] = ancien["choisie"]
             conv["tours"][i] = tour
             break
     else:
@@ -6971,9 +7013,100 @@ def prefixe_sortie(conv, intention, horod, suffixe):
     return f"{qui_}/{type_}/{horod}_{suffixe}"
 
 
+async def lancer_variantes(tid, texte, conv, plan, combien, taille=None,
+                           priorite="", noeud_force=None, image=None):
+    """Met en file les autres tirages de la meme demande, et rend leurs identifiants.
+
+    N TRAVAUX, ET NON UN GRAPHE A « batch_size » N. Le lot serait plus rapide
+    sur une carte — un seul chargement de modele pour quatre images — mais il
+    est indivisible : il ne se repartit pas sur les deux machines, il ne
+    s'annule pas a l'unite, et surtout ComfyUI tire le bruit du lot entier d'un
+    seul coup. Aucune de ses images ne porte alors de graine a elle : le studio
+    ne saurait ni l'ecrire dans la file — donc une reprise apres redemarrage
+    refait autre chose — ni la rendre a « refais celle-ci en soigne », qui
+    n'aurait plus rien a viser. La graine par tirage est exactement ce qui fait
+    qu'on peut CHOISIR ; c'est elle qui decide, pas la vitesse.
+
+    LE PLAN EST IMPOSE, PAS REFAIT. L'aiguillage, l'enrichissement et la
+    traduction ont deja tourne pour le premier tirage ; les refaire rendrait un
+    autre prompt, donc un autre sujet, et l'on ne comparerait plus rien. C'est
+    le meme chemin que « repasser au propre », a une difference pres : celui-la
+    impose aussi la graine, celui-ci est le seul a la laisser libre. Trois
+    appels au modele de langage economises par variante, au passage.
+
+    Chaque tirage est un TOUR ENTIER, et non un fichier de plus sur un tour
+    commun. C'est ce qui fait que tout ce qui existe deja marche sans une ligne :
+    la reprise apres redemarrage (une entree de file par tirage, avec sa graine),
+    l'annulation a l'unite, le pouce, la mediatheque, et « refais en soigne »
+    qui vise le tour sur lequel on a clique — donc la variante qu'on a choisie.
+    """
+    pid = conv.get("proprietaire")
+    modele = dict(plan)
+    # LA GRAINE NE SE RECOPIE PAS : c'est la seule chose qui doit differer. Elle
+    # est tiree par executer, une par tirage, puis ecrite dans la file — une
+    # reprise apres redemarrage refait donc la meme image, tirage par tirage.
+    modele.pop("graine", None)
+    # Deux chemins arrivent a executer avec un plan tout fait, et ils ne
+    # promettent pas la meme chose : la reprise au propre d'une esquisse et un
+    # tirage de plus. Le plan le dit, sinon le journal annonçait un geste que
+    # l'utilisateur n'avait pas fait.
+    modele["variante"] = True
+    groupe = {"groupe": tid, "sur": combien}
+    TACHES.setdefault(tid, {})["variantes"] = dict(groupe, rang=1)
+    lances = []
+    for rang in range(2, combien + 1):
+        autre = uuid.uuid4().hex
+        TACHES[autre] = {"etapes": [], "etat": "en cours", "demande": texte,
+                         "conversation": conv["id"], "proprietaire": pid,
+                         "image": image, "variantes": dict(groupe, rang=rang)}
+        enregistrer_tour(conv, autre, texte, {}, None, None, [], "en cours")
+        journal(autre, f"variante {rang} sur {combien} — meme demande, meme "
+                       f"prompt, autre graine")
+        ATTENTE.append(autre)
+        EN_FILE[autre] = {"tid": autre, "texte": texte, "conversation": conv["id"],
+                          "proprietaire": pid, "image": image, "modele": None,
+                          "taille": taille, "priorite": priorite,
+                          "noeud": noeud_force, "plan": modele, "variantes": 1}
+        lances.append(autre)
+    # LE PREMIER TIRAGE NE REPART PAS EN ESSAIM AU REVEIL : sa part est faite.
+    # Ecrit avant la mise en file — c'est le fichier qui fait foi apres un arret,
+    # et une reprise qui relancerait N-1 travaux de plus a chaque redemarrage est
+    # le genre de faute qui ne se voit qu'une fois les deux cartes prises pour
+    # une heure.
+    #
+    # ET IL GARDE SON PLAN DANS LA FILE, comme ses variantes. Sans cette ligne,
+    # un redemarrage en plein groupe le renvoyait a l'aiguilleur : il repartait
+    # avec un prompt refait — trois appels au modele de langage rendent rarement
+    # deux fois la meme phrase — pendant que ses variantes gardaient l'ancien.
+    # Les quatre images cessaient alors d'etre comparables, c'est-a-dire que le
+    # groupe perdait sa seule raison d'etre. Mesure au banc : aiguiller rappele
+    # une fois au reveil, et le prompt du premier tirage s'ecartait des autres.
+    # Sa graine, elle, est deja ecrite par executer quelques lignes plus bas : il
+    # refait donc exactement la meme image, pas seulement le meme sujet.
+    if tid in EN_FILE:
+        EN_FILE[tid]["variantes"] = 1
+        EN_FILE[tid]["plan"] = modele
+    sauver_file()
+    # Le fichier d'abord, la file ensuite : un arret entre les deux laisse les
+    # tirages dans _file.json, et reprendre_file() les remet en route. L'inverse
+    # les aurait lances sans trace, donc perdus.
+    for autre in lances:
+        await FILE_ATTENTE.put({"tid": autre, "texte": texte, "conv": conv,
+                                "taille": taille, "image": image, "modele": None,
+                                "priorite": priorite, "noeud": noeud_force,
+                                "plan": modele, "variantes": 1})
+    # Le tour du premier tirage porte le groupe des maintenant. Sans cette
+    # reecriture il restait seul a l'ecran pendant tout son rendu, pendant que
+    # les autres s'affichaient deja groupees, puis les rejoignait a la fin —
+    # c'est-a-dire qu'il bougeait sous les yeux, a la minute ou l'on regarde.
+    enregistrer_tour(conv, tid, texte, plan, plan.get("intention"),
+                     plan.get("modele"), [], "en cours")
+    return lances
+
+
 async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                    priorite="", noeud_force=None, plan_impose=None,
-                   modele_choisi=False, graine=None):
+                   modele_choisi=False, graine=None, variantes=1):
     try:
         # Le tour a deja ete pose a la mise en file ; on le rafraichit pour
         # qu'il porte l'heure du debut reel du travail.
@@ -7000,8 +7133,19 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # et l'esquisse n'aurait servi a rien. Trois appels au modele de
             # langage economises au passage.
             plan = dict(plan_impose)
-            journal(tid, "meme prompt et meme moteur que l'esquisse, tout le "
-                         "soin — la composition, elle, sera differente")
+            # Deux gestes arrivent ici avec un plan tout fait, et ils ne
+            # promettent pas la meme chose : repasser une esquisse au propre
+            # (meme graine, plus d'etapes) et tirer une variante de plus (meme
+            # plan, autre graine). Annoncer l'esquisse sur une variante decrivait
+            # un geste que l'utilisateur n'avait pas fait, et un « tout le soin »
+            # qui n'arrivait pas.
+            if plan.pop("variante", None):
+                journal(tid, "meme prompt, meme moteur et meme taille pour tout "
+                             "le groupe — seule la graine change d'une variante "
+                             "a l'autre")
+            else:
+                journal(tid, "meme prompt et meme moteur que l'esquisse, tout le "
+                             "soin — la composition, elle, sera differente")
         else:
             plan = await aiguiller(texte, tid, conv, img_b64,
                                    a_une_image=(famille_du_fichier(image) if image
@@ -7195,6 +7339,15 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             journal(tid, "description produite", etat="fini")
             return
 
+        # Les variantes ne valent que pour une creation, et le dire vaut mieux
+        # que de rendre une seule image sans expliquer pourquoi. Meme forme que
+        # le message du brouillon plus haut, pour la meme raison : un reglage
+        # ignore en silence donne le sentiment de ne pas etre ecoute.
+        if variantes > 1 and intention not in VARIANTES_POSSIBLE:
+            journal(tid, "les variantes ne changent rien pour ce genre de "
+                         "demande — elle est rendue une seule fois")
+            variantes = 1
+
         # Une taille choisie n'a de sens que la ou elle s'applique. Si la
         # demande part ailleurs, on le DIT : ignorer un reglage en silence
         # donne le sentiment de ne pas etre ecoute.
@@ -7235,6 +7388,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                          f"— la generation reste sur cette machine")
             plan["raison"] = "plafond du nuage atteint : repli sur le moteur local"
             loin = ""
+        # UN FOURNISSEUR FACTURE CHAQUE IMAGE. Le plafond du mois compte des
+        # appels, pas ce qu'on en attend : quatre variantes le viderait quatre
+        # fois plus vite, pour un geste dont l'utilisateur ne voit pas le prix.
+        # Les cartes de la maison, elles, ne coutent que du temps — c'est la que
+        # les variantes ont leur place.
+        if loin and variantes > 1:
+            journal(tid, f"{MOTEURS_DISTANTS[loin]['titre']} facture chaque "
+                         f"image : les variantes restent pour les cartes de la "
+                         f"maison, cette demande en rend une")
+            variantes = 1
         if loin:
             # Le dire AVANT l'appel : c'est la seule trace qui distingue « parti
             # au loin » de « reste ici », et son absence a rendu un aiguillage
@@ -7414,6 +7577,26 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                          f"{ETAT_NOEUDS[ident]['vram']} Go : debordement sur la "
                          f"RAM, plus lent")
         journal(tid, f"{CATALOGUE[cle]['titre']} — {plan.get('raison','')}", plan=plan)
+        # LES AUTRES TIRAGES PARTENT ICI, et le choix de l'endroit compte.
+        # Pas plus tot : le plan est arrete, le moteur tient sur une carte, et la
+        # machine de CE tirage est deja inscrite sur sa tache — choisir_noeud()
+        # comptant les travaux qui visent chaque machine, les suivants iront donc
+        # sur l'autre plutot que de s'empiler derriere celui-ci.
+        # Pas plus tard non plus : le telechargement d'un modele absent peut
+        # durer des minutes, et la seconde carte resterait a ne rien faire.
+        if variantes > 1:
+            soeurs = await lancer_variantes(tid, texte, conv, plan, variantes,
+                                            taille, priorite, noeud_force, image)
+            # LE DEVIS RESTE HONNETE : quatre variantes coutent quatre rendus, et
+            # l'annonce d'au-dessus ne parlait que du premier. On le dit en temps
+            # de CARTE et non en temps d'attente : combien de machines seront
+            # libres a cette seconde-la, personne ne le sait — et promettre la
+            # moitie parce qu'il y a deux cartes serait promettre a la place du
+            # voisin qui a lui aussi une demande en file.
+            journal(tid, f"{len(soeurs) + 1} variantes, donc autant de rendus"
+                         + (f" — environ {_duree_lisible(mediane_ * (len(soeurs) + 1))}"
+                            f" de calcul en tout, reparti sur les machines libres"
+                            if mediane_ else ""))
         # Le telechargement n'est possible que sur le disque du studio : un noeud
         # distant s'approvisionne a la main, et reste inelegible en attendant.
         a_prendre = manquants(cle, ident) if cible.get("local") else []
@@ -7746,8 +7929,14 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             conv["derniere_video"] = {"noeud": sorties[0].get("noeud"),
                                       "filename": sorties[0]["filename"],
                                       "subfolder": sorties[0].get("subfolder", "")}
-        if sorties and intention in ("image", "edition", "planche", "agrandir",
-                                     "detourer"):
+        # UNE SEULE DES VARIANTES DEVIENT « L'IMAGE COURANTE ». Elles finissent
+        # dans un ordre que personne ne choisit — deux machines, deux vitesses —
+        # et « agrandis-la » aurait donc vise une image tiree au sort, differente
+        # a chaque fois pour le meme geste. C'est la premiere qui tient le rang,
+        # jusqu'a ce que l'utilisateur en designe une autre (api_variante_choisir).
+        rang_ = ((TACHES.get(tid) or {}).get("variantes") or {}).get("rang", 1)
+        if sorties and rang_ == 1 and intention in ("image", "edition", "planche",
+                                                    "agrandir", "detourer"):
             # on garde le sous-dossier : il est indispensable pour retrouver le fichier
             conv["derniere_sortie"] = {"noeud": sorties[0].get("noeud"),
                                        "filename": sorties[0]["filename"],
@@ -7955,7 +8144,7 @@ async def travailleur():
             executer(tid, job["texte"], job["conv"], job["image"], job["modele"],
                      job.get("taille"), job.get("priorite", ""), job.get("noeud"),
                      job.get("plan"), job.get("modele_choisi", False),
-                     job.get("graine")))
+                     job.get("graine"), job.get("variantes", 1)))
         EN_VOL[tid] = travail
         # ICI, et pas avant : la demande appartient maintenant au registre des
         # travaux en vol, donc le fichier la portera.
@@ -8124,6 +8313,57 @@ async def api_au_propre(req):
                               "position": devant})
 
 
+async def api_variante_choisir(req):
+    """Designe la variante retenue : c'est elle que « la » designera ensuite.
+
+    Sans ce geste, « agrandis-la », « rends-la fluide » ou « le meme personnage »
+    visaient l'image courante de la conversation — et de quatre variantes, la
+    courante etait la derniere ARRIVEE : deux machines, deux vitesses, un ordre
+    que personne ne choisit. Le studio s'en tient donc a la premiere (voir la
+    garde dans executer) jusqu'a ce qu'on en designe une autre ici.
+
+    Choisir ne supprime rien : chaque variante reste un tour entier, avec son
+    fichier, son pouce et son bouton « refaire en soigne ». Ce bouton-la n'a
+    jamais eu besoin de cette route — il vise le tour sur lequel on clique.
+    """
+    pid = qui(req)
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    # ouvrable() et non une formule recopiee, comme api_au_propre : « a moi ET
+    # pas fermee ». Une conversation fermee ou orpheline ne se modifie pas.
+    conv = CONVERSATIONS.get(d.get("conversation") or "")
+    if not ouvrable(conv, pid):
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    tour = next((t for t in conv.get("tours", [])
+                 if t.get("id") == d.get("tour")), None)
+    if not tour or tour.get("etat") != "fini" or not tour.get("fichiers"):
+        # 404 et non 400 : un tour qui n'a rien produit n'est rien a designer,
+        # et distinguer « pas a toi » de « pas fini » renseignerait un curieux.
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    f = tour["fichiers"][0]
+    conv["derniere_sortie"] = {"noeud": f.get("noeud"), "filename": f["filename"],
+                               "subfolder": f.get("subfolder", "")}
+    # Le personnage suit la variante choisie, mais SEULEMENT s'il y en avait
+    # deja un : poser une reference que personne n'a demandee ferait basculer
+    # les demandes suivantes dans un chemin qu'elles n'empruntaient pas.
+    if conv.get("personnage"):
+        conv["personnage"] = dict(conv["derniere_sortie"])
+    # La marque sur le tour, pour que la page sache laquelle est encadree apres
+    # un rechargement. Une seule a la fois dans un groupe : choisir la troisieme
+    # doit decocher la premiere, sinon deux images se disent « la ».
+    groupe = (tour.get("variantes") or {}).get("groupe")
+    if groupe:
+        for t in conv.get("tours", []):
+            if (t.get("variantes") or {}).get("groupe") == groupe:
+                t["choisie"] = True if t.get("id") == tour["id"] else None
+    else:
+        tour["choisie"] = True
+    sauver(conv)
+    return web.json_response({"ok": True, "tour": tour["id"]})
+
+
 async def api_generer(req):
     try:
         d = await req.json()
@@ -8173,6 +8413,20 @@ async def api_generer(req):
     priorite = reglages.get("priorite") or ""
     if priorite not in PRIORITES:
         return web.json_response({"erreur": "priorite inconnue"}, status=400)
+    # « variantes » NE PASSE PAS PAR poser_reglages, et c'est delibere : comme le
+    # brouillon, c'est un geste et non un reglage. Le retenir sur la conversation
+    # ferait partir en quatre exemplaires les cinq demandes suivantes — quatre
+    # fois le temps de carte, pour tout le monde — sans que personne l'ait voulu.
+    # Le commentaire de poser_reglages dit deja pourquoi pour le brouillon ; ici
+    # l'argument est le meme, multiplie par quatre.
+    try:
+        variantes = int(d.get("variantes") or 1)
+    except (TypeError, ValueError):
+        return web.json_response({"erreur": "nombre de variantes illisible"},
+                                 status=400)
+    if not 1 <= variantes <= VARIANTES_MAX:
+        return web.json_response(
+            {"erreur": f"de 1 a {VARIANTES_MAX} variantes"}, status=400)
     machine = reglages.get("noeud") or None
     if machine and noeud(machine) is None:
         return web.json_response({"erreur": "machine inconnue"}, status=400)
@@ -8198,12 +8452,18 @@ async def api_generer(req):
     EN_FILE[tid] = {"tid": tid, "texte": texte, "conversation": conv["id"],
                     "proprietaire": pid, "image": image, "modele": modele,
                     "taille": taille, "priorite": priorite, "noeud": machine,
-                    "modele_choisi": choisi}
+                    "modele_choisi": choisi, "variantes": variantes}
     sauver_file()
     await FILE_ATTENTE.put({"tid": tid, "texte": texte, "conv": conv, "taille": taille,
                             "image": image, "modele": modele, "priorite": priorite,
-                            "noeud": machine, "modele_choisi": choisi})
-    return web.json_response({"id": tid, "conversation": conv["id"], "position": devant})
+                            "noeud": machine, "modele_choisi": choisi,
+                            "variantes": variantes})
+    # Le nombre DEMANDE, pas le nombre qui partira : l'aiguillage n'a pas encore
+    # tourne, et une demande qui se revele etre une retouche n'en rendra qu'une.
+    # La page peut reserver la place ; c'est api_etat, une fois le groupe pose,
+    # qui dira ce qu'il en est reellement.
+    return web.json_response({"id": tid, "conversation": conv["id"],
+                              "position": devant, "variantes": variantes})
 
 async def api_etat(req):
     tid = req.match_info["tid"]
@@ -8826,6 +9086,15 @@ async def api_mediatheque(req):
                     # dans une mediatheque — meme prompt, meme moteur, meme
                     # taille, seul le soin change.
                     "esquisse": bool(tour.get("esquisse")),
+                    # QUEL TIRAGE, SUR COMBIEN. Quatre variantes d'une meme
+                    # demande ont le meme prompt, le meme moteur, la meme taille
+                    # et la meme minute : sans ce rang, la mediatheque en montrait
+                    # quatre lignes rigoureusement indiscernables.
+                    "variante": ((tour.get("variantes") or {}).get("rang")
+                                 if (tour.get("variantes") or {}).get("sur", 1) > 1
+                                 else None),
+                    "variantes": (tour.get("variantes") or {}).get("sur"),
+                    "choisie": bool(tour.get("choisie")),
                     "taille": tour.get("taille"),
                     "secondes": tour.get("secondes"),
                     "heure": tour.get("heure"),
@@ -10294,6 +10563,7 @@ def app():
     a.router.add_post("/api/televerser", api_televerser)
     a.router.add_post("/api/generer", api_generer)
     a.router.add_post("/api/au_propre", api_au_propre)
+    a.router.add_post("/api/variante", api_variante_choisir)
     a.router.add_get("/api/machines", api_machines)
     a.router.add_get("/api/etat/{tid}", api_etat)
     a.router.add_get("/api/file", api_file)
