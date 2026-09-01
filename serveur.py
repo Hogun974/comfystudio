@@ -1215,6 +1215,28 @@ def manquants(cle, ident=None):
             absents.append((sous, nom, repo, distant))
     return absents
 
+def _mot_local():
+    """« le modele local », ou « le modele du parc » quand le studio n'a rien.
+
+    Signale par l'utilisateur : « il m'affiche souvent moteur local, le studio
+    n'en a pas, uniquement les noeuds ». Le mot « local » designe ici le
+    CONTRAIRE du nuage, pas la machine du studio — mais rien ne le disait, et
+    sur un studio sans carte il envoyait chercher un modele qui n'existe pas.
+    """
+    return "le modele local" if carte_locale() else "un modele du parc"
+
+
+def carte_locale():
+    """Le studio a-t-il une carte a lui.
+
+    Il peut tres bien n'en avoir aucune : celui du reseau tourne dans un
+    conteneur sur une machine sans GPU, et ne fait que repartir le travail sur
+    les noeuds. Trois endroits en dependent, et aucun ne le demandait — d'ou un
+    studio qui se choisissait lui-meme pour rendre, puis attendait dans le vide.
+    """
+    return (ETAT_NOEUDS.get(noeud_local()["id"], {}).get("vram") or 0) > 0
+
+
 def tolerance_ram(ram):
     """De combien la RAM permet de depasser la carte.
 
@@ -1234,7 +1256,18 @@ def tolerance_ram(ram):
 def _vram_utile(ident):
     """Ce que cette machine peut charger : sa carte, plus ce que la RAM tolere."""
     e = ETAT_NOEUDS.get(ident) or {}
-    return (e.get("vram") or 0) + tolerance_ram(e.get("ram") or 0)
+    vram = e.get("vram") or 0
+    # SANS CARTE, PAS DE DEBORDEMENT. La tolerance dit de combien on peut
+    # DEPASSER la carte : il faut donc une carte. Une machine qui n'en a pas se
+    # presentait comme une carte de 2 a 5 Go selon sa RAM — et le studio du
+    # reseau, qui n'a pas de carte du tout, etait retenu pour les petits
+    # moteurs. choisir_noeud le preferant sans condition, il gagnait contre la
+    # 2080 Ti, et le rendu attendait dans le vide sur une machine incapable.
+    # Signale par l'utilisateur : « il m'affiche souvent moteur local, et du
+    # coup attend dans le vide ».
+    if not vram:
+        return 0.0
+    return vram + tolerance_ram(e.get("ram") or 0)
 
 
 def tient_vraiment(cle, ident):
@@ -1265,7 +1298,11 @@ def noeuds_pour(cle):
         # son dernier « je reponds » ne vaut plus rien
         if x.get("agent") and time.time() - (e.get("vu") or 0) > SILENCE_MAX:
             continue
-        if manquants(cle, x["id"]) and not x.get("local"):
+        # Le studio s'exempte de « le modele est-il la ? » parce qu'il peut le
+        # telecharger sur son propre disque. Encore faut-il qu'il puisse
+        # calculer : sans carte, cette dispense le faisait retenir pour des
+        # moteurs qu'il n'a pas et ne saurait pas faire tourner.
+        if manquants(cle, x["id"]) and not (x.get("local") and carte_locale()):
             continue
         bons.append(x)
     return bons
@@ -1700,7 +1737,10 @@ def choisir_noeud(cle):
     # qu'on puisse faire sans predire une duree qu'on ne connait pas.
     moindre = min(charge_noeud(x["id"]) for x in dans)
     dans = [x for x in dans if charge_noeud(x["id"]) == moindre]
-    local = next((x for x in dans if x.get("local")), None)
+    # Le studio passe devant A EGALITE DE CHARGE parce qu'il n'a pas de reseau a
+    # traverser — mais seulement s'il a une carte. Sans elle, cette preference
+    # sans condition le faisait gagner contre la 2080 Ti.
+    local = next((x for x in dans if x.get("local") and carte_locale()), None)
     return local or max(dans, key=lambda x: ETAT_NOEUDS.get(x["id"], {}).get("vram", 0))
 
 def manquants_partout(cle):
@@ -2046,6 +2086,13 @@ async def attendre_carte_libre(tid=None):
     """
     debut = dernier = time.time()
     prevenu = False
+    # RIEN A ATTENDRE SANS CARTE. Le studio du reseau n'a pas de GPU et pas de
+    # ComfyUI : chaque appel au modele de langage y passait cinq secondes a
+    # interroger une adresse qui ne repond pas, trois fois par demande. Et la
+    # raison meme de cette attente — « le LLM et la diffusion se disputent les
+    # memes 11 Go » — n'existe pas la ou il n'y a pas de carte a disputer.
+    if not carte_locale():
+        return
     while await comfy_occupe():
         if tid and not prevenu:
             journal(tid, "ComfyUI travaille — l'analyse attend que la carte se libere")
@@ -2131,7 +2178,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     if loin and _place is None:
         journal(tid, f"plafond du mois atteint "
                      f"({PREFERENCES.get('plafond_nuage')} appels distants) "
-                     f"— le modele local prend le relais")
+                     f"— {_mot_local()} prend le relais")
         loin = ""
     if loin:
         _depart_loin = time.time()
@@ -2153,7 +2200,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # Le message du fournisseur remonte tel quel : « modele inconnu » et
             # « cle refusee » ne se corrigent pas de la meme facon.
             journal(tid, f"{fournisseurs.LLM[loin]['titre']} indisponible ({e})"
-                         f" — le modele local prend le relais")
+                         f" — {_mot_local()} prend le relais")
         finally:
             # Apres consigner_appel_distant, donc : la place ne se rend qu'une
             # fois le compteur a jour, sinon le suivant retrouverait le trou
@@ -2173,7 +2220,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
         if not pourquoi_ and fournisseur_dispo("llm"):
             # Un fournisseur est configure et pourtant on reste ici : le dire
             # sans savoir pourquoi vaut mieux que se taire.
-            pourquoi_ = "cet appel reste sur le modele local"
+            pourquoi_ = f"cet appel reste sur {_mot_local()}"
         if pourquoi_:
             journal(tid, pourquoi_)
     corps = corps_ollama(texte, image_b64, systeme, json_mode, modele,
@@ -2301,7 +2348,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # Et il faut avoir LACHE la carte avant : poser_a() prend le verrou de la
     # machine a qui il pose la question, et cette machine peut etre celle dont on
     # vient d'essayer l'Ollama. Le repli se serait attendu lui-meme.
-    journal(tid, f"modele local injoignable ({type(panne).__name__}) — "
+    journal(tid, f"{_mot_local()} injoignable ({type(panne).__name__}) — "
                  f"on cherche une machine qui en porte un")
     rendu = await demander_a_un_noeud(corps, tid)
     if rendu:
@@ -6715,9 +6762,9 @@ def raison_du_local(texte, image_b64=None, pid=None):
     # sans cette ligne l'utilisateur lirait qu'il l'a coupe lui-meme.
     if pid is not None and plafond_atteint(pid):
         return (f"plafond du mois atteint ({PREFERENCES.get('plafond_nuage')} "
-                f"appels distants) : le modele local est utilise")
+                f"appels distants) : {_mot_local()} est utilise")
     if pid is not None and not nuage_actif(pid):
-        return "nuage coupe : le modele local est utilise"
+        return f"nuage coupe : {_mot_local()} est utilise"
     if pid is not None and not fournisseur_dispo("llm"):
         return ""
     if image_b64:
@@ -6725,7 +6772,7 @@ def raison_du_local(texte, image_b64=None, pid=None):
     if adulte(texte):
         return "contenu adulte : l'analyse reste sur cette machine"
     if not cle_de(choix):
-        return f"aucune cle pour {choix} : le modele local est utilise"
+        return f"aucune cle pour {choix} : {_mot_local()} est utilise"
     return ""
 
 

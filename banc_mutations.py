@@ -95,6 +95,8 @@ def fichiers_du_conteneur():
 BESOINS = {
     "banc_conteneur.py": fichiers_du_conteneur(),
     "banc_page.py": ["banc_page.py", "web/index.html"],
+    # Le banc importe serveur.py, donc tout ce que serveur.py importe.
+    "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
 }
 
 
@@ -505,7 +507,46 @@ TROUS_CONNUS = [
         ]),
 ]
 
-MUTATIONS = CONTENEUR + PAGE
+# ──────────────────────────────────────────────────────────────────────
+#  banc_repartition.py — le studio sans carte se choisissait lui-meme
+# ──────────────────────────────────────────────────────────────────────
+# Signale par l'utilisateur : « il m'affiche souvent moteur local, le studio
+# n'en a pas, uniquement les noeuds, et du coup attend dans le vide ». Trois
+# endroits supposaient que le studio pouvait calculer ; les trois sont ici.
+_AVEC_TOLERANCE = '    return vram + tolerance_ram(e.get("ram") or 0)'
+_SANS_CARTE = ('    if not vram:' + chr(10)
+               + '        return 0.0' + chr(10))
+
+REPARTITION = [
+    dict(
+        nom="la tolerance RAM accordee a une machine SANS carte",
+        banc="banc_repartition.py",
+        imite="un studio sans GPU se presente comme une carte de 2 a 5 Go "
+              "selon sa RAM, et se fait retenir pour les petits moteurs",
+        rougit="et la tolerance RAM ne lui invente pas une carte de 5 Go",
+        editions=[("serveur.py", brut(
+            _SANS_CARTE + _AVEC_TOLERANCE, _AVEC_TOLERANCE))]),
+    dict(
+        nom="le noeud local prefere SANS CONDITION",
+        banc="banc_repartition.py",
+        imite="le studio gagne contre la 2080 Ti pour tout rendu, meme sans "
+              "carte : le travail part sur une machine incapable",
+        rougit="mais choisir_noeud ne le prefere plus : la deuxieme garde tient seule",
+        editions=[("serveur.py", brut(
+            'local = next((x for x in dans if x.get("local") and carte_locale()), None)',
+            'local = next((x for x in dans if x.get("local")), None)'))]),
+    dict(
+        nom="la dispense d'inventaire accordee a un studio sans carte",
+        banc="banc_repartition.py",
+        imite="le studio est retenu pour un moteur qu'il n'a pas, au motif "
+              "qu'il pourrait le telecharger — il ne le fera tourner nulle part",
+        rougit="et la dispense d'inventaire ne s'applique plus : la troisieme aussi",
+        editions=[("serveur.py", brut(
+            'if manquants(cle, x["id"]) and not (x.get("local") and carte_locale()):',
+            'if manquants(cle, x["id"]) and not x.get("local"):'))]),
+]
+
+MUTATIONS = CONTENEUR + PAGE + REPARTITION
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

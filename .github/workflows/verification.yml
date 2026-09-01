@@ -263,6 +263,16 @@ jobs:
       - name: Le catalogue promet ce qu'il va telecharger
         run: python banc_catalogue.py
 
+      # QUELLE MACHINE RECOIT LE TRAVAIL. Le studio du reseau tourne sans GPU
+      # et ne fait que repartir — mais trois endroits supposaient qu'il pouvait
+      # calculer, et aucun ne posait la question. La tolerance RAM lui inventait
+      # une carte de 2 a 5 Go, la dispense d'inventaire le retenait pour des
+      # moteurs qu'il n'a pas, et choisir_noeud le preferait sans condition : il
+      # gagnait contre la 2080 Ti et le rendu attendait dans le vide. Signale
+      # par l'utilisateur, et aucun banc ne regardait la repartition.
+      - name: Le studio sans carte laisse travailler les noeuds
+        run: python banc_repartition.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.
