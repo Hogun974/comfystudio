@@ -163,8 +163,9 @@ CATALOGUE = {
 # On compte donc toujours l union des fichiers reellement manquants.
 TAILLES = {
     # Mesurees sur disque, comme les autres. Sans elles, poids() annonçait
-    # « ~16 Go » pour la retouche d'une zone nommee au lieu de 17,75 : on
-    # promettait moins que ce qu'on allait telecharger.
+    # « ~16 Go » pour la retouche d'une zone nommee au lieu de 17,9 : on
+    # promettait moins que ce qu'on allait telecharger. (Le chiffre a bouge
+    # avec le catalogue ; c'est poids() qui fait foi, pas ce commentaire.)
     ('checkpoints', 'sam3.1_multiplex_fp16.safetensors'): 1.75,
     ('background_removal', 'birefnet.safetensors'): 0.44,
     ('upscale_models', '4x-UltraSharp.pth'): 0.07,
@@ -196,10 +197,38 @@ TAILLES = {
     ('vae', 'wan_2.1_vae.safetensors'): 0.25,
 }
 
+# Requis, telechargeables, et dont la taille n'a JAMAIS ete relevee. Sans cette
+# liste, poids() les comptait pour zero en silence : « fluidifier » annonçait
+# « ~0 Go a prendre » pour un fichier qu'il allait bel et bien telecharger. Un
+# plancher presente comme un total est une promesse qu'on ne tient pas.
+#
+# Relever la taille et retirer l'entree est la vraie reparation. En attendant,
+# elle est NOMMEE, et banc_catalogue.py refuse tout fichier requis qui ne serait
+# ni ici ni dans TAILLES.
+SANS_TAILLE = {
+    ('frame_interpolation', 'film_net_fp16.safetensors'):
+        "jamais relevee : personne n'a note le poids du modele d'interpolation",
+}
+
+
+def fichiers_requis(cles):
+    """Les fichiers a telecharger pour ces moteurs, sans doublon."""
+    return {(s, n) for c in cles for s, n, r, _ in CATALOGUE[c]["fichiers"] if r}
+
+
 def poids(cles):
     """Gigaoctets a telecharger pour ces moteurs, sans compter deux fois
     les fichiers qu ils partagent."""
-    vus = {(s, n) for c in cles for s, n, r, _ in CATALOGUE[c]["fichiers"] if r}
-    return round(sum(TAILLES.get(f, 0.0) for f in vus), 1)
+    return round(sum(TAILLES.get(f, 0.0) for f in fichiers_requis(cles)), 1)
+
+
+def poids_incertain(cles):
+    """Vrai quand le chiffre rendu par poids() est un PLANCHER, pas un total.
+
+    A dire a l'utilisateur : « au moins X Go » ne se lit pas comme « X Go », et
+    c'est la difference entre une estimation et une promesse.
+    """
+    return bool(fichiers_requis(cles) & set(SANS_TAILLE))
+
 
 POIDS = {c: poids([c]) for c in CATALOGUE}

@@ -155,12 +155,18 @@ Trois centièmes de seconde, aucune dépendance, aucun réseau. Sortie actuelle 
 
   banc_aiguillage.jsonl
      62/66 justes (94 %), 0.031 ms par demande
-     tranches d'office : 61/62 (98 %) — 4 renvoyes au modele de langage
+     tranches d'office : 62/64 (97 %) — 2 renvoyes au modele de langage
 
   banc_neuf.jsonl
-     38/44 justes (86 %), 0.049 ms par demande
-     tranches d'office : 37/41 (90 %) — 3 renvoyes au modele de langage
+     43/49 justes (88 %), 0.053 ms par demande
+     tranches d'office : 42/46 (91 %) — 3 renvoyes au modele de langage
 ```
+
+Relevé le 1er septembre 2026. Ces chiffres-là sont ceux de la CI, qui n'a pas
+de `conversations/` : pour les reproduire, lance l'entraînement avec un
+`STUDIO_DONNEES` vide, sinon `moissonner()` ajoute tes demandes réelles au
+corpus et tu mesures autre chose. Le banc dur est passé de 44 à 49 cas le
+31 août, et cette page ne l'avait pas suivi pendant deux jours.
 
 Comment lire ça :
 
@@ -216,11 +222,18 @@ Concrètement, dans ta pull request :
 4. **Une seule idée par PR.** Un correctif et un refactor mêlés ne peuvent plus
    être annulés séparément.
 5. **Fais tourner la vérification avant de proposer** :
-   `python -m compileall -q .` et `python entrainer_aiguilleur.py`. Les huit
+   `python -m compileall -q .` et `python entrainer_aiguilleur.py`. Les dix
    bancs tournent aussi tout seuls, sans réseau ni studio — `banc_adulte`,
    `banc_cerveaux`, `banc_durees`, `banc_attente`, `banc_cout`,
-   `banc_variantes`, `banc_conteneur`, `verifier_formulations` — et la CI les
-   lance tous.
+   `banc_variantes`, `banc_conteneur`, `banc_page`, `banc_catalogue`,
+   `verifier_formulations` — et la CI les lance tous.
+
+   **Un onzième les éprouve.** `banc_mutations.py` mute le code et exige que le
+   banc visé rougisse, sur la ligne nommée et pas une autre. Il existe parce
+   que trois fois en une semaine un banc vert a couvert une fonctionnalité
+   morte — dont un banc écrit exprès pour le défaut qu'il ne voyait pas. Si tu
+   ajoutes un banc, ajoute-lui sa mutation : un filet qu'on n'a jamais vu
+   rougir ne mesure rien.
 6. **Si tu touches à l'interface, lance la recette.** `recette_chemin_page.py`
    a besoin d'un studio qui tourne, et c'est pour cela qu'elle n'est pas dans
    la CI : elle refait les gestes de la page dans l'ordre réel, appel par

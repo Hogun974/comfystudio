@@ -254,6 +254,15 @@ jobs:
       - name: Les bancs rougissent encore sur les pannes qu'ils gardent
         run: python banc_mutations.py
 
+      # L'installeur annonce « ~N Go a prendre » avant un telechargement de
+      # plusieurs dizaines de minutes, et c'est la seule chose sur laquelle
+      # quelqu'un decide. Le chiffre est une somme : un fichier absent de la
+      # table des tailles y compte pour zero, en silence. C'est arrive —
+      # « fluidifier » annonçait « ~0 Go a prendre » pour un fichier qu'il
+      # allait bel et bien telecharger.
+      - name: Le catalogue promet ce qu'il va telecharger
+        run: python banc_catalogue.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

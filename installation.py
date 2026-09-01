@@ -28,7 +28,8 @@ import textwrap
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
-from catalogue import CATALOGUE, POIDS, poids   # noqa: E402
+from catalogue import (CATALOGUE, POIDS, poids,   # noqa: E402
+                       poids_incertain)
 
 WINDOWS = os.name == "nt"
 
@@ -268,7 +269,11 @@ def afficher_moteurs(vram, ram):
 
     def ligne(cle, note=""):
         m = CATALOGUE[cle]
-        etat = "deja la" if not manquants(cle) else f"~{POIDS.get(cle, 0):.0f} Go a prendre"
+        # « au moins » quand une taille manque au catalogue : poids() la compte
+        # pour zero, et « ~0 Go a prendre » se lit comme « c'est gratuit »
+        # devant un fichier qu'on va bel et bien telecharger.
+        etat = ("deja la" if not manquants(cle)
+                else f"{_environ(cle)} Go a prendre")
         if licences(cle):
             note += "  (licence a accepter)"
         print(f"  {cle:16s} {m['vram']:4.1f} Go  {m['titre']:30s} {etat}{note}")
@@ -621,6 +626,12 @@ def racine_modeles():
     return os.environ.get("COMFY_MODELES") or os.path.join(RACINE_COMFY, "models")
 
 
+def _environ(cle):
+    """« ~4 Go » quand on sait, « au moins 4 Go » quand une taille manque."""
+    return (f"au moins {POIDS.get(cle, 0):.0f}" if poids_incertain([cle])
+            else f"~{POIDS.get(cle, 0):.0f}")
+
+
 def manquants(cle):
     base = racine_modeles()
     return [(s, n, r, d) for s, n, r, d in CATALOGUE[cle]["fichiers"]
@@ -905,7 +916,7 @@ def menu_moteurs(possibles, oui):
         if licences(cle):
             etoile += "  (licence a accepter)"
         print(f"    {i:2d}) {cle:16s} {m['vram']:4.1f} Go  "
-              f"~{POIDS.get(cle, 0):.0f} Go a prendre  {m['titre']}{etoile}")
+              f"{_environ(cle)} Go a prendre  {m['titre']}{etoile}")
     if conseil:
         total = poids(conseil)      # union : deux moteurs partagent des fichiers
         print(f"\n  Proposition : {', '.join(conseil)}  (environ {total:.0f} Go)")
