@@ -14,8 +14,18 @@ MUTER le code et d'exiger que le banc rougisse. Il a ete fait trois fois a la
 main, dans des scripts jetables, et jete a chaque fois. Il est ici.
 
 Chaque mutation copie dans un dossier temporaire ce dont le banc vise a besoin,
-y applique la mutation, lance CE banc-la — pas les neuf — et exige une ligne
-« NON » nommee. Le depot n'est jamais touche.
+y applique la mutation, lance CE banc-la — pas les autres — et exige une ligne
+rouge NOMMEE. Le depot n'est jamais touche.
+
+Dix bancs y sont depuis le 1er septembre ; ils etaient quatre. Les six qui
+manquaient portaient 355 verifications a eux tous, et pas une n'avait jamais
+ete vue rougir : la regle de CONTRIBUTING.md, « si tu ajoutes un banc,
+ajoute-lui sa mutation », avait ete ecrite et pas tenue.
+
+Il reste verifier_formulations.py, et c'est le dernier : il nomme ses fautes
+par le NUMERO DE LIGNE de banc_formulations.jsonl, si bien qu'une ancre posee
+dessus se perimerait au premier cas insere au milieu du fichier. L'ancrer sur
+la formulation elle-meme est possible ; ce n'est simplement pas fait.
 
 Trois facons d'echouer, et la premiere est la plus precieuse :
 
@@ -106,7 +116,40 @@ BESOINS = {
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
+    # banc_variantes.py relit web/index.html pour UNE chose : RE_DEVIS, le
+    # releve par lequel la page tire un chiffre de la phrase du journal. Sans
+    # cette page, le banc annonce lui-meme que l'ecart « N'EST PLUS MESURE » —
+    # et la mutation du seuil du devis rougirait pour la mauvaise raison.
+    "banc_variantes.py": (["banc_variantes.py", "web/index.html"]
+                          + fichiers_du_conteneur()[1:]),
+    # banc_cout.py et banc_attente.py importent serveur.py comme les autres.
+    # aiohttp leur est en plus indispensable : fournisseurs.py l'importe en
+    # tete de fichier, et sans lui le banc meurt a l'import — un plantage qui
+    # ressemblerait a une mutation attrapee.
+    "banc_cout.py": ["banc_cout.py"] + fichiers_du_conteneur()[1:],
+    "banc_attente.py": ["banc_attente.py"] + fichiers_du_conteneur()[1:],
+    "banc_durees.py": ["banc_durees.py"] + fichiers_du_conteneur()[1:],
+    # Celui-la n'importe pas le studio : il preleve deux expressions
+    # regulieres dans le TEXTE de serveur.py. Il lui faut donc serveur.py, et
+    # rien d'autre — pas meme les modules qu'il importe.
+    "banc_adulte.py": ["banc_adulte.py", "serveur.py"],
+    # catalogue.py pour les tailles, installation.py et serveur.py parce que
+    # le banc y cherche les poids encore mis en phrase a la main. Sans
+    # serveur.py, son aveu d'ATTENDU_AILLEURS se declarerait perime.
+    "banc_catalogue.py": ["banc_catalogue.py", "catalogue.py",
+                          "installation.py", "serveur.py"],
 }
+
+
+# ── Ou se lit la ligne rouge ──────────────────────────────────────────
+# Huit bancs sur dix impriment « NON » ; banc_cout.py imprime « RATE » et
+# banc_adulte.py n'a pas de dit() du tout — il liste ses fautes indentees sous
+# leur compte. Sans cette table, TOUTE mutation qui les vise serait rendue
+# « le banc s'est casse au lieu de rougir » alors qu'il l'a parfaitement
+# attrapee : le faux positif que ce fichier existe pour interdire, retourne.
+#
+# L'exigence, elle, ne bouge pas — la ligne NOMMEE et pas un code de retour.
+MARQUE_ROUGE = {"banc_cout.py": "  RATE ", "banc_adulte.py": "    "}
 
 
 # ── Les deux formes d'ancre ───────────────────────────────────────────
@@ -603,7 +646,349 @@ REPARTITION = [
             "        file = self._attente[1]"))]),
 ]
 
-MUTATIONS = CONTENEUR + PAGE + REPARTITION
+# ──────────────────────────────────────────────────────────────────────
+#  banc_variantes.py — six mutations, une par panne de 3cecca2
+# ──────────────────────────────────────────────────────────────────────
+# Ce banc porte 115 verifications et n'en avait aucune d'eprouvee : le commit
+# qui l'a porte de 101 a 115 le dit lui-meme — « aucune mutation ajoutee pour
+# ces vingt-deux cas ». Les six ci-dessous ne prennent pas les cas un par un,
+# elles reprennent les QUATRE pannes que 3cecca2 nomme, plus les deux ecritures
+# de la regle du rang qu'il a fusionnees.
+#
+# Chacune restaure le code d'AVANT le correctif, mot pour mot quand c'est
+# possible : une mutation qui invente une manipulation prouve que le banc voit
+# quelque chose, pas qu'il voit la panne.
+VARIANTES = [
+    dict(
+        nom="la mediatheque ne sert ni le tour ni le groupe",
+        banc="banc_variantes.py",
+        imite="« tour=None, groupe=None » et un 404 — releve sur le studio en "
+              "service : POST /api/variante reclame la conversation ET le "
+              "tour, le geste n'etait donc pas appelable depuis la grille, "
+              "c'est-a-dire partout sauf la ou l'on compare quatre images "
+              "indiscernables",
+        rougit="chaque piece dit de quel tour elle sort",
+        editions=[("serveur.py", brut(
+            '                    "tour": tour.get("id"),' + chr(10)
+            + '                    "groupe": groupe,' + chr(10),
+            '                    "tour": None,' + chr(10)
+            + '                    "groupe": None,' + chr(10)))]),
+    dict(
+        nom="la mediatheque sert la marque BRUTE au lieu de la reponse calculee",
+        banc="banc_variantes.py",
+        imite="trois vues, trois reponses : le fil encadrait la premiere, la "
+              "mediatheque n'en marquait AUCUNE, et « agrandis-la » suivait "
+              "encore une troisieme regle. Le tour ne porte « choisie » "
+              "qu'apres un geste humain ; le studio, lui, vise le plus petit "
+              "rang abouti des la fin du rendu",
+        rougit="sans aucun choix humain, la mediatheque marque la premiere",
+        editions=[("serveur.py", brut(
+            '"choisie": (retenues.get(groupe) == tour.get("id") if groupe'
+            + chr(10)
+            + '                                else bool(tour.get("choisie"))),',
+            '"choisie": bool(tour.get("choisie")),'))]),
+    dict(
+        nom="le choix fait a la main ne prime plus sur le rang",
+        banc="banc_variantes.py",
+        imite="la troisieme est designee pendant que la premiere calcule "
+              "encore ; celle-ci, en finissant, reprend la place que "
+              "l'utilisateur venait de donner a une autre — l'inverse exact de "
+              "ce que la garde protege, et un clic qu'on ne peut pas refaire",
+        rougit="et elle ne reprend pas la place donnee a la troisieme",
+        editions=[("serveur.py", brut(
+            "    if designee:" + chr(10) + "        return designee" + chr(10),
+            ""))]),
+    dict(
+        nom="le rang 1 tout court, et non le plus petit rang ABOUTI",
+        banc="banc_variantes.py",
+        imite="quand le premier tirage echoue ou qu'on le retire de la file, "
+              "plus AUCUNE variante ne devient l'image courante et "
+              "« agrandis-la » vise en silence l'image d'avant le groupe",
+        rougit="le groupe designe quand meme une image",
+        editions=[("serveur.py", brut(
+            "    return min(aboutis)[1] if aboutis else None",
+            "    return next((i for r, i in aboutis if r == 1), None)"))]),
+    dict(
+        nom="la phrase du devis repasse aux minutes des 90 s",
+        banc="banc_variantes.py",
+        imite="la page ne lit pas le champ, elle relit la phrase : a 90 s de "
+              "mediane le serveur ecrivait « 2 min » et la page affichait "
+              "120 s — 33,3 % d'ecart sur le seul chiffre que l'utilisateur "
+              "voie avant de lancer",
+        rougit="la phrase ne s'ecarte jamais du champ de plus de 10 %",
+        editions=[("serveur.py", brut("DEVIS_EN_SECONDES_JUSQUA = 300",
+                                      "DEVIS_EN_SECONDES_JUSQUA = 90"))]),
+    dict(
+        nom="le devis d'un essai precedent survit a la relance",
+        banc="banc_variantes.py",
+        imite="la tache garde son identifiant d'une relance a l'autre : une "
+              "demande repartie en brouillon, ou relancee apres l'effacement "
+              "de ses rendus comparables, promettait encore le chiffre que "
+              "plus aucune mediane n'etayait. La phrase du journal, elle, ne "
+              "ment jamais ainsi — elle n'est simplement pas reecrite",
+        rougit="sans mediane, le devis d'avant est retire et non laisse la",
+        editions=[("serveur.py", brut(
+            '            TACHES.get(tid, {}).pop("devis", None)',
+            "            pass"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_cerveaux.py — le plafond de la REFLEXION, qui n'est pas celui du RENDU
+# ──────────────────────────────────────────────────────────────────────
+# Les sept cas que 3cecca2 a ajoutes sur plafond_cerveau n'etaient couverts par
+# rien. La panne qu'ils gardent est un piege a deux etages : « cette machine
+# n'a pas de carte » s'y lisait « on ne sait pas ce qu'elle tient », et un zero
+# qui veut dire « elle ne rend rien » devenait « elle peut tout charger ».
+# Mesure du 31 aout, rejouee sur un noeud a agent annoncant vram=0 et ram=63,8 :
+# gemma4:26b, 18,6 Go, choisi sur une carte de 11 — cent soixante-cinq secondes
+# par traduction.
+#
+# La troisieme mutation garde la porte d'en face, et c'est pour cela qu'elle
+# est la : le correctif pouvait tres bien fermer le cas « machine inconnue » en
+# fermant le cas « machine sans carte », et personne ne l'aurait vu.
+#
+# CES DEUX-LA SE RECOUVRENT DANS UN SEUL SENS, et c'est verifie : retirer le
+# plafond RAM allume AUSSI la ligne du repli, parce qu'un plafond infini fait
+# que plus rien n'est jamais ecarte et que le repli ne s'emprunte plus. Le
+# contraire est faux — inverser le repli n'allume que sa ligne. Les deux
+# mesurent donc bien deux gardes, et non deux fois la meme.
+CERVEAUX = [
+    dict(
+        nom="la machine SANS carte reperd son plafond",
+        banc="banc_cerveaux.py",
+        imite="la branche morte reveillee par 38cb9d0 : sans carte, "
+              "_vram_utile rend 0, zero est faux, et « sinon aucun plafond » "
+              "l'emporte. Le plafond disparait la ou il devait etre le plus "
+              "bas — 165 s par traduction, le chiffre ecrit juste au-dessus "
+              "dans le code",
+        rougit="et pour ecrire, elle reste plafonnee",
+        editions=[("serveur.py", brut(
+            '    if e.get("ram"):' + chr(10)
+            + '        return tolerance_ram(e["ram"])' + chr(10), ""))]),
+    dict(
+        nom="quand aucun voyant ne tient, le repli reprend le PLUS GROS",
+        banc="banc_cerveaux.py",
+        imite="la seconde porte : « tenables or voyants » puis max() rendait "
+              "precisement le modele que le plafond venait d'ecarter, et le "
+              "plafond ne servait plus a rien des qu'il mordait sur tout le "
+              "monde. Une image mal lue par un petit modele se corrige ; neuf "
+              "cents secondes a ne pas rendre, non (GTX 1060, 31 aout)",
+        rougit="meme quand aucun voyant ne tient, c'est le plus petit qui repond",
+        editions=[("serveur.py", brut(
+            '    return min(voyants, key=lambda m: m.get("size", 0))["name"]',
+            '    return max(voyants, key=lambda m: m.get("size", 0))["name"]'))]),
+    dict(
+        nom="la machine INCONNUE herite du plafond des machines sans carte",
+        banc="banc_cerveaux.py",
+        imite="la porte d'en face, celle qu'on ferme par erreur en fermant "
+              "l'autre : on ne devine pas ce qu'une machine dont on ignore "
+              "tout peut charger, et lui refuser ses gros modeles la rendrait "
+              "muette pour rien",
+        rougit="d'une machine inconnue, on prend le plus gros",
+        editions=[("serveur.py", brut(
+            "    if not ident:" + chr(10) + '        return float("inf")'
+            + chr(10),
+            "    if not ident:" + chr(10) + "        return 0.0" + chr(10)))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_cout.py — l'argent qui sort, et la comptabilite qui le dit
+# ──────────────────────────────────────────────────────────────────────
+# Soixante-dix-neuf verifications, aucune eprouvee. Les trois ci-dessous visent
+# les trois endroits ou une erreur ne se voit PAS : un depassement de plafond
+# paye pour de bon, une ligne perdue en silence a l'arret, et une depense
+# rangee sous un compte qui n'existe pas.
+#
+# Ce banc imprime « RATE » et non « NON » — voir MARQUE_ROUGE plus haut.
+COUT = [
+    dict(
+        nom="le plafond ne regarde plus que les appels DEJA consignes",
+        banc="banc_cout.py",
+        imite="la course d'origine : le compteur n'est ecrit qu'au RETOUR du "
+              "fournisseur, donc pendant l'aller-retour il reste immobile et "
+              "les trois travailleurs partent tous. Un appel parti est un "
+              "appel paye, meme sans reponse — c'est de l'argent, pas un "
+              "compteur",
+        rougit="appels lances ensemble : un seul part",
+        editions=[("serveur.py", brut(
+            "    return appels_du_mois(compte) + _EN_VOL_NUAGE.get(compte, 0)",
+            "    return appels_du_mois(compte)"))]),
+    dict(
+        nom="la vidange recompte la file avec qsize()",
+        banc="banc_cout.py",
+        imite="qsize() ne compte pas la ligne deja SORTIE de la file, celle "
+              "que le fil tient pendant que le disque ne repond plus : un "
+              "appel distant consigne a l'instant de l'arret disparait sans "
+              "un mot, et le compte plafonne se rembourse en redemarrant. "
+              "Mesure : 39 annonces pour 40 lignes reellement perdues",
+        rougit="mais la vidange la compte quand meme",
+        editions=[("serveur.py", brut("    return _A_ECRIRE.unfinished_tasks",
+                                      "    return _A_ECRIRE.qsize()"))]),
+    dict(
+        nom="le journal se relit avec errors=replace",
+        banc="banc_cout.py",
+        imite="le remede evident, et il etait PIRE que le mal : un octet "
+              "abime au milieu d'une ligne complete donne un JSON valide au "
+              "nom de compte corrompu. Le studio demarre, la depense quitte le "
+              "compte plafonne pour un compte fantome, et rien ne le dit — "
+              "c'est le remboursement par redemarrage sous une autre forme",
+        rougit="une ligne abimee est JETEE, pas rangee sous un compte fantome",
+        editions=[("serveur.py", brut(
+            '                    l = brut.decode("utf-8").strip()',
+            '                    l = brut.decode("utf-8", "replace").strip()'))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_catalogue.py — « ~0 Go a prendre », une ligne avant le telechargement
+# ──────────────────────────────────────────────────────────────────────
+# Le chiffre sur lequel quelqu'un decide d'attendre quarante minutes. Les deux
+# mutations reprennent les deux facons de le fausser que le banc raconte : un
+# affichage arrondi a zero, et une somme qui compte deux fois les fichiers que
+# deux moteurs partagent.
+CATALOGUE = [
+    dict(
+        nom="l'affichage sous le demi-gigaoctet repasse aux gigaoctets",
+        banc="banc_catalogue.py",
+        imite="« fluidifier : ~0 Go a prendre » — le defaut d'origine, mais "
+              "par l'AFFICHAGE et non par la table : detourer pese 0,44 Go "
+              "releve et agrandir 0,07, et « ~0 Go » se lit « c'est gratuit »",
+        rougit="sous le demi-gigaoctet on passe aux megaoctets",
+        editions=[("catalogue.py", brut(
+            '        quantite = f"{exact * 1000:.0f} Mo"',
+            '        quantite = f"{exact:.0f} Go"'))]),
+    dict(
+        nom="poids() additionne les moteurs au lieu de les unir",
+        banc="banc_catalogue.py",
+        imite="deux moteurs partagent des fichiers, et les additionner "
+              "surestime le telechargement : la raison d'etre de poids(), que "
+              "rien ne verifiait avant ce banc",
+        rougit="et poids() les compte une seule fois",
+        editions=[("catalogue.py", brut(
+            "    return round(sum(TAILLES.get(f, 0.0) "
+            "for f in fichiers_requis(cles)), 1)",
+            "    return round(sum(TAILLES.get(f, 0.0) "
+            "for c in cles for f in fichiers_requis([c])), 1)"))]),
+    dict(
+        nom="une taille jamais relevee s'annonce « au moins 0 Mo »",
+        banc="banc_catalogue.py",
+        imite="un plancher annonce comme un total : quand TOUT ce qui manque "
+              "est justement ce qu'on ne sait pas mesurer, « au moins 0 » "
+              "n'annonce rien du tout — et c'est le cas de fluidifier, celui "
+              "par lequel le defaut a ete trouve",
+        rougit="une taille jamais relevee s'annonce comme telle",
+        editions=[("catalogue.py", brut(
+            '        return "taille inconnue" if exact < 0.05 '
+            'else f"au moins {quantite}"',
+            '        return f"au moins {quantite}"'))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_attente.py — une demande gardee, et un chiffre qui ne ment pas
+# ──────────────────────────────────────────────────────────────────────
+# Soixante-quatre verifications, aucune eprouvee. Les deux mutations visent les
+# deux reglages qui mentaient sur ce qu'ils faisaient — c'est la meme faute
+# deux fois, et c'est celle que ce projet traite comme pire qu'un reglage
+# absent : l'administrateur croit avoir agi et s'en va.
+ATTENTE = [
+    dict(
+        nom="le plancher de quinze secondes s'applique aussi au clic",
+        banc="banc_attente.py",
+        imite="api_admin_pause annoncait « reveillees: 0 » pendant que les "
+              "demandes repartaient trente secondes plus tard par le veilleur. "
+              "Mesure du 1er septembre : trois demandes armees, reponse "
+              "« 0 relancee », trois departs une fois le plancher passe. Un "
+              "chiffre faux est pire que pas de chiffre",
+        rougit="le clic, lui, la reveille tout de suite",
+        editions=[("serveur.py", brut(
+            '        if plancher and time.time() - a.get("quand", 0) < 15:',
+            '        if time.time() - a.get("quand", 0) < 15:'))]),
+    dict(
+        nom="la revision d'echeance repart de maintenant et non de « depuis »",
+        banc="banc_attente.py",
+        imite="un simple passage dans /admin repousse alors l'attente de "
+              "toutes les demandes en cours — le rearmement que « depuis » "
+              "avait justement ete introduit pour empecher, et l'expiration "
+              "n'arrive jamais",
+        rougit="elle est deja passee, et l'on sait POURQUOI",
+        editions=[("serveur.py", brut(
+            '        neuve = a.get("depuis", 0) + heures * 3600',
+            "        neuve = time.time() + heures * 3600"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_durees.py — la mediane, et pourquoi ce n'est pas la moyenne
+# ──────────────────────────────────────────────────────────────────────
+# Dix verifications, aucune eprouvee. Une seule mutation suffit ici : le banc
+# tient en une phrase, et cette phrase est un choix qu'un lecteur presse
+# defera. « Simplifier » sum()/len() ne change rien sur les jeux reguliers du
+# banc — 100/110/120 ont la meme moyenne que leur mediane — et ne se voit QUE
+# sur le rendu qui a attendu une carte occupee.
+DUREES = [
+    dict(
+        nom="la moyenne au lieu de la mediane",
+        banc="banc_durees.py",
+        imite="un rendu qui a attendu une demi-heure derriere une carte "
+              "occupee tire la moyenne a 682 s pour un travail qui en prend "
+              "110, et le devis annonce onze minutes au lieu de deux : il ne "
+              "dit plus rien de ce qui va se passer maintenant",
+        rougit="un rendu qui a attendu ne fausse pas le devis",
+        editions=[("serveur.py", brut("            return v[len(v) // 2], len(v)",
+                                      "            return sum(v) / len(v), len(v)"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_adulte.py — le seul garde-fou code en dur du projet
+# ──────────────────────────────────────────────────────────────────────
+# Ce banc n'a pas de dit() : il liste ses fautes indentees sous leur compte,
+# d'ou son entree dans MARQUE_ROUGE. La ligne nommee existe bel et bien — elle
+# cite la demande qui est passee au travers — et c'est elle qu'on exige.
+#
+# Une seule mutation, et c'est la deuxieme des deux erreurs du 31 aout, celle
+# qui a fait passer « a child in a sexual pose » : le souligne est un caractere
+# de mot, donc « \\b » ne separe pas « nude » de « _body », et les moteurs a
+# etiquettes recoivent justement du danbooru colle par des soulignes.
+ADULTE = [
+    dict(
+        nom="les frontieres du motif redeviennent des « \\b » ordinaires",
+        banc="banc_adulte.py",
+        imite="tout le pan des etiquettes collees repasse : « nude_body », "
+              "« sex_scene », « explicit_content », « rating_explicit » ne "
+              "sont plus reconnus adultes — et le prompt envoye a la carte est "
+              "TOUJOURS traduit en anglais, donc c'est par la que tout sort de "
+              "la maison",
+        rougit="adulte NON reconnu : « 1girl, nude_body »",
+        editions=[("serveur.py", brut(
+            '_BORD = r"(?<![^\\W_])"' + chr(10) + '_FIN = r"(?![^\\W_])"',
+            '_BORD = r"\\b"' + chr(10) + '_FIN = r"\\b"'))]),
+]
+
+
+# ── Ce que la couverture coute, et ou part le temps ───────────────────
+# Mesure du 1er septembre, sur cette machine : 8,4 s pour 32 mutations sur
+# quatre bancs, 52,8 s pour 51 sur dix. Le sextuplement ne vient pas du nombre
+# mais des DEUX bancs qui montent un studio complet — banc_variantes.py met
+# 3,5 s par lancement et banc_cout.py 2,9, la ou banc_catalogue.py en met 0,07.
+# Les six mutations de banc_variantes pesent a elles seules 22 s.
+#
+# C'est le prix qu'on accepte, et il vaut la peine d'etre relu avant d'ajouter
+# une mutation de plus sur ces deux bancs-la : une couverture qui vaut vingt
+# secondes de CI par panne finirait par se faire couper, et un filet coupe ne
+# mesure plus rien. Sur les huit autres bancs, une mutation neuve coute moins
+# d'une demi-seconde — c'est la qu'il reste de la place.
+#
+# On ne les lance pas en parallele, et ce n'est pas un oubli : banc_variantes
+# ordonne ses tirages par des sommeils de 0,02 a 0,6 s pour eprouver « le
+# premier fini n'est pas celui qui tient le rang ». Huit processus qui se
+# disputent les coeurs reordonnent ces tirages, et le banc deviendrait
+# capricieux — un banc qui rougit au hasard vaut moins qu'un banc lent.
+MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
+             + CATALOGUE + ATTENTE + DUREES + ADULTE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
@@ -645,14 +1030,15 @@ def verdict(mut, racine):
             return "perimee", f"{rel} : {souci}"
         fichiers[rel] = neuf
     code, sortie = lancer(mut["banc"], fichiers, racine)
-    lignes_non = [l for l in sortie.splitlines() if l.startswith("  NON")]
+    marque = MARQUE_ROUGE.get(mut["banc"], "  NON")
+    lignes_non = [l for l in sortie.splitlines() if l.startswith(marque)]
     if any(mut["rougit"] in l for l in lignes_non):
         return "rouge", ""
     if code == 0:
         return "vert", "le banc n'a rien vu"
     if not lignes_non:
         return "casse", sortie.strip().splitlines()[-1][:120] if sortie.strip() else "sans sortie"
-    return "casse", "rouge ailleurs : " + " / ".join(l[7:] for l in lignes_non)[:120]
+    return "casse", "rouge ailleurs : " + " / ".join(l.strip() for l in lignes_non)[:120]
 
 
 depart = time.time()
