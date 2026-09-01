@@ -1,6 +1,13 @@
 # Réglages
 
-Par variables d'environnement, avant de lancer :
+Par variables d'environnement, avant de lancer. En service systemd, elles se
+posent dans `/etc/comfystudio.env`.
+
+> **En conteneur, `.env` n'en atteint qu'une poignée.** `docker-compose.yml` ne
+> relaie que ce que son bloc `environment:` nomme — les autres restent lettre
+> morte, sans un mot. Voir [En
+> conteneur](en-conteneur.md#variables-reconnues) pour la liste exacte et pour
+> les trois réglages qui passent par `/admin`.
 
 ```
 set STUDIO_LLM=qwen2.5vl:7b
@@ -12,3 +19,73 @@ set STUDIO_PORT=8199
 set COMFY_URL=http://127.0.0.1:8188
 set OLLAMA_URL=http://localhost:11434
 ```
+
+## Où joindre les services
+
+| Variable | Défaut | |
+|---|---|---|
+| `COMFY_URL` | `http://127.0.0.1:8188` | l'adresse de ComfyUI |
+| `OLLAMA_URL` | `http://localhost:11434` | **une ou plusieurs adresses séparées par des virgules** — le studio parle à chacune en direct et choisit laquelle emploie, voir [Plusieurs Ollama](plusieurs-ollama.md) |
+| `STUDIO_HOTE` | `127.0.0.1` | `0.0.0.0` ouvre au réseau local |
+| `STUDIO_PORT` | `8199` | le port d'écoute |
+| `STUDIO_PORT_HOTE` | *le port d'écoute* | le port **publié** quand il diffère de celui d'écoute — posé par Compose, sert aux commandes affichées à l'écran |
+
+## Modèles de langage
+
+| Variable | Défaut | |
+|---|---|---|
+| `STUDIO_LLM` | `qwen2.5vl:7b` | le modèle **rapide** : aiguillage, extraction du sujet. Depuis que la lecture d'image prend son propre modèle, il peut être un petit modèle de texte |
+| `STUDIO_LLM_ECRITURE` | *(vide)* | impose le modèle d'**écriture** — enrichissement, traduction, paroles. Vide, le studio prend le plus gros modèle installé qui tienne, machine par machine. Il est ignoré sur une machine qui ne le porte pas |
+| `STUDIO_VISION` | `qwen2.5vl:7b` | le modèle qui lit les images. Honoré sur toute machine où il est installé et déclare savoir voir ; sinon c'est le plus gros modèle *voyant* de cette machine qui répond, et le journal le dit |
+| `STUDIO_LLM_GARDER` | `60s` | combien de temps Ollama garde le modèle chargé entre deux appels |
+
+## File, cartes et patience
+
+| Variable | Défaut | |
+|---|---|---|
+| `STUDIO_TRAVAILLEURS` | `3` | demandes menées de front — une seule par carte quoi qu'il arrive |
+| `STUDIO_ATTENTE_CARTE` | `1800` | secondes qu'une analyse attend une carte occupée quand il n'y a plus d'autre machine |
+| `STUDIO_ANALYSE_MAX` | `90` | secondes au-delà desquelles une analyse **empruntée** à une autre machine ne vaut plus la peine : mieux vaut attendre la sienne. Mesure du 31 août — un seul appel au modèle du NAS a mis 500 s |
+| `STUDIO_ANALYSE_PETITE` | `1` | `0` pour analyser sur la plus grosse carte plutôt que la plus petite |
+| `STUDIO_PAUSE_PROPOSE` | `30` | minutes qu'une demande patiente devant l'écran pour une machine en pause |
+| `STUDIO_ARMEE_HEURES` | `12` | heures pendant lesquelles elle reste ensuite **armée**, prête à repartir seule au réveil. `0` rétablit le refus immédiat — voir [Attendre le retour d'une machine en pause](attendre-une-machine.md) |
+
+`STUDIO_PAUSE_PROPOSE`, `STUDIO_ARMEE_HEURES` et `STUDIO_PLAFOND_NUAGE` ne
+donnent que la valeur de **départ** : les trois se règlent ensuite dans `/admin`
+et sont conservés d'un démarrage à l'autre.
+
+## Nuage
+
+| Variable | Défaut | |
+|---|---|---|
+| `STUDIO_PLAFOND_NUAGE` | `0` | appels distants qu'un compte peut faire dans le mois avant de revenir au local. `0` = aucune limite — voir [Ce que le nuage a coûté](cout-du-nuage.md) |
+
+Les clés d'API elles-mêmes ne passent **pas** par l'environnement : elles se
+posent dans `/admin` et vivent dans `conversations/_cles.json`, exclu du dépôt.
+Voir [Clés d'API](cles-api.md).
+
+## Connexion et administration
+
+| Variable | Défaut | |
+|---|---|---|
+| `STUDIO_AUTH` | `obligatoire` | `libre` supprime la connexion — quiconque atteint le port peut alors tout faire, clés comprises |
+| `STUDIO_ADMIN_MDP` | *(tiré au sort)* | mot de passe du compte `admin`, posé avant le premier démarrage |
+| `STUDIO_ADMIN` | *(tiré au sort et conservé)* | le jeton de `/admin`. En imposer un à la main est possible ; rien n'en contrôle la longueur, et un jeton court se force — la porte freine à partir du troisième essai, l'attente doublant à chaque échec, mais cela reste un mauvais choix |
+
+## Disque
+
+| Variable | Défaut | |
+|---|---|---|
+| `STUDIO_DONNEES` | *à côté du studio* | dossier des conversations et du registre |
+| `COMFY_DIR` | *deviné* | racine de ComfyUI |
+| `COMFY_MODELES`, `COMFY_ENTREE` | *sous `COMFY_DIR`* | ou directement ces deux dossiers |
+| `COMFY_LANCEUR` | *deviné* | script de démarrage de ComfyUI |
+| `STUDIO_PURGE_ORPHELINS` | *(absent)* | `1` pour effacer au démarrage les fichiers que plus aucune conversation ne réclame |
+
+## Sur une machine à carte, pas sur le studio
+
+L'agent lit les siennes : `STUDIO_URL`, `STUDIO_JETON`, `COMFY_URL`,
+`COMFY_SORTIES`, `COMFY_GARDER_HEURES`, `AGENT_EMPREINTE`,
+`AGENT_LIVRAISON_MINUTES`, `AGENT_SANS_MAJ_AUTO`. Elles remplacent
+`agent_noeud.json` quand il n'y a pas de fichier. Voir [Des machines qui
+viennent d'elles-mêmes](machines-a-agent.md).

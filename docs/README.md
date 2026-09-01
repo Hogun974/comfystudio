@@ -13,9 +13,11 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 ## Comprendre ce qui se passe
 
 - [Architecture](architecture.md) — le chemin d'une demande, du français jusqu'à ComfyUI, et pourquoi chaque appel ne fait qu'une chose.
-- [Un classifieur plutôt qu'un modèle](aiguilleur-classifieur.md) — pourquoi l'aiguillage passe par un Bayes naïf de 0,19 Mo plutôt que par un LLM, et ce que la mesure a appris.
+- [Un classifieur plutôt qu'un modèle](aiguilleur-classifieur.md) — pourquoi l'aiguillage passe par un Bayes naïf de 0,19 Mo plutôt que par un LLM, les raccourcis écrits, et ce que la mesure a appris.
 - [Le modèle qui écrit n'est pas celui qui aiguille](modele-qui-ecrit.md) — pourquoi le studio choisit tout seul un gros modèle pour les paroles.
+- [Plusieurs Ollama, et lequel le studio choisit](plusieurs-ollama.md) — `OLLAMA_URL` en liste, l'ordre appliqué, et pourquoi une image ne part jamais sur une machine qui ne voit pas.
 - [Mesures sur RTX 2080 Ti](mesures.md) — durées relevées pour chaque opération, sur la machine de référence.
+- [Combien de temps ça va prendre](combien-de-temps.md) — le devis annoncé avant le rendu, la médiane, et le silence en dessous de trois mesures.
 
 ## Plusieurs machines
 
@@ -23,6 +25,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Plusieurs machines, de puissances différentes](plusieurs-machines.md) — qui reçoit quoi, comment imposer une machine, et les pièges du multi-machines.
 - [Déplacer le studio sur une machine sans carte](studio-sans-carte.md) — poser le studio sur un NAS et laisser les cartes où elles sont, données comprises.
 - [Quand une machine tombe](quand-une-machine-tombe.md) — la reprise automatique, et comment une panne est distinguée d'une faute.
+- [Attendre le retour d'une machine en pause](attendre-une-machine.md) — la demande gardée armée, les trois portes de réveil, et le réglage `armee_heures`.
 - [Le modèle de langage peut venir d'une autre machine](modele-de-langage-distant.md) — la bascule vers l'Ollama d'un nœud quand le sien ne répond plus.
 
 ## Utiliser le studio
@@ -30,8 +33,9 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Plusieurs utilisateurs](plusieurs-utilisateurs.md) — les espaces séparés par navigateur, l'ouverture au réseau local, l'appairage d'un téléphone.
 - [Comptes](comptes.md) — l'authentification obligatoire par défaut, le compte `admin`, et ce qu'un compte apporte.
 - [Piloter ComfyUI depuis l'interface](piloter-comfyui.md) — démarrer et arrêter le moteur depuis la barre latérale.
-- [Moteur, priorité, taille](reglages-de-rendu.md) — les trois réglages qui sont à toi, et les deux cas où ils ne s'appliquent pas.
-- [Retrouver ce qu'on a produit](mediatheque.md) — la médiathèque, son tri, ses filtres et sa recherche.
+- [Moteur, priorité, taille, machine](reglages-de-rendu.md) — les quatre réglages qui sont à toi, portés par la conversation, et les cas où ils ne s'appliquent pas.
+- [Le brouillon, et « refaire en soigné »](brouillon.md) — un rendu au quart des étapes pour juger un prompt, et pourquoi il ne prédit pas le cadrage.
+- [Retrouver ce qu'on a produit](mediatheque.md) — la médiathèque, son tri, ses filtres — brouillons ou finies, durée de rendu — et sa recherche.
 - [Fermer une conversation](fermer-une-conversation.md) — la corbeille de vingt-quatre heures, et les fichiers que plus rien ne réclame.
 - [Pouce en l'air, pouce en bas](avis.md) — où va le retour, et à quoi il sert.
 
@@ -47,4 +51,5 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 ## Aller chercher ailleurs
 
 - [Clés d'API : LLM et images](cles-api.md) — les fournisseurs distants, le choix demande par demande, et le local comme repli de tout.
+- [Ce que le nuage a coûté](cout-du-nuage.md) — le compteur d'appels distants par compte et par fournisseur, le plafond mensuel, et pourquoi aucun euro n'y figure.
 - [Télécharger les modèles](telecharger-les-modeles.md) — la récupération en HTTPS direct, la reprise après coupure, la vérification de taille.

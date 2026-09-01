@@ -40,7 +40,7 @@ s'appuie sur le Python embarqué de ComfyUI. Déplace `D:\ComfyStudio` à côté
 | « anime cette image » *(avec une image jointe)* | vidéo, Wan 2.2 14B |
 | « une musique de piano mélancolique » | audio, ACE-Step |
 | « rends-la plus acoustique » *(avec un morceau joint)* | retouche du morceau, sa durée est conservée |
-| « décris cette image » *(avec une image jointe)* | lecture par qwen2.5vl |
+| « décris cette image » *(avec une image jointe)* | lecture, sans passer par l'aiguillage |
 | « une planche de manga en 4 cases : … » | planche BD, cases assemblées en un passage |
 | « un modèle 3D d'un casque de chevalier » | image de référence puis Hunyuan3D, fichier .glb |
 | « fais-moi un truc pour mon projet » | **rien n'est généré** : le studio pose des questions |
@@ -58,6 +58,14 @@ veut pas et de changer le sujet en silence.
 le studio attend la réponse. Mesuré sur 27 tirages : 15/15 demandes claires
 exécutées sans question parasite, 12/12 demandes vagues correctement
 interrogées.
+
+**Un brouillon avant de payer le rendu.** Un bouton à côté de la flèche d'envoi
+lance la demande au quart des étapes — quatorze secondes au lieu de deux cent
+dix-sept sur la même carte — de quoi juger un prompt, un moteur, une ambiance.
+Puis « refaire en soigné » reprend le même prompt, le même moteur et la même
+graine avec tout le soin. **Le cadrage, lui, sera différent** : le nombre
+d'étapes change la trajectoire du calcul, et la graine ne fixe que son point de
+départ. C'est mesuré, et le studio le dit avant de lancer plutôt qu'après.
 
 **Les machines viennent d'elles-mêmes.** Un petit script tourne sur chaque
 machine à carte, se présente au studio avec un jeton, dit qu'il est en vie
@@ -221,7 +229,9 @@ sur un serveur, ce qui est le cas recommandé.
 
 Par défaut il cherche ComfyUI et Ollama **sur la machine hôte**
 (`host.docker.internal`). Change `COMFY_URL` et `OLLAMA_URL` s'ils sont
-ailleurs.
+ailleurs. `OLLAMA_URL` accepte **plusieurs adresses séparées par des virgules** :
+le studio parle à chacune en direct et choisit laquelle il emploie, en évitant
+les machines en pause — [Plusieurs Ollama](docs/plusieurs-ollama.md).
 
 > **Si un studio tourne déjà sur cette machine**, ne lance rien avant d'avoir lu
 > [Deux studios sur la même
@@ -267,8 +277,15 @@ Quelques portes d'entrée :
   une machine à carte en une commande, et tenir un parc à jour.
 - [Ne changer qu'une partie de l'image](docs/retouche-localisee.md) — la
   retouche localisée, mesurée pixel par pixel.
+- [Le brouillon, et « refaire en soigné »](docs/brouillon.md) — le rendu au
+  quart des étapes, ce qu'il juge et ce qu'il ne prédit pas.
 - [Clés d'API : LLM et images](docs/cles-api.md) — les fournisseurs distants, et
   le local comme repli de tout.
+- [Ce que le nuage a coûté](docs/cout-du-nuage.md) — le compteur d'appels
+  distants et le plafond mensuel. Aucun euro nulle part : les tarifs changent,
+  ce logiciel ne les suit pas.
+- [Réglages](docs/reglages.md) — toutes les variables d'environnement, ce
+  qu'elles valent par défaut et ce qu'elles changent.
 
 ## Contribuer, signaler
 

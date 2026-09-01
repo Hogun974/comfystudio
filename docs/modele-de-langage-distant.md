@@ -4,6 +4,13 @@ Le studio appelle un Ollama, dont l'adresse est un réglage. Sur une machine san
 carte, cet Ollama est ailleurs — et si cette machine-là s'éteint, plus
 d'analyse.
 
+**Le premier recours est d'en déclarer plusieurs.** `OLLAMA_URL` accepte une
+liste d'adresses séparées par des virgules, et le studio parle à chacune en
+direct : mesure du 31 août, la même question coûte 3,8 s en direct contre 74,8 s
+par l'agent d'une machine. Voir [Plusieurs Ollama](plusieurs-ollama.md). Ce qui
+suit vaut pour les machines qui n'ont **pas** d'adresse joignable — c'est le cas
+d'un agent derrière une box.
+
 Chaque agent **annonce le modèle de langage qu'il porte**, et le studio bascule
 dessus quand le sien ne répond plus. Il ne peut pas l'appeler directement — une
 machine à agent n'a pas d'adresse — alors il **dépose la question** et l'agent

@@ -191,18 +191,26 @@ demandes partent sur les autres.
 Retirer la machine aurait le même effet immédiat, mais c'est un geste brutal :
 il faut la redéclarer, avec un jeton neuf, et son agent perd sa configuration.
 
-**Une demande qui réclame précisément cette carte ne se perd pas.** Deux cas :
+**Une demande qui réclame précisément cette carte ne se perd pas.** Deux temps :
 
-- **pause récente** — la demande attend son retour, le dit dans son journal, et
-  repart dès que la machine revient. L'annuler reste à un clic.
-- **pause plus ancienne que le délai réglé** — le studio refuse tout de suite,
-  en nommant la machine et le geste. Faire patienter une demi-heure pour une
-  carte que personne ne compte rallumer, c'est perdre le temps de quelqu'un
-  poliment.
+- **pause récente** — la demande attend son retour devant l'écran, le dit dans
+  son journal, et repart dès que la machine revient. L'annuler reste à un clic.
+- **pause plus ancienne que le délai réglé** — le studio arrête de la faire
+  attendre devant l'écran et la **garde armée** : elle sort de la file et
+  repartira toute seule au réveil de la machine, pendant douze heures par
+  défaut.
 
-Le délai se règle sous le tableau des machines — trente minutes par défaut,
-`STUDIO_PAUSE_PROPOSE` pour la valeur de départ. Ce qui est « récent » dépend de
-l'usage qu'on fait de sa machine.
+Les deux délais se règlent sous le tableau des machines — trente minutes et
+douze heures, `STUDIO_PAUSE_PROPOSE` et `STUDIO_ARMEE_HEURES` pour les valeurs
+de départ. Ce qui est « récent » dépend de l'usage qu'on fait de sa machine.
+
+Le détail — les trois portes de réveil, ce qui survit à un redémarrage,
+l'expiration, et le réglage à zéro qui rétablit le refus immédiat d'avant — est
+dans [Attendre le retour d'une machine en pause](attendre-une-machine.md).
+
+Une machine en pause **ne pense pas non plus** : si elle héberge un Ollama que
+le studio connaît, il ne lui pose aucune question. Voir [Plusieurs
+Ollama](plusieurs-ollama.md).
 
 ## Ce qu'un nœud ne peut pas faire
 

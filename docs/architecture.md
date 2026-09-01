@@ -23,8 +23,29 @@ demande en français
   ComfyUI (port 8188)         génération
 ```
 
-**Un seul modèle, quatre rôles** — `qwen2.5vl:7b` aiguille, extrait le sujet,
-traduit et lit les images.
+**Le modèle se choisit par appel, et non une fois pour toutes.** C'était un seul
+modèle pour quatre rôles ; la mesure a tranché autrement.
+
+| Rôle | Quel modèle |
+|---|---|
+| Aiguillage, extraction du sujet | `STUDIO_LLM` — le **rapide** suffit à produire du JSON structuré |
+| Écriture : enrichissement, traduction, paroles, description d'une zone | le plus gros modèle **tenable** de la machine retenue, ou `STUDIO_LLM_ECRITURE` |
+| Lecture d'image | le plus gros modèle **voyant** de la machine retenue |
+
+Même demande, nuage coupé, sur le NAS : `qwen2.5vl:7b` aiguille juste et décrit
+juste — 96 s d'aiguillage puis 166 s de lecture, 263 s en tout ; `gemma3:4b`
+répond en 1 s et classe « décris cette image » comme une demande de **rendu**,
+l'image n'ayant jamais été regardée. Il porte pourtant la capacité `vision` :
+le problème n'est pas qu'il ne peut pas voir, c'est qu'il ne comprend pas qu'on
+le lui demande. **Une capacité déclarée n'est pas une compétence.**
+
+Donc ni l'un ni l'autre en permanence : dès qu'un corps porte une image, on
+prend le meilleur modèle voyant de la machine où l'on atterrit ; le texte, lui,
+garde le rapide. La chaîne locale complète passe ainsi de 119 s à 29 s, et
+`STUDIO_LLM` peut être un petit modèle de texte sans casser la lecture d'image.
+
+**La machine aussi se choisit par appel** quand `OLLAMA_URL` en liste plusieurs :
+voir [Plusieurs Ollama](plusieurs-ollama.md).
 
 `digitsflow/bonsai-8b` a été écarté après mesure : il remplace le sujet français
 de façon reproductible (*hibou* → *hippopotamus* aux trois tirages, *blaireau* →

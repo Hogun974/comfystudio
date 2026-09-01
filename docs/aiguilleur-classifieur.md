@@ -75,3 +75,43 @@ indispensable : il faut écrire un prompt. L'y remplacer ne ferait rien gagner.
 Les expressions écrites à la main restent en première ligne ; le classifieur
 les complète. C'est lui qui rattrape « il me faudrait la sortir de son décor »,
 qu'aucune expression ne prévoyait.
+
+## « Décris cette image » ne passe plus par un modèle
+
+C'est la formulation la plus courante quand on joint une image, et de loin la
+plus chère à faire trancher : **96 à 222 s** d'aiguillage en local, mesurées le
+31 août. Et la plus fragile — `gemma3:4b`, quatre fois plus rapide sur tout le
+reste, l'a classée « édition », et l'image n'a jamais été regardée. Une décision
+qui dépend du modèle du jour n'en est pas une.
+
+Elle rejoint donc la famille des raccourcis écrits — détourer, agrandir,
+fluidifier — qui tranchent sur la seule formulation, avant le classifieur et
+avant le modèle. Zéro seconde, et le même résultat à chaque fois.
+
+Trois gardes, parce qu'un raccourci trop large est pire que pas de raccourci :
+
+- **il ne s'applique que si une image est réellement jointe.** Sans image,
+  « décris-la » est une demande de création ;
+- **il refuse tout ce qui trahit une transformation** : un verbe qui modifie
+  (`corrige`, `supprime`, `recadre`, `améliore`…), ou un support nommé après le
+  verbe. « décris-la en aquarelle » n'est pas une demande de description, et
+  « analyse cette photo et corrige les couleurs » non plus. La liste est courte
+  à dessein — ce raccourci vise la justesse, pas la couverture : ce qu'il ne
+  reconnaît pas part au modèle, comme avant. Passé quatre-vingt-dix caractères,
+  il se tait également : une demande de lecture tient en quelques mots ;
+- **aucun autre raccourci ne doit répondre vrai.** « décris cette image puis
+  supprime le fond » déclenchait à la fois la lecture et le détourage, et la
+  lecture étant placée avant, l'utilisateur recevait un paragraphe de texte au
+  lieu de son image détourée. Une phrase qui réveille deux raccourcis est
+  ambiguë : elle appartient au modèle, pas à une expression régulière.
+
+Il est placé **avant les autres** : « décris-la » est sans ambiguïté dès lors
+qu'une image est jointe, et deux des raccourcis suivants mordent sur des
+formulations courtes du même genre.
+
+`detaille` est volontairement absent de la liste : avec une image jointe,
+« détaille davantage le visage » demande *plus de détail*, pas une description.
+Un verbe ambigu dans un raccourci écrit coûte plus qu'il ne rapporte.
+
+Un moteur seulement **hérité** de la conversation ne désarme pas ce raccourci —
+voir [Moteur, priorité, taille, machine](reglages-de-rendu.md#quand-un-réglage-nest-pas-suivi).

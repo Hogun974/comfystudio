@@ -15,12 +15,29 @@ disque rendrait des noms sans histoire — et franchirait la frontière entre
 utilisateurs, que le contrôle de propriété existe précisément pour tenir.
 
 **Trier, filtrer, chercher.** Passé quelques semaines, une grille ne suffit
-plus. On trie par date — dans les deux sens —, par moteur, par demande ; on
-filtre par moteur et par machine ; et l'on cherche dans le texte : la demande
-écrite, **le prompt envoyé** et le nom du fichier, les trois façons dont on se
-souvient d'une image produite il y a trois semaines. Les sélecteurs ne proposent
-que ce qui existe, et le compteur affiche « 12 sur 340 » dès qu'un filtre mord —
-pour qu'on n'attribue jamais à une panne ce qu'un filtre oublié a produit.
+plus. On trie par date — dans les deux sens —, par moteur, par demande, **par
+durée de rendu** ; on filtre par moteur, par machine, et par **brouillons /
+images finies** ; et l'on cherche dans le texte : la demande écrite, **le prompt
+envoyé** et le nom du fichier, les trois façons dont on se souvient d'une image
+produite il y a trois semaines. Les sélecteurs ne proposent que ce qui existe,
+et le compteur affiche « 12 sur 340 » dès qu'un filtre mord — pour qu'on
+n'attribue jamais à une panne ce qu'un filtre oublié a produit.
+
+**« Le plus long d'abord »** répond à « qu'est-ce qui coûte cher chez moi » —
+c'est le seul tri qui le disait, et il n'existait pas.
+
+**La taille et la durée sont sur chaque pièce.** « Pourquoi celle-ci a mis
+quatre minutes ? » se répond neuf fois sur dix par la résolution, et la
+médiathèque est justement l'endroit où l'on se pose cette question des jours
+plus tard. La taille n'existait nulle part : elle vivait dans le plan, qui ne
+survit pas au tour. Le tour la porte désormais, et la légende l'affiche avec le
+temps de rendu à côté.
+
+**Un bandeau « brouillon »** distingue les esquisses. Trente pièces plus tard,
+« lesquelles sont finies ? » est la première question devant une médiathèque où
+l'on a beaucoup essayé — et un brouillon garde la taille et le cadrage d'une
+image finie : même prompt, même moteur, même taille, seul le soin change et cela
+ne se voit pas. Voir [Le brouillon](brouillon.md).
 
 **Le prompt envoyé est visible**, replié sous chaque légende. Ce que le moteur a
 réellement reçu — après enrichissement et traduction — n'apparaissait nulle part

@@ -30,7 +30,9 @@ Ce qui ne part jamais :
 - **Le contenu adulte.** Vérifié en code avant tout appel sortant. Aucun réglage
   d'interface ne peut lever la règle, et le journal de la tâche le dit :
   « contenu adulte : la génération reste sur cette machine ».
-- **La lecture d'image.** Elle utilise le modèle de vision local.
+- **La lecture d'image.** Elle utilise un modèle de vision local — le plus gros
+  qui sache voir sur la machine retenue, voir [Plusieurs
+  Ollama](plusieurs-ollama.md).
 - **La clé elle-même.** L'API d'administration ne la renvoie jamais, seulement
   ses quatre derniers caractères. Le fichier `conversations/_cles.json` est
   exclu du dépôt.
@@ -80,3 +82,11 @@ demande reste alors sur la machine, et le studio l'annonce.
 
 Mesuré le 28 août 2026 : Nano Banana 8 s pour une image, Lyria 3 25 s pour un
 clip de 30 s, paroles comprises.
+
+## Ce que tout cela consomme
+
+Chaque appel distant **abouti** est consigné — quand, quel fournisseur, quelle
+modalité, quel compte, les jetons quand l'API les rend, les octets, la durée.
+`/admin` en donne la vue par compte et par fournisseur sur deux mois, et un
+**plafond mensuel** ramène un compte au local au-delà d'un nombre d'appels.
+Aucun euro nulle part : voir [Ce que le nuage a coûté](cout-du-nuage.md).

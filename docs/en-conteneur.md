@@ -93,27 +93,64 @@ dossiers ne sont pas là où ComfyUI les met d'habitude.
 
 ## Le volume qui compte
 
-`comfystudio-donnees` porte les conversations et le registre des
-téléversements. **Sans lui, tout disparaît au redémarrage du conteneur.**
+`comfystudio-donnees` porte tout ce que le studio écrit : conversations,
+comptes, clés, registre des machines, avis, journal des appels distants
+(`nuage.jsonl`), sorties rapatriées. **Sans lui, tout disparaît au redémarrage
+du conteneur.**
 
 ## Variables reconnues
 
+**Tout ce que le studio lit est relayé.** `docker-compose.yml` ne transmet au
+conteneur que ce que son bloc `environment:` nomme — et il les nomme désormais
+toutes. Ce n'a pas toujours été vrai : dix réglages étaient lus hors conteneur
+et ignorés en silence dedans, pendant que cette page les donnait pour reconnus.
+`banc_conteneur.py` relit maintenant `serveur.py` à chaque vérification et
+refuse tout nom qui n'arriverait pas jusqu'ici.
+
+Les plus courantes :
+
 | Variable | Rôle |
 |---|---|
-| `COMFY_URL`, `OLLAMA_URL` | où joindre les deux services |
-| `STUDIO_HOTE`, `STUDIO_PORT` | adresse et port d'écoute |
+| `COMFY_URL` | où joindre ComfyUI |
+| `OLLAMA_URL` | où joindre Ollama — **une ou plusieurs adresses séparées par des virgules**, voir [Plusieurs Ollama](plusieurs-ollama.md) |
 | `STUDIO_AUTH` | `obligatoire` (défaut) ou `libre` |
 | `STUDIO_ADMIN_MDP` | mot de passe du compte `admin`, posé avant le premier démarrage |
 | `STUDIO_LLM`, `STUDIO_VISION` | modèles Ollama |
-| `STUDIO_DONNEES` | dossier des conversations |
-| `COMFY_DIR` | racine de ComfyUI, si elle est montée |
-| `COMFY_MODELES`, `COMFY_ENTREE` | ou directement ces deux dossiers |
-| `COMFY_LANCEUR` | script de démarrage de ComfyUI (hors conteneur) |
-| `STUDIO_PURGE_ORPHELINS` | `1` pour effacer les fichiers que plus aucune conversation ne réclame |
-| `STUDIO_TRAVAILLEURS` | demandes menées de front (3 par défaut) — une seule par carte quoi qu'il arrive |
-| `STUDIO_PAUSE_PROPOSE` | minutes qu'une demande patiente pour une machine en pause (30) |
-| `STUDIO_ANALYSE_PETITE` | `0` pour analyser sur la plus grosse carte plutôt que la plus petite |
-| `STUDIO_ATTENTE_CARTE` | secondes qu'une analyse attend une carte occupée avant d'abandonner (1800) |
-| `STUDIO_LLM_GARDER` | combien de temps Ollama garde le modèle chargé entre deux appels (`60s`) |
+| `STUDIO_LLM_ECRITURE` | impose le modèle d'écriture ; vide, le studio prend le plus gros qui tienne |
+
+Les autres, plus rares, passent de la même façon : `STUDIO_TRAVAILLEURS`,
+`STUDIO_ATTENTE_CARTE`, `STUDIO_ANALYSE_MAX`, `STUDIO_ANALYSE_PETITE`,
+`STUDIO_LLM_GARDER`, `STUDIO_PURGE_ORPHELINS`, `STUDIO_ADMIN`,
+`COMFY_MODELES`, `COMFY_ENTREE`, `COMFY_LANCEUR`. Leur détail est dans
+[Réglages](reglages.md).
+
+Deux exceptions, nommées dans le banc avec leur raison : `STUDIO_PORT` n'est
+**pas** relayé — le conteneur écoute toujours sur 8199, et c'est Compose qui le
+publie ailleurs, `STUDIO_PORT_HOTE` servant à ce que la bannière annonce le bon
+port ; `STUDIO_HOTE` est forcé à `0.0.0.0`, sans quoi le port publié ne mènerait
+nulle part. `COMFY_DIR` et `STUDIO_DONNEES` viennent de l'image (`/comfy` et
+`/donnees`) et n'ont pas à être touchés.
+
+**Un seul endroit pour chaque défaut.** Quand `.env` ne dit rien, Compose relaie
+une valeur vide et c'est le défaut de `serveur.py` qui s'applique. Deux valeurs
+en dur seulement, et elles sont voulues : `COMFY_URL` et `OLLAMA_URL` visent
+`host.docker.internal` au lieu de `127.0.0.1`, parce que dans un conteneur la
+machine hôte n'est pas soi. Le banc refuse toute autre valeur figée — répéter
+dans le compose un défaut déjà écrit dans le code, c'est deux maîtres pour un
+réglage, et le jour où le code change l'image garde l'ancien sans un mot.
+
+Ces quatre-là ne sont pas lus par le studio mais par **Compose** :
+
+| Variable | Rôle |
+|---|---|
+| `STUDIO_PORT`, `COMFY_PORT`, `OLLAMA_PORT` | les ports publiés sur l'hôte |
 | `COMPOSE_PROJECT_NAME` | **le nom qui décide du volume** — à changer pour tout second studio |
 | `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
+| `ROUE`, `COMFY_ARGS` | construction et arguments du ComfyUI conteneurisé |
+
+**Trois réglages ont aussi leur champ dans `/admin`.** Les deux délais de pause
+(`STUDIO_PAUSE_PROPOSE`, `STUDIO_ARMEE_HEURES`, voir [Attendre le retour d'une
+machine en pause](attendre-une-machine.md)) et le plafond du nuage
+(`STUDIO_PLAFOND_NUAGE`, voir [Ce que le nuage a coûté](cout-du-nuage.md)). La
+variable ne donne que la valeur du **premier** démarrage ; ensuite c'est la
+valeur posée dans `/admin` qui fait foi, et elle survit aux redémarrages.

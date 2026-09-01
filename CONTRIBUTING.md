@@ -216,7 +216,18 @@ Concrètement, dans ta pull request :
 4. **Une seule idée par PR.** Un correctif et un refactor mêlés ne peuvent plus
    être annulés séparément.
 5. **Fais tourner la vérification avant de proposer** :
-   `python -m compileall -q .` et `python entrainer_aiguilleur.py`.
+   `python -m compileall -q .` et `python entrainer_aiguilleur.py`. Les huit
+   bancs tournent aussi tout seuls, sans réseau ni studio — `banc_adulte`,
+   `banc_cerveaux`, `banc_durees`, `banc_attente`, `banc_cout`,
+   `banc_variantes`, `banc_conteneur`, `verifier_formulations` — et la CI les
+   lance tous.
+6. **Si tu touches à l'interface, lance la recette.** `recette_chemin_page.py`
+   a besoin d'un studio qui tourne, et c'est pour cela qu'elle n'est pas dans
+   la CI : elle refait les gestes de la page dans l'ordre réel, appel par
+   appel. Elle existe parce que sept bancs sont restés verts pendant que les
+   réglages par conversation étaient entièrement morts — aucun n'empruntait le
+   chemin du navigateur, ils appelaient tous une route que la page n'utilise
+   plus. Un banc qui teste un contrat que personne n'emprunte ne mesure rien.
 
 Ce qui est accueilli sans mesure : les corrections de fautes, la documentation,
 un rapport de bogue clair, un cas de test qui échoue.
