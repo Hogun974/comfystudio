@@ -35,6 +35,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Piloter ComfyUI depuis l'interface](piloter-comfyui.md) — démarrer et arrêter le moteur depuis la barre latérale.
 - [Moteur, priorité, taille, machine](reglages-de-rendu.md) — les quatre réglages qui sont à toi, portés par la conversation, et les cas où ils ne s'appliquent pas.
 - [Le brouillon, et « refaire en soigné »](brouillon.md) — un rendu au quart des étapes pour juger un prompt, et pourquoi il ne prédit pas le cadrage.
+- [Une demande, plusieurs variantes](variantes.md) — jusqu'à quatre tirages du même plan, pourquoi ce sont N demandes dans la file et non un lot, et laquelle « la » désigne ensuite.
 - [Retrouver ce qu'on a produit](mediatheque.md) — la médiathèque, son tri, ses filtres — brouillons ou finies, durée de rendu — et sa recherche.
 - [Fermer une conversation](fermer-une-conversation.md) — la corbeille de vingt-quatre heures, et les fichiers que plus rien ne réclame.
 - [Pouce en l'air, pouce en bas](avis.md) — où va le retour, et à quoi il sert.
