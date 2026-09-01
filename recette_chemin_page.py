@@ -208,7 +208,16 @@ tid, d = lancer_demande(CONV, "un phare sur une falaise", modele_choisi=True)
 dit(bool(tid), "la demande est acceptee", json.dumps(d)[:100] if not tid else "")
 vus = suivre(tid) if tid else []
 
-dit(any("RealVisXL" in m for m in vus), "le MOTEUR retenu est applique")
+# LA LIGNE QUI PORTE LES DEUX MOTS. Chercher « RealVisXL » tout court tombe
+# sur l'avertissement de debordement — « demande 7.0 Go et la carte en offre
+# 5.9 » — qui nomme le moteur sans dire d'ou il vient : la recette rougissait
+# sur un journal parfaitement juste. Et « RealVisXL apparait » tout court ne
+# prouvait RIEN : c'est ce que l'aiguilleur retient de lui-meme pour « un
+# phare sur une falaise ». Le temoin, c'est la RAISON que le journal donne.
+_moteur = next((m for m in vus if "RealVisXL" in m and "impose" in m), "")
+dit("impose depuis l'interface" in _moteur,
+    "le MOTEUR retenu est applique — et parce qu'on l'a impose, pas devine",
+    _moteur or "aucune ligne « modele impose »")
 dit(any("1024x1024" in m for m in vus), "la TAILLE retenue est appliquee",
     next((m for m in vus if "generation" in m), "aucune ligne de generation"))
 # UN CHIFFRE, OU RIEN. « soigne » multiplie les etapes par 1,35 : 28 -> 38.
@@ -251,7 +260,7 @@ print("\n  ── le corps de garnirQuestion : le second chemin ─────�
 # annoncait couvrir garnirQuestion : elle n'en couvrait rien.
 tid, _ = repondre_precision(CONV, "un phare sur une falaise", "de nuit")
 vus = suivre(tid) if tid else []
-_moteur = next((m for m in vus if "RealVisXL" in m), "")
+_moteur = next((m for m in vus if "RealVisXL" in m and "impose" in m), "")
 dit("impose depuis l'interface" in _moteur,
     "le moteur est HERITE par la reponse, pas oublie",
     _moteur or "aucune ligne de moteur")
