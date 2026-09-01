@@ -241,6 +241,42 @@ choisi = S.choisir_noeud(CLE)
 dit(choisi is not None and choisi["id"] == "pc",
     "et le rendu remonte sur celle qui tient", str(choisi and choisi["id"]))
 
+# ── DEUX MEDIANES QUI NE SE COMPARENT PAS ───────────────────────────────
+# duree_typique replie de (machine, moteur, taille) sur (moteur) : pratique
+# pour AFFICHER un devis, faux pour COMPARER deux machines. La petite carte qui
+# n'a jamais rendu ce moteur — par definition, la premiere fois — heritait des
+# chiffres de la GROSSE, et l'on concluait que le debordement ne coutait rien.
+# Le tout premier debordement etait donc TOUJOURS autorise, sur la foi des
+# mesures de celle qu'on cherchait a epargner.
+poser(vram_studio=0.0, vram_zima=0.4)
+S.CONVERSATIONS.clear()
+S.CONVERSATIONS["c1"] = {"id": "c1", "titre": "banc", "tours": [
+    {"id": f"t{n}", "noeud": "pc", "modele": CLE, "taille": None,
+     "secondes": sec, "etat": "fini"}
+    for n, sec in enumerate([60, 62, 64])]}      # zima n'a JAMAIS rendu
+S._DUREES["quand"] = 0.0
+dit(S.duree_typique("zima", CLE, exact=True)[0] is None,
+    "sans mesure sur zima, on ne lui prete pas celles du pc",
+    str(S.duree_typique("zima", CLE, exact=True)))
+dit(S.debordement_acceptable("zima", "pc", CLE) is None,
+    "donc on ne sait pas si le debordement vaut la peine")
+choisi = S.choisir_noeud(CLE)
+dit(choisi is not None and choisi["id"] == "pc",
+    "et le rendu reste sur la carte qui tient", str(choisi and choisi["id"]))
+
+# ── QUAND PERSONNE NE TIENT LE MOTEUR ───────────────────────────────────
+# Elles debordent toutes, et la plus grosse deborde le moins. Prendre la plus
+# petite « par principe » choisissait la pire carte, sans aucune mesure — une
+# regression franche sur le comportement d'avant.
+LOURD = max(S.CATALOGUE, key=lambda c: S.CATALOGUE[c].get("vram", 0) or 0)
+poser(vram_studio=0.0, vram_pc=25.0, vram_zima=22.0)
+dit(not any(S.tient_vraiment(LOURD, i) for i in ("pc", "zima")),
+    f"aucune carte ne tient {LOURD} sans deborder")
+choisi = S.choisir_noeud(LOURD)
+dit(choisi is not None and choisi["id"] == "pc",
+    "le rendu part sur la plus GROSSE : elle deborde le moins",
+    str(choisi and choisi["id"]))
+
 # ── et le mot dit la verite dans les deux cas ───────────────────────────
 poser(vram_studio=0.0)
 dit(S._mot_local() == "un modele du parc",
@@ -277,6 +313,33 @@ async def _priorite():
     dit(servis == ["analyse", "rendu 1", "rendu 2"],
         "puis l'analyse passe devant, et les rendus gardent leur ordre",
         " puis ".join(servis))
+
+    # LA FAMINE. « Les analyses d'une demande sont en nombre borne » bornait UNE
+    # demande, pas le flux : trois travailleurs qui enchainent leurs analyses, et
+    # le rendu etait servi 61e sur 61. Passe ATTENTE_MAX_RENDU, le rendu le plus
+    # ancien cesse d'etre double.
+    v3 = S.VerrouCarte()
+    servis3 = []
+
+    async def prendre(nom, prioritaire):
+        await v3.acquire(prioritaire=prioritaire)
+        servis3.append(nom)
+        v3.release()
+
+    await v3.acquire()
+    lent = asyncio.create_task(prendre("rendu", False))
+    await asyncio.sleep(0)
+    # Le rendu attend depuis plus longtemps que le plancher : on vieillit son
+    # entree a la main plutot que d'immobiliser le banc deux minutes.
+    v3._attente[1][0] = (v3._attente[1][0][0],
+                         S.time.time() - S.ATTENTE_MAX_RENDU - 1)
+    flot = [asyncio.create_task(prendre(f"analyse {n}", True)) for n in range(3)]
+    await asyncio.sleep(0)
+    v3.release()
+    await asyncio.gather(lent, *flot)
+    dit(servis3[0] == "rendu",
+        "un rendu qui a trop attendu cesse d'etre double par les analyses",
+        " puis ".join(servis3))
 
     # Une attente annulee ne doit pas emporter la carte avec elle : c'est le
     # cas d'un wait_for qui expire a la seconde ou le verrou se libere.

@@ -2435,11 +2435,13 @@ function suivre(id, bloc, cid) {
         // barre : la reponse se met a cote, pas dans le depliant.
         const devis = lireDevis(t.etapes);
         if (devis && !vuDevis) vuDevis = Date.now();
-        // « Depasse » se compare au temps ECOULE, pas au temps depuis que la
-        // page a vu le devis : meme defaut que le compteur, et il faisait
-        // repasser la pastille au vert apres un rechargement en plein
-        // depassement.
-        const depasse = devis && secondes > devis.secondes;
+        // « Depasse » se compare au temps du RENDU, et non au temps total : le
+        // devis est une mediane de rendus, pas d'attentes. Comparer au total
+        // faisait rougir la pastille des la premiere image de la barre pour une
+        // demande qui avait patiente dans la file — et une demande armee onze
+        // heures se reveillait avec le devis rouge d'emblee.
+        const ecoule_rendu = t.ecoule_rendu != null ? t.ecoule_rendu : secondes;
+        const depasse = devis && ecoule_rendu > devis.secondes;
         // Deux rendus peuvent courir de front ; savoir lequel est l'esquisse dit
         // lequel va revenir dans une minute et lequel dans quatre.
         puces.innerHTML = (esquissesLancees.has(id)
