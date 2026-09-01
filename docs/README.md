@@ -17,10 +17,12 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Le modèle qui écrit n'est pas celui qui aiguille](modele-qui-ecrit.md) — pourquoi le studio choisit tout seul un gros modèle pour les paroles.
 - [Plusieurs Ollama, et lequel le studio choisit](plusieurs-ollama.md) — `OLLAMA_URL` en liste, l'ordre appliqué, et pourquoi une image ne part jamais sur une machine qui ne voit pas.
 - [Mesures](mesures.md) — les durées relevées, chacune avec **sa date et sa machine** : une durée ne se revérifie pas depuis le code, elle vieillit en silence.
-- [Combien de temps ça va prendre](combien-de-temps.md) — le devis annoncé avant le rendu, la médiane, et le silence en dessous de trois mesures.
+- [Combien de temps ça va prendre](combien-de-temps.md) — le devis annoncé avant le rendu, la médiane, le silence en dessous de trois mesures, et le temps écoulé servi par le serveur.
+- [Éprouver les bancs](eprouver-les-bancs.md) — `banc_mutations.py`, qui casse le code exprès pour vérifier que les bancs le voient : trois fois en une semaine, un banc vert a couvert une fonctionnalité morte.
 
 ## Plusieurs machines
 
+- [Qui prend le travail](qui-prend-le-travail.md) — l'analyse prend la plus grosse carte, le rendu la plus petite qui tient, et pourquoi ces deux règles sont opposées.
 - [Des machines qui viennent d'elles-mêmes](machines-a-agent.md) — l'agent, son installation en une commande, la mise à jour d'un parc, la mise en pause.
 - [Plusieurs machines, de puissances différentes](plusieurs-machines.md) — qui reçoit quoi, comment imposer une machine, et les pièges du multi-machines.
 - [Déplacer le studio sur une machine sans carte](studio-sans-carte.md) — poser le studio sur un NAS et laisser les cartes où elles sont, données comprises.
@@ -38,7 +40,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Une demande, plusieurs variantes](variantes.md) — jusqu'à quatre tirages du même plan, pourquoi ce sont N demandes dans la file et non un lot, et laquelle « la » désigne ensuite.
 - [Retrouver ce qu'on a produit](mediatheque.md) — la médiathèque, son tri, ses filtres — brouillons ou finies, durée de rendu — et sa recherche.
 - [Fermer une conversation](fermer-une-conversation.md) — la corbeille de vingt-quatre heures, et les fichiers que plus rien ne réclame.
-- [Pouce en l'air, pouce en bas](avis.md) — où va le retour, et à quoi il sert.
+- [Pouce en l'air, pouce en bas](avis.md) — où va le retour, à quoi il sert, et le bouton « refaire sur la grosse carte ».
 
 ## Ce que le studio sait faire
 

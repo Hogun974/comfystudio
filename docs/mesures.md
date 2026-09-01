@@ -27,6 +27,12 @@ plus de neuf cents — parce que là, le modèle de vision déborde de la carte,
 un débordement ne se prédit pas par une règle de trois. Voir [Plusieurs
 machines](plusieurs-machines.md).
 
+C'est la ligne « lecture d'image » de la table suivante — 19 s contre plus de
+900 — qui a décidé, le 1er septembre 2026, que **toute** analyse prend la plus
+grosse carte libre et non la plus petite. Elle n'était l'exception que pour les
+images ; elle est devenue la règle. Voir [Qui prend le
+travail](qui-prend-le-travail.md).
+
 ## Avant le rendu : l'analyse
 
 | Étape | Mesure | Machine | Date |

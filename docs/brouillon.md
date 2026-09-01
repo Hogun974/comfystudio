@@ -52,6 +52,12 @@ Une esquisse déjà refaite porte la mention **refait en soigné** à la place d
 bouton. Insister depuis un second onglet répond `409` plutôt que de lancer une
 seconde grande image identique.
 
+**À ne pas confondre avec « refaire sur la grosse carte »**, qui apparaît après
+un pouce en bas. Celui-là garde la graine et change le soin ; celui-ci change la
+carte et **abandonne** la graine — refaire à l'identique ailleurs rendrait la
+même image, or ce qu'on demande alors est un autre tirage. Voir [Pouce en l'air,
+pouce en bas](avis.md).
+
 Le plan n'est écrit **que** sur les tours d'esquisse. Sur tous les tours, il
 ferait grossir chaque conversation pour un usage que personne n'en a.
 

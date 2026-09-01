@@ -59,9 +59,14 @@ n'est pas dérivable du code :
 **Le débordement sur la RAM est autorisé**, comme le fait ComfyUI lui-même :
 une carte de 6 Go peut charger un modèle de 7 Go si la mémoire système suit —
 le rendu ralentit mais aboutit. La tolérance dépend de la RAM (5 Go au-delà de
-64 Go de RAM, 3,5 au-delà de 32, 2 au-delà de 16, aucune en dessous). Une
-machine où le moteur tient **vraiment** passe toujours devant ; le débordement
-est un recours, et il est annoncé dans le journal.
+64 Go de RAM, 3,5 au-delà de 32, 2 au-delà de 16, aucune en dessous). **Sans
+carte, aucune tolérance** : la tolérance dit de combien on peut dépasser la
+carte, il faut donc une carte.
+
+Une machine où le moteur tient **vraiment** passe devant ; le débordement est un
+recours, et il est annoncé dans le journal. Le studio ne descend d'un cran que
+s'il a **mesuré** que ce débordement-là coûte peu — voir [Qui prend le
+travail](qui-prend-le-travail.md).
 
 Sans cette règle, le studio refusait d'employer des modèles que l'installeur
 avait justement téléchargés pour cette machine : trente-deux gigaoctets dormant
@@ -69,10 +74,14 @@ sur le NAS pour un seul moteur utilisable.
 
 ## Choisir la machine soi-même
 
-Entre deux machines capables, le studio prend **la plus grosse carte**. C'est le
-bon défaut, et c'est le mauvais quand une de ces machines sert à autre chose —
-jouer, par exemple. Le sélecteur **« machine »**, dans les réglages sous la zone
-de saisie, impose la machine pour les demandes suivantes :
+Entre deux machines capables, le studio prend pour un rendu **la plus petite
+carte qui tient le moteur** — la grosse reste libre pour le rendu suivant, celui
+qui en aura besoin. L'analyse, elle, prend la plus grosse : ce sont deux règles
+opposées, et [Qui prend le travail](qui-prend-le-travail.md) dit pourquoi.
+
+C'est le bon défaut, et c'est le mauvais quand une de ces machines sert à autre
+chose — jouer, par exemple. Le sélecteur **« machine »**, dans les réglages sous
+la zone de saisie, impose la machine pour les demandes suivantes :
 
 ```
 machine : automatique
@@ -166,12 +175,17 @@ la moindre erreur.
 
 ## Ce qui n'est pas encore fait
 
-Un seul travail à la fois, sur la machine locale de préférence. La répartition
-réelle — plusieurs travaux en parallèle, arbitrage vitesse/qualité d'après le
-débit mesuré de chaque carte — attend une seconde machine pour être réglée
-honnêtement. ComfyUI expose le temps GPU net (`execution_start_time` /
-`execution_end_time`), distinct de l'attente en file : c'est là-dessus que la
-mesure se fera, pour ne pas confondre « machine lente » et « machine occupée ».
+Le studio mène plusieurs demandes de front, **mais une seule par carte** : une
+carte ne se partage pas. La règle qui décide laquelle reçoit quoi est écrite
+dans [Qui prend le travail](qui-prend-le-travail.md), et elle sait déjà comparer
+deux cartes sur les durées relevées quand il y en a assez.
+
+Ce qui manque encore, c'est un vrai **débit par machine**. ComfyUI expose le
+temps GPU net (`execution_start_time` / `execution_end_time`), distinct de
+l'attente en file : c'est là-dessus que la mesure se fera, pour ne pas confondre
+« machine lente » et « machine occupée ». Aujourd'hui, la durée typique d'un
+rendu est relue sur les tours terminés — attente comprise — et c'est ce que
+[Combien de temps ça va prendre](combien-de-temps.md) explique.
 
 ## Trois défauts qu'on ne voyait pas
 

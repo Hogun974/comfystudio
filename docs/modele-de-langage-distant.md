@@ -28,6 +28,15 @@ Trois précautions, chacune pour une faute constatée :
   distant est plus lent à charger, et la machine qui le porte a peut-être mieux
   à faire.
 
+Sur ce chemin-là — et sur lui seul — c'est la **plus petite** carte libre qui
+répond, `STUDIO_ANALYSE_PETITE` valant `1` par défaut. Une analyse posée en
+direct prend la plus grosse depuis le 1er septembre 2026 ; les deux règles n'ont
+pas été retournées ensemble. Voir [Qui prend le travail](qui-prend-le-travail.md).
+
+L'emprunt est aussi **borné dans le temps** : au-delà de `STUDIO_ANALYSE_MAX`
+— 90 s par défaut — il ne vaut plus la peine, et mieux vaut attendre sa propre
+carte. Mesure du 31 août 2026 : un seul appel au modèle de **zima** a mis 500 s.
+
 Dans `/admin`, le pli d'une machine porte un bouton **« poser une question pour
 vérifier »**. Une voie de secours qu'on n'essaie jamais n'en est pas une : on
 découvre qu'elle est bouchée le jour où l'on en a besoin.

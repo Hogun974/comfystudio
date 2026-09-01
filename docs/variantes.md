@@ -86,8 +86,11 @@ l'aiguilleur et son prompt s'écartait des trois autres.
 courante de la conversation. De quatre variantes, la courante était la dernière
 **arrivée** — deux machines, deux vitesses, un ordre que personne ne choisit.
 C'est donc **la première du groupe** qui tient le rang, même finie en dernier,
-jusqu'à ce qu'on en désigne une autre : `POST /api/variante`, avec la
-conversation et le tour. Choisir ne supprime rien — chaque variante reste un tour
+jusqu'à ce qu'on en désigne une autre. Sous chaque tirage, un bouton **« repartir
+de celle-ci »** (`POST /api/variante`, avec la conversation et le tour) ; celle
+qui tient le rang porte la marque **« ✓ on repart de celle-ci »**. Le libellé
+disait auparavant « c'est elle que « la » désigne », qui ne voulait rien dire
+pour qui n'a pas lu cette page. Choisir ne supprime rien — chaque variante reste un tour
 entier — et une seule à la fois porte la marque, sinon deux images se disent
 « la ». Le [personnage de référence](garder-le-meme-personnage.md) suit la
 variante choisie, mais seulement s'il y en avait déjà un. La conversation d'un
@@ -128,12 +131,18 @@ sait, et promettre la moitié parce qu'il y a deux cartes serait promettre à la
 place du voisin qui a lui aussi une demande en file.
 
 ```
-4 variantes, donc autant de rendus — environ 12 min de calcul en tout,
-reparti sur les machines libres
+4 variantes, donc autant de rendus — environ 3 min chacune, soit 12 min
+de calcul en tout, reparti sur les machines libres
 ```
 
 Le total n'est chiffré que s'il y a de quoi le chiffrer : trois rendus
 comparables au moins, et jamais pour un brouillon.
+
+La pastille de chaque bulle, elle, annonce **un seul rendu** — celui de ce
+tirage-là. Le total du groupe est servi à côté, dans ses propres champs. Mettre
+le total dans la pastille retarderait de quatre rendus le « plus long que
+d'habitude » qu'elle sert à dire : voir [Combien de temps ça va
+prendre](combien-de-temps.md).
 
 ## Les retrouver, et ne pas les garder
 
@@ -151,8 +160,8 @@ suivantes, sans que personne l'ait voulu.
 ## Ce que le banc vérifie
 
 Tout ce qui précède est du serveur, et `banc_variantes.py` en vérifie
-**quatre-vingt-quatorze décisions** — relevé le 1er septembre 2026 ; le banc
-grossit, relance-le plutôt que de recopier ce nombre.
+**115 décisions** — relevé le 1er septembre 2026, sans carte, sans ComfyUI et
+sans réseau ; le banc grossit, relance-le plutôt que de recopier ce nombre.
 
 Le geste a longtemps existé sans que la page l'emprunte : `web/index.html` ne
 postait aucun champ `variantes`, et la légende de la médiathèque laissait de

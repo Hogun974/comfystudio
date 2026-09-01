@@ -32,7 +32,14 @@ Vérifié le 29 août 2026 sur **pc**, en tuant ComfyUI en plein calcul : repris
 annoncée, ComfyUI relancé, image produite 80 secondes plus tard sans
 intervention.
 
+La machine de repli n'est pas choisie au hasard : c'est la règle ordinaire qui
+s'applique, la plus petite carte qui tient le moteur pour un rendu, la plus
+grosse libre pour une analyse — voir [Qui prend le
+travail](qui-prend-le-travail.md).
+
 Les trente minutes sont la `patience` de `soumettre_robuste()` dans
 `serveur.py` : 1800 secondes, écrites en dur. **Ce n'est pas
 `STUDIO_ATTENTE_CARTE`**, qui vaut la même chose mais borne l'attente d'une
-carte *occupée* — voir [Réglages](reglages.md).
+carte *occupée* — voir [Réglages](reglages.md). Attendre une carte occupée n'est
+pas une panne : la carte travaille, et l'analyse qui patiente passera devant les
+rendus qui attendent avec elle.

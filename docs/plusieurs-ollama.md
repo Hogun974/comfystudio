@@ -25,16 +25,21 @@ Trois règles, dans cet ordre :
 2. **Une carte libre passe devant une carte occupée.** Attendre deux minutes
    derrière un rendu quand une autre machine répond tout de suite n'a de sens
    pour personne.
-3. **À égalité, la plus petite carte.** Une analyse tient sur n'importe
-   laquelle ; occuper la meilleure pour réfléchir, c'est la retirer du rendu
-   qu'elle seule fait vite.
+3. **À égalité, la plus grosse carte.** L'analyse est courte et tout le reste
+   l'attend : plus tôt elle finit, plus tôt la carte repart au travail.
 
-**Sauf pour lire une image, où la troisième règle s'inverse.** C'est la seule
-tâche où la taille de la carte décide vraiment : mesure du 31 août 2026, la
-même image lue en 19 s sur la 2080 Ti de **pc** et toujours pas rendue après
-*neuf cents* secondes sur la GTX 1060 de **zima**, où le modèle de vision
-déborde. « La plus petite qui
-suffise » suppose qu'elles suffisent toutes ; ici, non.
+**La troisième règle disait l'inverse jusqu'au 1er septembre 2026**, et elle
+n'était retournée que pour la lecture d'image. C'est cette exception qui est
+devenue la règle : mesure du 31 août 2026, la même image lue en 19 s sur la
+2080 Ti de **pc** et toujours pas rendue après *neuf cents* secondes sur la
+GTX 1060 de **zima**, où le modèle de vision déborde. « La plus petite qui
+suffise » suppose qu'elles suffisent toutes ; ici, non — et l'ancien
+raisonnement, « occuper la meilleure pour réfléchir, c'est la retirer du rendu »,
+supposait que l'analyse et le rendu se disputent la carte pendant le même temps.
+Une analyse dure quelques secondes, un rendu des minutes.
+
+Le rendu, lui, suit la règle opposée. Les deux sont dans [Qui prend le
+travail](qui-prend-le-travail.md).
 
 Une adresse dont on ne reconnaît aucune machine du parc — l'Ollama du studio
 lui-même, ou une machine sans agent — n'a pas de carte connue : elle est traitée

@@ -154,9 +154,14 @@ qui fait tourner ComfyUI a forcément un Python.
 
 Le studio emprunte le modèle de langage d'une machine pour analyser une demande.
 Depuis qu'une carte ne fait qu'une tâche à la fois, en avoir un **sur chaque
-machine** change la donne : la petite carte réfléchit pendant que la grosse rend.
-Sans cela, toutes les analyses passent par la seule machine qui en porte un, et
-elle devient le goulot.
+machine** change la donne : une analyse trouve presque toujours une carte libre
+au lieu de faire la queue. Sans cela, toutes les analyses passent par la seule
+machine qui en porte un, et elle devient le goulot.
+
+L'analyse prend la **plus grosse carte libre**, et non la plus petite — elle dure
+quelques secondes, et tout attend qu'elle finisse. Elle passe aussi devant les
+rendus qui attendent la même carte, jamais devant celui qui l'occupe déjà. Les
+deux règles sont dans [Qui prend le travail](qui-prend-le-travail.md).
 
 `noeud.sh` le vérifie et le dit, avec le modèle qui convient à la carte trouvée :
 

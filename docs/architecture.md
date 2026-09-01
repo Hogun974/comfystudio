@@ -54,6 +54,13 @@ garde le rapide. La chaîne locale complète passe ainsi de 119 s à 29 s (31 ao
 **La machine aussi se choisit par appel** quand `OLLAMA_URL` en liste plusieurs :
 voir [Plusieurs Ollama](plusieurs-ollama.md).
 
+Et elle se choisit **deux fois par demande**, avec deux règles opposées :
+l'analyse prend la plus grosse carte libre, le rendu la plus petite qui tient le
+moteur. Ce n'est pas une incohérence — une analyse dure quelques secondes et
+tout l'attend, un rendu dure des minutes et n'a besoin que de ce qui suffit.
+[Qui prend le travail](qui-prend-le-travail.md) détaille les deux, ainsi que la
+priorité de l'analyse sur les rendus qui attendent la même carte.
+
 `digitsflow/bonsai-8b` a été écarté après mesure : il remplace le sujet français
 de façon reproductible (*hibou* → *hippopotamus* aux trois tirages, *blaireau* →
 *fox* aux trois). Aucun garde-fou ne rattrape une erreur de sens. qwen reste

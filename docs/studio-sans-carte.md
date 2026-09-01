@@ -84,6 +84,14 @@ pare-feu, et une machine peut même vivre derrière une autre box.
 
 ## Ce qui change une fois déplacé
 
+- **Le studio ne se choisit jamais pour un rendu.** « Pas de carte, pas de
+  rendu » vaut pour tout le monde, lui compris. Il l'a fallu : depuis que le
+  rendu prend la plus petite carte, une machine à zéro gigaoctet serait choisie
+  **la première**, étant la plus petite de toutes. Signalé par l'utilisateur —
+  *« il m'affiche souvent moteur local, et du coup attend dans le vide »* : le
+  studio se désignait, la demande partait sur une machine incapable, et le studio
+  patientait une demi-heure. Voir [Qui prend le
+  travail](qui-prend-le-travail.md).
 - **Le studio ne télécharge plus de modèles pour personne.** Il n'écrit que sur
   son propre disque, et il n'a plus de ComfyUI dessus. Chaque machine à carte
   s'approvisionne elle-même : `curl -fsS http://IP-DU-STUDIO:8199/api/noeud/modeles.sh | bash -s -- http://IP-DU-STUDIO:8199`

@@ -119,6 +119,26 @@ Les tailles sont relevées sur Hugging Face, pas estimées. Et elles comptent
 **l'union** des fichiers : `klein4b` et `edition` partagent les leurs, la paire
 pèse 16 Go et non 32.
 
+**Une taille annoncée ne promet que ce qu'on sait.** Quatre formulations, et une
+seule fonction les produit toutes — `annonce_poids()` dans `catalogue.py`, y
+compris les deux **totaux** de cet écran :
+
+| Ce qu'on lit | Ce que ça veut dire |
+|---|---|
+| `~16 Go a prendre` | la taille de chaque fichier est relevée, le total est celui-là |
+| `au moins 12 Go a prendre` | un fichier au moins n'a pas de taille au catalogue ; c'est un plancher, annoncé comme tel |
+| `taille inconnue` | tout ce qui manque est justement ce qu'on ne sait pas mesurer — « au moins 0 Go » n'annonce rien |
+| `a installer a la main` | ce moteur n'a aucune source automatique, et ne marchera pas après installation |
+
+Les deux dernières étaient fausses jusqu'au 1er septembre 2026. Les quatre
+fichiers d'ACE-Step n'ont pas de dépôt, si bien que le moteur audio annonçait
+`~0 Go a prendre` — sans même le « au moins » — pour un moteur qu'il faut
+installer soi-même. Et sous le demi-gigaoctet, l'affichage passe désormais aux
+**mégaoctets** : `detourer` pèse 0,44 Go relevé et `agrandir` 0,07, tous deux
+affichés « ~0 Go », qui se lit « c'est gratuit ». Le garde-fou d'alors
+interdisait une taille *relevée* à zéro ; il n'interdisait pas un *affichage* à
+zéro.
+
 Pour les habitués, ou pour une installation sans clavier :
 
 ```bash

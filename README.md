@@ -75,6 +75,13 @@ sur un portable qui s'endort, sur un réseau qu'on ne maîtrise pas : tant qu'el
 peut sortir, elle travaille. Le studio mène plusieurs demandes de front, mais
 une seule par carte — une carte ne se partage pas.
 
+**Deux règles opposées pour la même demande.** L'analyse prend la plus grosse
+carte libre : elle dure quelques secondes et tout l'attend. Le rendu prend la
+plus petite qui tient le moteur, pour laisser la grosse au rendu suivant. Le
+studio lui-même n'a aucune préférence — c'est un nœud comme les autres, et sans
+carte il ne rend rien. Voir [Qui prend le
+travail](docs/qui-prend-le-travail.md).
+
 **Rien n'est exposé.** Le nœud n'ouvre aucun port et le studio n'écoute que sur
 `127.0.0.1` par défaut. La connexion est obligatoire, y compris en local. Tout
 fonctionne sans aucune clé d'API, et quand une clé est posée, une demande adulte
@@ -276,6 +283,8 @@ Quelques portes d'entrée :
   jusqu'à ComfyUI.
 - [Des machines qui viennent d'elles-mêmes](docs/machines-a-agent.md) — ajouter
   une machine à carte en une commande, et tenir un parc à jour.
+- [Qui prend le travail](docs/qui-prend-le-travail.md) — quelle carte reçoit
+  quoi, et pourquoi l'analyse et le rendu ne veulent pas la même.
 - [Ne changer qu'une partie de l'image](docs/retouche-localisee.md) — la
   retouche localisée, mesurée pixel par pixel.
 - [Le brouillon, et « refaire en soigné »](docs/brouillon.md) — le rendu au

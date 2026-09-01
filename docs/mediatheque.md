@@ -39,6 +39,14 @@ l'on a beaucoup essayé — et un brouillon garde la taille et le cadrage d'une
 image finie : même prompt, même moteur, même taille, seul le soin change et cela
 ne se voit pas. Voir [Le brouillon](brouillon.md).
 
+**Les variantes portent leur rang** — « variante 2 sur 4 » — et un **« ✓ retenue »**
+sur celle dont on repart. Quatre variantes ont le même prompt, le même moteur, la
+même taille et la même minute : sans leur rang, la grille en montrait quatre
+lignes rigoureusement indiscernables. La médiathèque sert aussi l'identifiant du
+tour et celui du groupe, que `POST /api/variante` exige ; **le bouton qui change
+de variante, lui, n'est pour l'instant que dans le fil de la conversation**. Voir
+[Une demande, plusieurs variantes](variantes.md).
+
 **Le prompt envoyé est visible**, replié sous chaque légende. Ce que le moteur a
 réellement reçu — après enrichissement et traduction — n'apparaissait nulle part
 une fois la conversation refermée. C'est pourtant lui qui explique un rendu

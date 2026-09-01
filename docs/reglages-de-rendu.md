@@ -33,6 +33,11 @@ voulu. Voir [Le brouillon](brouillon.md).
 La machine retenue dans le navigateur ne sert plus que de point de départ à une
 conversation neuve.
 
+Laissée sur **automatique**, la machine est choisie par le studio : la plus
+petite carte qui tient le moteur pour un rendu, la plus grosse libre pour
+l'analyse qui le précède. La règle entière est dans [Qui prend le
+travail](qui-prend-le-travail.md).
+
 ## Un changement s'écrit dans le fil, chuchoté
 
 Un réglage qui change laisse une trace dans la conversation elle-même — pas
