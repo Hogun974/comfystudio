@@ -232,6 +232,16 @@ jobs:
       - name: Tout ce que le studio lit arrive au conteneur
         run: python banc_conteneur.py
 
+      # La page est un seul fichier : HTML, CSS et JS ensemble, et rien ne
+      # relisait l'ensemble. « .puce.moteur » colorait une pastille du nom du
+      # panneau des machines, deux regles dormaient sans element, et les deux
+      # tables des reglages peuvent deriver l'une de l'autre sans qu'aucune
+      # erreur ne se leve — c'est ainsi que les reglages par conversation sont
+      # morts le 31 aout. Statique : ce banc ne voit pas un rendu, il voit une
+      # contradiction.
+      - name: La feuille et le script de la page s'accordent
+        run: python banc_page.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

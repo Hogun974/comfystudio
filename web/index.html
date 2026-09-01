@@ -235,10 +235,23 @@ main{flex:1;overflow-y:auto;min-width:0}
   font:11px var(--mono);letter-spacing:.02em}
 .puce{border:1px solid var(--trait-vif);border-radius:20px;padding:2px 9px;
   color:var(--encre-douce);background:var(--creux);white-space:nowrap}
-.puce.moteur{color:var(--braise);border-color:var(--braise)}
+/* PAS de « .puce.moteur » ici. La regle existait, n'etait posee sur aucun
+   element, et portait le nom d'une autre : « .moteur » est le panneau des
+   machines dans la colonne de gauche (border-top, colonne flex, gap 7px). Une
+   pastille qui aurait porte les deux classes en aurait herite « display:flex ;
+   flex-direction:column », plus les regles descendantes « .moteur button » et
+   « .moteur .ligne ». Le nom d'une classe de MISE EN PAGE ne se reprend pas
+   comme couleur de pastille — banc_page.py le refuse desormais. */
 .puce.rate{color:var(--rouge);border-color:var(--rouge)}
-.puce.cours{color:var(--braise-vive);border-color:var(--braise-vive)}
-.puce.fini{color:var(--vert);border-color:var(--vert)}
+/* « en cours » porte jusqu'a 64 caracteres du journal — « NAS ZimaOS (GTX
+   1060) calcule deja pour quelqu'un… ». En 11 px mono, cela fait plus de
+   400 px : a 375 px de large, la pastille sortait de « main » et poussait une
+   barre de defilement horizontale sur toute la page. Le meme remede que
+   « .puce.armee », qui portait deja un texte long : on autorise le retour a la
+   ligne. « anywhere » en plus, parce qu'un nom de fichier ou une adresse n'a
+   aucune espace ou se couper. */
+.puce.cours{color:var(--braise-vive);border-color:var(--braise-vive);
+  white-space:normal;overflow-wrap:anywhere}
 .puce.attente{color:var(--encre-pale);border-style:dashed}
 /* LE DEVIS. Ni la braise (qui dit « ça se passe maintenant ») ni le vert (qui
    dit « c'est acquis ») : c'est une mediane de rendus passes, donc une
@@ -1075,8 +1088,11 @@ function garnirQuestion(bloc, t, cid) {
       if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }
       const r = await fetch("/api/generer", {
         method: "POST", headers: { "Content-Type": "application/json" },
+        // Sans « priorite », meme raison qu'a l'envoi ordinaire : la
+        // conversation porte le cran, et une reponse a une precision n'a
+        // aucune raison de le reecrire — ni de l'effacer quand le menu de CET
+        // onglet est reste sur « automatique ».
         body: JSON.stringify({ texte: complet, conversation: cid,
-                               priorite: $("#priorite").value,
                                ...reglagesDemandes() })
       });
       const d = await r.json().catch(() => ({}));
@@ -2015,7 +2031,15 @@ async function lancerDemande(priorite) {
     if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }
     const r = await fetch("/api/generer", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texte, image: imageJointe, priorite,
+      // « priorite » N'EST PAS un reglage de la demande : il vit sur la
+      // conversation comme les trois autres, et le menu l'y pose des qu'il
+      // change. L'envoyer ici refaisait le degat qu'on croyait ferme pour
+      // « modele », « taille » et « noeud » — le serveur raisonne sur la
+      // PRESENCE, donc un second onglet reste ouvert avec ses menus d'avant
+      // effaçait le cran du premier, simplement en envoyant un message. Il ne
+      // part que quand il vaut pour CETTE demande, c'est-a-dire au brouillon.
+      body: JSON.stringify({ texte, image: imageJointe,
+                             ...(priorite ? { priorite } : {}),
                              ...reglagesDemandes(), conversation: monConv })
     });
     const d = await r.json().catch(() => ({}));
@@ -2033,7 +2057,8 @@ async function lancerDemande(priorite) {
     auBas();
   }
 }
-$("#go").onclick = () => lancerDemande($("#priorite").value);
+// Rien a passer : le cran choisi dans le menu est deja sur la conversation.
+$("#go").onclick = () => lancerDemande(null);
 // Le brouillon l'emporte sur le cran de priorite choisi dans les reglages : on
 // vient de le demander explicitement, c'est le geste le plus recent.
 $("#lancerBrouillon").onclick = () => lancerDemande("brouillon");
