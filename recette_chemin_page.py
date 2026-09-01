@@ -13,14 +13,24 @@ Les gestes, dans l'ordre reel :
   1. un menu bouge      -> POST /api/conversation/{cid}/reglages, UNE seule cle
   2. une pastille saute -> POST idem, la cle a null : presente et vide, donc
                            elle efface (web/index.html, peindreActifs)
-  3. on envoie          -> POST /api/generer avec { texte, image, conversation,
-                           modele_choisi } et RIEN d'autre
+  3. on envoie          -> POST /api/generer, corps de lancerDemande :
+                           { texte, image, modele_choisi, conversation }
   4. le bouton brouillon -> le meme envoi, plus « priorite: brouillon », qui
                            vaut pour CETTE demande et ne se retient pas
+  5. on repond a une precision -> POST /api/generer, corps de garnirQuestion :
+                           { texte, conversation, modele_choisi } — PAS de
+                           « image », et jamais de « priorite »
 
-Une premiere version de cette recette se trompait sur deux points, et une
-relecture adverse les a montres. Ils sont notes ici parce qu'ils se
-reproduiront :
+CE QUE CETTE RECETTE NE PEUT PAS VOIR. Elle construit elle-meme les corps :
+elle eprouve donc le SERVEUR sur le corps que la page envoie, jamais la page.
+Si garnirQuestion se remettait a poster « priorite », la recette resterait
+verte — le motif de la page est garde par banc_page.py, et c'est la sa place.
+Ce qui est verifiable ici, et qui l'est : que ces deux corps-la, distincts,
+obtiennent du serveur le comportement attendu.
+
+Une premiere version de cette recette se trompait sur deux points, une seconde
+sur un troisieme, et une relecture adverse les a montres. Ils sont notes ici
+parce qu'ils se reproduiront :
 
   - elle annoncait « SANS aucun reglage dans le corps » alors que la page y
     mettait encore « priorite ». Une recette qui decrit un chemin qu'elle
@@ -31,6 +41,14 @@ reproduiront :
     serait passee avec la priorite entierement ignoree. On exige donc la
     valeur : « soigne » multiplie les etapes par 1,35, soit 38 pour un moteur
     a 28. Un chiffre, ou rien.
+  - la meme faute, la seconde fois : une section « la reponse a une PRECISION :
+    le second chemin » qui rappelait la MEME fonction, la meme route, le meme
+    corps que le premier envoi. Un seul corps servait les deux chemins — et
+    c'etait celui de garnirQuestion, puisqu'il ne portait pas « image » que
+    lancerDemande envoie toujours (« image: imageJointe », nul le plus souvent,
+    mais present). Autrement dit le PREMIER appel etait deja le mauvais. Les
+    deux corps sont maintenant ecrits separement, chacun dans sa fonction, et
+    la seule facon de les faire diverger de la page est de mentir deux fois.
 """
 import json
 import secrets
@@ -81,8 +99,16 @@ def bouger_menu(cid, cle, valeur):
     return st, (r or {}).get("murmure") or {}
 
 
-def envoyer(cid, texte, priorite=None, modele_choisi=False):
-    """Ce que la page met dans le corps de /api/generer, et rien de plus.
+def lancer_demande(cid, texte, priorite=None, modele_choisi=False,
+                   image=None):
+    """Le corps de lancerDemande(), recopie sur web/index.html.
+
+    « image » PART TOUJOURS, meme nulle : la page ecrit « image: imageJointe »
+    sans condition. Le serveur n'en fait rien de different d'une cle absente,
+    mais la recette qui l'omettait n'envoyait pas le corps de lancerDemande —
+    elle envoyait celui de garnirQuestion, et croyait eprouver deux chemins en
+    n'en empruntant qu'un. C'est la faute que cette fonction existe pour
+    empecher : un corps, une fonction, une fonction de la page.
 
     « priorite » n'y figure QUE pour le bouton brouillon : c'est un choix qui
     vaut pour cette demande. Le cran de priorite, lui, vit sur la conversation
@@ -90,9 +116,26 @@ def envoyer(cid, texte, priorite=None, modele_choisi=False):
     le degat qu'on croyait ferme : un second onglet, reste ouvert avec ses
     menus d'avant, effaçait le reglage du premier au moment d'envoyer.
     """
-    corps = {"texte": texte, "conversation": cid, "modele_choisi": modele_choisi}
-    if priorite:
-        corps["priorite"] = priorite
+    corps = {"texte": texte, "image": image,
+             **({"priorite": priorite} if priorite else {}),
+             "modele_choisi": modele_choisi, "conversation": cid}
+    _, d, _ = appel("/api/generer", corps)
+    return (d or {}).get("id"), d
+
+
+def repondre_precision(cid, demande, reponse, modele_choisi=False):
+    """Le corps de garnirQuestion(), recopie sur web/index.html.
+
+    TROIS differences avec lancerDemande, et aucune n'est cosmetique :
+    pas de cle « image » du tout ; jamais de « priorite » — c'est precisement
+    le « priorite: $("#priorite").value » d'avant qui effaçait le cran de la
+    conversation ; et le texte est la demande d'origine RECOLLEE a la reponse,
+    « \\n\\nPrecisions : », accent compris parce que c'est la donnee envoyee et
+    non un commentaire. Le serveur ne relit pas ce marqueur, mais une recette
+    qui envoie un autre texte que la page n'est plus la page.
+    """
+    corps = {"texte": demande + "\n\nPrécisions : " + reponse,
+             "conversation": cid, "modele_choisi": modele_choisi}
     _, d, _ = appel("/api/generer", corps)
     return (d or {}).get("id"), d
 
@@ -161,7 +204,7 @@ dit(len((c or {}).get("murmures") or []) == len(GESTES),
     f"{len((c or {}).get('murmures') or [])} pour {len(GESTES)} gestes")
 
 print("\n  ── on envoie, SANS aucun reglage dans le corps ─────────")
-tid, d = envoyer(CONV, "un phare sur une falaise", modele_choisi=True)
+tid, d = lancer_demande(CONV, "un phare sur une falaise", modele_choisi=True)
 dit(bool(tid), "la demande est acceptee", json.dumps(d)[:100] if not tid else "")
 vus = suivre(tid) if tid else []
 
@@ -180,7 +223,8 @@ if CIBLE:
         next((m for m in vus if "confie a" in m), "aucune ligne d'attribution"))
 
 print("\n  ── le bouton brouillon : cette demande, pas les suivantes ─")
-tid, _ = envoyer(CONV, "un phare sur une falaise", priorite="brouillon")
+tid, _ = lancer_demande(CONV, "un phare sur une falaise",
+                        priorite="brouillon")
 vus = suivre(tid) if tid else []
 etapes = next((m for m in vus if "etapes=" in m), "")
 dit(etapes and "etapes=38" not in etapes,
@@ -190,13 +234,22 @@ dit(((c or {}).get("reglages") or {}).get("priorite") == "soigne",
     "et il ne se retient pas : la conversation garde « soigne »",
     json.dumps((c or {}).get("reglages")))
 
-print("\n  ── la reponse a une PRECISION : le second chemin ───────")
+print("\n  ── le corps de garnirQuestion : le second chemin ───────")
 # La page a DEUX envois vers /api/generer : lancerDemande, et le formulaire de
 # reponse a une precision (garnirQuestion). C'est le second qui portait
 # « priorite: $("#priorite").value » — donc celui qui effaçait le cran de la
-# conversation — et la premiere recette ne l'empruntait pas. « Le chemin exact
-# de la page » en laissait la moitie de cote.
-tid, _ = envoyer(CONV, "un phare sur une falaise\n\nPrecisions : de nuit")
+# conversation.
+#
+# CE QUE CETTE SECTION VERIFIE, ET CE QU'ELLE NE VERIFIE PAS. Elle envoie le
+# corps de garnirQuestion — sans « image », sans « priorite », texte recolle —
+# et exige du serveur qu'il en herite les reglages de la conversation sans rien
+# effacer. Elle NE PEUT PAS voir la regression qu'elle raconte : c'est la page
+# qui remettrait « priorite » dans le corps, et le corps, ici, c'est nous qui
+# l'ecrivons. Le motif de web/index.html est garde par banc_page.py, qui le
+# gardait deja. La version d'avant de cette section rappelait la meme fonction
+# avec le meme corps que le premier envoi, au seul « modele_choisi » pres, et
+# annoncait couvrir garnirQuestion : elle n'en couvrait rien.
+tid, _ = repondre_precision(CONV, "un phare sur une falaise", "de nuit")
 vus = suivre(tid) if tid else []
 _moteur = next((m for m in vus if "RealVisXL" in m), "")
 dit("impose depuis l'interface" in _moteur,

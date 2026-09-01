@@ -16,7 +16,10 @@ Ce banc verifie ce que la multiplication doit garantir, et rien d'autre :
   - la reprise apres redemarrage refait N images et pas N + (N-1) : le premier
     tirage ne repart pas en essaim a chaque reveil ;
   - « l'image courante » ne se joue pas a la course : c'est la premiere qui la
-    tient, jusqu'a ce qu'on en designe une autre ;
+    tient, jusqu'a ce qu'on en designe une autre — et cela vaut AUSSI de
+    l'autre cote d'un redemarrage, ou la marque du tirage ne survit que sur le
+    tour ; c'est le seul endroit ou les deux garanties se croisent, et c'est
+    celui qui manquait ;
   - le devis reste honnete — N variantes coutent N rendus, et il le dit ;
   - on s'arrete la ou les variantes n'ont pas de sens : une retouche, un
     agrandissement, un fournisseur qui facture a l'image.
@@ -102,11 +105,31 @@ async def faux_traduire(plan, tid):
     return plan
 
 
+def rang_du_tirage(tid):
+    """Le rang de ce tirage, retrouve PAR LE BANC et non par le serveur.
+
+    Le faux soumetteur s'en sert pour savoir combien de temps trainer, et il ne
+    peut pas appeler marque_variante() : les cas du reveil doivent pouvoir
+    rougir sur le serveur d'AVANT cette fonction, et un banc qui leve
+    AttributeError ne rougit pas, il se casse. Il relit donc lui-meme la tache
+    puis le tour — apres un reveil, reprendre_file() reconstruit TACHES sans la
+    marque et seul le tour, ecrit sur le disque, la porte encore. Sans ce repli,
+    tous les tirages repris valaient « rang 1 » pour LENT et l'on ne pouvait
+    plus faire finir un groupe dans le desordre apres un redemarrage — donc pas
+    d'ordre d'arrivee a opposer a l'ordre des rangs.
+    """
+    m = (S.TACHES.get(tid) or {}).get("variantes")
+    if not m:
+        m = next((t.get("variantes") for t in tours()
+                  if t.get("id") == tid and t.get("variantes")), None)
+    return (m or {}).get("rang", 1)
+
+
 async def faux_soumettre(g, tid, ident, cle, patience=1800):
     GRAPHES.append((tid, ident, copy.deepcopy(g)))
     # Le premier tirage traine expres dans certains scenarios : c'est ainsi
     # qu'on montre que « l'image courante » ne se joue pas a la course.
-    rang = ((S.TACHES.get(tid) or {}).get("variantes") or {}).get("rang", 1)
+    rang = rang_du_tirage(tid)
     if rang in ECHEC:
         # Une carte qui lache en plein rendu : le tour part en erreur, et le
         # groupe doit continuer a designer une image.
@@ -226,6 +249,29 @@ async def tourner(combien=4):
         for g in gens:
             g.cancel()
         await asyncio.gather(*gens, return_exceptions=True)
+
+
+async def reveil():
+    """Rejoue un redemarrage : meme fichier de file, meme conversation, le reste
+    vide. Rend la conversation RECHARGEE.
+
+    Elle est rendue parce que c'est un autre objet que celui d'avant l'arret :
+    garder l'ancien ferait lire un « derniere_sortie » que le studio redemarre
+    n'a jamais vu. Le meme instantane peut etre rejoue plusieurs fois — c'est
+    ce qui permet d'opposer deux deroulements au meme etat de disque.
+    """
+    S.EN_FILE.clear()
+    S.EN_VOL.clear()
+    del S.ATTENTE[:]
+    S.TACHES.clear()
+    del GRAPHES[:]
+    APPELS.update(aiguiller=0, enrichir=0, traduire=0)
+    INSTANTANE["quand"] = "jamais"
+    S.CONVERSATIONS["c1"] = copy.deepcopy(INSTANTANE["conv"])
+    io.open(S.FICHIER_FILE, "w", encoding="utf-8").write(INSTANTANE["file"])
+    S.FILE_ATTENTE = asyncio.Queue()
+    await S.reprendre_file()
+    return S.CONVERSATIONS["c1"]
 
 
 async def poster(texte="un chat en costume", **corps):
@@ -365,12 +411,33 @@ async def main():
     # C'est donc cette phrase qui doit dire un rendu — et la ligne du groupe ne
     # doit surtout pas s'y substituer, sinon le compte a rebours de la bulle se
     # trompe de trois rendus.
-    m_re = re.search(r"const RE_DEVIS = /(.+?)/([a-z]*);", PAGE)
-    if not m_re:
-        print("  ——  la page ne releve plus le devis dans le journal "
-              "(RE_DEVIS introuvable) : ce couplage-la n'existe plus")
+    # Le releve tolere le reformatage, et l'absence est un ECHEC. L'ancien
+    # « const RE_DEVIS = /(.+?)/([a-z]*); » exigeait une espace unique et une
+    # seule ligne, et son absence n'imprimait qu'une remarque. Scenario rejoue :
+    # la declaration coupee en deux lignes (« const RE_DEVIS = » puis le motif
+    # au retour a la ligne, reflexe banal quand la ligne s'allonge) ET la phrase
+    # du serveur passee de « compte » a « prevois » — le banc rendait 93
+    # verifications, 0 echouee, en annonçant le couplage disparu alors qu'il
+    # etait intact et la pastille du devis morte. L'echappatoire portait sur
+    # l'orthographe de la declaration, pas sur l'absence du couplage.
+    # \s* partout ou JS tolere du blanc ; « . » sans DOTALL pour le corps, car
+    # un litteral d'expression reguliere JS ne peut pas contenir de retour a la
+    # ligne — l'elargir ferait avaler la moitie du fichier au premier « / ».
+    # Zero occurrence compte comme un NON, meme doctrine que les ancres
+    # perimees de banc_mutations.py : une verification qui ne mesure plus rien
+    # et se compte verte ment deux fois. Plusieurs occurrences valent refus
+    # aussi — on ne saurait plus quel motif la page applique. Le cas reste UN
+    # cas dans les deux branches : le total du banc ne bouge pas selon qu'on
+    # mesure ou non, sinon la disparition se lit comme un simple 93 au lieu
+    # de 94, que personne ne remarque.
+    releves = re.findall(r"const\s+RE_DEVIS\s*=\s*/(.+?)/([a-z]*)\s*;", PAGE)
+    if len(releves) != 1:
+        dit(False, "la page releve le rendu, et lui seul : une phrase, pas deux",
+            f"RE_DEVIS introuvable dans web/index.html ({len(releves)} "
+            "declaration(s)) : ce banc NE MESURE PLUS le couplage page/serveur. "
+            "Reparer le releve, ou retirer le cas en meme temps que le couplage")
     else:
-        motif = re.compile(m_re.group(1), re.I if "i" in m_re.group(2) else 0)
+        motif = re.compile(releves[0][0], re.I if "i" in releves[0][1] else 0)
         vus = [m for m in (motif.search(e["msg"])
                            for e in S.TACHES[chef]["etapes"]) if m]
         dit(len(vus) == 1 and vus[0].group(1) == "60" and vus[0].group(2) == "s",
@@ -614,17 +681,7 @@ async def main():
 
     # On rejoue le reveil : meme fichier de file, meme conversation, tout le
     # reste vide.
-    S.EN_FILE.clear()
-    S.EN_VOL.clear()
-    del S.ATTENTE[:]
-    S.TACHES.clear()
-    del GRAPHES[:]
-    APPELS.update(aiguiller=0, enrichir=0, traduire=0)
-    INSTANTANE["quand"] = "jamais"
-    S.CONVERSATIONS["c1"] = copy.deepcopy(INSTANTANE["conv"])
-    io.open(S.FICHIER_FILE, "w", encoding="utf-8").write(INSTANTANE["file"])
-    S.FILE_ATTENTE = asyncio.Queue()
-    await S.reprendre_file()
+    await reveil()
     dit(len(S.EN_FILE) == 3, "trois demandes reprises, pas une de plus",
         str(len(S.EN_FILE)))
     await tourner()
@@ -642,6 +699,96 @@ async def main():
         "le groupe garde un seul prompt de part et d'autre du redemarrage",
         str({t.get("prompt") for t in tours()}))
     dit(len(tours()) == 3, "et toujours trois tours", str(len(tours())))
+
+    # ══ 9 bis. apres le reveil, c'est encore le RANG qui commande ═══════
+    # LE §9 NE REGARDAIT JAMAIS « derniere_sortie ». C'etait le seul scenario de
+    # redemarrage du banc, et il eprouvait la file — trois rendus et non cinq,
+    # les bonnes graines, un seul plan — sans demander qui, du groupe, devient
+    # « l'image courante ». Le §6 pose cette question-la, mais sans redemarrage.
+    # Entre les deux, le chemin du reveil n'etait tenu par personne, et le banc
+    # est reste vert a 94 sur le defaut que le commit cac8aa7 disait fermer.
+    #
+    # LA PANNE. variante_tient_le_rang lisait la marque du tirage dans TACHES,
+    # que reprendre_file() reconstruit SANS elle — la clef « variantes » de
+    # EN_FILE porte tout autre chose, le nombre de tirages restant a lancer,
+    # remis a 1 par lancer_variantes. Au reveil la marque etait donc vide, la
+    # fonction rendait vrai pour CHAQUE tirage, et l'on retombait sur « le
+    # dernier arrive gagne » — le defaut d'avant, plus la reprise silencieuse du
+    # clic « celle-ci ». Le tour, lui, porte la marque et il est sur le disque :
+    # c'est le repli que marque_variante() est alle chercher.
+    #
+    # LES DEUX SENS ONT ETE JOUES : sur le serveur d'avant la correction, les
+    # deux cas de mesure ci-dessous rougissent (l'image courante est le rang 3,
+    # dernier arrive, au lieu du rang 1 ; et le rang 1 reprend en finissant la
+    # place donnee au rang 3) ; sur celui d'apres, ils passent. Un cas qu'on n'a
+    # pas vu rougir ne mesure rien.
+    print("\n  ── apres le reveil, le rang ──")
+    poser()
+    S.FILE_ATTENTE = asyncio.Queue()
+    INSTANTANE["quand"] = "premier rendu"
+    await poster(variantes=3)
+    await tourner()
+    conv = await reveil()
+    # LA PREMISSE, PAS LA MESURE. Elle passe des deux cotes de la correction, et
+    # c'est bien pour cela qu'elle est ecrite : si la marque cessait de survivre
+    # sur le tour, les deux cas suivants ne mesureraient plus le bon defaut et
+    # rien ne le dirait — ils rougiraient pour une autre raison que la leur.
+    marques = [t.get("variantes") or {} for t in tours()]
+    dit(len(marques) == 3 and len({m.get("groupe") for m in marques}) == 1
+        and sorted(m.get("rang") for m in marques) == [1, 2, 3],
+        "au reveil, chaque tirage retrouve son groupe et son rang", str(marques))
+
+    # L'ORDRE D'ARRIVEE CONTRE L'ORDRE DES RANGS. Ils finissent 2, puis 1, puis
+    # 3 : le dernier arrive est le rang 3, c'est lui que « le dernier gagne »
+    # designerait, et c'est le rang 1 qui doit tenir la place.
+    LENT.update({1: 0.12, 2: 0.02, 3: 0.30})
+    await tourner()
+    par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
+    dit(sorted(par_rang) == [1, 2, 3]
+        and all(par_rang[r].get("etat") == "fini" and par_rang[r].get("fichiers")
+                for r in (1, 2, 3)),
+        "les trois tirages repris ont rendu leur image",
+        str({r: par_rang[r].get("etat") for r in sorted(par_rang)}))
+    arrivee = [(t.get("variantes") or {}).get("rang")
+               for t in sorted(tours(), key=lambda t: LENT.get(
+                   (t.get("variantes") or {}).get("rang", 1), 0.0))]
+    dit((conv.get("derniere_sortie") or {}).get("filename")
+        == par_rang[1]["fichiers"][0]["filename"],
+        "l'image courante reste le plus petit rang abouti, et non le dernier "
+        "arrive : un redemarrage ne remet pas le hasard aux commandes",
+        f"{(conv.get('derniere_sortie') or {}).get('filename')} — arrivees "
+        f"dans l'ordre {arrivee}, rang 1 = "
+        f"{par_rang[1]['fichiers'][0]['filename']}")
+
+    # UN CHOIX FAIT A LA MAIN NE SE REPREND PAS APRES UN REDEMARRAGE. Le MEME
+    # instantane, rejoue une seconde fois : on clique sur le rang 3 pendant que
+    # le rang 1 calcule encore. Le §6 garde ce geste, mais seulement quand le
+    # studio n'a pas redemarre entre le clic et la fin du rendu — c'est-a-dire
+    # pas dans le cas ou le rendu est long, qui est le seul ou l'on clique.
+    conv = await reveil()
+    LENT.update({1: 0.6, 2: 0.02, 3: 0.05})
+    S.ARRET = False
+    gens = [asyncio.create_task(S.travailleur()) for _ in range(4)]
+    await asyncio.sleep(0.25)
+    par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
+    dit(par_rang[3].get("etat") == "fini" and par_rang[1].get("etat") != "fini",
+        "le rang 3 repris est rendu, le rang 1 calcule encore",
+        f"{par_rang[1].get('etat')} / {par_rang[3].get('etat')}")
+    st, corps = lire(await S.api_variante_choisir(
+        Req(corps={"conversation": "c1", "tour": par_rang[3]["id"]})))
+    dit(st == 200, "on designe la troisieme sans attendre le groupe", str(corps))
+    await asyncio.wait_for(S.FILE_ATTENTE.join(), timeout=30)
+    for g in gens:
+        g.cancel()
+    await asyncio.gather(*gens, return_exceptions=True)
+    par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
+    dit(par_rang[1].get("etat") == "fini",
+        "le rang 1 a fini apres le choix", str(par_rang[1].get("etat")))
+    dit((conv.get("derniere_sortie") or {}).get("filename")
+        == par_rang[3]["fichiers"][0]["filename"],
+        "et le choix de l'utilisateur tient : le rang 1 ne le defait pas en "
+        "finissant, redemarrage ou non",
+        str((conv.get("derniere_sortie") or {}).get("filename")))
 
     # ══ 10. deux machines, quand elles peuvent ══════════════════════════
     print("\n  ── les deux machines ──")
