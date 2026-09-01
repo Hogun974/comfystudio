@@ -70,6 +70,14 @@ MODELE_ECRITURE = os.environ.get("STUDIO_LLM_ECRITURE", "")
 # echec passager sur une machine.
 MODELE_ECRITURE_IMPOSE = bool(MODELE_ECRITURE)
 MODELE_VISION = os.environ.get("STUDIO_VISION") or "qwen2.5vl:7b"
+# POSE A LA MAIN, ou simple defaut ? La question n'est pas rhetorique. Le defaut
+# de STUDIO_VISION n'est PAS vide, et il vaut celui de STUDIO_LLM : « le modele
+# demande est-il MODELE_VISION ? » etait donc vrai pour TOUT appel portant une
+# image, y compris l'analyse. Honorer ce nom-la sans ce garde a tue, pendant une
+# demi-journee, la regle du plus gros modele voyant — borne de la carte
+# comprise — dans la configuration par defaut. Meme forme que
+# MODELE_ECRITURE_IMPOSE, dont le defaut vide rendait la question inutile.
+MODELE_VISION_IMPOSE = bool(os.environ.get("STUDIO_VISION"))
 PORT       = int(os.environ.get("STUDIO_PORT", "8199"))
 # 127.0.0.1 : seule cette machine peut se connecter. 0.0.0.0 : tout le reseau
 # local. Le studio n'a AUCUNE authentification — l'ouvrir au reseau donne a
@@ -2384,8 +2392,14 @@ def corps_ici(corps, url, tid=None):
         # tout l'interet de choisir par appel plutot qu'une fois pour toutes.
         # Sauf si le reglage NOMME le modele voyant : STUDIO_VISION existe
         # pour ca, et le passer sous silence en faisait un reglage mort. La
-        # regle du plus gros reste le defaut, pas un veto.
-        if voulu == MODELE_VISION and not _casse_ici(url, voulu)                 and _sait_voir_ici(url, voulu):
+        # regle du plus gros reste le defaut, pas un veto — mais elle ne cede
+        # qu'a un nom POSE, jamais au defaut, sans quoi elle ne s'applique plus
+        # nulle part (voir MODELE_VISION_IMPOSE).
+        if MODELE_VISION_IMPOSE and voulu == MODELE_VISION                 and not _casse_ici(url, voulu) and _sait_voir_ici(url, voulu):
+            # DIT, et c'est le point : cette branche est la seule ou le nom
+            # echappe a la borne de la carte, et elle etait la seule a ne rien
+            # ecrire. Le journal en savait donc moins qu'avant la correction.
+            journal(tid, f"lecture par {voulu} — modele de vision impose")
             return corps
         voyant = modele_vision_de(url)
         if not voyant:

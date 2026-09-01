@@ -195,6 +195,23 @@ async def main():
     # passait X, et corps_ici prenait le plus gros voyant sans le dire. Le
     # reglage n'avait aucun effet, et le message d'erreur envoyait installer un
     # modele qui n'avait jamais ete essaye.
+    # LAISSE AU DEFAUT, il ne doit RIEN changer. C'est le defaut de STUDIO_LLM
+    # aussi : sans le garde « impose », la branche s'ouvrait pour tout appel
+    # portant une image et la regle du plus gros voyant ne s'appliquait plus
+    # nulle part. Ce cas-la est celui qui est LIVRE — il passe en premier.
+    S.MODELE_VISION_IMPOSE = False
+    S.MODELE_VISION = "qwen2.5vl:7b"
+    v = S.corps_ici({"model": "qwen2.5vl:7b", "prompt": "x", "images": ["…"]}, PC)
+    dit(v is not None and v["model"] == "qwen2.5vl:7b",
+        "sans reglage, c'est le voyant que la carte tient qui repond",
+        str(v and v["model"]))
+    S.MODELE_VISION = "gemma4:26b"
+    v = S.corps_ici({"model": "gemma4:26b", "prompt": "x", "images": ["…"]}, PC)
+    dit(v is not None and v["model"] == "qwen2.5vl:7b",
+        "un defaut trop gros pour la carte ne s'impose pas non plus",
+        str(v and v["model"]))
+
+    S.MODELE_VISION_IMPOSE = True
     S.MODELE_VISION = "gemma4:26b"
     corps = {"model": "gemma4:26b", "prompt": "x", "images": ["…"]}
     v = S.corps_ici(corps, PC)
@@ -212,6 +229,7 @@ async def main():
     dit(v is not None and v["model"] == "qwen2.5vl:7b",
         "la ou il n'est pas installe, le voyant de la machine reprend la main",
         str(v and v["model"]))
+    S.MODELE_VISION_IMPOSE = False
     S.MODELE_VISION = "qwen2.5vl:7b"
     corps = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
 

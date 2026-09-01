@@ -36,7 +36,7 @@ set OLLAMA_URL=http://localhost:11434
 |---|---|---|
 | `STUDIO_LLM` | `qwen2.5vl:7b` | le modèle **rapide** : aiguillage, extraction du sujet. Depuis que la lecture d'image prend son propre modèle, il peut être un petit modèle de texte |
 | `STUDIO_LLM_ECRITURE` | *(vide)* | impose le modèle d'**écriture** — enrichissement, traduction, paroles. Vide, le studio prend le plus gros modèle installé qui tienne, machine par machine. Il est ignoré sur une machine qui ne le porte pas |
-| `STUDIO_VISION` | `qwen2.5vl:7b` | le modèle qui lit les images. Honoré sur toute machine où il est installé et déclare savoir voir ; sinon c'est le plus gros modèle *voyant* de cette machine qui répond, et le journal le dit |
+| `STUDIO_VISION` | `qwen2.5vl:7b` | le modèle qui lit les images. **Posé explicitement**, il est honoré partout où il est installé et déclare savoir voir — y compris s'il déborde la carte, parce qu'un nom écrit à la main est un choix ; le journal l'écrit alors (« lecture par X — modèle de vision imposé »). **Laissé au défaut**, il ne s'impose pas : c'est le plus gros modèle *voyant* que la carte de la machine peut tenir qui répond |
 | `STUDIO_LLM_GARDER` | `60s` | combien de temps Ollama garde le modèle chargé entre deux appels |
 
 ## File, cartes et patience
