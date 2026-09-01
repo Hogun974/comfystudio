@@ -725,13 +725,22 @@ def modele_vision_de(url):
     # meilleur » : sur le PC, gemma4:26b declare « vision » et pese 18,6 Go pour
     # une carte de 11 — le studio y aurait charge 18,6 Go la ou qwen2.5vl:7b en
     # met 6, et c'est justement lui que la mesure du 31 aout a trouve correct.
-    # On ne retient donc que ce que la machine peut tenir, debordement compris.
-    plafond = _vram_utile(ident) if ident else float("inf")
+    # On ne retient donc que ce que la machine peut tenir, debordement compris —
+    # et « sans carte » n'y vaut pas « sans plafond » : voir plafond_cerveau.
+    plafond = plafond_cerveau(ident)
     voyants = [m for m in cerveau(url)["modeles"]
                if not _casse_ici(url, m.get("name"))
                and _sait_voir_ici(url, m.get("name"))]
-    tenables = [m for m in voyants if m.get("size", 0) / 1e9 <= plafond] or voyants
-    return max(tenables, key=lambda m: m.get("size", 0))["name"] if tenables else ""
+    tenables = [m for m in voyants if m.get("size", 0) / 1e9 <= plafond]
+    if tenables:
+        return max(tenables, key=lambda m: m.get("size", 0))["name"]
+    # AUCUN NE TIENT : LE PLUS PETIT, et non le plus gros. Le repli s'ecrivait
+    # « tenables ou tous les voyants » puis max() — il rendait donc precisement
+    # le modele que le plafond venait d'ecarter, et le plafond ne servait a rien
+    # des qu'il mordait sur tout le monde. Une image mal lue par un petit modele
+    # se corrige ; une image que la machine met neuf cents secondes a ne pas
+    # rendre ne se corrige pas (mesure du 31 aout, GTX 1060).
+    return min(voyants, key=lambda m: m.get("size", 0))["name"] if voyants else ""
 
 
 def modele_ecriture_de(url):
@@ -747,21 +756,21 @@ def modele_ecriture_de(url):
         return MODELE_ECRITURE
     modeles = [m for m in cerveau(url)["modeles"]
                if not _casse_ici(url, m.get("name"))]
-    # Le plafond : la memoire de CETTE machine quand l'Ollama est ici, la carte
-    # de la machine du parc quand on la reconnait, et rien du tout sinon —
-    # on ne devine pas ce qu'une machine inconnue peut charger.
+    # Le plafond : la memoire de CETTE machine quand l'Ollama est ici, et ce que
+    # la machine du parc peut charger sinon — plafond_cerveau, qui distingue
+    # « elle n'a pas de carte » de « on ne sait rien d'elle ».
     #
     # Il ne valait qu'en local, et « rien du tout » ailleurs faisait choisir
     # gemma4:26b, 18,6 Go, sur une carte de 11 : cent soixante-cinq secondes par
     # traduction, mesurees. Une machine du parc annonce sa carte et sa RAM ; on
-    # s'en sert.
-    ident_ = cerveau(url).get("noeud")
+    # s'en sert. Le test de verite qui etait ecrit ici — « si _vram_utile est
+    # vrai » — a rejoue la meme panne des que _vram_utile s'est mis a rendre 0
+    # pour une machine sans carte : zero est faux, on retombait sur « aucun
+    # plafond », c'est-a-dire sur l'inverse exact de ce qu'il fallait.
     if _ollama_ici(url):
         plafond = (memoire_vive() or 16.0) * 0.6
-    elif ident_ and _vram_utile(ident_):
-        plafond = _vram_utile(ident_)
     else:
-        plafond = float("inf")
+        plafond = plafond_cerveau(cerveau(url).get("noeud"))
     tenables = [m for m in modeles if 0 < m.get("size", 0) / 1e9 <= plafond]
     if not tenables:
         return MODELE_LLM
@@ -1270,6 +1279,57 @@ def _vram_utile(ident):
     return vram + tolerance_ram(e.get("ram") or 0)
 
 
+def plafond_cerveau(ident):
+    """Le plus gros modele de langage qu'on laisse charger sur cette machine.
+
+    TROIS REPONSES, ET LA TROISIEME N'EST PAS LA PREMIERE :
+
+      - machine INCONNUE — pas d'identifiant, ou rien d'annonce : AUCUN
+        plafond. On ne devine pas ce qu'une machine dont on ignore tout peut
+        tenir, et lui refuser ses gros modeles la rendrait muette pour rien.
+      - machine A CARTE : la carte plus ce que la RAM tolere de debordement,
+        c'est-a-dire _vram_utile — le plafond qui existait deja.
+      - machine SANS CARTE mais qui annonce sa RAM : elle ne tient rien sur
+        carte, Ollama y calcule sur le processeur. Son plafond est ce que la
+        RAM porte hors carte — tolerance_ram, les paliers que le studio partage
+        avec l'installeur : 2 Go a 16, 3,5 a 32, 5 a 64.
+
+    LE TROISIEME CAS HERITAIT DU PREMIER, ET DISAIT DONC L'INVERSE. Avant
+    38cb9d0, _vram_utile rendait la tolerance RAM meme sans carte — 5,0 Go pour
+    une machine de 64 — et le « sinon, aucun plafond » de modele_ecriture_de
+    etait une branche morte. 38cb9d0 lui a fait rendre 0,0 sans carte, avec
+    raison : la tolerance dit de combien on peut DEPASSER une carte, il en faut
+    donc une, et une machine sans carte se presentait comme une petite carte
+    pour le RENDU. Mais la branche morte s'est reveillee, et « cette machine ne
+    tient rien » s'y lit « on ne sait pas ce qu'elle tient » : plus de plafond
+    du tout.
+
+    Mesure, rejouee sur un noeud a agent annonçant vram=0 et ram=63,8 :
+    modele_ecriture_de et modele_vision_de rendaient gemma4:26b (18,6 Go) au
+    lieu de qwen2.5vl:7b (5,97) — soit exactement la panne que le commentaire de
+    modele_ecriture_de chiffre a cent soixante-cinq secondes par traduction.
+
+    Le plafond du RENDU et celui de la REFLEXION sont donc deux questions, et
+    _vram_utile ne repond qu'a la premiere. Un zero y veut dire « elle ne rend
+    rien » ; il ne veut pas dire « elle peut tout charger ».
+
+    La precondition est etroite : il faut un ComfyUI dont /system_stats ne porte
+    aucun « vram_total », sur une machine qui prete par ailleurs son Ollama.
+    agent_noeud.py annonce exactement ce couple, et charger_parc() le fige d'un
+    redemarrage a l'autre.
+    """
+    if not ident:
+        return float("inf")
+    e = ETAT_NOEUDS.get(ident)
+    if not e:
+        return float("inf")
+    if e.get("vram"):
+        return _vram_utile(ident)
+    if e.get("ram"):
+        return tolerance_ram(e["ram"])
+    return float("inf")
+
+
 def tient_vraiment(cle, ident):
     """Vrai si le moteur tient sur la carte SANS deborder."""
     e = ETAT_NOEUDS.get(ident) or {}
@@ -1769,6 +1829,40 @@ def _duree_lisible(secondes):
     if secondes < 5400:
         return f"{secondes / 60:.0f} min"
     return f"{secondes / 3600:.1f} h"
+
+
+# LA PHRASE DU DEVIS PASSE AUX MINUTES A CINQ MINUTES, ET NON A UNE MINUTE ET
+# DEMIE. Elle est relue par la page — RE_DEVIS, web/index.html — parce que
+# celle-ci ne lit pas encore le champ « devis » de /api/etat, et l'arrondi au
+# quart de tour la faisait mentir :
+#
+#     mediane =  90 s -> champ 90,  phrase « 2 min », la page lisait 120 s  (+33 %)
+#     mediane = 100 s -> champ 100, phrase « 2 min », la page lisait 120 s  (+20 %)
+#
+# Le pire ecart passe de 33 % (a 90 s) a 9,1 % (a 330 s, annonce « 6 min ») :
+# au-dela de cinq minutes, la demi-minute d'arrondi ne pese plus. Sous le seuil,
+# la phrase est EXACTE, puisqu'elle dit la seconde.
+#
+# Les secondes ne sont pas un pis-aller de lisibilite : la fin de rendu les
+# emploie deja — « termine en 223 s » — et le devis se compare desormais au
+# resultat sans arithmetique mentale. Le TOTAL d'un groupe garde _duree_lisible :
+# c'est un ordre de grandeur que personne ne relit au chiffre pres.
+#
+# Le vrai remede reste que la page lise devis.secondes ; ce seuil-ci n'est que
+# ce qu'on peut faire depuis le serveur seul. banc_variantes.py mesure l'ecart.
+DEVIS_EN_SECONDES_JUSQUA = 300
+
+
+def mot_du_devis(secondes):
+    """Le devis tel que la phrase du journal l'annonce.
+
+    Jamais d'heures, contrairement a _duree_lisible : RE_DEVIS ne connait que
+    « min » et « s », et une phrase en heures ferait disparaitre la pastille en
+    silence — une estimation devinee de travers vaut moins que pas d'estimation.
+    """
+    if secondes < DEVIS_EN_SECONDES_JUSQUA:
+        return f"{secondes:.0f} s"
+    return f"{secondes / 60:.0f} min"
 
 
 def telecharger(sous, nom, repo, distant, tid, essais=3):
@@ -7525,40 +7619,69 @@ def marque_variante(conv, tid):
     return (t or {}).get("variantes") or {}
 
 
+def variante_retenue(conv, groupe, aboutie=None):
+    """QUEL TIRAGE DU GROUPE PORTE « LA ». Une seule reponse, un seul endroit.
+
+    La regle tenait dans variante_tient_le_rang, cote ecriture, et se rededuisait
+    dans le fil de la page (CHOISIES, web/index.html) parce qu'aucune route ne
+    servait la reponse. La mediatheque, elle, ne pouvait meme pas la rededuire :
+    on ne lui servait pas le groupe. Resultat, au sortir d'un rendu ou personne
+    n'a encore designe : le fil encadrait la premiere, la mediatheque n'en
+    marquait aucune. Deux vues, deux reponses, pour la meme question — et c'est
+    la question qui decide ce que « agrandis-la » va viser.
+
+    ON NE POSE PAS « choisie » D'OFFICE POUR AUTANT. Ce champ-la veut dire « un
+    humain a designe celle-ci », et variante_tient_le_rang lui donne la primaute
+    sur le rang. L'ecrire des qu'un tirage tient le rang lui ferait dire deux
+    choses a la fois, et casserait la garde : le rang 2 qui finit le premier
+    porterait la marque, et le rang 1 — qui doit reprendre la place en finissant,
+    parce que le rang ne depend d'aucune vitesse — se heurterait a un « choix
+    humain » que personne n'a fait. C'est-a-dire « le premier arrive gagne », le
+    defaut d'origine, avec en prime un clic imaginaire impossible a defaire.
+
+    La reponse se calcule donc, ici, et les vues la lisent :
+
+      - le tirage DESIGNE a la main, s'il y en a un — il prime sur le rang ;
+      - sinon le PLUS PETIT RANG ABOUTI, et non le premier arrive : les tirages
+        finissent dans un ordre que personne ne choisit (deux machines, deux
+        vitesses) et « agrandis-la » viserait sinon une image tiree au sort,
+        differente a chaque fois pour le meme geste ;
+      - « abouti » et non « rang 1 » : quand le premier tirage echoue ou qu'on le
+        retire de la file, plus AUCUNE variante ne devenait l'image courante et
+        « agrandis-la » visait en silence l'image d'avant le groupe ;
+      - rien du tout si aucun tirage n'a encore rendu de fichier.
+
+    « aboutie » : le tirage qui vient de finir et dont le tour n'est pas encore
+    reecrit. executer() demande la reponse AVANT enregistrer_tour(..., « fini »),
+    et sans ce mot-la il ne se compterait pas lui-meme.
+    """
+    designee, aboutis = None, []
+    for t in conv.get("tours", []):
+        m = t.get("variantes") or {}
+        if m.get("groupe") != groupe:
+            continue
+        if t.get("choisie"):
+            designee = t.get("id")
+        if t.get("id") == aboutie or (t.get("etat") == "fini" and t.get("fichiers")):
+            aboutis.append((m.get("rang", 1), t.get("id")))
+    if designee:
+        return designee
+    return min(aboutis)[1] if aboutis else None
+
+
 def variante_tient_le_rang(conv, tid, marque=None):
     """Ce tirage-ci devient-il « l'image courante » de la conversation ?
 
-    LE PLUS PETIT RANG ABOUTI, et non le premier arrive. Les tirages d'un groupe
-    finissent dans un ordre que personne ne choisit — deux machines, deux
-    vitesses — et « agrandis-la » viserait sinon une image tiree au sort,
-    differente a chaque fois pour le meme geste. Le rang, lui, ne depend
-    d'aucune vitesse : le groupe designe donc toujours la meme image, quel que
-    soit l'ordre d'arrivee.
-
-    Le rang 1 tout court ne suffisait pas : quand ce tirage-la echoue ou qu'on
-    le retire de la file — ce qui arrive apres un redemarrage, ou il attend dans
-    _file.json comme les autres — plus AUCUNE variante ne devenait l'image
-    courante, et « agrandis-la » visait en silence l'image d'avant le groupe.
-
-    Un choix fait a la main (api_variante_choisir) prime sur tout : le rang 1
-    qui finissait apres le clic reprenait la place que l'utilisateur venait de
-    donner a une autre.
+    La regle et ses raisons sont dans variante_retenue : cette fonction-ci pose
+    la meme question du point de vue d'un seul tirage, celui qui vient de finir.
+    Elle ne la reformule pas — deux redactions de la meme regle, c'est deux
+    regles des la premiere retouche, et c'est exactement ce qui a laisse le fil
+    et la mediatheque repondre differemment.
     """
     marque = marque or marque_variante(conv, tid)
     if not (marque or {}).get("groupe"):
         return True
-    rang = marque.get("rang", 1)
-    for t in conv.get("tours", []):
-        if t.get("id") == tid:
-            continue
-        if (t.get("variantes") or {}).get("groupe") != marque["groupe"]:
-            continue
-        if t.get("choisie"):
-            return False
-        if (t.get("etat") == "fini" and t.get("fichiers")
-                and (t.get("variantes") or {}).get("rang", 1) < rang):
-            return False
-    return True
+    return variante_retenue(conv, marque["groupe"], aboutie=tid) == tid
 
 
 async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
@@ -8036,12 +8159,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # pastille, « 3 min » dans le journal, pour un groupe de trois.
         mot_devis = ""
         if mediane_:
-            mot_devis = (f"{mediane_ / 60:.0f} min" if mediane_ >= 90
-                         else f"{mediane_:.0f} s")
-            # SUR LA TACHE, et pas seulement dans le journal. La page lisait la
-            # phrase française pour en tirer le chiffre : reformuler cette
-            # ligne aurait fait disparaitre la pastille en silence.
-            devis_ = {"secondes": round(mediane_), "mesures": combien_}
+            mot_devis = mot_du_devis(mediane_)
+            # SUR LA TACHE, et pas seulement dans le journal — /api/etat le sert
+            # tel quel. La page relit encore la phrase française pour en tirer le
+            # chiffre (RE_DEVIS), et cet arrondi-la divergeait du champ de 33 % a
+            # 90 s : c'est le champ qui fait foi, la phrase n'est qu'un repli.
+            devis_ = {"secondes": round(mediane_), "mesures": combien_,
+                      # Le mot a mot de la phrase, pour que la page n'ait plus a
+                      # le reconstruire — ni a relire le journal pour l'afficher.
+                      # C'est aussi ce qui rend l'ecart MESURABLE des deux cotes.
+                      "mot": mot_devis}
             if variantes > 1:
                 # Nommes, pour que le total n'ait plus a se deviner dans une
                 # phrase française. Du temps de CARTE et non une duree
@@ -8052,6 +8179,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             TACHES.setdefault(tid, {})["devis"] = devis_
             journal(tid, f"d'apres tes {combien_} rendus precedents, compte "
                          f"{mot_devis}")
+        else:
+            # PAS DE MEDIANE, DONC PAS DE PROMESSE — et surtout pas celle d'avant.
+            # La tache survit a une relance (meme tid, meme entree de file), et
+            # le champ y restait tel quel : une demande repartie en brouillon, ou
+            # relancee apres que ses rendus comparables ont ete effaces, gardait
+            # le devis de son essai precedent. La phrase du journal, elle, ne
+            # ment jamais ainsi : elle n'est simplement pas reecrite. Un champ
+            # qui fait foi doit valoir au moins autant que le repli qu'il
+            # remplace.
+            TACHES.get(tid, {}).pop("devis", None)
         # « en offre None » : la taille de la carte vient de l'annonce, et une
         # machine qui rendait deja avant un redemarrage du studio ne s'est pas
         # encore reannoncee. Annoncer un debordement qu'on n'a pas constate,
@@ -9571,7 +9708,18 @@ async def api_mediatheque(req):
     vues = ([c for c in CONVERSATIONS.values() if not c.get("ferme")] if admin
             else mes_conversations(pid))
     for conv in vues:
+        # La reponse par GROUPE et non par piece : variante_retenue() balaie les
+        # tours de la conversation, et une mediatheque de six cents vignettes la
+        # rappelait six cents fois sur les memes listes. Mesuree sur une
+        # conversation de soixante tours, la version sans cache passait de 0,4 ms
+        # a 21 ms — pour une reponse qui ne change pas d'une piece a l'autre.
+        retenues = {}
+        for conv_tour in conv.get("tours", []):
+            g = (conv_tour.get("variantes") or {}).get("groupe")
+            if g and g not in retenues:
+                retenues[g] = variante_retenue(conv, g)
         for tour in conv.get("tours", []):
+            groupe = (tour.get("variantes") or {}).get("groupe")
             for f in (tour.get("fichiers") or []):
                 nom = f.get("filename") or ""
                 items.append({
@@ -9598,7 +9746,25 @@ async def api_mediatheque(req):
                                  if (tour.get("variantes") or {}).get("sur", 1) > 1
                                  else None),
                     "variantes": (tour.get("variantes") or {}).get("sur"),
-                    "choisie": bool(tour.get("choisie")),
+                    # L'IDENTIFIANT DU TOUR. Sans lui, POST /api/variante — qui
+                    # reclame la conversation ET le tour — n'etait pas appelable
+                    # depuis la grille : le geste n'existait que dans le fil,
+                    # c'est-a-dire partout sauf a l'endroit ou l'on compare
+                    # justement quatre images indiscernables. Il sert aussi a
+                    # repeindre les N vignettes du groupe apres un clic.
+                    "tour": tour.get("id"),
+                    "groupe": groupe,
+                    # « CELLE QUE LA VISE », et non « quelqu'un a clique ici ».
+                    # Le tour ne porte « choisie » qu'apres un geste humain, et
+                    # le studio vise pourtant le plus petit rang abouti des la
+                    # fin du rendu : servir la marque brute laissait la
+                    # mediatheque n'en marquer AUCUNE la ou le fil en encadrait
+                    # deja une. La reponse est calculee une seule fois, par
+                    # variante_retenue(), qui est aussi celle que suit
+                    # « agrandis-la » — les deux vues ne peuvent plus diverger.
+                    # Hors groupe, cela reste exactement la marque du tour.
+                    "choisie": (retenues.get(groupe) == tour.get("id") if groupe
+                                else bool(tour.get("choisie"))),
                     "taille": tour.get("taille"),
                     "secondes": tour.get("secondes"),
                     "heure": tour.get("heure"),

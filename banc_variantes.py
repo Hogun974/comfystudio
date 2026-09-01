@@ -431,6 +431,7 @@ async def main():
     # mesure ou non, sinon la disparition se lit comme un simple 93 au lieu
     # de 94, que personne ne remarque.
     releves = re.findall(r"const\s+RE_DEVIS\s*=\s*/(.+?)/([a-z]*)\s*;", PAGE)
+    motif = None
     if len(releves) != 1:
         dit(False, "la page releve le rendu, et lui seul : une phrase, pas deux",
             f"RE_DEVIS introuvable dans web/index.html ({len(releves)} "
@@ -443,6 +444,88 @@ async def main():
         dit(len(vus) == 1 and vus[0].group(1) == "60" and vus[0].group(2) == "s",
             "la page releve le rendu, et lui seul : une phrase, pas deux",
             str([m.group(0) for m in vus]))
+
+    # CE QUE LA PAGE DEVRAIT LIRE. Le champ existe, /api/etat le sert tel quel —
+    # la page, elle, relit encore la phrase française. On verifie donc que le
+    # champ est irreprochable AU BOUT DE LA ROUTE et pas seulement sur TACHES :
+    # un banc qui lit S.TACHES prouve que le serveur calcule, pas que la page
+    # peut l'atteindre, et c'est precisement la confusion qui a laisse « les
+    # reglages par conversation » morts pendant sept bancs verts.
+    st_, corps_ = lire(await S.api_etat(Req(match={"tid": chef})))
+    devis_route = (corps_ or {}).get("devis") or {}
+    dit(st_ == 200 and devis_route.get("secondes") == 60
+        and devis_route.get("mesures") == 3,
+        "/api/etat sert le devis en chiffres : c'est CE champ que la page a a lire",
+        f"{st_} {devis_route}")
+    dit(devis_route.get("rendus") == 3 and devis_route.get("total_s") == 180,
+        "et le cout du groupe y est chiffre aussi : plus rien a deduire d'une "
+        "phrase", str(devis_route))
+    dit(devis_route.get("mot") == "60 s",
+        "le champ porte meme le mot a mot de la phrase : la page n'a plus a le "
+        "reconstruire", str(devis_route.get("mot")))
+
+    # ══ L'ECART ENTRE LA PHRASE ET LE CHAMP ═════════════════════════════
+    # LE DEFAUT QU'ON FERME, ET LE FILET QUI LE RATTRAPERA. Tant que la page
+    # relit la phrase, le chiffre qu'elle affiche n'est pas celui que le serveur
+    # a mesure — la phrase arrondissait en minutes des 90 s :
+    #
+    #     mediane =  90 s -> champ 90,  phrase « 2 min », la page lit 120  (+33 %)
+    #     mediane = 100 s -> champ 100, phrase « 2 min », la page lit 120  (+20 %)
+    #
+    # Le seuil des minutes est passe a cinq minutes (DEVIS_EN_SECONDES_JUSQUA) :
+    # sous ce seuil la phrase dit la seconde, donc l'ecart est nul, et au-dessus
+    # la demi-minute d'arrondi ne pese plus que 9,1 % au pire (330 s annoncees
+    # « 6 min »). Ce cas balaie une demi-heure de medianes, avec la PHRASE que le
+    # serveur ecrit vraiment et le RELEVE que la page applique vraiment : le jour
+    # ou l'un des deux rebouge, il rougit — et il rougira encore le jour ou la
+    # page lira le champ, puisque le cas sera devenu sans objet et qu'il faudra
+    # le retirer avec le couplage.
+    ECART_TOLERE = 0.10
+    if motif is None or not devis_route.get("mot"):
+        dit(False, "la phrase ne s'ecarte jamais du champ de plus de 10 %",
+            "RE_DEVIS ou le mot du devis manquent : l'ecart N'EST PLUS MESURE")
+    else:
+        gabarit = next((e["msg"] for e in S.TACHES[chef]["etapes"]
+                        if motif.search(e["msg"])
+                        and devis_route["mot"] in e["msg"]), "")
+        pires = []
+        for secondes in range(5, 1801, 5):
+            # La tournure reste celle du serveur, seul l'arrondi change : on
+            # eprouve le chiffre, pas la phrase — qui a deja son cas plus haut.
+            phrase = gabarit.replace(devis_route["mot"], S.mot_du_devis(secondes))
+            m = motif.search(phrase)
+            if not m:
+                pires.append((1.0, secondes, phrase))
+                continue
+            lu = (float(m.group(1).replace(",", "."))
+                  * (60 if m.group(2).lower() == "min" else 1))
+            pires.append((abs(lu - secondes) / secondes, secondes, phrase))
+        pire = max(pires) if gabarit else (1.0, 0, "phrase du devis introuvable")
+        dit(pire[0] <= ECART_TOLERE,
+            "la phrase ne s'ecarte jamais du champ de plus de 10 %",
+            f"pire ecart {pire[0] * 100:.1f} % a {pire[1]} s — « {pire[2]} »")
+        dit(all(e == 0.0 for e, s, _ in pires if s < S.DEVIS_EN_SECONDES_JUSQUA),
+            "et sous le seuil des minutes elle est EXACTE, pas approchee",
+            str(sorted({s for e, s, _ in pires
+                        if e and s < S.DEVIS_EN_SECONDES_JUSQUA})[:6]))
+
+    # ET IL NE SURVIT PAS A CE QUI NE LE JUSTIFIE PLUS. La tache garde son
+    # identifiant d'une relance a l'autre ; le champ, lui, restait ecrit. Une
+    # demande relancee sans rendus comparables — ils ont ete effaces, ou elle
+    # repart en brouillon — promettait encore le chiffre de son essai precedent,
+    # que rien ne venait plus etayer. La phrase du journal ne ment pas ainsi :
+    # elle n'est pas reecrite, et la page n'y trouve rien.
+    poser()                                  # plus d'historique : plus de mediane
+    S.FILE_ATTENTE = asyncio.Queue()
+    S._DUREES["quand"] = 0.0
+    st_, corps_ = await poster()
+    perime = corps_["id"]
+    S.TACHES.setdefault(perime, {})["devis"] = {"secondes": 999, "mesures": 9,
+                                                "mot": "999 s"}
+    await tourner()
+    dit("devis" not in (S.TACHES.get(perime) or {}),
+        "sans mediane, le devis d'avant est retire et non laisse la",
+        str((S.TACHES.get(perime) or {}).get("devis")))
 
     # ══ 5. la ou l'on s'arrete ══════════════════════════════════════════
     print("\n  ── la ou l'on s'arrete ──")
@@ -818,6 +901,57 @@ async def main():
         str(sorted(f.get("variante") for f in miens)))
     dit(all(f.get("variantes") == 4 for f in miens),
         "et chacune dit sur combien elle porte")
+
+    # LE GESTE EST-IL APPELABLE D'ICI ? POST /api/variante reclame la
+    # conversation ET le tour ; la mediatheque servait la premiere et pas le
+    # second, si bien que « celle-ci » n'existait que dans le fil — c'est-a-dire
+    # partout sauf a l'endroit ou l'on compare justement quatre images
+    # indiscernables. On ne verifie pas la presence du champ, on s'en SERT.
+    conv = S.CONVERSATIONS["c1"]
+    connus = {t["id"] for t in tours()}
+    dit(all(f.get("tour") in connus for f in miens),
+        "chaque piece dit de quel tour elle sort",
+        str([f.get("tour") for f in miens]))
+    groupes = {f.get("groupe") for f in miens}
+    dit(len(groupes) == 1 and None not in groupes,
+        "et a quel groupe ce tour appartient : la grille peut repeindre les "
+        "quatre rangees d'un clic", str(groupes))
+
+    # PERSONNE N'A ENCORE DESIGNE. Le fil encadrait deja la premiere — c'est la
+    # regle du serveur, le plus petit rang abouti — et la mediatheque n'en
+    # marquait AUCUNE, faute de recevoir le groupe. Deux vues, deux reponses.
+    par_rang_m = {f["variante"]: f for f in miens}
+    marquees = sorted(f["variante"] for f in miens if f.get("choisie"))
+    dit(marquees == [1],
+        "sans aucun choix humain, la mediatheque marque la premiere — comme le "
+        "fil, et non aucune", str(marquees))
+    dit(all(f.get("choisie") == S.variante_tient_le_rang(conv, f["tour"])
+            for f in miens),
+        "et sa reponse est celle que « agrandis-la » suivra, piece par piece",
+        str({f["variante"]: f.get("choisie") for f in miens}))
+    dit(not any(t.get("choisie") for t in tours()),
+        "sans que « choisie » soit pose sur le moindre tour : ce champ-la dit "
+        "toujours « un humain a designe »",
+        str([t.get("choisie") for t in tours()]))
+
+    # LE CLIC, AVEC EXACTEMENT CE QUE LA MEDIATHEQUE A SERVI. Rien n'est
+    # recompose ici : c'est le corps que la grille postera.
+    st, corps = lire(await S.api_variante_choisir(
+        Req(corps={"conversation": par_rang_m[3]["conversation"],
+                   "tour": par_rang_m[3]["tour"]})))
+    dit(st == 200, "designer la troisieme depuis la mediatheque repond 200",
+        str(corps))
+    rep = await S.api_mediatheque(Req())
+    miens = [f for f in json.loads(rep.text).get("fichiers") or []
+             if f.get("variante") and f.get("groupe") in groupes]
+    dit(sorted(f["variante"] for f in miens if f.get("choisie")) == [3],
+        "et la marque suit, sur celle-la et sur elle seule",
+        str({f["variante"]: f.get("choisie") for f in miens}))
+    dit(conv["derniere_sortie"]["filename"]
+        == next(t for t in tours()
+                if (t.get("variantes") or {}).get("rang") == 3)["fichiers"][0]["filename"],
+        "le clic de la grille designe la meme image que celui du fil",
+        conv["derniere_sortie"]["filename"])
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

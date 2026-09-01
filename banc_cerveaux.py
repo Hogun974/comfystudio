@@ -259,6 +259,63 @@ async def main():
     dit(S.MODELE_ECRITURE == "", "un choix devine, lui, se refait")
     S.MODELE_ECRITURE = ""
 
+    # ── une machine du parc SANS CARTE ──────────────────────────────────
+    # LE PLAFOND NE DOIT PAS S'INVERSER. modele_ecriture_de et
+    # modele_vision_de n'avaient aucun cas a eux : ils n'etaient eprouves qu'a
+    # travers corps_ici, sur des machines qui ont toutes une carte. La panne a
+    # donc pu passer.
+    #
+    # La precondition est etroite mais reelle : un ComfyUI dont /system_stats ne
+    # porte aucun « vram_total », sur une machine qui prete par ailleurs son
+    # Ollama. agent_noeud.py annonce exactement ce couple — vram=0, ram>0 — et
+    # charger_parc() le fige d'un redemarrage a l'autre.
+    #
+    # Ce que ces cas gardent : « cette machine n'a pas de carte » ne se lit pas
+    # « on ne sait pas ce qu'elle tient ». Le premier est un plafond bas, le
+    # second est l'absence de plafond, et les confondre choisit gemma4:26b,
+    # 18,6 Go — cent soixante-cinq secondes par traduction, mesurees le 31 aout.
+    poser()
+    S.ETAT_NOEUDS["pc"]["vram"] = 0.0        # la carte a disparu de l'annonce
+    dit(S._vram_utile("pc") == 0.0,
+        "sans carte, la machine ne tient rien a rendre : 0 Go utile",
+        str(S._vram_utile("pc")))
+    dit(S.modele_ecriture_de(PC) == "qwen2.5vl:7b",
+        "et pour ecrire, elle reste plafonnee : pas gemma4:26b sur une machine "
+        "sans carte", S.modele_ecriture_de(PC))
+    dit(S.modele_vision_de(PC) == "qwen2.5vl:7b",
+        "pour lire une image non plus : le voyant trop gros ne passe pas par "
+        "la porte de derriere", S.modele_vision_de(PC))
+
+    # QUAND AUCUN NE TIENT, LE PLUS PETIT — et non le plus gros. C'etait la
+    # seconde porte : « tenables ou tous les voyants », puis max(), rendait
+    # justement le modele que le plafond venait d'ecarter.
+    S.ETAT_NOEUDS["pc"]["ram"] = 8.0         # trop peu pour tolerer quoi que ce soit
+    dit(S.modele_vision_de(PC) == "qwen2.5vl:7b",
+        "meme quand aucun voyant ne tient, c'est le plus petit qui repond",
+        S.modele_vision_de(PC))
+
+    # LA CARTE REVENUE, RIEN NE BOUGE : le correctif ne touche qu'au cas sans
+    # carte.
+    poser()
+    dit(S.modele_ecriture_de(PC) == "qwen2.5vl:7b"
+        and S.modele_vision_de(PC) == "qwen2.5vl:7b",
+        "avec sa carte, la meme machine repond comme avant",
+        f"{S.modele_ecriture_de(PC)} / {S.modele_vision_de(PC)}")
+
+    # UNE MACHINE INCONNUE GARDE SON ABSENCE DE PLAFOND. On ne devine pas ce
+    # qu'une machine dont on ignore tout peut charger, et lui refuser ses gros
+    # modeles la rendrait muette pour rien. C'est le cas que la branche « sinon,
+    # aucun plafond » sert VRAIMENT — et qu'il ne faut pas fermer en fermant
+    # l'autre.
+    poser()
+    S._CERVEAUX[PC]["noeud"] = None          # un Ollama qui n'est rattache a rien
+    dit(S.modele_ecriture_de(PC) == "gemma4:26b",
+        "d'une machine inconnue, on prend le plus gros : aucun plafond a poser",
+        S.modele_ecriture_de(PC))
+    dit(S.modele_vision_de(PC) == "gemma4:26b",
+        "et le plus gros voyant de meme", S.modele_vision_de(PC))
+    poser()
+
 asyncio.run(main())
 print(f"\n  {len([o for o in ok if o])} verifications passees, {len(rate)} echouees")
 for r in rate:
