@@ -433,7 +433,13 @@ main{flex:1;overflow-y:auto;min-width:0}
   display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .signature .sep{opacity:.5}
 .signature .avis{margin-top:0}
-.signature .avis button{padding:1px 7px;font-size:13px}
+.signature .refaire-grand{margin-left:6px;padding:2px 9px;border:1px solid var(--braise);
+  border-radius:20px;background:transparent;color:var(--braise);
+  font:11px var(--mono);cursor:pointer}
+.refaire-grand:hover:not(:disabled){border-color:var(--braise-vive);
+  color:var(--braise-vive)}
+.refaire-grand:disabled{opacity:.5;cursor:default}
+.avis button{padding:1px 7px;font-size:13px}
 /* Avis : discret tant qu'on n'a rien dit, franc une fois le pouce pose. */
 .avis{display:flex;align-items:center;gap:6px;margin-top:12px}
 .avis button{background:transparent;border:1px solid var(--trait);border-radius:7px;
@@ -949,7 +955,10 @@ function peindreVariante(zone) {
   if (retenue) {
     const s = document.createElement("span");
     s.className = "fait";
-    s.textContent = "✓ c’est elle que « la » désigne";
+    // « c'est elle que « la » désigne » ne voulait rien dire pour qui n'a pas
+    // lu la documentation — signalé par l'utilisateur. Ce qu'il faut savoir
+    // tient en un mot : c'est de celle-ci qu'on repart.
+    s.textContent = "✓ on repart de celle-ci";
     zone.appendChild(s);
     return;
   }
@@ -959,7 +968,7 @@ function peindreVariante(zone) {
   if (d.designable !== "1") return;
   const b = document.createElement("button");
   b.type = "button";
-  b.textContent = "désigner celle-ci";
+  b.textContent = "repartir de celle-ci";
   b.title = "« agrandis-la », « rends-la fluide », « le même personnage » "
           + "viseront cette image-là. Rien n'est supprimé : les autres "
           + "variantes restent.";
@@ -1147,11 +1156,50 @@ function barreAvis(t) {
   // corrige, et il n'y est jamais oblige.
   let corrige = t.intention_voulue || "";
   haut.classList.add("haut"); bas.classList.add("bas");
+  /* LE POUCE DIT QUE C'EST RATE ; CE BOUTON DIT QUOI FAIRE. Deux gestes,
+     parce que ce sont deux decisions — le studio armait auparavant la demande
+     SUIVANTE sur un pouce en bas, donc « et maintenant de nuit » repartait sur
+     la grosse carte sans que personne l'ait voulu. Demande par l'utilisateur :
+     « lors d'un avis negatif, il faudrait pouvoir refaire avec un bouton ».
+
+     Il ne s'affiche que sur un tour FINI qui a produit quelque chose : refaire
+     un echec, c'est relancer la meme panne. */
+  const refaire = document.createElement("button");
+  refaire.type = "button"; refaire.className = "refaire-grand";
+  refaire.textContent = "refaire sur la grosse carte";
+  refaire.title = "Meme prompt, meme moteur, meme taille, mais sur la carte la "
+                + "plus grande — en l'attendant s'il le faut. Une autre graine, "
+                + "donc un autre tirage : le studio ne sait pas ameliorer, il "
+                + "sait recommencer avec plus de carte.";
+  refaire.onclick = async () => {
+    refaire.disabled = true;
+    const avant = refaire.textContent;
+    refaire.textContent = "…";
+    try {
+      const r = await fetch("/api/refaire", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation: convActive, tour: t.id }) });
+      const rep = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(rep.erreur || "le serveur a refusé");
+      dit.textContent = "c'est reparti sur la grosse carte";
+      refaire.remove();
+      listerConversations();
+    } catch (e) {
+      refaire.disabled = false; refaire.textContent = avant;
+      dit.textContent = "impossible de refaire : " + e.message;
+    }
+  };
+
   const peindre = () => {
     haut.classList.toggle("pris", pose === 1);
     bas.classList.toggle("pris", pose === -1);
     dit.textContent = pose === 1 ? "noté, merci"
-                    : pose === -1 ? "noté — je retravaille" : "";
+                    : pose === -1 ? "noté" : "";
+    const refaisable = pose === -1 && t.etat === "fini"
+                       && (t.fichiers || []).length && !t.refait;
+    if (refaisable && !refaire.isConnected) barre.insertBefore(refaire, dit);
+    else if (!refaisable && refaire.isConnected) refaire.remove();
   };
   peindre();
 
@@ -2376,12 +2424,22 @@ function suivre(id, bloc, cid) {
         // exactement ce qui fait recharger la page au milieu d'un rendu.
         const pct = t.avance && t.avance.total
           ? Math.round(t.avance.fait * 100 / t.avance.total) : null;
-        const secondes = Math.round((Date.now() - depart) / 1000);
+        // LE COMPTE VIENT DU SERVEUR. « Date.now() - depart » comptait depuis
+        // l'instant ou CETTE page s'etait mise a suivre : un rechargement
+        // remettait le compteur a zero, et « 89 % · 6 s » s'affichait sur un
+        // rendu qui durait depuis une minute. Le repli local ne sert qu'aux
+        // vieilles reponses, qui ne portent pas encore le champ.
+        const secondes = t.ecoule != null ? Math.round(t.ecoule)
+                                          : Math.round((Date.now() - depart) / 1000);
         // « Combien de temps ? » est la question qu'on se pose EN REGARDANT la
         // barre : la reponse se met a cote, pas dans le depliant.
         const devis = lireDevis(t.etapes);
         if (devis && !vuDevis) vuDevis = Date.now();
-        const depasse = devis && (Date.now() - vuDevis) / 1000 > devis.secondes;
+        // « Depasse » se compare au temps ECOULE, pas au temps depuis que la
+        // page a vu le devis : meme defaut que le compteur, et il faisait
+        // repasser la pastille au vert apres un rechargement en plein
+        // depassement.
+        const depasse = devis && secondes > devis.secondes;
         // Deux rendus peuvent courir de front ; savoir lequel est l'esquisse dit
         // lequel va revenir dans une minute et lequel dans quatre.
         puces.innerHTML = (esquissesLancees.has(id)

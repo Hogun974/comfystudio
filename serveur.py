@@ -373,7 +373,7 @@ async def reprendre_file():
                for t in conv.get("tours", [])):
             finies += 1
             continue
-        TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": r.get("texte", ""),
+        TACHES[tid] = {"etapes": [], "etat": "en cours", "debut": time.time(), "demande": r.get("texte", ""),
                        "conversation": conv["id"], "proprietaire": r.get("proprietaire"),
                        "image": r.get("image")}
         # Le tour existe deja dans la conversation, mais il a ete marque
@@ -1150,7 +1150,7 @@ def journal(tid, msg, **extra):
     if not tid:
         print(f"[studio] {msg}", flush=True)
         return
-    t = TACHES.setdefault(tid, {"etapes": [], "etat": "en cours"})
+    t = TACHES.setdefault(tid, {"etapes": [], "etat": "en cours", "debut": time.time()})
     t["etapes"].append({"t": time.strftime("%H:%M:%S"), "msg": msg})
     t.update(extra)
     print(f"[{tid[:6]}] {msg}", flush=True)
@@ -6968,18 +6968,14 @@ async def api_avis(req):
         for tour in conv.get("tours", []):
             if tour.get("id") == tid:
                 tour["avis"] = avis
-                # LE POUCE EN BAS EST LE SIGNAL. Regle de l'utilisateur : « si
-                # l'utilisateur signale pas bien fait, rendu sur grosse carte,
-                # attendre s'il le faut en prevenant l'utilisateur ». On
-                # reutilise le geste qui existe plutot que d'en inventer un :
-                # dire que c'est rate et redemander mieux sont la meme pensee.
-                #
-                # Sur la CONVERSATION et non sur le tour : ce qui est arme,
-                # c'est la prochaine demande, et elle n'existe pas encore.
-                if avis == -1:
-                    conv["refaire_en_grand"] = True
-                elif avis == 1:
-                    conv.pop("refaire_en_grand", None)
+                # LE POUCE EN BAS N'ARME PLUS RIEN TOUT SEUL. Il armait la
+                # demande SUIVANTE, quelle qu'elle soit — donc « et maintenant
+                # de nuit » repartait sur la grosse carte sans que personne
+                # l'ait voulu, et le signal se perdait si l'on ne redemandait
+                # pas tout de suite. L'utilisateur a tranche : « lors d'un avis
+                # negatif, il faudrait pouvoir refaire avec un bouton ». Le
+                # pouce dit que c'est rate, le bouton dit quoi faire — deux
+                # gestes parce que ce sont deux decisions.
                 tour["note"] = note
                 if voulue:
                     tour["intention_voulue"] = voulue
@@ -7708,7 +7704,7 @@ async def lancer_variantes(tid, texte, conv, plan, combien, taille=None,
     lances = []
     for rang in range(2, combien + 1):
         autre = uuid.uuid4().hex
-        TACHES[autre] = {"etapes": [], "etat": "en cours", "demande": texte,
+        TACHES[autre] = {"etapes": [], "etat": "en cours", "debut": time.time(), "demande": texte,
                          "conversation": conv["id"], "proprietaire": pid,
                          "image": image, "variantes": dict(groupe, rang=rang)}
         enregistrer_tour(conv, autre, texte, {}, None, None, [], "en cours")
@@ -8232,10 +8228,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                          f"cette demande — on la lui laisse")
         # ESCALADE APRES UN POUCE EN BAS. Consommee ici, une seule fois : le
         # signal vaut pour la demande SUIVANTE, pas pour toutes celles d'apres.
-        _en_grand = bool(conv.pop("refaire_en_grand", None))
+        _en_grand = bool((EN_FILE.get(tid) or {}).get("en_grand"))
         if _en_grand and not cible:
-            journal(tid, "tu as signale que le rendu precedent n'allait pas — "
-                         "on prend la plus grosse carte, quitte a l'attendre")
+            journal(tid, "on refait sur la plus grosse carte, quitte a "
+                         "l'attendre — c'est ce que le bouton demande")
         cible = cible or choisir_noeud(cle, viser="grosse" if _en_grand
                                        else "petite",
                                        taille=f"{plan.get('largeur')}x"
@@ -9094,7 +9090,7 @@ async def api_au_propre(req):
     texte = tour.get("demande") or ""
     tid = uuid.uuid4().hex
     devant = len(ATTENTE) + len(EN_VOL)
-    TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": texte,
+    TACHES[tid] = {"etapes": [], "etat": "en cours", "debut": time.time(), "demande": texte,
                    "conversation": conv["id"], "proprietaire": pid, "image": None}
     enregistrer_tour(conv, tid, texte, {}, None, None, [], "en cours")
     # La marque sur l'esquisse, pour ne pas la reproposer indefiniment. Posee
@@ -9112,6 +9108,81 @@ async def api_au_propre(req):
     await FILE_ATTENTE.put({"tid": tid, "texte": texte, "conv": conv, "taille": None,
                             "image": None, "modele": None, "priorite": "",
                             "noeud": None, "plan": plan})
+    return web.json_response({"id": tid, "conversation": conv["id"],
+                              "position": devant})
+
+
+async def api_refaire(req):
+    """Refait CETTE demande sur la plus grosse carte, quitte a l'attendre.
+
+    Regle de l'utilisateur : « lors d'un avis negatif, il faudrait pouvoir
+    refaire avec un bouton ». Le pouce en bas dit que c'est rate ; ce bouton dit
+    quoi faire. Les deux sont separes parce que ce sont deux decisions — armer
+    la demande SUIVANTE sur un pouce en bas envoyait « et maintenant de nuit »
+    sur la grosse carte sans que personne l'ait voulu.
+
+    On NE REPASSE PAS par l'analyse, comme « refaire en soigne » : elle rendrait
+    un autre prompt, donc un autre sujet, et l'on ne saurait plus ce qu'on
+    compare. Meme moteur, meme taille, meme prompt.
+
+    LA GRAINE N'EST PAS REPRISE, et c'est la difference avec le passage au
+    propre : refaire a l'identique sur une autre carte rendrait la meme image,
+    or ce qu'on demande ici est un AUTRE tirage. Le bouton dit « refaire », pas
+    « ameliorer » — le studio ne sait pas ameliorer, il sait recommencer avec
+    plus de carte.
+    """
+    pid = qui(req)
+    try:
+        d = await req.json()
+    except Exception:
+        return web.json_response({"erreur": "corps illisible"}, status=400)
+    conv = CONVERSATIONS.get(d.get("conversation") or "")
+    if not ouvrable(conv, pid):
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    tour = next((t for t in conv.get("tours", [])
+                 if t.get("id") == d.get("tour")), None)
+    if not tour:
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    plan_ = tour.get("plan")
+    if not isinstance(plan_, dict) or not plan_.get("prompt"):
+        # Sans plan, il n'y a rien a refaire sans repasser par l'analyse — et
+        # repasser par l'analyse, c'est une autre demande, pas la meme.
+        return web.json_response(
+            {"erreur": "ce tour n'a pas de plan qu'on sache reprendre"},
+            status=400)
+    if tour.get("etat") != "fini":
+        return web.json_response({"erreur": "ce tour n'est pas termine"},
+                                 status=409)
+    plan = dict(plan_)
+    plan.pop("graine", None)
+    texte = tour.get("demande") or ""
+    tid = uuid.uuid4().hex
+    devant = len(ATTENTE) + len(EN_VOL)
+    TACHES[tid] = {"etapes": [], "etat": "en cours", "debut": time.time(),
+                   "demande": texte, "conversation": conv["id"],
+                   "proprietaire": pid, "image": None}
+    enregistrer_tour(conv, tid, texte, {}, None, None, [], "en cours")
+    tour["refait"] = tid
+    sauver(conv)
+    if devant:
+        journal(tid, f"en file d'attente — {devant} demande(s) devant")
+    ATTENTE.append(tid)
+    # « en_grand » sur l'entree de FILE et non sur la conversation : il voyage
+    # avec la demande, il survit a un redemarrage du studio comme le reste de la
+    # file, et une autre demande lancee entre-temps ne peut pas se le prendre.
+    EN_FILE[tid] = {"tid": tid, "texte": texte, "conversation": conv["id"],
+                    "proprietaire": pid, "image": None, "modele": None,
+                    "taille": None, "priorite": "", "noeud": None,
+                    "plan": plan, "en_grand": True}
+    sauver_file()
+    # LA FILE VEUT « conv », L'OBJET, la ou EN_FILE garde « conversation »,
+    # l'identifiant : le premier sert au travailleur tout de suite, le second a
+    # la reprise apres un arret. Poser l'entree de file telle quelle envoyait au
+    # travailleur une conversation absente — verifie sur api_au_propre, qui
+    # construit bien les deux separement.
+    await FILE_ATTENTE.put({"tid": tid, "texte": texte, "conv": conv,
+                            "taille": None, "image": None, "modele": None,
+                            "priorite": "", "noeud": None, "plan": plan})
     return web.json_response({"id": tid, "conversation": conv["id"],
                               "position": devant})
 
@@ -9245,7 +9316,7 @@ async def api_generer(req):
     poser_reglages(conv, d)
     tid = uuid.uuid4().hex
     devant = len(ATTENTE) + len(EN_VOL)
-    TACHES[tid] = {"etapes": [], "etat": "en cours", "demande": texte,
+    TACHES[tid] = {"etapes": [], "etat": "en cours", "debut": time.time(), "demande": texte,
                    "conversation": conv["id"], "proprietaire": pid, "image": image}
     # Le tour est pose des maintenant : la conversation remonte dans la liste,
     # la demande s'affiche, et rien ne laisse croire qu'elle s'est perdue
@@ -9291,6 +9362,17 @@ async def api_etat(req):
     # s'affichait jamais.
     if AVANCES.get(tid, {}).get("total"):
         etat["avance"] = dict(AVANCES[tid])
+    # LE TEMPS ECOULE VIENT DU SERVEUR, ET NON DU NAVIGATEUR. La page comptait
+    # depuis l'instant ou ELLE s'etait mise a suivre : un rechargement remettait
+    # le compteur a zero, et « 89 % · 6 s » s'affichait sur un rendu qui durait
+    # depuis une minute. Constate par l'utilisateur — « les secondes ne designent
+    # que le nombre de secondes depuis l'actualisation du navigateur ».
+    #
+    # Le serveur est aussi le seul a savoir quand la tache a VRAIMENT commence :
+    # une demande reprise apres un redemarrage, ou sortie de la file d'attente,
+    # a un debut que la page n'a jamais vu.
+    if tache.get("debut"):
+        etat["ecoule"] = round(time.time() - tache["debut"], 1)
     # Esquisse ou non, et deja repassee au propre ou non. Ces deux marques
     # vivent sur le TOUR et pas sur la tache, si bien que la page ne les
     # apprenait qu'au rechargement suivant de la conversation — c'est-a-dire pas
@@ -11464,6 +11546,7 @@ def app():
     a.router.add_post("/api/televerser", api_televerser)
     a.router.add_post("/api/generer", api_generer)
     a.router.add_post("/api/au_propre", api_au_propre)
+    a.router.add_post("/api/refaire", api_refaire)
     a.router.add_post("/api/variante", api_variante_choisir)
     a.router.add_get("/api/machines", api_machines)
     a.router.add_get("/api/etat/{tid}", api_etat)
