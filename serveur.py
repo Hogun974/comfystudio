@@ -62,14 +62,14 @@ OLLAMA     = OLLAMAS[0]
 # fidele au sujet ; ses defauts sont de forme (JSON tronque, prompt vide) et
 # sont couverts par la relance de aiguiller() et le repli de normaliser().
 # C'est aussi le modele de vision : un seul modele a charger.
-MODELE_LLM    = os.environ.get("STUDIO_LLM", "qwen2.5vl:7b")
+MODELE_LLM    = os.environ.get("STUDIO_LLM") or "qwen2.5vl:7b"
 # Vide : le plus gros modele installe qui tienne en memoire sera pris au
 # demarrage. Le renseigner impose un choix.
 MODELE_ECRITURE = os.environ.get("STUDIO_LLM_ECRITURE", "")
 # Pose a la main, ou devine ? Un choix explicite ne doit pas etre efface par un
 # echec passager sur une machine.
 MODELE_ECRITURE_IMPOSE = bool(MODELE_ECRITURE)
-MODELE_VISION = os.environ.get("STUDIO_VISION", "qwen2.5vl:7b")
+MODELE_VISION = os.environ.get("STUDIO_VISION") or "qwen2.5vl:7b"
 PORT       = int(os.environ.get("STUDIO_PORT", "8199"))
 # 127.0.0.1 : seule cette machine peut se connecter. 0.0.0.0 : tout le reseau
 # local. Le studio n'a AUCUNE authentification — l'ouvrir au reseau donne a
@@ -2320,6 +2320,11 @@ def corps_ici(corps, url, tid=None):
         # dispose sans faire passer un examen a chaque modele, et il colle a la
         # seule mesure qu'on ait. Le texte, lui, garde le modele rapide — c'est
         # tout l'interet de choisir par appel plutot qu'une fois pour toutes.
+        # Sauf si le reglage NOMME le modele voyant : STUDIO_VISION existe
+        # pour ca, et le passer sous silence en faisait un reglage mort. La
+        # regle du plus gros reste le defaut, pas un veto.
+        if voulu == MODELE_VISION and not _casse_ici(url, voulu)                 and _sait_voir_ici(url, voulu):
+            return corps
         voyant = modele_vision_de(url)
         if not voyant:
             return None
@@ -7393,18 +7398,22 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 raise RuntimeError(
                     "il n'y a pas d'image a lire : joins une image, ou dis ce "
                     "que tu veux produire.")
-            journal(tid, f"lecture de l'image par {MODELE_VISION}…")
+            journal(tid, "lecture de l'image…")
             try:
                 desc = await appeler_ollama(
                     texte or "Decris cette image en francais, precisement.",
                     img_b64, "Tu decris des images avec precision, en francais.",
                     json_mode=False, modele=MODELE_VISION, tid=tid)
             except Exception as e:
+                # NE PAS nommer MODELE_VISION ici : chaque machine lit avec
+                # SON modele voyant, et l'ancien message envoyait installer un
+                # modele qui n'avait jamais ete essaye.
                 raise RuntimeError(
-                    f"le modele de vision « {MODELE_VISION} » n'a pas repondu ({type(e).__name__}). "
-                    f"Verifie qu'il est installe : ollama pull {MODELE_VISION}") from None
+                    f"aucune machine n'a su lire l'image ({type(e).__name__}). "
+                    f"Il faut un modele qui sache voir, par exemple : "
+                    f"ollama pull {MODELE_VISION}") from None
             if not desc.strip():
-                raise RuntimeError(f"« {MODELE_VISION} » n'a rien renvoye.")
+                raise RuntimeError("le modele de vision n'a rien renvoye.")
             TACHES[tid].update(etat="fini", description=desc, plan=plan)
             enregistrer_tour(conv, tid, texte, plan, "lecture", cle, [], "fini")
             journal(tid, "description produite", etat="fini")

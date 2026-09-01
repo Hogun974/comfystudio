@@ -206,6 +206,32 @@ jobs:
       - name: Le devis dit ce qu'il sait, et se tait sinon
         run: python banc_durees.py
 
+      # Une demande qui reclame une carte EN PAUSE patiente, puis reste ARMEE et
+      # repart toute seule au reveil. Trois portes de reveil, une expiration, et
+      # une survie au redemarrage : autant d'endroits ou un oubli laisse une
+      # demande dormir pour toujours sans que rien ne le dise.
+      - name: Une demande armee repart au reveil de la machine
+        run: python banc_attente.py
+
+      # Le journal des appels distants. Ce qu'il compte n'est jamais estime :
+      # un nombre de jetons inconnu reste vide plutot que devine, sans quoi le
+      # plafond couperait sur un chiffre invente.
+      - name: Ce que le nuage a coute est compte, jamais devine
+        run: python banc_cout.py
+
+      # N variantes sont N demandes dans la file, et non un batch : une carte de
+      # 5,9 Go ne tient pas quatre images a la fois. Le lien entre les tours et
+      # le rang affiche s'etaient deja perdus une fois.
+      - name: Les variantes sont des demandes distinctes
+        run: python banc_variantes.py
+
+      # Compose ne transmet que ce qu'il nomme. Dix reglages etaient lus hors
+      # conteneur et ignores en silence dedans, pendant que la documentation les
+      # donnait pour reconnus — et le studio du reseau tourne en conteneur. Ce
+      # banc relit serveur.py et refuse tout nom qui n'arriverait pas jusque-la.
+      - name: Tout ce que le studio lit arrive au conteneur
+        run: python banc_conteneur.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

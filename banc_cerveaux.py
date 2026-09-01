@@ -190,6 +190,31 @@ async def main():
         "un modele qui n'annonce pas la vision cede la place",
         str(v and v["model"]))
 
+    # ── STUDIO_VISION est un reglage, pas une decoration ────────────────
+    # Il etait entierement recouvert : le studio annonçait « lecture par X »,
+    # passait X, et corps_ici prenait le plus gros voyant sans le dire. Le
+    # reglage n'avait aucun effet, et le message d'erreur envoyait installer un
+    # modele qui n'avait jamais ete essaye.
+    S.MODELE_VISION = "gemma4:26b"
+    corps = {"model": "gemma4:26b", "prompt": "x", "images": ["…"]}
+    v = S.corps_ici(corps, PC)
+    dit(v is not None and v["model"] == "gemma4:26b",
+        "le modele de vision NOMME est honore, meme plus gros que la carte",
+        str(v and v["model"]))
+    # La borne de la carte reste le defaut : elle ne s'applique qu'au choix
+    # automatique, pas a un nom pose a la main.
+    v = S.corps_ici({"model": "autre:1b", "prompt": "x", "images": ["…"]}, PC)
+    dit(v is not None and v["model"] == "qwen2.5vl:7b",
+        "et le choix automatique reste borne par la carte",
+        str(v and v["model"]))
+    # Absent de CETTE machine : on retombe sur ce qu'elle sait faire.
+    v = S.corps_ici(corps, NAS)
+    dit(v is not None and v["model"] == "qwen2.5vl:7b",
+        "la ou il n'est pas installe, le voyant de la machine reprend la main",
+        str(v and v["model"]))
+    S.MODELE_VISION = "qwen2.5vl:7b"
+    corps = {"model": "gemma3:4b", "prompt": "x", "images": ["…"]}
+
     # Et sur une machine ou AUCUN modele ne voit, on n'envoie rien.
     S._CERVEAUX[NAS]["modeles"] = [m for m in S._CERVEAUX[NAS]["modeles"]
                                    if "vision" not in (m.get("capabilities") or [])]

@@ -565,4 +565,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.get_event_loop().run_until_complete(main()))
+    # asyncio.get_event_loop() leve depuis Python 3.14 hors d'une boucle :
+    # le banc passait dans le conteneur et echouait sur la machine de
+    # celui qui l'ecrit.
+    sys.exit(asyncio.run(main()))

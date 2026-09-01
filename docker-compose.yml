@@ -42,13 +42,13 @@ services:
       # Connexion obligatoire par defaut : le conteneur publie un port, et une
       # installation neuve resterait sinon ouverte a qui l'atteint. « libre »
       # retablit l'ancien comportement, en connaissance de cause.
-      STUDIO_AUTH: "${STUDIO_AUTH:-obligatoire}"
+      STUDIO_AUTH: "${STUDIO_AUTH:-}"
       # Mot de passe du compte « admin » cree au premier demarrage. Sans lui il
       # est tire au sort et affiche UNE fois dans le journal du conteneur — ce
       # qui est facile a manquer. A changer depuis l'interface ensuite.
       STUDIO_ADMIN_MDP: "${STUDIO_ADMIN_MDP:-}"
-      STUDIO_LLM: "${STUDIO_LLM:-qwen2.5vl:7b}"
-      STUDIO_VISION: "${STUDIO_VISION:-qwen2.5vl:7b}"
+      STUDIO_LLM: "${STUDIO_LLM:-}"
+      STUDIO_VISION: "${STUDIO_VISION:-}"
       STUDIO_LLM_ECRITURE: "${STUDIO_LLM_ECRITURE:-}"
       # Le conteneur ecoute TOUJOURS sur 8199 ; c'est le compose qui publie ce
       # port ailleurs. Sans cette ligne, la banniere de demarrage annonçait 8199
@@ -56,6 +56,27 @@ services:
       # heberge deja un, cette adresse repond : c'est le studio d'a cote. On lui
       # dit donc sur quel port l'hote le publie.
       STUDIO_PORT_HOTE: "${STUDIO_PORT:-8199}"
+      # Le reste des reglages du studio. Compose ne transmet QUE ce qui est
+      # nomme ici : sans ces lignes, une variable posee dans .env etait lue par
+      # le studio hors conteneur et ignoree en silence dedans — le pire des
+      # deux, parce que la documentation la donnait pour reconnue.
+      # Vide = le studio garde sa propre valeur par defaut ; chaque lecture
+      # dans serveur.py le prevoit.
+      STUDIO_TRAVAILLEURS: "${STUDIO_TRAVAILLEURS:-}"
+      STUDIO_ATTENTE_CARTE: "${STUDIO_ATTENTE_CARTE:-}"
+      STUDIO_PAUSE_PROPOSE: "${STUDIO_PAUSE_PROPOSE:-}"
+      STUDIO_ARMEE_HEURES: "${STUDIO_ARMEE_HEURES:-}"
+      STUDIO_PLAFOND_NUAGE: "${STUDIO_PLAFOND_NUAGE:-}"
+      STUDIO_ANALYSE_PETITE: "${STUDIO_ANALYSE_PETITE:-}"
+      STUDIO_ANALYSE_MAX: "${STUDIO_ANALYSE_MAX:-}"
+      STUDIO_LLM_GARDER: "${STUDIO_LLM_GARDER:-}"
+      STUDIO_PURGE_ORPHELINS: "${STUDIO_PURGE_ORPHELINS:-}"
+      STUDIO_ADMIN: "${STUDIO_ADMIN:-}"
+      # Ces trois-la ne servent QU'AVEC le montage /comfy plus bas ; les
+      # chemins sont ceux vus du conteneur.
+      COMFY_MODELES: "${COMFY_MODELES:-}"
+      COMFY_ENTREE: "${COMFY_ENTREE:-}"
+      COMFY_LANCEUR: "${COMFY_LANCEUR:-}"
     extra_hosts:
       # Necessaire sous Linux ; sans effet sous Docker Desktop, qui le fournit.
       - "host.docker.internal:host-gateway"
