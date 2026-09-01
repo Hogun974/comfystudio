@@ -207,10 +207,79 @@ ATTENTE_LLM = 20
 ATTENTE_CARTE = int(os.environ.get("STUDIO_ATTENTE_CARTE") or 1800)
 
 
+class VerrouCarte:
+    """Le verrou d'une carte, ou l'ANALYSE passe devant le RENDU.
+
+    Regle de l'utilisateur : « une analyse peut passer devant un rendu si
+    plusieurs demandes en meme temps, sans couper un rendu deja en cours ».
+    Les deux moities comptent autant l'une que l'autre.
+
+    « Sans couper » : rien n'interrompt le travail qui tient la carte. La
+    priorite ne joue qu'entre ceux qui ATTENDENT — asyncio.Lock les servait
+    dans l'ordre d'arrivee, donc une analyse de trois secondes patientait
+    derriere deux rendus de quatre minutes, et l'utilisateur ne voyait rien
+    partir pendant huit minutes pour une demande que le studio n'avait meme
+    pas encore lue.
+
+    « Passe devant » : une file par rang, servies dans l'ordre. Une analyse qui
+    arrive pendant qu'un rendu attend prend sa place — l'analyse rend la carte
+    en quelques secondes, le rendu la garde des minutes ; l'inverse fait
+    attendre tout le monde pour ne gagner personne.
+
+    Pas de famine possible : les analyses d'une demande sont en nombre borne
+    (trois par demande) et chacune se termine. Ce n'est pas vrai en general —
+    c'est vrai ici, et c'est pour ca que la priorite est tenable.
+    """
+
+    def __init__(self):
+        self._tenu = False
+        self._attente = ([], [])        # 0 : analyse, 1 : rendu
+
+    def locked(self):
+        return self._tenu
+
+    async def acquire(self, prioritaire=False):
+        if not self._tenu and not self._attente[0] and not self._attente[1]:
+            self._tenu = True
+            return True
+        promesse = asyncio.get_running_loop().create_future()
+        file = self._attente[0 if prioritaire else 1]
+        file.append(promesse)
+        try:
+            await promesse
+        except asyncio.CancelledError:
+            # ANNULE PENDANT L'ATTENTE. Si la carte nous avait deja ete donnee,
+            # il faut la rendre : la laisser prise fermerait la machine pour de
+            # bon. C'est le cas d'un « wait_for » qui expire a la seconde ou le
+            # verrou se libere.
+            if promesse in file:
+                file.remove(promesse)
+            elif not promesse.cancelled():
+                self.release()
+            raise
+        return True
+
+    def release(self):
+        for file in self._attente:
+            while file:
+                promesse = file.pop(0)
+                if not promesse.done():
+                    promesse.set_result(True)
+                    return
+        self._tenu = False
+
+    async def __aenter__(self):
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, *_):
+        self.release()
+
+
 def verrou_noeud(ident):
     """Le verrou de cette carte. Cree a la demande : les machines vont et
     viennent, et une machine qu'on n'a jamais vue n'a pas besoin du sien."""
-    return VERROUS_NOEUD.setdefault(ident, asyncio.Lock())
+    return VERROUS_NOEUD.setdefault(ident, VerrouCarte())
 
 
 def verrou_modele(sous, nom):
@@ -687,16 +756,21 @@ def cerveaux_utilisables(image=False):
       - une carte LIBRE passe devant une carte occupee. Attendre deux minutes
         derriere un rendu quand une autre machine repond tout de suite n'a de
         sens pour personne.
-      - a egalite, la PLUS PETITE carte. Une analyse tient sur n'importe
-        laquelle ; occuper la meilleure pour reflechir, c'est la retirer du
-        rendu qu'elle seule fait vite.
+      - a egalite, la PLUS GROSSE carte. L'analyse est courte et elle est
+        DEVANT le rendu : plus tot elle finit, plus tot la carte repart au
+        travail, et plus tot l'utilisateur voit sa demande partir.
 
-    SAUF POUR UNE IMAGE, ou la derniere regle s'inverse. Lire une image est la
-    seule tache ou la taille de la carte decide vraiment : mesure du 31 aout,
-    la meme image lue en 19 s sur la 2080 Ti et toujours pas rendue apres
-    NEUF CENTS secondes sur la GTX 1060, ou le modele de vision deborde.
-    « La plus petite qui suffise » suppose qu'elles suffisent toutes ; ici,
-    non.
+    CETTE DERNIERE REGLE ETAIT L'INVERSE, et l'utilisateur l'a redressee :
+    « si analyse, prendre la plus grosse (libre) pour l'analyse (rapide) ».
+    L'ancien raisonnement — « occuper la meilleure pour reflechir, c'est la
+    retirer du rendu » — supposait que les deux se disputent la carte pendant
+    le meme temps. Ils ne se la disputent pas : une analyse dure quelques
+    secondes, un rendu des minutes.
+
+    Elle etait deja inversee POUR UNE IMAGE, et pour une raison qui vaut
+    maintenant partout : mesure du 31 aout, la meme image lue en 19 s sur la
+    2080 Ti et toujours pas rendue apres NEUF CENTS secondes sur la GTX 1060.
+    Il n'y a plus deux regles, il n'y en a qu'une.
     """
     bons = []
     for url in OLLAMAS:
@@ -708,7 +782,7 @@ def cerveaux_utilisables(image=False):
             continue
         libre = not (ident and verrou_noeud(ident).locked())
         taille = (ETAT_NOEUDS.get(ident) or {}).get("vram") or 0 if ident else 0
-        bons.append((0 if libre else 1, -taille if image else taille, url, ident))
+        bons.append((0 if libre else 1, -taille, url, ident))
     bons.sort(key=lambda x: (x[0], x[1]))
     return [(url, ident) for _, _, url, ident in bons]
 
@@ -1348,6 +1422,14 @@ def noeuds_pour(cle):
         # ralentit mais aboutit. Sans cela, le studio refusait d'employer des
         # modeles que l'installeur avait justement telecharges pour cette
         # machine.
+        # PAS DE CARTE, PAS DE RENDU — quelle que soit la machine. La garde
+        # etait auparavant « sauf le local », ce qui posait la question a
+        # l'envers : ce n'est pas d'etre le studio qui empeche de rendre, c'est
+        # de n'avoir pas de carte. Et depuis que le rendu prend la PLUS PETITE,
+        # une machine a zero gigaoctet serait choisie la premiere — elle est la
+        # plus petite de toutes.
+        if not (e.get("vram") or 0):
+            continue
         if not e.get("repond") or (besoin and _vram_utile(x["id"]) < besoin):
             continue
         # En pause : la machine repond, sa carte va bien, son proprietaire s'en
@@ -1362,7 +1444,10 @@ def noeuds_pour(cle):
         # telecharger sur son propre disque. Encore faut-il qu'il puisse
         # calculer : sans carte, cette dispense le faisait retenir pour des
         # moteurs qu'il n'a pas et ne saurait pas faire tourner.
-        if manquants(cle, x["id"]) and not (x.get("local") and carte_locale()):
+        # Le studio s'exempte de « le modele est-il la ? » parce qu'il peut le
+        # telecharger sur son propre disque. La carte, elle, est deja exigee
+        # au-dessus pour tout le monde : il n'y a plus de cas particulier ici.
+        if manquants(cle, x["id"]) and not x.get("local"):
             continue
         bons.append(x)
     return bons
@@ -1772,7 +1857,30 @@ def duree_typique(ident, cle, taille=None, pid=None):
     return None, 0
 
 
-def choisir_noeud(cle):
+SURCOUT_DEBORDEMENT = 1.5
+
+
+def debordement_acceptable(petit, grand, cle, taille=None):
+    """Le debordement sur la petite carte coute-t-il assez peu pour valoir ?
+
+    Rend None tant qu'on ne SAIT pas — et c'est la reponse la plus frequente au
+    debut. duree_typique se tait sous trois rendus, par la meme prudence que le
+    devis : promettre un chiffre tire d'un seul rendu fait perdre confiance a la
+    premiere surprise.
+
+    Le seuil est un choix, pas une mesure : une carte qui deborde et met moins
+    de la moitie de temps en plus vaut d'etre prise, parce que ce qu'on achete
+    est la grosse carte laissee libre pour le rendu suivant. Au-dela, on paie
+    deux fois — le rendu est lent ET la grosse dormait.
+    """
+    a, _ = duree_typique(petit, cle, taille)
+    b, _ = duree_typique(grand, cle, taille)
+    if not a or not b:
+        return None
+    return a <= b * SURCOUT_DEBORDEMENT
+
+
+def choisir_noeud(cle, viser="petite", taille=None):
     """Le placement fin (debit mesure, arbitrage vitesse/qualite) viendra avec
     la mesure par noeud. Pour l'instant : la machine locale si elle convient,
     sinon la plus grosse carte disponible."""
@@ -1795,13 +1903,36 @@ def choisir_noeud(cle):
     # deux minutes la grosse carte peut battre un rendu lance tout de suite sur
     # la petite. Mais c'est le plus rapide pour l'ensemble, et c'est le seul
     # qu'on puisse faire sans predire une duree qu'on ne connait pas.
+    # LA PLUS GROSSE SE CHOISIT AVANT LE FILTRE DE CHARGE. « Rendu sur grosse
+    # carte, attendre s'il le faut » : la prendre parmi les moins chargees
+    # seulement, c'est retomber sur la petite des qu'un rendu vise la grosse —
+    # exactement ce que l'escalade cherche a eviter. On l'attend.
+    if viser == "grosse":
+        return max(dans, key=lambda x: vram_de(x["id"]))
     moindre = min(charge_noeud(x["id"]) for x in dans)
     dans = [x for x in dans if charge_noeud(x["id"]) == moindre]
-    # Le studio passe devant A EGALITE DE CHARGE parce qu'il n'a pas de reseau a
-    # traverser — mais seulement s'il a une carte. Sans elle, cette preference
-    # sans condition le faisait gagner contre la 2080 Ti.
-    local = next((x for x in dans if x.get("local") and carte_locale()), None)
-    return local or max(dans, key=lambda x: ETAT_NOEUDS.get(x["id"], {}).get("vram", 0))
+    # AUCUNE PREFERENCE POUR LE STUDIO. Il passait devant tout le monde a
+    # egalite de charge, au motif qu'il n'a pas de reseau a traverser. Regle de
+    # l'utilisateur : « si le studio a un noeud (llm + comfy), il est considere
+    # comme un noeud comme les autres avec ses caracteristiques ». Il gagne donc
+    # quand sa carte est la bonne, et pas parce que c'est lui.
+    # LA PLUS PETITE QUI FAIT L'AFFAIRE, pour garder la grosse libre. « dans »
+    # ne contient que des machines ou le moteur tient VRAIMENT des qu'il en
+    # existe une : on ne descend pas sur une carte qui deborde par principe.
+    petite = min(dans, key=lambda x: vram_de(x["id"]))
+    if natifs:
+        # SAUF SI L'ON A MESURE que le debordement ne coute pas cher sur une
+        # carte encore plus petite. C'est le reglage que l'utilisateur veut, et
+        # il veut aussi qu'on l'apprenne plutot que de le deviner : tant qu'il
+        # n'y a pas de mesure, on reste sur celle qui tient.
+        for x in sorted((x for x in bons
+                         if not tient_vraiment(cle, x["id"])
+                         and vram_de(x["id"]) < vram_de(petite["id"])
+                         and charge_noeud(x["id"]) <= moindre),
+                        key=lambda x: vram_de(x["id"])):
+            if debordement_acceptable(x["id"], petite["id"], cle, taille):
+                return x
+    return petite
 
 def manquants_partout(cle):
     """Absent de TOUS les noeuds joignables : c'est ce qui justifie un
@@ -2380,7 +2511,11 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                     f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance.")
                 continue
             try:
-                await asyncio.wait_for(verrou_ol.acquire(), timeout=reste)
+                # PRIORITAIRE : c'est une analyse, et elle passe devant les
+                # rendus qui attendent cette carte — jamais devant celui qui
+                # l'occupe deja.
+                await asyncio.wait_for(verrou_ol.acquire(prioritaire=True),
+                                       timeout=reste)
             except asyncio.TimeoutError:
                 panne = RuntimeError(
                     f"{titre_ol} n'a pas libere sa carte en "
@@ -6833,6 +6968,18 @@ async def api_avis(req):
         for tour in conv.get("tours", []):
             if tour.get("id") == tid:
                 tour["avis"] = avis
+                # LE POUCE EN BAS EST LE SIGNAL. Regle de l'utilisateur : « si
+                # l'utilisateur signale pas bien fait, rendu sur grosse carte,
+                # attendre s'il le faut en prevenant l'utilisateur ». On
+                # reutilise le geste qui existe plutot que d'en inventer un :
+                # dire que c'est rate et redemander mieux sont la meme pensee.
+                #
+                # Sur la CONVERSATION et non sur le tour : ce qui est arme,
+                # c'est la prochaine demande, et elle n'existe pas encore.
+                if avis == -1:
+                    conv["refaire_en_grand"] = True
+                elif avis == 1:
+                    conv.pop("refaire_en_grand", None)
                 tour["note"] = note
                 if voulue:
                     tour["intention_voulue"] = voulue
@@ -8069,7 +8216,17 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             cible = noeud(occupee_par)
             journal(tid, f"{cible.get('titre', occupee_par)} n'a jamais arrete "
                          f"cette demande — on la lui laisse")
-        cible = cible or choisir_noeud(cle)
+        # ESCALADE APRES UN POUCE EN BAS. Consommee ici, une seule fois : le
+        # signal vaut pour la demande SUIVANTE, pas pour toutes celles d'apres.
+        _en_grand = bool(conv.pop("refaire_en_grand", None))
+        if _en_grand and not cible:
+            journal(tid, "tu as signale que le rendu precedent n'allait pas — "
+                         "on prend la plus grosse carte, quitte a l'attendre")
+        cible = cible or choisir_noeud(cle, viser="grosse" if _en_grand
+                                       else "petite",
+                                       taille=f"{plan.get('largeur')}x"
+                                              f"{plan.get('hauteur')}"
+                                       if plan.get("largeur") else None)
         if cible is None:
             # D'ABORD une machine vivante qui travaille, ENSUITE seulement une
             # machine en pause. L'ordre inverse faisait refuser une demande que

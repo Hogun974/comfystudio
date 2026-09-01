@@ -23,6 +23,7 @@ studio n'en a pas, uniquement les noeuds, et du coup attend dans le vide » :
 Les trois ensemble donnent exactement le symptome decrit. Aucun banc ne
 regardait la repartition ; celui-ci le fait.
 """
+import asyncio
 import os
 import sys
 import tempfile
@@ -93,47 +94,6 @@ dit("local" not in [x["id"] for x in S.noeuds_pour(CLE)],
     ", ".join(x["id"] for x in S.noeuds_pour(CLE)) or "aucune")
 S.manquants = lambda cle, ident=None: []
 
-# ── chaque garde tient SEULE ────────────────────────────────────────────
-# Les trois corrections se recouvrent : la premiere suffit a ecarter le studio,
-# donc retirer l'une des deux autres ne changeait rien et mes deux cas ne
-# mesuraient RIEN. C'est banc_mutations.py qui me l'a dit, dix minutes apres
-# que j'aie ecrit ce fichier. On eprouve donc chaque garde a la place des deux
-# autres : si la tolerance RAM revenait un jour — c'est un calcul, il bougera —
-# les deux suivantes doivent encore tenir.
-_vrai_vram = S._vram_utile
-S._vram_utile = lambda i: ((S.ETAT_NOEUDS.get(i) or {}).get("vram") or 0)     + S.tolerance_ram((S.ETAT_NOEUDS.get(i) or {}).get("ram") or 0)
-
-# DES CARTES TROP PETITES POUR CE MOTEUR, exprès : choisir_noeud garde d'abord
-# les machines ou le moteur tient VRAIMENT (tient_vraiment lit la carte nue), et
-# le studio sans carte en sort deja par la. Ce n'est qu'a partir du moment ou
-# TOUT LE MONDE deborde qu'il revient dans le choix — et c'est la que la
-# deuxieme garde travaille. Avec le parc ordinaire, mon cas ne mesurait rien.
-poser(vram_studio=0.0, ram_studio=64.0, vram_pc=0.5, vram_zima=0.4)
-dit(S._vram_utile("local") == 5.0,
-    "le defaut d'origine remis : le studio se croit une carte de 5 Go",
-    f"{S._vram_utile('local')} Go")
-dit("local" in [x["id"] for x in S.noeuds_pour(CLE)],
-    "il repasse donc la premiere barriere")
-choisi = S.choisir_noeud(CLE)
-dit(choisi is not None and choisi["id"] != "local",
-    "mais choisir_noeud ne le prefere plus : la deuxieme garde tient seule",
-    str(choisi and choisi["id"]))
-
-S.manquants = lambda cle, ident=None: ["un_fichier.safetensors"]
-dit("local" not in [x["id"] for x in S.noeuds_pour(CLE)],
-    "et la dispense d'inventaire ne s'applique plus : la troisieme aussi",
-    ", ".join(x["id"] for x in S.noeuds_pour(CLE)) or "aucune")
-S._vram_utile = _vrai_vram
-
-# ── un studio AVEC carte garde sa preference ────────────────────────────
-# La correction ne doit pas retirer au studio qui a un GPU ce qui faisait son
-# interet : pas de reseau a traverser, a egalite de charge il passe devant.
-poser(vram_studio=24.0, ram_studio=64.0)
-dit(S.carte_locale(), "avec une carte, le studio se reconnait")
-choisi = S.choisir_noeud(CLE)
-dit(choisi is not None and choisi["id"] == "local",
-    "et il reprend la main a egalite de charge", str(choisi and choisi["id"]))
-
 # ── la tolerance RAM reste entiere pour une VRAIE carte ─────────────────
 poser(vram_studio=0.0)
 # Les paliers sont 64 / 32 / 16 Go de RAM pour 5 / 3,5 / 2 Go de tolerance.
@@ -155,6 +115,114 @@ dit(choisi is not None and choisi["id"] == "zima",
     "une carte libre passe devant une plus grosse deja visee",
     str(choisi and choisi["id"]))
 
+# ── chaque garde tient SEULE ────────────────────────────────────────────
+# Les deux corrections se recouvrent : « pas de tolerance sans carte » suffit
+# a ecarter le studio, donc retirer « pas de carte, pas de rendu » ne changeait
+# rien et le cas ne mesurait RIEN. banc_mutations me l'a dit, une seconde fois
+# et pour la meme raison. On remet donc le defaut d'origine — la tolerance RAM
+# accordee sans carte — et l'on verifie que la seconde garde tient a elle
+# seule. C'est un calcul, il rebougera un jour.
+_vrai_vram = S._vram_utile
+S._vram_utile = lambda i: ((S.ETAT_NOEUDS.get(i) or {}).get("vram") or 0)     + S.tolerance_ram((S.ETAT_NOEUDS.get(i) or {}).get("ram") or 0)
+poser(vram_studio=0.0, ram_studio=64.0)
+dit(S._vram_utile("local") == 5.0,
+    "le defaut d'origine remis : le studio se croit une carte de 5 Go",
+    f"{S._vram_utile('local')} Go")
+dit("local" not in [x["id"] for x in S.noeuds_pour(CLE)],
+    "mais « pas de carte, pas de rendu » l'ecarte quand meme",
+    ", ".join(x["id"] for x in S.noeuds_pour(CLE)) or "aucune")
+S._vram_utile = _vrai_vram
+
+# ── LE RENDU PREND LA PLUS PETITE QUI FAIT L'AFFAIRE ────────────────────
+# Regle de l'utilisateur, qui INVERSE celle d'avant : « si rendu, prendre la
+# plus petite possible (disponible) pour faire le rendu ». Ce qu'on achete est
+# la grosse carte laissee libre pour la suite.
+poser(vram_studio=0.0)
+choisi = S.choisir_noeud(CLE)
+dit(choisi is not None and choisi["id"] == "zima",
+    "a cartes libres, le rendu prend la PLUS PETITE qui tient",
+    str(choisi and choisi["id"]))
+
+# ── L'ANALYSE PREND LA PLUS GROSSE LIBRE ────────────────────────────────
+# L'autre moitie de la regle, et l'autre inversion : « si analyse, prendre la
+# plus grosse (libre) pour l'analyse (rapide) ». L'ancien raisonnement
+# supposait que l'analyse et le rendu se disputent la carte pendant le meme
+# temps ; une analyse dure quelques secondes, un rendu des minutes.
+S.OLLAMAS[:] = ["http://pc.local:11434", "http://nas.local:11434"]
+for url, ident in (("http://pc.local:11434", "pc"),
+                   ("http://nas.local:11434", "zima")):
+    S._CERVEAUX[url] = {"quand": S.time.time(), "noeud": ident,
+                        "modeles": [{"name": "qwen2.5vl:7b", "size": 5_970_000_000,
+                                     "capabilities": ["vision", "completion"]}]}
+ordre = [i for _, i in S.cerveaux_utilisables()]
+dit(ordre[:1] == ["pc"], "a cartes libres, l'analyse prend la PLUS GROSSE",
+    ", ".join(ordre))
+
+# ── LE STUDIO EST UN NOEUD COMME LES AUTRES ─────────────────────────────
+# « Si le studio a un noeud (llm + comfy), il est considere comme un noeud
+# comme les autres avec ses caracteristiques. » Il ne passe donc plus devant
+# personne : avec une carte de 24 Go il PERD le rendu — il est le plus gros —
+# et il gagne l'analyse, pour la meme raison.
+poser(vram_studio=24.0)
+choisi = S.choisir_noeud(CLE)
+dit(choisi is not None and choisi["id"] != "local",
+    "avec la plus grosse carte, le studio ne prend PAS le rendu",
+    str(choisi and choisi["id"]))
+choisi = S.choisir_noeud(CLE, viser="grosse")
+dit(choisi is not None and choisi["id"] == "local",
+    "et il le prend quand c'est la grosse carte qu'on veut",
+    str(choisi and choisi["id"]))
+
+# ── LE POUCE EN BAS : la grosse carte, meme occupee ─────────────────────
+# « Si l'utilisateur signale pas bien fait, rendu sur grosse carte, attendre
+# s'il le faut. » La choisir parmi les moins chargees seulement, c'est
+# retomber sur la petite des qu'un rendu vise la grosse — exactement ce que
+# l'escalade cherche a eviter.
+poser(vram_studio=0.0)
+S.EN_VOL["t1"] = {}
+S.TACHES["t1"] = {"noeud": "pc"}
+choisi = S.choisir_noeud(CLE, viser="grosse")
+dit(choisi is not None and choisi["id"] == "pc",
+    "l'escalade prend la grosse carte meme si un rendu la vise deja",
+    str(choisi and choisi["id"]))
+
+# ── LE DEBORDEMENT S'APPREND, il ne se devine pas ───────────────────────
+# « Le 3, mais il faut le temps d'apprendre, donc le 2/1 en fonction de ce
+# qu'il apprendra au fur et a mesure. » Sans mesure, on reste sur la carte qui
+# TIENT ; des qu'on sait ce que le debordement coute, on descend d'un cran.
+poser(vram_studio=0.0, vram_zima=0.4)      # zima ne tient plus le moteur
+dit(S.debordement_acceptable("zima", "pc", CLE) is None,
+    "sans mesure, on ne sait pas — et on ne devine pas")
+choisi = S.choisir_noeud(CLE)
+dit(choisi is not None and choisi["id"] == "pc",
+    "donc le rendu reste sur la carte qui tient", str(choisi and choisi["id"]))
+
+S.CONVERSATIONS.clear()
+S.CONVERSATIONS["c1"] = {"id": "c1", "titre": "banc", "tours": [
+    {"id": f"t{n}", "noeud": i, "modele": CLE, "taille": None, "secondes": sec,
+     "etat": "fini"}
+    for n, (i, sec) in enumerate([("zima", 70), ("zima", 72), ("zima", 74),
+                                  ("pc", 60), ("pc", 62), ("pc", 64)])]}
+S._DUREES["quand"] = 0.0
+dit(S.debordement_acceptable("zima", "pc", CLE) is True,
+    "72 s en debordant contre 62 sur la grosse : ca vaut la peine")
+choisi = S.choisir_noeud(CLE)
+dit(choisi is not None and choisi["id"] == "zima",
+    "et le rendu descend sur la petite, la grosse reste libre",
+    str(choisi and choisi["id"]))
+
+S.CONVERSATIONS["c1"]["tours"] = [
+    {"id": f"t{n}", "noeud": i, "modele": CLE, "taille": None, "secondes": sec,
+     "etat": "fini"}
+    for n, (i, sec) in enumerate([("zima", 400), ("zima", 410), ("zima", 420),
+                                  ("pc", 60), ("pc", 62), ("pc", 64)])]
+S._DUREES["quand"] = 0.0
+dit(S.debordement_acceptable("zima", "pc", CLE) is False,
+    "410 s contre 62, en revanche, on paie deux fois")
+choisi = S.choisir_noeud(CLE)
+dit(choisi is not None and choisi["id"] == "pc",
+    "et le rendu remonte sur celle qui tient", str(choisi and choisi["id"]))
+
 # ── et le mot dit la verite dans les deux cas ───────────────────────────
 poser(vram_studio=0.0)
 dit(S._mot_local() == "un modele du parc",
@@ -162,6 +230,55 @@ dit(S._mot_local() == "un modele du parc",
 poser(vram_studio=24.0)
 dit(S._mot_local() == "le modele local",
     "avec une carte, le mot reste juste", S._mot_local())
+
+# ── L'ANALYSE PASSE DEVANT LE RENDU, JAMAIS EN PLEIN RENDU ──────────────
+# « Une analyse peut passer devant un rendu si plusieurs demandes en meme
+# temps (sans couper un rendu deja en cours). » Les deux moities comptent :
+# asyncio.Lock servait dans l'ordre d'arrivee, donc une analyse de trois
+# secondes patientait derriere deux rendus de quatre minutes — huit minutes
+# sans que rien ne parte, pour une demande que le studio n'avait pas lue.
+async def _priorite():
+    v = S.VerrouCarte()
+    servis = []
+
+    async def demander(nom, prioritaire):
+        await v.acquire(prioritaire=prioritaire)
+        servis.append(nom)
+        v.release()
+
+    await v.acquire()                      # un rendu tient deja la carte
+    taches = [asyncio.create_task(demander("rendu 1", False))]
+    await asyncio.sleep(0)
+    taches.append(asyncio.create_task(demander("analyse", True)))
+    taches.append(asyncio.create_task(demander("rendu 2", False)))
+    await asyncio.sleep(0)
+    dit(servis == [], "le travail en cours n'est pas coupe : personne n'est servi",
+        ", ".join(servis) or "personne")
+    v.release()                            # le rendu en cours rend la carte
+    await asyncio.gather(*taches)
+    dit(servis == ["analyse", "rendu 1", "rendu 2"],
+        "puis l'analyse passe devant, et les rendus gardent leur ordre",
+        " puis ".join(servis))
+
+    # Une attente annulee ne doit pas emporter la carte avec elle : c'est le
+    # cas d'un wait_for qui expire a la seconde ou le verrou se libere.
+    v2 = S.VerrouCarte()
+    await v2.acquire()
+    perdue = asyncio.create_task(v2.acquire())
+    await asyncio.sleep(0)
+    perdue.cancel()
+    try:
+        await perdue
+    except asyncio.CancelledError:
+        pass
+    v2.release()
+    dit(not v2.locked(), "une attente annulee ne bloque pas la carte")
+    await v2.acquire()
+    dit(v2.locked(), "et la carte se reprend normalement apres")
+    v2.release()
+
+
+asyncio.run(_priorite())
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

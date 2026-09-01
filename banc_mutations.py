@@ -105,6 +105,7 @@ BESOINS = {
     "banc_page.py": ["banc_page.py", "web/index.html"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
+    "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
 }
 
 
@@ -562,23 +563,44 @@ REPARTITION = [
         editions=[("serveur.py", brut(
             _SANS_CARTE + _AVEC_TOLERANCE, _AVEC_TOLERANCE))]),
     dict(
-        nom="le noeud local prefere SANS CONDITION",
+        nom="une machine SANS carte redevient candidate au rendu",
         banc="banc_repartition.py",
-        imite="le studio gagne contre la 2080 Ti pour tout rendu, meme sans "
-              "carte : le travail part sur une machine incapable",
-        rougit="mais choisir_noeud ne le prefere plus : la deuxieme garde tient seule",
+        imite="depuis que le rendu prend la PLUS PETITE, une machine a zero "
+              "gigaoctet serait choisie la premiere : elle est la plus petite "
+              "de toutes, et elle ne rend rien",
+        rougit="mais « pas de carte, pas de rendu » l'ecarte quand meme",
         editions=[("serveur.py", brut(
-            'local = next((x for x in dans if x.get("local") and carte_locale()), None)',
-            'local = next((x for x in dans if x.get("local")), None)'))]),
+            '        if not (e.get("vram") or 0):' + chr(10)
+            + "            continue" + chr(10), ""))]),
     dict(
-        nom="la dispense d'inventaire accordee a un studio sans carte",
+        nom="le rendu reprend la PLUS GROSSE carte",
         banc="banc_repartition.py",
-        imite="le studio est retenu pour un moteur qu'il n'a pas, au motif "
-              "qu'il pourrait le telecharger — il ne le fera tourner nulle part",
-        rougit="et la dispense d'inventaire ne s'applique plus : la troisieme aussi",
+        imite="la regle d'avant, que l'utilisateur a inversee : la grosse carte "
+              "part en rendu et n'est plus la pour le suivant",
+        rougit="a cartes libres, le rendu prend la PLUS PETITE qui tient",
         editions=[("serveur.py", brut(
-            'if manquants(cle, x["id"]) and not (x.get("local") and carte_locale()):',
-            'if manquants(cle, x["id"]) and not x.get("local"):'))]),
+            'petite = min(dans, key=lambda x: vram_de(x["id"]))',
+            'petite = max(dans, key=lambda x: vram_de(x["id"]))'))]),
+    dict(
+        nom="l'analyse reprend la plus PETITE carte",
+        banc="banc_cerveaux.py",
+        imite="l'autre moitie de la regle inversee : l'analyse traine sur la "
+              "petite carte pendant que la grosse attend le rendu qu'elle "
+              "n'a pas encore lu",
+        rougit="a cartes libres, la PLUS GROSSE d'abord",
+        editions=[("serveur.py", brut(
+            "bons.append((0 if libre else 1, -taille, url, ident))",
+            "bons.append((0 if libre else 1, taille, url, ident))"))]),
+    dict(
+        nom="le verrou de carte oublie la priorite",
+        banc="banc_repartition.py",
+        imite="une analyse de trois secondes patiente derriere deux rendus de "
+              "quatre minutes — huit minutes sans que rien ne parte, pour une "
+              "demande que le studio n'a meme pas encore lue",
+        rougit="puis l'analyse passe devant, et les rendus gardent leur ordre",
+        editions=[("serveur.py", brut(
+            "        file = self._attente[0 if prioritaire else 1]",
+            "        file = self._attente[1]"))]),
 ]
 
 MUTATIONS = CONTENEUR + PAGE + REPARTITION

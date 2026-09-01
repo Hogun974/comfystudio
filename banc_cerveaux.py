@@ -87,8 +87,13 @@ async def main():
 
     poser()
     l = S.cerveaux_utilisables()
-    dit([u for u, _ in l] == [NAS, PC],
-        "a cartes libres, la PLUS PETITE d'abord", str([u for u, _ in l]))
+    # L'ORDRE A ETE INVERSE PAR L'UTILISATEUR : « si analyse, prendre la plus
+    # grosse (libre) pour l'analyse (rapide) ». L'ancienne regle — la plus
+    # petite, pour ne pas retirer la meilleure au rendu — supposait que les
+    # deux se disputent la carte pendant le meme temps. Une analyse dure
+    # quelques secondes, un rendu des minutes.
+    dit([u for u, _ in l] == [PC, NAS],
+        "a cartes libres, la PLUS GROSSE d'abord", str([u for u, _ in l]))
     dit(MORT not in [u for u, _ in l],
         "une adresse sans aucun modele est ecartee")
 
@@ -112,16 +117,21 @@ async def main():
         "la petite occupee : la GROSSE libre passe devant", str([u for u, _ in l]))
     S.VERROUS_NOEUD["zima"].release()
     l = S.cerveaux_utilisables()
-    dit([u for u, _ in l] == [NAS, PC], "relachee, elle reprend la tete",
+    dit([u for u, _ in l] == [PC, NAS], "relachee, la grosse reprend la tete",
         str([u for u, _ in l]))
 
-    # ── une image inverse l'ordre des cartes ────────────────────────────
+    # ── l'image ne fait plus exception ──────────────────────────────────
+    # Elle etait le SEUL cas ou la grosse carte passait devant, et pour une
+    # raison qui vaut maintenant partout : mesure du 31 aout, la meme image lue
+    # en 19 s sur la 2080 Ti et toujours pas rendue apres 900 s sur la GTX 1060.
+    # Il n'y a plus deux regles, il n'y en a qu'une — et ce cas verifie qu'elles
+    # se sont bien rejointes.
     # Lire une image est la seule tache ou la taille decide vraiment : mesure
     # du 31 aout, 19 s sur la 2080 Ti et toujours rien apres 900 s sur la
     # GTX 1060, ou le modele de vision deborde.
     poser()
     l = S.cerveaux_utilisables()
-    dit([u for u, _ in l] == [NAS, PC], "pour du texte, la plus PETITE d'abord",
+    dit([u for u, _ in l] == [PC, NAS], "pour du texte aussi, la plus GROSSE",
         str([u for u, _ in l]))
     l = S.cerveaux_utilisables(image=True)
     dit([u for u, _ in l] == [PC, NAS], "pour une image, la plus GROSSE d'abord",
