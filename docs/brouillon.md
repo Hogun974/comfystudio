@@ -2,12 +2,12 @@
 
 Quand on cherche une image, on cherche un cadrage, une lumière, une posture. Les
 détails ne comptent qu'à la fin, et on les paie pourtant à chaque essai — 249 s
-mesurées pour une image dont on ne savait pas encore si la composition
-convenait.
+mesurées le 31 août 2026 sur **pc** (RTX 2080 Ti) pour une image dont on ne
+savait pas encore si la composition convenait.
 
 Le bouton **≈**, à côté de la flèche d'envoi, lance la demande **au quart des
 étapes** : même moteur, même graine, même taille, quatorze secondes au lieu de
-deux cent dix-sept sur la même carte.
+deux cent dix-sept sur la même carte, le même jour.
 
 Il est à côté de la flèche et non dans le tiroir des réglages parce que ce n'est
 pas un réglage, c'est un geste : creux là où l'envoi est plein, pour qu'on ne se
@@ -18,7 +18,7 @@ demande pas lequel presser.
 **Il ne prédit pas le cadrage.** C'est le point à ne pas manquer, et le code a
 prétendu le contraire pendant une heure avant que quelqu'un regarde les images.
 
-Mesure du 31 août : même graine 864102317, même prompt, même moteur, même
+Mesure du 31 août 2026, sur **pc** : même graine 864102317, même prompt, même moteur, même
 taille, sept étapes contre vingt-huit. Deux phares contre un, l'îlot centré
 contre une falaise à gauche, l'éclair à gauche contre à droite. **Deux images
 sans rapport.**

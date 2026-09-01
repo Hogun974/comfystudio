@@ -25,6 +25,10 @@ Deux pièges traités :
   détail, très insuffisant pour dessiner une scène entière : la voie du
   personnage prend les réglages d'image (20 étapes, cfg 5).
 
-Ce qu'on obtient, mesuré : le costume, la coiffure, la silhouette et les
-cicatrices se conservent nettement ; le visage reste ressemblant mais rajeunit
-un peu, et les teintes suivent l'éclairage de la nouvelle scène.
+Ce qu'on obtient, mesuré le **28 août 2026 sur pc** (RTX 2080 Ti) : le costume,
+la coiffure, la silhouette et les cicatrices se conservent nettement ; le
+visage reste ressemblant mais rajeunit un peu, et les teintes suivent
+l'éclairage de la nouvelle scène.
+
+Les deux nombres d'étapes se relisent dans `serveur.py` : `REGLAGES["edition"]`
+vaut 4 étapes et cfg 1,0, `REGLAGES["klein4b"]` vaut 20 étapes et cfg 5,0.

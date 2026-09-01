@@ -58,6 +58,9 @@ Un `set PAQUET_SANS_AV=1` avant de lancer descend à 17,6 Mo en 14 s, au prix de
 la lecture des vidéos jointes. Il faut PyInstaller (`pip install pyinstaller`) ;
 le reste voyage dans l'exe, pages web et modèle d'aiguillage compris.
 
+*Ces trois durées et ces deux tailles ont été relevées le 30 août 2026 sur* pc
+*(RTX 2080 Ti, 64 Go de RAM) — voir [Mesures](mesures.md).*
+
 L'exe démarre en 5 à 6 secondes, sans ComfyUI ni Ollama, et **écrit à côté de
 lui** : conversations, comptes, clés. C'est délibéré et ça vaut d'être su —
 PyInstaller déplie le code dans un dossier temporaire qu'il efface à l'arrêt, et
@@ -139,17 +142,21 @@ ralentit mais aboutit. Écarter sur la seule VRAM refuserait des moteurs qui
 tournent très bien — mesuré sur une 2080 Ti de 11 Go qui fait tourner un modèle
 vidéo de 14 milliards de paramètres.
 
+Le catalogue compte aujourd'hui **vingt entrées** ; ce tableau se recalcule à
+partir de `catalogue.py` et de `installation.moteurs_possibles()`, il n'est pas
+relevé à la main. Refais-le si tu ajoutes un moteur, sinon il ment sans le dire.
+
 | Carte | RAM | Tiennent | Débordent | Écartés |
 |---|---|---|---|---|
-| aucune | 16 Go | 0 | 0 | 12 |
-| 6 Go | 16 Go | 1 | 0 | 11 |
-| 6 Go | 32 Go | 1 | 6 | 5 |
-| 8 Go | 32 Go | 5 | 7 | 0 |
-| 11 Go | 64 Go | 12 | 0 | 2 |
-| 24 Go | 64 Go | 13 | 1 | 0 |
-| 32 Go | 64 Go | 14 | 0 | 0 |
+| aucune | 16 Go | 0 | 3 | 17 |
+| 6 Go | 16 Go | 4 | 4 | 12 |
+| 6 Go | 32 Go | 4 | 10 | 6 |
+| 8 Go | 32 Go | 8 | 10 | 2 |
+| 11 Go | 64 Go | 18 | 0 | 2 |
+| 24 Go | 64 Go | 19 | 1 | 0 |
+| 32 Go | 64 Go | 20 | 0 | 0 |
 
-Sur une carte de 6 Go, passer de 16 à 32 Go de RAM fait passer de 1 à 7 moteurs
+Sur une carte de 6 Go, passer de 16 à 32 Go de RAM fait passer de 8 à 14 moteurs
 utilisables. C'est souvent la mise à niveau la moins chère.
 
 ### Les grosses cartes ont leurs propres moteurs

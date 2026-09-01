@@ -24,7 +24,8 @@ Une carte ne se partage pas : deux rendus dessus ne vont pas deux fois plus
 vite, ils rament tous les deux. La règle vaut pour tout ce qui l'occupe — image,
 vidéo, son, maillage, et jusqu'aux questions posées à son modèle de langage.
 
-Mesuré sur deux machines, deux demandes envoyées coup sur coup :
+Mesuré le **31 août 2026** sur les deux machines du parc — **pc** (RTX 2080 Ti)
+et **zima** (GTX 1060) —, deux demandes envoyées coup sur coup :
 
 ```
 38 s   DEUX en cours : sur NAS ZimaOS (GTX 1060) · sur PC (RTX 2080 Ti)
@@ -39,9 +40,9 @@ la carte se libere apres 139 s d'attente
 termine en 62 s
 ```
 
-Ce qui a décidé de ce montage : sur deux demandes complètes, 32 secondes hors
-carte pour 304 secondes dessus. **Dix pour cent du temps seulement est de
-l'analyse** — le plafond est la carte, et ajouter une machine ajoute donc bien
+Ce qui a décidé de ce montage, même jour et mêmes machines : sur deux demandes
+complètes, 32 secondes hors carte pour 304 secondes dessus. **Dix pour cent du
+temps seulement est de l'analyse** — le plafond est la carte, et ajouter une machine ajoute donc bien
 du débit, pas seulement des moteurs.
 
 Trois conséquences visibles :
@@ -100,10 +101,15 @@ Le téléphone est un autre navigateur : il a sa propre identité, donc son prop
 espace vide. C'est ce qui isole les gens entre eux — mais cela sépare aussi une
 personne de ses propres conversations.
 
-D'où l'appairage : sur l'ordinateur, **lier un appareil** affiche un code à six
-chiffres valable cinq minutes. Sur le téléphone, **rejoindre** puis le code : les
-deux appareils partagent alors le même espace. Le code n'est délivré que depuis
-la machine hôte et ne sert qu'une fois.
+**C'est à cela que servent les comptes**, et il n'y a rien d'autre : on se
+connecte sur le téléphone avec le même compte que sur l'ordinateur, et l'espace
+suit la personne au lieu de suivre le navigateur. Voir [Comptes](comptes.md).
+
+> **Cette page a longtemps décrit un appairage par code à six chiffres valable
+> cinq minutes. Il n'a jamais existé.** La variable qui devait le porter était
+> déclarée et référencée nulle part ; `SECURITY.md` l'a retiré le 30 août 2026,
+> cette page ne l'avait pas suivi. Une documentation qui promet un mécanisme
+> inexistant est pire que le silence.
 
 ## Les conversations sans propriétaire
 

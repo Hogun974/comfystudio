@@ -11,8 +11,8 @@ Une seule adresse obligeait à choisir une fois pour toutes la machine qui pense
 pause pour jouer.
 
 Passer par l'agent d'une autre machine n'est pas un repli acceptable pour ce
-cas-là : mesure du 31 août, la même question coûte **3,8 s en direct, 74,8 s au
-PC par son agent et 162,6 s au NAS**. Le studio parle donc à chaque Ollama en
+cas-là : mesure du 31 août 2026, la même question coûte **3,8 s en direct,
+74,8 s à pc par son agent et 162,6 s à zima**. Le studio parle donc à chaque Ollama en
 direct, et choisit. (La bascule par l'agent reste utile quand il n'y a *pas*
 d'adresse — voir [Le modèle de langage peut venir d'une autre
 machine](modele-de-langage-distant.md).)
@@ -30,9 +30,10 @@ Trois règles, dans cet ordre :
    qu'elle seule fait vite.
 
 **Sauf pour lire une image, où la troisième règle s'inverse.** C'est la seule
-tâche où la taille de la carte décide vraiment : mesure du 31 août, la même
-image lue en 19 s sur la 2080 Ti et toujours pas rendue après *neuf cents*
-secondes sur la GTX 1060, où le modèle de vision déborde. « La plus petite qui
+tâche où la taille de la carte décide vraiment : mesure du 31 août 2026, la
+même image lue en 19 s sur la 2080 Ti de **pc** et toujours pas rendue après
+*neuf cents* secondes sur la GTX 1060 de **zima**, où le modèle de vision
+déborde. « La plus petite qui
 suffise » suppose qu'elles suffisent toutes ; ici, non.
 
 Une adresse dont on ne reconnaît aucune machine du parc — l'Ollama du studio
@@ -50,9 +51,11 @@ moment, une fois l'adresse connue.
 - **`STUDIO_LLM_ECRITURE` l'emporte là où le modèle existe, et est ignoré
   ailleurs.** Imposer un modèle qu'une seule machine porte rendrait l'autre
   muette.
-- **Le modèle d'écriture est borné par la carte de la machine.** Sur une carte
-  de 11 Go, `gemma4:26b` et ses 18,6 Go coûtaient cent soixante-cinq secondes par
-  traduction. Une machine du parc annonce sa carte et sa RAM ; on s'en sert.
+- **Le modèle d'écriture est borné par la carte de la machine.** Sur la carte
+  de 11 Go de **pc**, `gemma4:26b` et ses 18,6 Go coûtaient cent soixante-cinq
+  secondes par traduction — mesure du 31 août 2026. Une machine du parc annonce
+  sa carte et sa RAM ; on s'en sert, avec un plafond à **60 % de la RAM** —
+  la valeur est dans `serveur.py`.
 - **Le studio ne change de modèle que si le gain est net** (une fois et demie la
   taille du modèle courant) : recharger un modèle à peine plus gros coûte du
   temps sans rien apporter.

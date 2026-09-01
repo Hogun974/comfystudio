@@ -15,7 +15,7 @@ Les deux premiers n'exigent rien de plus que ce qui sert déjà au détourage. L
 troisième demande un téléchargement de 1,63 Gio, et n'apparaît dans la liste
 des moteurs que si une machine du parc le porte.
 
-Sur une 2080 Ti, en 1216×832 et à chaud, la chaîne complète a été mesurée entre
+Sur **pc** (RTX 2080 Ti), en 1216×832 et à chaud, la chaîne complète a été mesurée entre
 6,5 et 11,6 s aux 4 étapes du moteur d'édition, masque compris. Une étendue à
 refaire monte à 16 étapes et double à peu près ce temps — 11,4 s puis 23,0 s
 sur la même image. Toutes les mesures de ce chapitre viennent des deux essais
@@ -132,6 +132,11 @@ fantôme de la silhouette (crête 9,93 contre 0,89) ; 0 px pour refaire une
 **étendue**, parce qu'à 24 le masque du ciel mange 9,33 % de l'image sur les
 arbres — branches fines et ligne d'arbres lointaine effacées. C'est le même
 appel de langage qui tranche, en même temps que la cible et la description.
+
+Ces 24 pixels ont été mesurés sur une image d'environ mille pixels de côté, et
+le code garde donc la **proportion** — `cote × 24 / 1024`, au moins huit
+pixels. Écrits en dur, ils feraient un liseré qui laisse le fantôme sur une
+source de 2048, et une morsure deux fois trop large sur une vignette de 512.
 
 ## SAM 3.1 : un téléchargement optionnel, sous une licence qui n'est pas libre
 

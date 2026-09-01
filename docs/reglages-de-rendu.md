@@ -61,8 +61,8 @@ portrait… « automatique » laisse le studio décider (1216×832 par défaut, 
 le temps de rendu explose sans gain réel).
 
 Une taille choisie ici échappe à ce plafond, comme une taille écrite dans la
-demande. Le décodage par tuiles s'enclenche seul au-delà de 1216×832 : mesuré,
-un 1920×1080 sort propre en 156 s sur 11 Go.
+demande. Le décodage par tuiles s'enclenche seul au-delà de 1216×832 : mesuré le
+28 août 2026 sur **pc**, un 1920×1080 sort propre en 156 s sur 11 Go.
 
 ## Rapide, soigné — et le brouillon à part
 
@@ -74,7 +74,8 @@ Le menu de priorité arbitre entre temps et qualité. Il agit à deux endroits :
   main : « rapide » ne descend jamais sous le minimum qui produit encore
   quelque chose.
 
-Mesuré sur la même demande, en 1024×1024 :
+Mesuré le **28 août 2026 sur pc** (RTX 2080 Ti), sur la même demande, en
+1024×1024 :
 
 | Priorité | Moteur retenu | Étapes | Durée |
 |---|---|---|---|

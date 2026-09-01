@@ -29,9 +29,11 @@ Approximatif, mais mieux que se taire.
 
 **La médiane et non la moyenne.** Un rendu qui a attendu une carte occupée
 tirerait la moyenne sans rien dire de ce qui va se passer maintenant. Mesuré au
-banc : quatre rendus dont un à 2400 s donnent **120 s, pas 682**.
+banc (`banc_durees.py`) : quatre rendus dont un à 2400 s donnent **120 s, pas
+682**.
 
-**On se tait en dessous de trois mesures.** Annoncer « environ quatre minutes »
+**On se tait en dessous de trois mesures** (`ASSEZ_DE_MESURES = 3` dans
+`serveur.py`). Annoncer « environ quatre minutes »
 sur un seul échantillon, c'est promettre au hasard — et perdre la confiance à la
 première surprise.
 
@@ -73,5 +75,5 @@ voisin qui a lui aussi une demande en file.
 De vos conversations, relues et rangées toutes les deux minutes. Rien n'est
 mesuré à part : les durées y étaient déjà, sur chaque tour terminé.
 
-Les durées de référence sur la machine de l'auteur sont dans [Mesures sur
-RTX 2080 Ti](mesures.md) — mais c'est le vôtre que le devis vous annonce.
+Les durées de référence du parc, chacune avec sa date et sa machine, sont dans
+[Mesures](mesures.md) — mais c'est le vôtre que le devis vous annonce.

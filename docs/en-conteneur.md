@@ -1,10 +1,11 @@
 # En conteneur
 
 Le studio ne calcule rien : il pilote un ComfyUI et un Ollama qui vivent
-ailleurs. L'image est donc minuscule, sans CUDA. Mesuré sur une machine sans
-carte : **49 s** de construction et **46 Mo** téléchargés avec l'image de base
-`python:3.12-slim` déjà en cache, environ **110 Mo** sans — puis **4 s** entre
-`up -d` et la première page servie.
+ailleurs. L'image est donc minuscule, sans CUDA. Mesuré le **30 août 2026** sur
+une machine sans carte : **49 s** de construction et **46 Mo** téléchargés avec
+l'image de base `python:3.12-slim` déjà en cache, environ **110 Mo** sans —
+puis **4 s** entre `up -d` et la première page servie. Ces quatre chiffres, et
+tous les autres du parc, sont rassemblés dans [Mesures](mesures.md).
 
 C'est le montage décrit dans [Déplacer le studio sur une machine sans
 carte](studio-sans-carte.md) : sans carte ici, il
@@ -124,11 +125,13 @@ Les autres, plus rares, passent de la même façon : `STUDIO_TRAVAILLEURS`,
 `COMFY_MODELES`, `COMFY_ENTREE`, `COMFY_LANCEUR`. Leur détail est dans
 [Réglages](reglages.md).
 
-Deux exceptions, nommées dans le banc avec leur raison : `STUDIO_PORT` n'est
-**pas** relayé — le conteneur écoute toujours sur 8199, et c'est Compose qui le
-publie ailleurs, `STUDIO_PORT_HOTE` servant à ce que la bannière annonce le bon
-port ; `STUDIO_HOTE` est forcé à `0.0.0.0`, sans quoi le port publié ne mènerait
-nulle part. `COMFY_DIR` et `STUDIO_DONNEES` viennent de l'image (`/comfy` et
+**Quatre exceptions**, nommées une à une dans le banc avec leur raison — il
+refuse toute entrée qui ne correspondrait plus à rien. Deux sont imposées par
+Compose : `STUDIO_PORT` n'est **pas** relayé — le conteneur écoute toujours sur
+8199, et c'est Compose qui le publie ailleurs, `STUDIO_PORT_HOTE` servant à ce
+que la bannière annonce le bon port ; `STUDIO_HOTE` est forcé à `0.0.0.0`, sans
+quoi le port publié ne mènerait nulle part. Les deux autres viennent de l'image :
+`COMFY_DIR` et `STUDIO_DONNEES` sont les points de montage (`/comfy` et
 `/donnees`) et n'ont pas à être touchés.
 
 **Un seul endroit pour chaque défaut.** Quand `.env` ne dit rien, Compose relaie

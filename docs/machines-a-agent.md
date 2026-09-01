@@ -79,7 +79,7 @@ fonctionnait. L'ancienne version reste à côté, en `.precedent`.
 
 **Il faut le faire.** Un agent périmé ne ressemble pas à une panne : il répond,
 il rend des images, et il lui manque en silence tout ce qui a été ajouté depuis.
-Le 31 août, l'annulation d'un rendu n'atteignait pas une machine pour cette
+Le 31 août 2026, l'annulation d'un rendu n'atteignait pas une machine pour cette
 seule raison — le studio demandait l'arrêt, la carte continuait, et le studio
 écartait poliment le résultat tardif. Rien, nulle part, ne disait pourquoi.
 
@@ -168,9 +168,9 @@ elle devient le goulot.
 | moins de 6 Go | `qwen3:4b` |
 
 **Ne prends pas plus gros que la carte** en comptant sur le débordement. Ollama y
-arrive, mais l'analyse précède chaque rendu : mesuré sur une RTX 2080 Ti, un
-modèle de 26 milliards a mis **165 secondes** à rendre son premier mot après
-chargement. Un modèle qui écrit un peu mieux et coûte trois minutes de réveil
+arrive, mais l'analyse précède chaque rendu : mesuré le 31 août 2026 sur **pc**
+(RTX 2080 Ti), un modèle de 26 milliards a mis **165 secondes** à rendre son
+premier mot après chargement. Un modèle qui écrit un peu mieux et coûte trois minutes de réveil
 n'est pas le bon choix.
 
 Sur ZimaOS, le service `ollama` est inclus dans `zimaos-comfyui.yml` — il ne

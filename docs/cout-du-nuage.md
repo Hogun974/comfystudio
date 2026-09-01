@@ -57,8 +57,9 @@ tourne des mois d'affilée.
 
 Le fichier est donc réécrit sans les mois hors de portée de la vue dès qu'il
 dépasse **deux mébioctets** — environ dix mille appels, bien plus qu'un studio
-n'en fait en deux mois, donc un seuil qu'on n'atteint qu'anormalement. Mesuré :
-1 737 868 octets ramenés à 794, les lignes du mois en cours intactes.
+n'en fait en deux mois, donc un seuil qu'on n'atteint qu'anormalement. Mesuré le
+1er septembre 2026 : 1 737 868 octets ramenés à 794, les lignes du mois en cours
+intactes.
 
 On ne tronque pas à l'aveugle : on jette d'abord ce qui est déjà hors de portée
 de la vue, ce qui laisse intact tout ce qui reste consultable. Un plafond en
@@ -67,16 +68,18 @@ toujours pas dans la taille — le disque passe avant. Il est **dérivé du seui
 et non posé à côté : à 20 000 lignes de 198 octets il en gardait 3,96 Mo pour un
 seuil de 2, la taille ne redescendait donc jamais dessous et le fichier entier
 était relu et réécrit **à chaque appel distant** — 97 ms mesurées sur 11 091
-lignes, de quoi saturer la file d'écriture sur un volume monté. Le taillage est
-en outre limité à une fois par minute.
+lignes le 1er septembre 2026, de quoi saturer la file d'écriture sur un volume
+monté. Le taillage est en outre limité à une fois par minute.
 
 ## L'écriture est hors de la boucle
 
 Un disque bloqué doit coûter une ligne de comptabilité, jamais figer une
 génération en cours. L'écriture passe par une **file bornée** et un **fil
 dédié** ; quand la file est pleine, la ligne est perdue et le studio le dit sur
-sa sortie standard. Mesuré avec un disque ralenti à 50 ms la ligne : quarante
-appels en 2,0 ms au lieu de deux secondes.
+sa sortie standard. Mesuré au banc (`banc_cout.py`), disque ralenti à 50 ms la
+ligne : quarante appels en 2,0 ms au lieu de deux secondes — **pc**, 1er
+septembre 2026. Le banc se rejoue, contrairement aux durées de carte : c'est
+lui qu'il faut relancer plutôt que recopier ce chiffre.
 
 Le total en mémoire, lui, est mis à jour tout de suite — c'est lui que le
 plafond interroge, et il ne doit pas dépendre du moment où le disque aura

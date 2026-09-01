@@ -17,8 +17,8 @@ montre, puisque plus rien dans l'interface n'y mènerait.
 ## Les fichiers que plus aucune conversation ne réclame
 
 L'ancienne suppression immédiate effaçait la conversation et **laissait ses
-images**. Sur l'installation de référence, cinquante et un fichiers dormaient
-ainsi, invisibles.
+images**. Sur l'installation de référence — **pc**, le 30 août 2026 — cinquante
+et un fichiers dormaient ainsi, invisibles.
 
 Le studio les compte à chaque passage et l'annonce dans son journal. Il ne les
 efface que si on le lui demande, par `STUDIO_PURGE_ORPHELINS=1` : ce sont les
@@ -32,7 +32,8 @@ le tour qui le référence ne soit écrit.
 
 Un fichier n'est orphelin que si **aucune conversation du disque** ne le nomme,
 archives et sous-dossiers compris — et non « aucune conversation chargée en
-mémoire ». La distinction n'est pas théorique : sur l'installation de référence,
+mémoire ». La distinction n'est pas théorique : sur l'installation de référence
+(**pc**, 30 août 2026),
 la première règle comptait 5 orphelins, la seconde en annonçait 38. Les 33 de
 différence appartenaient à des conversations rangées dans un dossier d'archive.
 Si le parcours du disque échoue, pour quelque raison que ce soit, le studio

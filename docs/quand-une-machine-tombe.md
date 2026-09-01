@@ -28,5 +28,11 @@ Deux détails qui comptent :
   la plus fréquente et la plus facile à réparer, et personne ne regarde l'écran
   à trois heures du matin.
 
-Vérifié en tuant ComfyUI en plein calcul : reprise annoncée, ComfyUI relancé,
-image produite 80 secondes plus tard sans intervention.
+Vérifié le 29 août 2026 sur **pc**, en tuant ComfyUI en plein calcul : reprise
+annoncée, ComfyUI relancé, image produite 80 secondes plus tard sans
+intervention.
+
+Les trente minutes sont la `patience` de `soumettre_robuste()` dans
+`serveur.py` : 1800 secondes, écrites en dur. **Ce n'est pas
+`STUDIO_ATTENTE_CARTE`**, qui vaut la même chose mais borne l'attente d'une
+carte *occupée* — voir [Réglages](reglages.md).

@@ -80,8 +80,10 @@ repli sans que rien d'autre ne change. Le journal dit toujours lequel a servi.
 Forcer un moteur distant **ne lève pas** la règle sur le contenu adulte : la
 demande reste alors sur la machine, et le studio l'annonce.
 
-Mesuré le 28 août 2026 : Nano Banana 8 s pour une image, Lyria 3 25 s pour un
-clip de 30 s, paroles comprises.
+Mesuré le 28 août 2026, depuis le studio et donc sans aucune carte : Nano
+Banana 8 s pour une image, Lyria 3 25 s pour un clip de 30 s, paroles
+comprises. Ces deux durées-là ne dépendent pas du parc, mais de la charge du
+fournisseur ce jour-là.
 
 ## Ce que tout cela consomme
 

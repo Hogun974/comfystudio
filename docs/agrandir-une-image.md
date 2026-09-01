@@ -19,7 +19,7 @@ phrase courte.
 | | |
 |---|---|
 | Modèle | `4x-UltraSharp` (67 Mo), celui de son auteur |
-| Mesuré | 1024×768 → 4096×3072 en 20 s ; 1216×832 → 2432×1664 en 26 s |
+| Mesuré | 1024×768 → 4096×3072 en 20 s ; 1216×832 → 2432×1664 en 26 s — **pc** (RTX 2080 Ti), 28 août 2026 |
 | Facteurs | 2, 3 ou 4 — le modèle travaille en 4× et l'on réduit ensuite, ce qui rend mieux qu'un agrandissement direct |
 
 Le contenu n'est pas retouché : c'est un agrandissement, pas une réinvention.

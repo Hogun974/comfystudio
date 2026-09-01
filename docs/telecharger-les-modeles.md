@@ -7,7 +7,9 @@ installation.
 
 Trois choses que l'ancienne version ne faisait pas :
 
-- **Il dit où il en est.** klein 9B pèse dix-huit gigaoctets ; on voyait
+- **Il dit où il en est.** klein 9B pèse **14,8 Go** — le chiffre se relit dans
+  `catalogue.py`, qui compte l'union des fichiers réellement manquants, et il
+  bouge quand le catalogue bouge : ne le recopie pas, lis-le. On voyait
   « téléchargement de… » puis plus rien pendant vingt minutes. Le journal
   annonce maintenant le pourcentage, le débit et le temps restant, tous les
   10 % et au moins toutes les 30 s.

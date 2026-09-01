@@ -6,7 +6,7 @@ d'analyse.
 
 **Le premier recours est d'en déclarer plusieurs.** `OLLAMA_URL` accepte une
 liste d'adresses séparées par des virgules, et le studio parle à chacune en
-direct : mesure du 31 août, la même question coûte 3,8 s en direct contre 74,8 s
+direct : mesure du 31 août 2026, la même question coûte 3,8 s en direct contre 74,8 s
 par l'agent d'une machine. Voir [Plusieurs Ollama](plusieurs-ollama.md). Ce qui
 suit vaut pour les machines qui n'ont **pas** d'adresse joignable — c'est le cas
 d'un agent derrière une box.

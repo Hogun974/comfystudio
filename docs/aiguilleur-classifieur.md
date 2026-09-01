@@ -20,10 +20,17 @@ demande tapée vite.
 
 | Jeu de test (jamais appris) | Justesse | Sur les cas tranchés |
 |---|---|---|
-| demandes variées | 94 % | 98 % |
-| tournures indirectes | 86 % | 90 % |
+| `banc_aiguillage.jsonl` — demandes variées | 62/66, soit 94 % | 62/64, soit 97 % |
+| `banc_neuf.jsonl` — tournures indirectes | 43/49, soit 88 % | 42/46, soit 91 % |
 
-**0,05 ms par demande**, contre 700 ms. Le modèle fait 0,19 Mo.
+Relevé le **1er septembre 2026** par `python entrainer_aiguilleur.py
+--sans-reel`, c'est-à-dire sur le seul corpus du dépôt — le même calcul que la
+CI. Un studio qui a moissonné des demandes réelles donne d'autres chiffres, et
+c'est voulu : ce sont celles de son utilisateur. Les deux bancs grossissent, il
+faut donc relire les fractions et pas seulement les pourcentages.
+
+**0,03 à 0,05 ms par demande** (pc, 1er septembre 2026), contre 700 ms. Le
+modèle fait 0,19 Mo.
 
 ## Ce que la mesure a appris
 
@@ -54,9 +61,11 @@ L'entraînement les récolte — mais seulement celles dont l'intention est
   tromper de modalité et produire quand même quelque chose. L'apprendre
   reviendrait à lui enseigner ses propres erreurs.
 
-Leur apport est **plafonné à un dixième par classe**. Sans ce plafond, dix-sept
-demandes réelles dont onze images faisaient pencher tout le classifieur vers
-« image », et la justesse sur les tournures indirectes tombait de 86 à 84 %.
+Leur apport est **plafonné à un dixième par classe** (`PART_REELLE = 0.10`,
+`POIDS_REEL = 8`). Sans ce plafond, dix-sept demandes réelles dont onze images
+faisaient pencher tout le classifieur vers « image », et la justesse sur les
+tournures indirectes tombait de 86 à 84 % — mesure du 29 août 2026, quand le
+banc dur valait encore 86 % et comptait 44 cas.
 
 Ces demandes ne partent pas dans le dépôt : ce sont celles de l'utilisateur. Un
 bouton dans `/admin` relance l'entraînement et affiche la mesure à côté — sans
@@ -79,8 +88,9 @@ qu'aucune expression ne prévoyait.
 ## « Décris cette image » ne passe plus par un modèle
 
 C'est la formulation la plus courante quand on joint une image, et de loin la
-plus chère à faire trancher : **96 à 222 s** d'aiguillage en local, mesurées le
-31 août. Et la plus fragile — `gemma3:4b`, quatre fois plus rapide sur tout le
+plus chère à faire trancher : **96 à 222 s** d'aiguillage sur **zima** (le NAS),
+mesurées le 31 août 2026. Et la plus fragile — `gemma3:4b`, quatre fois plus
+rapide sur tout le
 reste, l'a classée « édition », et l'image n'a jamais été regardée. Une décision
 qui dépend du modèle du jour n'en est pas une.
 

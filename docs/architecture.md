@@ -23,6 +23,11 @@ demande en français
   ComfyUI (port 8188)         génération
 ```
 
+Les trois durées de ce schéma ont été relevées le **28 août 2026 sur pc**
+(RTX 2080 Ti) ; elles ne valent pas pour une petite carte, et elles ne se
+revérifient pas depuis le code. Toutes les durées du parc, avec leur date et
+leur machine, sont dans [Mesures](mesures.md).
+
 **Le modèle se choisit par appel, et non une fois pour toutes.** C'était un seul
 modèle pour quatre rôles ; la mesure a tranché autrement.
 
@@ -32,7 +37,8 @@ modèle pour quatre rôles ; la mesure a tranché autrement.
 | Écriture : enrichissement, traduction, paroles, description d'une zone | le plus gros modèle **tenable** de la machine retenue, ou `STUDIO_LLM_ECRITURE` |
 | Lecture d'image | le plus gros modèle **voyant** de la machine retenue |
 
-Même demande, nuage coupé, sur le NAS : `qwen2.5vl:7b` aiguille juste et décrit
+Même demande, nuage coupé, sur **zima** (le NAS), le 31 août 2026 :
+`qwen2.5vl:7b` aiguille juste et décrit
 juste — 96 s d'aiguillage puis 166 s de lecture, 263 s en tout ; `gemma3:4b`
 répond en 1 s et classe « décris cette image » comme une demande de **rendu**,
 l'image n'ayant jamais été regardée. Il porte pourtant la capacité `vision` :
@@ -41,7 +47,8 @@ le lui demande. **Une capacité déclarée n'est pas une compétence.**
 
 Donc ni l'un ni l'autre en permanence : dès qu'un corps porte une image, on
 prend le meilleur modèle voyant de la machine où l'on atterrit ; le texte, lui,
-garde le rapide. La chaîne locale complète passe ainsi de 119 s à 29 s, et
+garde le rapide. La chaîne locale complète passe ainsi de 119 s à 29 s (31 août
+2026), et
 `STUDIO_LLM` peut être un petit modèle de texte sans casser la lecture d'image.
 
 **La machine aussi se choisit par appel** quand `OLLAMA_URL` en liste plusieurs :
@@ -114,11 +121,13 @@ Une reprise (« rends-la plus sombre ») échappe au filet : son sujet est dans
 l'image précédente, pas dans la phrase. Sans cette exception, toute conversation
 se serait arrêtée au deuxième tour.
 
-Mesure sur 27 tirages : **27/27** — 15/15 demandes claires exécutées sans
+Mesure du 28 août 2026, sur 27 tirages : **27/27** — 15/15 demandes claires
+exécutées sans
 question parasite, y compris très courtes (« un chat noir », « un coq »), et
 12/12 demandes vagues correctement interrogées.
 
-La température de l'aiguilleur est à 0,15. À 0,4 la même demande partait tantôt
+La température de l'aiguilleur est à 0,15 — la valeur se relit dans
+`serveur.py`. À 0,4 la même demande partait tantôt
 en question, tantôt en image. Contre-intuitivement, la valeur basse enrichit
-**mieux** les prompts (13/15 contre 10/15) : la part créative revient au modèle
+**mieux** les prompts (13/15 contre 10/15, même série du 28 août 2026) : la part créative revient au modèle
 de diffusion, pas à l'aiguilleur.

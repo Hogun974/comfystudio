@@ -10,12 +10,12 @@ flowchart TB
     S["<b>ComfyStudio</b><br/>aiguillage · file d'attente · comptes"]
 
     subgraph LOCAL["Machine hôte"]
-        C1["ComfyUI<br/>RTX 2080 Ti — 11 Go<br/><i>15 moteurs</i>"]
+        C1["ComfyUI<br/>pc · RTX 2080 Ti — 11 Go<br/><i>15 moteurs</i>"]
         O["Ollama<br/>aiguillage et écriture"]
     end
 
     subgraph AGENTS["Machines à agent"]
-        A1["NAS · GTX 1060 — 6 Go<br/><i>7 moteurs</i>"]
+        A1["zima · GTX 1060 — 5,9 Go<br/><i>7 moteurs</i>"]
         A2["Portable, autre PC…<br/><i>selon sa carte</i>"]
     end
 
@@ -47,12 +47,14 @@ moteur. La page `/admin` affiche pour chaque machine le nombre de moteurs
 réellement exécutables — c'est la seule mesure utile, et une pastille verte à
 zéro moteur signifie une machine qui ne recevra jamais rien.
 
-Mesuré sur l'installation de référence :
+Mesuré sur l'installation de référence, **le 29 août 2026** — ce nombre dépend
+des modèles réellement posés sur chaque disque, il se relit dans `/admin` et
+n'est pas dérivable du code :
 
 | Machine | Carte | RAM | Moteurs exécutables |
 |---|---|---|---|
-| hôte | RTX 2080 Ti, 11 Go | 64 Go | 15 |
-| NAS ZimaOS | GTX 1060, 6 Go | 23 Go | 7 |
+| **pc** (hôte) | RTX 2080 Ti, 11 Go | 64 Go | 15 |
+| **zima** (NAS ZimaOS) | GTX 1060, 5,9 Go | 23 Go | 7 |
 
 **Le débordement sur la RAM est autorisé**, comme le fait ComfyUI lui-même :
 une carte de 6 Go peut charger un modèle de 7 Go si la mémoire système suit —
@@ -146,8 +148,9 @@ n'écrit que sur son propre disque, et ne télécharge donc que pour lui-même.
 nœud ComfyUI-GGUF enregistre un dossier virtuel `unet_gguf` qui pointe sur le
 même répertoire, filtré par extension. Sans correspondance, klein 9B, FLUX.1 et
 les deux Wan seraient déclarés absents et retéléchargés — plusieurs dizaines de
-gigaoctets pour rien. Vérifié : HTTP et disque s'accordent sur les 12 entrées du
-catalogue.
+gigaoctets pour rien. Vérifié le 29 août 2026 : HTTP et disque s'accordaient sur
+les douze entrées que comptait alors le catalogue. Il en compte vingt
+aujourd'hui, et la vérification est à refaire.
 
 **Le compteur de fichiers est propre à chaque machine.** ComfyUI numérote
 `_00001_`, `_00002_`… en repartant de zéro sur chacune. Deux machines produisant
@@ -187,5 +190,5 @@ pannes silencieuses — toutes corrigées :
    ajoutés depuis qu'il a été écrit. Une machine distante ne pouvait donc jamais
    servir l'agrandissement, le détourage ni la fluidité vidéo.
 
-Vérifié de bout en bout : détourage exécuté sur le NAS en 30 s, fichier de
-1,4 Mo transmis, résultat rapatrié et conforme.
+Vérifié de bout en bout le 29 août 2026 : détourage exécuté sur **zima** en
+30 s, fichier de 1,4 Mo transmis, résultat rapatrié et conforme.

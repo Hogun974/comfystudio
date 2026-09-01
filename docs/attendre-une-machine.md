@@ -56,7 +56,8 @@ démarrage suivant aurait déplacé en entier.
 
 **Elle n'immobilise aucun travailleur.** Le studio en mène trois de front ; une
 demande mise de côté rend la main aussitôt, et la file continue de se vider.
-Mesuré au banc : cinq demandes en attente d'une machine éteinte, trois
+Mesuré au banc (`banc_attente.py`, qui se rejoue sans réseau ni studio) :
+cinq demandes en attente d'une machine éteinte, trois
 travailleurs, la file se vide et rien ne reste en vol.
 
 ## Trois portes de réveil, une seule question

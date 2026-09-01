@@ -55,13 +55,13 @@ studio change de moteur plutôt que d'envoyer du français à un moteur qui n'en
 veut pas et de changer le sujet en silence.
 
 **Une demande vague ne produit rien.** Elle déclenche une à trois questions, et
-le studio attend la réponse. Mesuré sur 27 tirages : 15/15 demandes claires
-exécutées sans question parasite, 12/12 demandes vagues correctement
-interrogées.
+le studio attend la réponse. Mesuré le 28 août 2026 sur 27 tirages : 15/15
+demandes claires exécutées sans question parasite, 12/12 demandes vagues
+correctement interrogées.
 
 **Un brouillon avant de payer le rendu.** Un bouton à côté de la flèche d'envoi
 lance la demande au quart des étapes — quatorze secondes au lieu de deux cent
-dix-sept sur la même carte — de quoi juger un prompt, un moteur, une ambiance.
+dix-sept sur la même carte, mesuré le 31 août 2026 sur la RTX 2080 Ti — de quoi juger un prompt, un moteur, une ambiance.
 Puis « refaire en soigné » reprend le même prompt, le même moteur et la même
 graine avec tout le soin. **Le cadrage, lui, sera différent** : le nombre
 d'étapes change la trajectoire du calcul, et la graine ne fixe que son point de
@@ -125,7 +125,8 @@ répond avant de démarrer et te le dit sinon.
 paquet\construire_windows.bat
 ```
 
-Il produit `paquet\dist\comfystudio.exe` — 45 Mo, en 28 secondes à froid. Il
+Il produit `paquet\dist\comfystudio.exe` — 45 Mo, en 28 secondes à froid
+(mesuré le 30 août 2026 sur la RTX 2080 Ti). Il
 faut PyInstaller (`pip install pyinstaller`) ; le reste voyage dans l'exe, pages
 web et modèle d'aiguillage compris. **Pose-le dans son propre dossier**, pas
 dans une copie du dépôt : il écrit à côté de lui — conversations, comptes, clés
@@ -207,7 +208,7 @@ carte](docs/studio-sans-carte.md).
 Le studio ne calcule rien : il pilote un ComfyUI et un Ollama qui vivent
 ailleurs. L'image est donc minuscule, sans CUDA — 49 s de construction et 46 Mo
 téléchargés avec `python:3.12-slim` déjà en cache, puis 4 s entre `up -d` et la
-première page servie.
+première page servie (mesuré le 30 août 2026 sur une machine sans carte).
 
 ```bash
 cp .env.exemple .env       # y mettre au moins STUDIO_ADMIN_MDP
