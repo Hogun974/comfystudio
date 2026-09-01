@@ -158,6 +158,24 @@ ordre = [i for _, i in S.cerveaux_utilisables()]
 dit(ordre[:1] == ["pc"], "a cartes libres, l'analyse prend la PLUS GROSSE",
     ", ".join(ordre))
 
+# ── LE MODELE EMPRUNTE SUIT LA MEME REGLE ───────────────────────────────
+# Il y a DEUX chemins d'analyse : l'Ollama en direct (cerveaux_utilisables) et
+# le modele emprunte a une machine par son agent (noeuds_a_llm). 2d654ec avait
+# redresse le premier et oublie le second — deux regles opposees dans le meme
+# fichier, releve en relisant la documentation et non par un banc. C'est le
+# meme travail : il n'a aucune raison de suivre deux regles.
+poser(vram_studio=0.0)
+for i in ("pc", "zima"):
+    S.ETAT_NOEUDS[i]["llm"] = True
+dit(S.noeuds_a_llm()[:1] == ["pc"],
+    "le modele emprunte part lui aussi sur la PLUS GROSSE",
+    ", ".join(S.noeuds_a_llm()))
+S.verrou_noeud("pc")._tenu = True
+dit(S.noeuds_a_llm()[:1] == ["zima"],
+    "et la carte libre passe toujours devant la grosse occupee",
+    ", ".join(S.noeuds_a_llm()))
+S.verrou_noeud("pc")._tenu = False
+
 # ── LE STUDIO EST UN NOEUD COMME LES AUTRES ─────────────────────────────
 # « Si le studio a un noeud (llm + comfy), il est considere comme un noeud
 # comme les autres avec ses caracteristiques. » Il ne passe donc plus devant

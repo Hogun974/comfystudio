@@ -1881,9 +1881,19 @@ def debordement_acceptable(petit, grand, cle, taille=None):
 
 
 def choisir_noeud(cle, viser="petite", taille=None):
-    """Le placement fin (debit mesure, arbitrage vitesse/qualite) viendra avec
-    la mesure par noeud. Pour l'instant : la machine locale si elle convient,
-    sinon la plus grosse carte disponible."""
+    """La machine qui prend le RENDU : la plus petite qui fait l'affaire.
+
+    Regle de l'utilisateur, et elle est l'inverse de ce que cette docstring
+    disait encore — « la machine locale si elle convient, sinon la plus grosse
+    carte disponible ». Le corps faisait le contraire depuis 2d654ec et les
+    commentaires en dessous etaient justes ; c'est pourtant cette phrase-la
+    qu'on lit en premier en ouvrant la fonction. Relevee en relisant la
+    documentation, pas par un banc.
+
+    « viser="grosse" » pour l'escalade apres un avis negatif : on prend alors
+    la plus grosse capable, quitte a l'attendre. « taille » sert a comparer des
+    durees mesurees sur des rendus comparables (voir debordement_acceptable).
+    """
     bons = noeuds_pour(cle)
     if not bons:
         return None
@@ -2767,13 +2777,22 @@ async def _ollama_local(corps, url=None, secondes=900):
             return rep_
 
 
-# Analyser sur la plus PETITE carte capable, plutot que sur la plus grosse.
-# C'est contre-intuitif et c'est le bon sens du parc : une analyse coute
-# quelques secondes a n'importe quelle carte, un rendu coute des minutes a la
-# meilleure. Occuper la grosse pour reflechir, c'est la retirer du travail
-# qu'elle seule sait faire vite. STUDIO_ANALYSE_PETITE=0 revient a l'ancien
-# ordre, si la mesure devait donner tort a la regle.
-ANALYSE_PETITE = os.environ.get("STUDIO_ANALYSE_PETITE", "1") != "0"
+# L'ANCIENNE REGLE, gardee comme echappatoire et ETEINTE PAR DEFAUT.
+# « Analyser sur la plus petite carte » etait le bon sens du parc jusqu'a ce
+# que l'utilisateur le renverse : « si analyse, prendre la plus grosse (libre)
+# pour l'analyse (rapide) ». Le raisonnement d'avant supposait que l'analyse et
+# le rendu se disputent la carte pendant le meme temps ; ils ne se la disputent
+# pas, et l'analyse passe maintenant DEVANT le rendu dans la file de la carte.
+#
+# 2d654ec avait redresse cerveaux_utilisables et oublie ce chemin-ci — celui
+# ou l'on emprunte le modele d'une machine PAR SON AGENT. Deux chemins
+# d'analyse, deux regles opposees dans le meme fichier : releve en relisant la
+# documentation, pas par un banc.
+#
+# « or "0" » et non un deuxieme argument : le compose relaie la variable a VIDE
+# quand .env ne dit rien, et « "" != "0" » aurait rendu vrai — l'ancien ordre
+# serait revenu par la porte de derriere sur toute installation en conteneur.
+ANALYSE_PETITE = (os.environ.get("STUDIO_ANALYSE_PETITE") or "0") == "1"
 # Combien de temps Ollama garde le modele en memoire entre deux appels.
 GARDER_LLM = os.environ.get("STUDIO_LLM_GARDER") or "60s"
 # Au-dela, une analyse empruntee ne vaut plus la peine. Mesure du 31 aout : un
@@ -2787,10 +2806,13 @@ ANALYSE_MAX = int(os.environ.get("STUDIO_ANALYSE_MAX") or 90)
 def noeuds_a_llm():
     """Les machines joignables qui portent un modele de langage.
 
-    Les plus PETITES d'abord : une analyse tient sur n'importe quelle carte, et
-    laisser les grosses libres pour les rendus vaut mieux que quelques secondes
-    gagnees sur une reflexion. Une machine en pause n'en est pas : son
-    proprietaire s'en sert.
+    Les plus GROSSES d'abord, comme cerveaux_utilisables : c'est le meme
+    travail, il n'y a aucune raison qu'il suive deux regles selon qu'on parle a
+    l'Ollama en direct ou qu'on emprunte le modele par l'agent. Une machine en
+    pause n'en est pas : son proprietaire s'en sert.
+
+    STUDIO_ANALYSE_PETITE=1 remet l'ancien ordre, si la mesure devait un jour
+    donner tort a la regle.
     """
     bons = []
     for x in REGISTRE.values():
@@ -2798,10 +2820,10 @@ def noeuds_a_llm():
         if x.get("pause"):
             continue
         if e.get("repond") and e.get("llm") and time.time() - (e.get("vu") or 0) < SILENCE_MAX:
-            # LIBRE d'abord, petite ensuite. Prendre la plus petite sans regarder
-            # si elle travaille faisait s'empiler trois demandes sur elle pendant
-            # que la grosse dormait — la regle « la petite reflechit » devenait
-            # « une seule machine reflechit ».
+            # LIBRE d'abord, grosse ensuite. L'ordre des deux compte autant que
+            # l'ordre lui-meme : prendre la plus grosse sans regarder si elle
+            # travaille ferait s'empiler les analyses sur elle pendant que
+            # l'autre dort — c'est le defaut qu'on avait dans l'autre sens.
             occupee = 1 if verrou_noeud(x["id"]).locked() else 0
             taille = e.get("vram") or 0
             bons.append((occupee, taille if ANALYSE_PETITE else -taille, x["id"]))
