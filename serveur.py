@@ -7005,7 +7005,21 @@ def raison_du_local(texte, image_b64=None, pid=None):
         return (f"plafond du mois atteint ({PREFERENCES.get('plafond_nuage')} "
                 f"appels distants) : {_mot_local()} est utilise")
     if pid is not None and not nuage_actif(pid):
-        return f"nuage coupe : {_mot_local()} est utilise"
+        # LE REMEDE DANS LA PHRASE. « nuage coupe » se lit comme une panne, ou
+        # comme une decision du studio ; c'est un interrupteur, et il est dans
+        # la barre du haut. Constate le 1er septembre : quinze identites
+        # l'avaient coupe, AUCUNE ne l'avait rallume, et l'analyse tournait a
+        # cent quinze secondes sur une carte du parc pendant que le nuage
+        # repondait en cinq. Personne ne fait le rapprochement tout seul.
+        #
+        # « ton compte » et non « ce navigateur » : pour qui est connecte, le
+        # pid EST l'identifiant du compte (voir qui() et req["pid"]), donc le
+        # reglage suit la personne d'un navigateur a l'autre. Il n'y a que les
+        # visiteurs anonymes — STUDIO_AUTH=libre — dont l'interrupteur tient au
+        # cookie. Le dire de travers ferait chercher un reglage volatil la ou
+        # il est stable.
+        return (f"nuage coupe pour ton compte : {_mot_local()} est utilise. "
+                f"Un clic sur ☁ en haut le rallume, une fois pour toutes.")
     if pid is not None and not fournisseur_dispo("llm"):
         return ""
     if image_b64:
