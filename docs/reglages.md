@@ -46,7 +46,7 @@ set OLLAMA_URL=http://localhost:11434
 | `STUDIO_TRAVAILLEURS` | `3` | demandes menées de front — une seule par carte quoi qu'il arrive |
 | `STUDIO_ATTENTE_CARTE` | `1800` | secondes qu'une analyse attend une carte occupée quand il n'y a plus d'autre machine |
 | `STUDIO_ANALYSE_MAX` | `90` | secondes au-delà desquelles une analyse **empruntée** à une autre machine ne vaut plus la peine : mieux vaut attendre la sienne. Mesure du 31 août 2026 — un seul appel au modèle de **zima** a mis 500 s |
-| `STUDIO_ANALYSE_PETITE` | `1` | `0` pour analyser sur la plus grosse carte plutôt que la plus petite. **Ne concerne que l'analyse empruntée à une machine par son agent** — le dernier recours. Une analyse posée en direct à une adresse `OLLAMA_URL` prend la plus grosse depuis le 1er septembre 2026, sans réglage : voir [Qui prend le travail](qui-prend-le-travail.md) |
+| `STUDIO_ANALYSE_PETITE` | `0` | `1` pour analyser sur la plus **petite** carte plutôt que la plus grosse — l'ordre d'avant le 1er septembre 2026. **Ne concerne que l'analyse empruntée à une machine par son agent** ; en direct, la règle est la même et ne se règle pas. Voir [Qui prend le travail](qui-prend-le-travail.md) |
 | `STUDIO_PAUSE_PROPOSE` | `30` | minutes qu'une demande patiente devant l'écran pour une machine en pause |
 | `STUDIO_ARMEE_HEURES` | `12` | heures pendant lesquelles elle reste ensuite **armée**, prête à repartir seule au réveil. `0` rétablit le refus immédiat — voir [Attendre le retour d'une machine en pause](attendre-une-machine.md) |
 

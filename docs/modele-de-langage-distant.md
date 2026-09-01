@@ -28,10 +28,11 @@ Trois précautions, chacune pour une faute constatée :
   distant est plus lent à charger, et la machine qui le porte a peut-être mieux
   à faire.
 
-Sur ce chemin-là — et sur lui seul — c'est la **plus petite** carte libre qui
-répond, `STUDIO_ANALYSE_PETITE` valant `1` par défaut. Une analyse posée en
-direct prend la plus grosse depuis le 1er septembre 2026 ; les deux règles n'ont
-pas été retournées ensemble. Voir [Qui prend le travail](qui-prend-le-travail.md).
+Ce chemin suit **la même règle que les autres** : la plus grosse carte libre.
+Il ne l'a pas toujours fait — les deux ordres ont été retournés à un jour
+d'écart, et cette page a décrit l'ancien pendant ce temps. `STUDIO_ANALYSE_PETITE=1`
+remet la plus petite, si la mesure devait donner tort à la règle. Voir
+[Qui prend le travail](qui-prend-le-travail.md).
 
 L'emprunt est aussi **borné dans le temps** : au-delà de `STUDIO_ANALYSE_MAX`
 — 90 s par défaut — il ne vaut plus la peine, et mieux vaut attendre sa propre

@@ -38,14 +38,15 @@ Une adresse dont on ne reconnaît aucune machine du parc n'a pas de carte connue
 elle est traitée comme libre et de taille nulle — voir [Plusieurs
 Ollama](plusieurs-ollama.md).
 
-**Un chemin garde encore l'ancien ordre**, et il faut le savoir : quand aucune
-adresse Ollama ne répond en direct, le studio emprunte le modèle d'une machine
-**par son agent**, et il prend alors la plus petite carte libre. Ce dernier
-recours coûte de toute façon vingt à quarante fois le prix d'un appel direct —
-mesure du 31 août 2026, 3,8 s en direct contre 162,6 s par l'agent de **zima** —
-et il est borné par `STUDIO_ANALYSE_MAX`. `STUDIO_ANALYSE_PETITE=0` y rétablit
-l'ordre de cette page ; voir [Réglages](reglages.md) et [Le modèle de langage
-peut venir d'une autre machine](modele-de-langage-distant.md).
+**Les deux chemins d'analyse suivent la même règle**, et ce n'était pas le cas
+au départ : quand aucune adresse Ollama ne répond en direct, le studio emprunte
+le modèle d'une machine **par son agent**, et ce chemin-là a gardé l'ancien
+ordre pendant une journée. Ce dernier recours coûte de toute façon vingt à
+quarante fois le prix d'un appel direct — mesure du 31 août 2026, 3,8 s en
+direct contre 162,6 s par l'agent de **zima** — et il est borné par
+`STUDIO_ANALYSE_MAX`. `STUDIO_ANALYSE_PETITE=1` y remet la plus petite ; voir
+[Réglages](reglages.md) et [Le modèle de langage peut venir d'une autre
+machine](modele-de-langage-distant.md).
 
 ## Le rendu prend la plus petite qui tient
 
