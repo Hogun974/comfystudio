@@ -395,6 +395,11 @@ main{flex:1;overflow-y:auto;min-width:0}
 /* Meme raison que la marque de brouillon, et a l'oppose pour qu'une esquisse
    retenue porte les deux sans qu'elles se recouvrent. Vert et non braise : la
    braise dit « pas encore fini », celle-ci dit un choix fait. */
+.repartir{display:block;margin-top:5px;padding:2px 9px;border:1px solid var(--trait-vif);
+  border-radius:20px;background:transparent;color:var(--encre-douce);
+  font:11px var(--mono);cursor:pointer}
+.repartir:hover:not(:disabled){border-color:var(--braise);color:var(--braise)}
+.repartir:disabled{opacity:.5;cursor:default}
 .cadre-media .marque-retenue{position:absolute;right:7px;top:7px;
   background:var(--vert);color:var(--nuit);border-radius:6px;padding:1px 7px;
   font:10.5px/1.7 var(--mono);letter-spacing:.04em;pointer-events:none}
@@ -1797,6 +1802,43 @@ function peindreGrille() {
     if (f.prompt && f.prompt !== f.demande)
       legende.innerHTML += `<details><summary>prompt envoyé</summary>`
                          + `<span class="envoye">${ech(f.prompt)}</span></details>`;
+    /* LE GESTE, LA OU L'ON COMPARE. Le serveur sert « tour » et « groupe »
+       depuis ce matin, et la grille les jetait : elle affichait le rang et la
+       marque sans aucun moyen d'agir. Or c'est ICI qu'on compare quatre images
+       indiscernables — le fil les montre l'une sous l'autre, la grille cote a
+       cote. Un banc etait vert sur un contrat que la grille n'empruntait pas :
+       c'est le defaut que ce projet passe ses journees a fermer. */
+    if (f.tour && f.groupe && f.variantes > 1 && !f.choisie && !vignette) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "repartir";
+      b.textContent = "repartir de celle-ci";
+      b.title = "« agrandis-la », « rends-la fluide », « le même personnage » "
+              + "viseront cette image-là. Rien n'est supprimé : les autres "
+              + "variantes restent.";
+      b.onclick = async e => {
+        e.stopPropagation();          // la carte entiere ouvre la piece
+        b.disabled = true; b.textContent = "…";
+        try {
+          const r = await fetch("/api/variante", {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversation: f.conversation, tour: f.tour }) });
+          const rep = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(rep.erreur || "le serveur a refusé");
+          // Toutes les soeurs changent d'un clic : celle qui portait la marque
+          // la perd. Repeindre la grille est la seule facon de le montrer sans
+          // tenir un etat de plus dans la page.
+          peindreGrille();
+        } catch (err) {
+          b.disabled = false;
+          // Sur la legende elle-meme : la barre d'alerte est en haut de la
+          // page, et la grille se parcourt en bas — un message qu'on ne voit
+          // pas ne dit rien.
+          b.textContent = "impossible : " + err.message;
+        }
+      };
+      legende.appendChild(b);
+    }
     carte.appendChild(legende);
 
     const actions = document.createElement("div");
