@@ -8,7 +8,7 @@ du bloc « environment: » est lue hors conteneur et ignoree dedans, sans un mot
 — et le studio du reseau tourne en conteneur. Dix reglages etaient dans ce cas
 pendant que la documentation les donnait pour reconnus.
 
-Ce banc a ete ecrit pour empecher ce defaut de revenir, et DEUX relectures
+Ce banc a ete ecrit pour empecher ce defaut de revenir, et TROIS relectures
 adverses lui ont montre par quelles portes il revenait quand meme. Chacune est
 fermee ici, et chaque fermeture a sa mutation :
 
@@ -27,6 +27,18 @@ fermee ici, et chaque fermeture a sa mutation :
     et non de la decoration.
   - le piege des deux defauts vivait encore dans .env.exemple pour les reglages
     dont le defaut est ecrit dans le COMPOSE et non dans le code.
+  - le releve des imports s'ancrait en colonne 0. serveur.py compte DOUZE
+    imports paresseux indentes — c'est le style de la maison — et un module
+    neuf importe a cote de l'un d'eux sortait du suivi : sa variable, absente
+    du compose, passait au vert. Le scenario d'origine rejoue entier. Le NOMBRE
+    de fichiers suivis n'etait d'ailleurs asserte nulle part, et aucun des
+    quatre modules importes ne lit d'environnement a lui seul : une retombee de
+    cinq fichiers a un serait restee verte elle aussi.
+  - defaut_du_code rendait un FRAGMENT d'expression la ou le code n'a pas de
+    defaut litteral — « os.path.join(BASE_COMFY, », « str(PORT », « ICI_DATA ».
+    Un fragment est pire que rien : truthy, il court-circuitait le repli sur le
+    defaut du compose et se comparait a tout sans jamais l'egaler. Cinq
+    reglages sur vingt-cinq echappaient ainsi aux DEUX pieges des defauts.
 
 Toute exception se nomme ici, avec sa raison. C'est le seul endroit ou l'on peut
 en ajouter une, et il faut l'ecrire.
@@ -72,11 +84,27 @@ SRV = lire("serveur.py")
 # agent_noeud.py ne tourne PAS dans ce conteneur : n'en relever les variables
 # donnerait des oublis imaginaires. On suit donc les imports plutot que le
 # repertoire.
+#
+# « ^\s* » et non « ^ » : serveur.py compte DOUZE imports indentes en cours de
+# fonction (import av, import struct, import socket...). Un module neuf importe
+# a cote de l'un d'eux echappait au suivi, et sa variable absente du compose ne
+# faisait rougir personne — le commit f6a30ba, rejoue sous le nez du filet.
 FICHIERS = ["serveur.py"]
-for mod in re.findall(r'(?m)^(?:import|from)\s+([a-z_][a-z0-9_]*)', SRV):
+for mod in re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)', SRV):
     if os.path.exists(os.path.join(ICI, mod + ".py")) and mod + ".py" not in FICHIERS:
         FICHIERS.append(mod + ".py")
 CODE = "\n".join(lire(f) for f in FICHIERS)
+
+# Le COMPTE, et pas seulement le contenu. Le releve de variables ne protege pas
+# le suivi : aucun des quatre modules importes ne lit d'environnement, les 25
+# variables sont toutes dans serveur.py. Passer « import comptes as _comptes »
+# en try/except, ou le remplacer par un import_module — deux nettoyages banals
+# — faisait tomber le suivi a quatre fichiers, puis a un, sans changer un seul
+# chiffre de la ligne qui les compte.
+FICHIERS_SUIVIS = 5
+dit(len(FICHIERS) >= FICHIERS_SUIVIS,
+    f"les {len(FICHIERS)} fichiers du conteneur sont suivis",
+    ", ".join(FICHIERS[1:]) or "aucun module importe")
 
 # AUCUN prefixe de nom, les DEUX sortes de guillemets, et « os.getenv » autant
 # que « os.environ.get ». Chacune de ces trois largesses ferme une mutation qui
@@ -136,15 +164,34 @@ dit(not inutiles, "aucune exception inutile",
     ", ".join(inutiles) or "chacune sert encore")
 
 
+# Un defaut n'est un defaut que s'il est LITTERAL : chaine entre guillemets, ou
+# nombre nu. Les guillemets etaient facultatifs, et le releve rendait alors le
+# debut de l'expression — « os.path.join(BASE_COMFY, » pour COMFY_MODELES,
+# « str(PORT » pour STUDIO_PORT_HOTE, « ICI_DATA » pour STUDIO_DONNEES. Une
+# bouillie pareille est pire qu'un None : elle est truthy, donc elle
+# court-circuitait le repli sur le defaut du compose plus bas, et elle se
+# comparait au compose sans jamais l'egaler. Cinq reglages sur vingt-cinq
+# passaient a travers les deux verifications ecrites pour eux.
+#
+# La negative en queue refuse « or 3600 * 2 » et « or "a" + b » : le premier
+# morceau d'un calcul n'est pas plus une valeur que le premier morceau d'un
+# appel.
+_LITTERAL = r'(?:[\'"]([^\'"]*)[\'"]|(-?\d+(?:[.]\d+)?))(?!\s*[-+*/%.\w])'
+
+
 def defaut_du_code(n):
-    """La valeur que le code retient quand la variable est absente."""
-    for motif in (r'os[.](?:environ[.]get|getenv)[(]\s*[\'"]' + n
-                  + r'[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]',
-                  r'os[.](?:environ[.]get|getenv)[(]\s*[\'"]' + n
-                  + r'[\'"]\s*[)]\s*or\s+[\'"]?([^\s\'")]+)'):
+    """La valeur LITTERALE que le code retient quand la variable est absente.
+
+    Rend None des que le defaut est calcule : on ne sait pas l'evaluer, et
+    pretendre le contraire est ce qui rendait les deux pieges invisibles.
+    """
+    appel = r'os[.](?:environ[.]get|getenv)[(]\s*[\'"]' + n + r'[\'"]\s*'
+    for motif in (appel + r',\s*' + _LITTERAL,
+                  appel + r'[)]\s*or\s+' + _LITTERAL):
         m = re.search(motif, CODE)
         if m:
-            return m.group(1)
+            # Une seule des deux alternatives de _LITTERAL capture a la fois.
+            return next(g for g in m.groups() if g is not None)
     return None
 
 
@@ -194,8 +241,11 @@ for ligne in lire(".env.exemple").splitlines():
     if not m:
         continue
     val = re.sub(r'\s+#.*$', "", m.group(2)).strip().strip('"').strip("'")
-    attendu = defaut_du_code(m.group(1)) or defauts_compose.get(m.group(1))
-    if val and attendu and val == attendu:
+    # Les DEUX defauts sont compares, pas le premier trouve : « or » sautait le
+    # defaut du compose des que le code en avait un, et le repli ajoute par
+    # 77fb1ef ne servait qu'aux reglages sans aucun defaut ecrit dans le code.
+    attendus = {defaut_du_code(m.group(1)), defauts_compose.get(m.group(1))}
+    if val and val in attendus:
         recopies.append(m.group(0))
 dit(not recopies, "aucun defaut recopie en dur dans .env.exemple",
     ", ".join(recopies) or "aucune ligne active redondante")

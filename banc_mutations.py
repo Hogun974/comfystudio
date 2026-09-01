@@ -33,7 +33,7 @@ un raffinement : une mutation qui casse le banc par une exception rend elle
 aussi un code non nul, et se ferait passer pour une reussite.
 
 TROUS_CONNUS rassemble les mutations que la relecture adverse a trouvees et que
-banc_page.py laisse ENCORE passer. Elles sont ecrites, nommees et signalees,
+le banc vise laisse ENCORE passer. Elles sont ecrites, nommees et signalees,
 mais ne font pas echouer : les compter en echec rendrait la CI rouge en
 permanence, et une CI qui rougit pour rien finit ignoree. Les basculer dans
 MUTATIONS est le geste qui clot la reparation du filet.
@@ -67,7 +67,7 @@ def lire(rel):
 
 # ── Ce qu'il faut copier, et rien de plus ─────────────────────────────
 # Mesure : le depot entier fait 138 fichiers et 0,12 s de copie, les neuf
-# fichiers dont banc_conteneur.py a besoin en font 0,007 s. Sur les dix-huit
+# fichiers dont banc_conteneur.py a besoin en font 0,007 s. Sur les vingt-deux
 # mutations, deux secondes de CI contre un huitieme de seconde.
 def fichiers_du_conteneur():
     """La meme piste que celle que banc_conteneur.py suit lui-meme.
@@ -78,10 +78,13 @@ def fichiers_du_conteneur():
     importerait un module de plus, la mutation posee dedans tomberait dans un
     dossier ou le module n'est pas, et le banc rougirait sur un import manquant
     au lieu de la variable oubliee.
+
+    « ^\\s* » comme lui, donc : les mutations qui deplacent un import en cours
+    de fonction copieraient sinon un jeu de fichiers different du sien.
     """
     fichiers = ["banc_conteneur.py", "serveur.py",
                 "docker-compose.yml", "Dockerfile", ".env.exemple"]
-    for mod in re.findall(r'(?m)^(?:import|from)\s+([a-z_][a-z0-9_]*)',
+    for mod in re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)',
                           lire("serveur.py")):
         nom = mod + ".py"
         if nom not in fichiers and os.path.exists(os.path.join(ICI, nom)):
@@ -129,7 +132,7 @@ def appliquer(texte, edition):
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  banc_conteneur.py — treize mutations, toutes verifiees rouges
+#  banc_conteneur.py — dix-sept mutations, toutes verifiees rouges
 # ──────────────────────────────────────────────────────────────────────
 # Elles viennent de l'en-tete de banc_conteneur.py et des commits 537a205 et
 # 77fb1ef, ou elles ont ete jouees a la main. Chacune dit la PANNE qu'elle
@@ -283,6 +286,69 @@ CONTENEUR = [
         editions=[(".env.exemple", brut("#COMFY_PORT=8188",
                                         "COMFY_PORT=8188  # le port de ComfyUI"))],
     ),
+    # ── La troisieme relecture adverse ────────────────────────────────
+    dict(
+        nom="un module suivi importe a cote d'un import paresseux",
+        banc="banc_conteneur.py",
+        imite="serveur.py importe douze fois en cours de fonction ; un module "
+              "importe la sortait du suivi, et le reglage qu'il lit n'arrivait "
+              "jamais au conteneur — le commit f6a30ba rejoue entier",
+        rougit="tout ce qui est lu arrive au conteneur par le compose",
+        editions=[
+            ("serveur.py", brut("import comptes as _comptes\n", "")),
+            ("serveur.py", brut("        import av\n",
+                                "        import av\n"
+                                "        import comptes as _comptes\n")),
+            ("comptes.py", brut(
+                "import secrets\nimport time\n",
+                "import secrets\nimport time\n\n"
+                'CADENCE = os.getenv("STUDIO_CADENCE", "24")\n')),
+        ]),
+    dict(
+        nom="un module suivi dont l'import passe en try / except ImportError",
+        banc="banc_conteneur.py",
+        imite="la meme sortie de suivi par un nettoyage encore plus banal : "
+              "rendre un import facultatif indente sa ligne, et le releve ne "
+              "lisait que la colonne 0",
+        rougit="tout ce qui est lu arrive au conteneur par le compose",
+        editions=[
+            ("serveur.py", brut(
+                "import comptes as _comptes\n",
+                "try:\n    import comptes as _comptes\n"
+                "except ImportError:\n    _comptes = None\n")),
+            ("comptes.py", brut(
+                "import secrets\nimport time\n",
+                "import secrets\nimport time\n\n"
+                'SEL_TOUR = os.environ.get("STUDIO_SEL_TOUR", "")\n')),
+        ]),
+    dict(
+        nom="un module suivi charge par importlib",
+        banc="banc_conteneur.py",
+        imite="aucun import a relever, le module disparait du suivi sans qu'un "
+              "seul chiffre bouge : les 25 variables sont toutes dans "
+              "serveur.py, donc le releve ne peut pas s'en apercevoir",
+        rougit="fichiers du conteneur sont suivis",
+        editions=[
+            ("serveur.py", brut(
+                "import comptes as _comptes\n",
+                '_comptes = importlib.import_module("comptes")\n')),
+        ]),
+    dict(
+        nom="COMFY_MODELES en double, dans le compose ET dans .env.exemple",
+        banc="banc_conteneur.py",
+        imite="deux maitres pour un chemin dont le defaut est CALCULE par le "
+              "code : defaut_du_code rendait « os.path.join(BASE_COMFY, », un "
+              "fragment truthy qui court-circuitait le repli sur le compose et "
+              "ne s'egalait jamais lui-meme",
+        rougit="aucun defaut recopie en dur dans .env.exemple",
+        editions=[
+            ("docker-compose.yml", brut(
+                '      COMFY_MODELES: "${COMFY_MODELES:-}"',
+                '      COMFY_MODELES: "${COMFY_MODELES:-/comfy/models}"')),
+            (".env.exemple", brut("#OLLAMA_PORT=11434\n",
+                                  "#OLLAMA_PORT=11434\n"
+                                  "COMFY_MODELES=/comfy/models\n")),
+        ]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -350,15 +416,29 @@ PAGE = [
 # ──────────────────────────────────────────────────────────────────────
 #  Les trous connus : ecrits, nommes, et PAS ENCORE fermes
 # ──────────────────────────────────────────────────────────────────────
-# Ces quatre-la DOIVENT rougir et passent au vert aujourd'hui. Ce ne sont pas
-# des hypotheses : une relecture adverse les a jouees, et banc_page.py est reste
-# vert sur chacune. Les ecrire ici plutot que dans un rapport est le seul moyen
-# qu'elles restent mesurees — le premier trou de ce genre a ete decouvert des
-# mois trop tard, dans un rapport que personne n'a relu.
+# Ces cinq-la DOIVENT rougir et passent au vert aujourd'hui. Ce ne sont pas des
+# hypotheses : elles ont ete jouees, et le banc vise est reste vert sur chacune.
+# Les ecrire ici plutot que dans un rapport est le seul moyen qu'elles restent
+# mesurees — le premier trou de ce genre a ete decouvert des mois trop tard,
+# dans un rapport que personne n'a relu.
 #
-# Quand banc_page.py saura les voir, elles rougiront : le banc le dira, et il
-# suffira de les deplacer dans PAGE ci-dessus.
+# Quand le banc saura les voir, elles rougiront : il le dira, et il suffira de
+# les deplacer dans PAGE ou CONTENEUR ci-dessus.
 TROUS_CONNUS = [
+    dict(
+        nom="un defaut du compose qui repete un defaut CALCULE par le code",
+        banc="banc_conteneur.py",
+        imite="deux maitres pour COMFY_MODELES, et la verification ecrite pour "
+              "ce piege ne peut pas le voir : le defaut du code est "
+              "« os.path.join(BASE_COMFY, \"models\") », que le banc lit sans "
+              "l'evaluer. Rendre None est honnete, mais quatre chemins et un "
+              "port restent hors de portee de « pas deux defauts »",
+        rougit="pas deux defauts pour un meme reglage dans le compose",
+        editions=[
+            ("docker-compose.yml", brut(
+                '      COMFY_MODELES: "${COMFY_MODELES:-}"',
+                '      COMFY_MODELES: "${COMFY_MODELES:-/comfy/models}"')),
+        ]),
     dict(
         nom="le cran de priorite en abreviation ES6",
         banc="banc_page.py",
