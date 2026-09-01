@@ -2211,7 +2211,14 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     echeance = time.time() + ATTENTE_CARTE
     for rang_, (url, ident) in enumerate(cerveaux):
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
-        ici = corps_ici(corps, url, tid if len(cerveaux) == 1 else None)
+        # LE « tid » TOUJOURS, et non « seulement s'il n'y a qu'une adresse ».
+        # Avec deux Ollama — le parc reel de ce projet — il valait None, et
+        # journal(None, …) n'imprime que sur la sortie du studio : rien dans le
+        # fil de la demande. La ligne « modele de vision impose » et celle de
+        # la substitution n'atteignaient donc JAMAIS l'utilisateur des qu'il y
+        # avait deux machines. Une ligne par adresse essayee est le compte
+        # juste : c'est ce qui s'est passe.
+        ici = corps_ici(corps, url, tid)
         if ici is None:
             # Une image a lire et pas de modele de vision ici : substituer en
             # rendrait une description inventee, sans que rien ne le dise.
@@ -2262,6 +2269,10 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # courte transformait une lecture lente en echec sec : « le modele
             # de vision n'a pas repondu » au bout de cinq minutes, la ou neuf
             # cents secondes auraient rendu la description.
+            # SANS « tid » : c'est une SONDE, pas un appel. Elle rappelait
+            # corps_ici sur chaque adresse restante juste pour savoir s'il y a
+            # un repli, et chacune ecrivait « lecture par X » — trois lignes
+            # pour une lecture, dont deux annonçant une machine qui n'a rien lu.
             reste_ = any(corps_ici(corps, u) is not None
                          and not (i and (noeud(i) or {}).get("pause"))
                          for u, i in cerveaux[rang_ + 1:])
@@ -3947,19 +3958,32 @@ def charger_compteur():
     survit a une ecriture coupee, et une comptabilite a laquelle il manque la
     derniere ligne vaut mieux qu'un studio qui refuse de demarrer.
 
-    « errors=replace » pour tenir cette promesse jusqu'au bout : une ecriture
-    coupee au MILIEU d'une sequence UTF-8 leve UnicodeDecodeError a la lecture
-    du fichier, avant tout json.loads — et UnicodeDecodeError descend de
-    ValueError, pas d'OSError, donc ni le filet de la ligne ni celui du fichier
-    ne l'attrapaient. Le studio refusait alors de demarrer, ce que la phrase
-    au-dessus promettait justement d'eviter.
+    Lecture BINAIRE et decodage ligne par ligne, pour tenir cette promesse sans
+    en trahir une autre. Une ecriture coupee au MILIEU d'une sequence UTF-8 leve
+    UnicodeDecodeError des la lecture du fichier, avant tout json.loads — et
+    UnicodeDecodeError descend de ValueError, pas d'OSError : ni le filet de la
+    ligne ni celui du fichier ne l'attrapaient, et le studio refusait de
+    demarrer. Le remede evident, « errors=replace », etait pire : un octet abime
+    au milieu d'une ligne COMPLETE donnait un JSON valide au compte corrompu,
+    « jos� » au lieu de « jose ». Le studio demarrait, la comptabilite
+    etait fausse, et rien ne le disait.
     """
     COMPTEUR.clear()
     gardes = set(mois_montres())
     try:
-        with open(FICHIER_COUTS, encoding="utf-8", errors="replace") as f:
-            for l in f:
-                l = l.strip()
+        # BINAIRE, et decodage LIGNE PAR LIGNE. « errors=replace » remplaçait
+        # bien la faute — mais un octet abime AU MILIEU d'une ligne complete
+        # donnait alors un JSON valide au nom de compte corrompu : la depense
+        # quittait le compte plafonne pour un compte fantome, silencieusement.
+        # C'est le remboursement par redemarrage qu'on cherchait a fermer, sous
+        # une autre forme. Une ligne qu'on ne sait pas lire se JETTE ; elle ne
+        # se repare pas.
+        with open(FICHIER_COUTS, "rb") as f:
+            for brut in f:
+                try:
+                    l = brut.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    continue
                 if not l:
                     continue
                 try:
@@ -4002,8 +4026,15 @@ def _tailler():
     gardes = set(mois_montres())
     tenues = []
     try:
-        with open(FICHIER_COUTS, encoding="utf-8", errors="replace") as f:
-            for l in f:
+        # Meme lecture qu'au demarrage, et pour une raison de plus : ce qui
+        # est relu ici est REECRIT. Un caractere de substitution y serait grave
+        # dans la pierre, et le compte fantome deviendrait definitif.
+        with open(FICHIER_COUTS, "rb") as f:
+            for brut in f:
+                try:
+                    l = brut.decode("utf-8")
+                except UnicodeDecodeError:
+                    continue
                 try:
                     d = json.loads(l)
                 except ValueError:
@@ -4018,18 +4049,40 @@ def _tailler():
         print(f"journal des couts non taille : {e}", flush=True)
 
 
+def _ecrire_ligne(ligne):
+    """Poser UNE ligne au bout du fichier. Separee pour deux raisons.
+
+    La premiere est que la vidange doit pouvoir distinguer « ecrite » de
+    « ecrite et taillee » (voir _fil_ecriture). La seconde est qu'un banc peut
+    alors bloquer l'ecriture elle-meme plutot que la taille — sans quoi le seul
+    essai possible etait celui ou la reponse est fausse.
+    """
+    with open(FICHIER_COUTS, "a", encoding="utf-8") as f:
+        f.write(json.dumps(ligne, ensure_ascii=False) + chr(10))
+
+
 def _fil_ecriture():
     """Le seul fil qui touche au fichier : ni verrou, ni lignes entremelees."""
     while True:
         ligne = _A_ECRIRE.get()
         try:
-            with open(FICHIER_COUTS, "a", encoding="utf-8") as f:
-                f.write(json.dumps(ligne, ensure_ascii=False) + chr(10))
-            _tailler()
+            _ecrire_ligne(ligne)
         except OSError as e:
             print(f"cout non enregistre : {e}", flush=True)
         finally:
+            # AVANT _tailler, et c'est tout le sujet. task_done() veut dire
+            # « cette ligne est sur le disque », pas « le fichier est range » :
+            # _tailler reecrit le fichier entier, c'est l'operation lente, et
+            # une ligne deja ecrite bloquee dedans etait comptee PERDUE a
+            # l'arret. On avait echange un sous-comptage d'une ligne contre un
+            # sur-comptage d'une ligne dans un autre mode de panne — et le cas
+            # de banc qui demontrait la correction etait justement celui ou la
+            # nouvelle reponse etait fausse.
             _A_ECRIRE.task_done()
+        try:
+            _tailler()
+        except OSError as e:
+            print(f"journal des couts non taille : {e}", flush=True)
 
 
 def vider_journal(secondes=None):
@@ -7401,7 +7454,31 @@ async def lancer_variantes(tid, texte, conv, plan, combien, taille=None,
     return lances
 
 
-def variante_tient_le_rang(conv, tid, marque):
+def marque_variante(conv, tid):
+    """Le groupe et le rang de ce tirage, RETROUVES APRES UN REDEMARRAGE.
+
+    Ils vivent sur TACHES pendant le rendu — mais reprendre_file() reconstruit
+    TACHES sans eux, et la clef « variantes » de EN_FILE porte tout autre chose
+    (le NOMBRE de tirages restant a lancer, remis a 1 par lancer_variantes).
+    Au reveil, la marque etait donc vide, variante_tient_le_rang rendait vrai
+    pour CHAQUE tirage, et l'on retombait sur « le dernier arrive gagne » — le
+    defaut d'avant, PLUS la reprise silencieuse du clic « celle-ci ». Mesure :
+    trois variantes, instantane pris en plein premier rendu, clic sur la
+    troisieme — le rang 1 reprenait la place en finissant.
+
+    Le TOUR, lui, porte la marque et il est sur le disque. C'est donc lui qui
+    fait foi des que TACHES ne sait plus. La docstring d'a cote promettait
+    « elle survit a un redemarrage » : elle ne lisait les tours que pour les
+    CONCURRENTS, jamais pour le tirage courant.
+    """
+    m = (TACHES.get(tid) or {}).get("variantes")
+    if m:
+        return m
+    t = next((t for t in conv.get("tours", []) if t.get("id") == tid), None)
+    return (t or {}).get("variantes") or {}
+
+
+def variante_tient_le_rang(conv, tid, marque=None):
     """Ce tirage-ci devient-il « l'image courante » de la conversation ?
 
     LE PLUS PETIT RANG ABOUTI, et non le premier arrive. Les tirages d'un groupe
@@ -7420,6 +7497,7 @@ def variante_tient_le_rang(conv, tid, marque):
     qui finissait apres le clic reprenait la place que l'utilisateur venait de
     donner a une autre.
     """
+    marque = marque or marque_variante(conv, tid)
     if not (marque or {}).get("groupe"):
         return True
     rang = marque.get("rang", 1)
@@ -8304,10 +8382,9 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # la tient, jusqu'a ce que l'utilisateur en designe une autre
         # (api_variante_choisir) — la regle et ses deux raisons sont dans
         # variante_tient_le_rang.
-        marque_ = (TACHES.get(tid) or {}).get("variantes") or {}
         if sorties and intention in ("image", "edition", "planche",
                                      "agrandir", "detourer") \
-                and variante_tient_le_rang(conv, tid, marque_):
+                and variante_tient_le_rang(conv, tid):
             # on garde le sous-dossier : il est indispensable pour retrouver le fichier
             conv["derniere_sortie"] = {"noeud": sorties[0].get("noeud"),
                                        "filename": sorties[0]["filename"],

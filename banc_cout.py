@@ -645,14 +645,19 @@ serveur.AUTH = _vrai_auth
 serveur.PREFERENCES["plafond_nuage"] = 0
 
 
-# ── 12. la vidange COMPTE-T-ELLE la ligne que le fil tient deja ? ────────
-# qsize() ne compte pas l'element deja SORTI de la file. Le cas qui fait mal
-# est celui a une seule ligne : un appel consigne a l'instant de l'arret, le fil
-# l'a prise, qsize() vaut zero — et l'arret n'imprime rien pendant que la ligne
-# est perdue. C'est exactement le silence que vider_journal existe pour rompre.
+# ── 12. la vidange compte-t-elle JUSTE ? ────────────────────────────────
+# Deux facons de se tromper, et la seconde a ete introduite en corrigeant la
+# premiere. qsize() ne comptait pas la ligne deja SORTIE de la file, celle que
+# le fil tient : un appel consigne a l'instant de l'arret disparaissait en
+# silence. unfinished_tasks la compte — mais task_done() n'etait appele
+# qu'apres _tailler(), qui reecrit le fichier entier : une ligne DEJA ECRITE,
+# bloquee dans la taille, etait alors annoncee perdue. Un sous-comptage echange
+# contre un sur-comptage.
+#
+# On bloque donc l'ECRITURE pour le premier cas, et la TAILLE pour le second.
 _bloque = threading.Event()
-_vrai_tailler = serveur._tailler
-serveur._tailler = lambda: _bloque.wait(30)      # le disque ne repond plus
+_vrai_ecrire, _vrai_tailler = serveur._ecrire_ligne, serveur._tailler
+serveur._ecrire_ligne = lambda ligne: _bloque.wait(30)   # le disque ne repond plus
 serveur._A_ECRIRE.put({"mois": serveur._mois(), "compte": "essai",
                        "fournisseur": "x", "modalite": "llm"})
 if serveur._ECRIVAIN is None:
@@ -662,25 +667,58 @@ if serveur._ECRIVAIN is None:
 time.sleep(0.3)                                   # le fil a pris la ligne
 verifier("une ligne prise par le fil n'est plus dans la file",
          serveur._A_ECRIRE.qsize() == 0)
-verifier("mais la vidange la compte quand meme",
-         serveur.vider_journal(0.2) == 1, str(serveur.vider_journal(0.2)))
+# UN SEUL appel : verifier() evalue ses trois arguments, donc l'ecrire deux fois
+# lançait deux fils de vidange — et le detail imprime venait d'une autre mesure
+# que celle qui avait echoue.
+_reste = serveur.vider_journal(0.2)
+verifier("mais la vidange la compte quand meme", _reste == 1, str(_reste))
 _bloque.set()
-serveur._tailler = _vrai_tailler
+serveur._ecrire_ligne = _vrai_ecrire
 time.sleep(0.3)
 verifier("et une fois le disque revenu, il ne reste rien",
          serveur.vider_journal(2) == 0)
 
-# ── 13. une ecriture coupee en plein UTF-8 ──────────────────────────────
+# La taille, elle, n'est PAS l'ecriture. Une ligne posee sur le disque pendant
+# que _tailler traine n'est pas perdue, et l'annoncer perdue ferait chercher du
+# cote du volume alors que la comptabilite est juste.
+_bloque2 = threading.Event()
+serveur._tailler = lambda: _bloque2.wait(30)
+serveur._A_ECRIRE.put({"mois": serveur._mois(), "compte": "pose",
+                       "fournisseur": "x", "modalite": "llm"})
+time.sleep(0.3)
+_reste = serveur.vider_journal(0.2)
+verifier("une ligne ecrite mais coincee dans la taille n'est pas perdue",
+         _reste == 0, str(_reste))
+verifier("et elle est bien sur le disque",
+         '"compte": "pose"' in open(serveur.FICHIER_COUTS, encoding="utf-8").read())
+_bloque2.set()
+serveur._tailler = _vrai_tailler
+time.sleep(0.3)
+
+# ── 13. une ligne que l'on ne sait pas lire ─────────────────────────────
 # UnicodeDecodeError descend de ValueError, pas d'OSError : ni le filet de la
-# ligne ni celui du fichier ne l'attrapaient. La docstring promettait de sauter
-# une ligne illisible ; le studio refusait de demarrer.
+# ligne ni celui du fichier ne l'attrapaient, et le studio refusait de demarrer
+# alors que la docstring promet de sauter une ligne illisible.
+#
+# Le remede evident — « errors=replace » — etait PIRE, et c'est le second cas
+# ci-dessous : un octet abime au milieu d'une ligne COMPLETE donne un JSON
+# valide au nom de compte corrompu. Le studio demarre, la depense quitte le
+# compte plafonne pour un compte fantome, et rien ne le dit. Une ligne qu'on ne
+# sait pas lire se JETTE ; elle ne se repare pas.
 SAUT = chr(10).encode()
+# ensure_ascii=False : c'est ainsi que _ecrire_ligne ecrit, et sans cela
+# l'accent partirait en « é » — sept octets ASCII qu'aucune coupure
+# d'UTF-8 ne peut abimer. Le cas ne mesurait alors rien.
+_ligne = lambda c: json.dumps({"mois": serveur._mois(), "compte": c,
+                               "fournisseur": "x", "modalite": "llm"},
+                              ensure_ascii=False).encode()
 with open(serveur.FICHIER_COUTS, "ab") as f:
-    f.write(json.dumps({"mois": serveur._mois(), "compte": "entier",
-                        "fournisseur": "x", "modalite": "llm",
-                        "appels": 1}).encode() + SAUT)
+    f.write(_ligne("entier") + SAUT)
     f.write(b'{"compte": "cou')                   # coupee au milieu d'un accent
     f.write("é".encode()[:1] + SAUT)
+    # Et celle-ci n'est pas coupee : elle est ABIMEE, un octet manquant au
+    # milieu du nom. C'est le cas que « errors=replace » acceptait.
+    f.write(_ligne("josé").replace("é".encode(), "é".encode()[:1]) + SAUT)
 _leve = None
 try:
     serveur.charger_compteur()
@@ -691,7 +729,19 @@ verifier("une ligne coupee en plein UTF-8 ne fait pas tomber le demarrage",
 verifier("et la ligne entiere qui la precede est bien comptee",
          serveur.appels_du_mois("entier") == 1,
          str(serveur.appels_du_mois("entier")))
+_seaux = [c for m in serveur.COMPTEUR.values() for c in m]
+verifier("une ligne abimee est JETEE, pas rangee sous un compte fantome",
+         not [c for c in _seaux if chr(0xFFFD) in c], ", ".join(sorted(_seaux)))
+verifier("et « josé » n'a donc rien depense",
+         serveur.appels_du_mois("josé") == 0)
 
+# _tailler reecrit ce qu'il a relu : un caractere de substitution y serait grave
+# dans la pierre, et le compte fantome deviendrait definitif.
+serveur._TAILLE_FAITE[0] = 0
+serveur._tailler()
+verifier("et la taille ne grave pas l'abime dans le fichier",
+         chr(0xFFFD) not in open(serveur.FICHIER_COUTS, encoding="utf-8",
+                                 errors="replace").read())
 
 shutil.rmtree(DONNEES, ignore_errors=True)
 
