@@ -1757,6 +1757,26 @@ function peindreActifs() {
    la conversation, sans attendre qu'une demande soit envoyee. Sans cette route,
    on ouvrait le tiroir, on prenait FLUX.1 en 1920x1080, on passait voir une
    autre conversation, et le choix n'existait plus au retour. */
+/* La valeur d'un reglage, lue dans SON menu. Elle etait tiree de
+   reglagesDemandes(), qui ne porte plus les reglages depuis qu'ils vivent sur
+   la conversation : « modele », « taille » et « noeud » y valaient donc
+   « undefined », JSON.stringify les supprimait, le serveur recevait un corps
+   vide — rien n'etait retenu et rien n'etait murmure. Seule la priorite
+   survivait, parce qu'elle etait ajoutee a part. Constate par l'utilisateur :
+   « il n'y a que priorite soigne qui est apparu dans le chat ».
+
+   Et reglagesDemandes() remet « moteurChoisi » a faux au passage : chaque
+   changement de menu CONSOMMAIT donc le drapeau avant que la demande puisse
+   s'en servir. Un effet de bord n'a rien a faire dans une lecture. */
+const MENU_REGLAGE = { modele: "#forcer", noeud: "#machine",
+                       priorite: "#priorite", taille: "#taille" };
+
+function valeurReglage(cle) {
+  const el = $(MENU_REGLAGE[cle]);
+  if (!el) return null;
+  return el.value || null;
+}
+
 function retenirReglages(cle) {
   if (!convActive) return;
   // SEULEMENT LA CLE QUI VIENT DE CHANGER. Envoyer les quatre a chaque geste
@@ -1764,8 +1784,9 @@ function retenirReglages(cle) {
   // conversation effaçait le moteur regle depuis le premier — le serveur
   // raisonne sur la PRESENCE, et une cle presente et vide efface — et il
   // ecrivait un murmure « moteur : automatique » que personne n'avait demande.
-  const tout = { ...reglagesDemandes(), priorite: $("#priorite").value };
-  const corps = cle ? { [cle]: tout[cle] } : tout;
+  const corps = cle
+    ? { [cle]: valeurReglage(cle) }
+    : Object.fromEntries(Object.keys(MENU_REGLAGE).map(k => [k, valeurReglage(k)]));
   reglagesVoulus = { ...reglagesVoulus, ...corps };
   const ou = convActive;
   reglageEnVol = fetch("/api/conversation/" + ou + "/reglages", {
