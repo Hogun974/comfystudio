@@ -190,6 +190,26 @@ dit(((c or {}).get("reglages") or {}).get("priorite") == "soigne",
     "et il ne se retient pas : la conversation garde « soigne »",
     json.dumps((c or {}).get("reglages")))
 
+print("\n  ── la reponse a une PRECISION : le second chemin ───────")
+# La page a DEUX envois vers /api/generer : lancerDemande, et le formulaire de
+# reponse a une precision (garnirQuestion). C'est le second qui portait
+# « priorite: $("#priorite").value » — donc celui qui effaçait le cran de la
+# conversation — et la premiere recette ne l'empruntait pas. « Le chemin exact
+# de la page » en laissait la moitie de cote.
+tid, _ = envoyer(CONV, "un phare sur une falaise\n\nPrecisions : de nuit")
+vus = suivre(tid) if tid else []
+_moteur = next((m for m in vus if "RealVisXL" in m), "")
+dit("impose depuis l'interface" in _moteur,
+    "le moteur est HERITE par la reponse, pas oublie",
+    _moteur or "aucune ligne de moteur")
+dit(any("etapes=38" in m for m in vus),
+    "et le cran de priorite avec lui",
+    next((m for m in vus if "etapes=" in m), "?"))
+_, c, _ = appel("/api/conversation/" + CONV)
+dit(((c or {}).get("reglages") or {}).get("priorite") == "soigne",
+    "la reponse n'a rien efface au passage",
+    json.dumps((c or {}).get("reglages")))
+
 print("\n  ── une pastille saute : la cle est presente et vide ────")
 avant = len((c or {}).get("murmures") or [])
 st, m = bouger_menu(CONV, "modele", None)

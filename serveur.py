@@ -3946,11 +3946,18 @@ def charger_compteur():
     Une ligne illisible est sautee sans un mot : c'est le prix du format qui
     survit a une ecriture coupee, et une comptabilite a laquelle il manque la
     derniere ligne vaut mieux qu'un studio qui refuse de demarrer.
+
+    « errors=replace » pour tenir cette promesse jusqu'au bout : une ecriture
+    coupee au MILIEU d'une sequence UTF-8 leve UnicodeDecodeError a la lecture
+    du fichier, avant tout json.loads — et UnicodeDecodeError descend de
+    ValueError, pas d'OSError, donc ni le filet de la ligne ni celui du fichier
+    ne l'attrapaient. Le studio refusait alors de demarrer, ce que la phrase
+    au-dessus promettait justement d'eviter.
     """
     COMPTEUR.clear()
     gardes = set(mois_montres())
     try:
-        with open(FICHIER_COUTS, encoding="utf-8") as f:
+        with open(FICHIER_COUTS, encoding="utf-8", errors="replace") as f:
             for l in f:
                 l = l.strip()
                 if not l:
@@ -3995,7 +4002,7 @@ def _tailler():
     gardes = set(mois_montres())
     tenues = []
     try:
-        with open(FICHIER_COUTS, encoding="utf-8") as f:
+        with open(FICHIER_COUTS, encoding="utf-8", errors="replace") as f:
             for l in f:
                 try:
                     d = json.loads(l)
@@ -4047,7 +4054,14 @@ def vider_journal(secondes=None):
                               name="couts-vidange")
     veille.start()
     veille.join(ATTENTE_JOURNAL if secondes is None else secondes)
-    return _A_ECRIRE.qsize()
+    # « unfinished_tasks » et NON « qsize ». qsize() ne compte pas la ligne deja
+    # SORTIE de la file, celle que le fil tient dans les mains pendant que le
+    # disque ne repond plus. Le cas qui fait mal est celui a une seule ligne :
+    # un appel distant consigne a l'instant de l'arret, le fil l'a prise,
+    # qsize() vaut zero, et arreter_file n'imprime rien. La ligne est perdue en
+    # SILENCE — exactement ce que cette fonction existe pour empecher. Mesure :
+    # 39 annonces pour 40 lignes reellement non ecrites.
+    return _A_ECRIRE.unfinished_tasks
 
 
 def _consigner_sans_filet(fournisseur, modalite, pid, secondes,
@@ -10947,8 +10961,14 @@ async def arreter_file(a):
     if reste:
         # LE DIRE. Une comptabilite amputee qui s'annonce se rattrape ; celle
         # qui se tait donne un studio ou l'on croit compter les appels distants.
-        print(f"  journal des couts : {reste} ligne(s) perdue(s) — le disque "
-              f"n'a pas suivi en {ATTENTE_JOURNAL:.0f} s", flush=True)
+        # LA VRAIE CAUSE. Le message accusait le disque dans tous les cas ;
+        # quand c'est le fil d'ecriture qui est mort, on cherche du cote du
+        # volume pendant que le defaut est dans le code.
+        pourquoi = ("le fil d'ecriture s'est arrete"
+                    if _ECRIVAIN is not None and not _ECRIVAIN.is_alive()
+                    else f"le disque n'a pas suivi en {ATTENTE_JOURNAL:.0f} s")
+        print(f"  journal des couts : {reste} ligne(s) perdue(s) — {pourquoi}",
+              flush=True)
 
 def app():
     a = web.Application(client_max_size=128 * 1024 ** 2,

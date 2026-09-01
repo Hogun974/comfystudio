@@ -24,6 +24,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 import tempfile
 import time
 
@@ -642,6 +643,54 @@ verifier("avec des comptes, plus d'avertissement : le seau tient",
          serveur.avertissement_plafond() == "")
 serveur.AUTH = _vrai_auth
 serveur.PREFERENCES["plafond_nuage"] = 0
+
+
+# ── 12. la vidange COMPTE-T-ELLE la ligne que le fil tient deja ? ────────
+# qsize() ne compte pas l'element deja SORTI de la file. Le cas qui fait mal
+# est celui a une seule ligne : un appel consigne a l'instant de l'arret, le fil
+# l'a prise, qsize() vaut zero — et l'arret n'imprime rien pendant que la ligne
+# est perdue. C'est exactement le silence que vider_journal existe pour rompre.
+_bloque = threading.Event()
+_vrai_tailler = serveur._tailler
+serveur._tailler = lambda: _bloque.wait(30)      # le disque ne repond plus
+serveur._A_ECRIRE.put({"mois": serveur._mois(), "compte": "essai",
+                       "fournisseur": "x", "modalite": "llm"})
+if serveur._ECRIVAIN is None:
+    serveur._ECRIVAIN = threading.Thread(target=serveur._fil_ecriture,
+                                         daemon=True, name="couts-nuage")
+    serveur._ECRIVAIN.start()
+time.sleep(0.3)                                   # le fil a pris la ligne
+verifier("une ligne prise par le fil n'est plus dans la file",
+         serveur._A_ECRIRE.qsize() == 0)
+verifier("mais la vidange la compte quand meme",
+         serveur.vider_journal(0.2) == 1, str(serveur.vider_journal(0.2)))
+_bloque.set()
+serveur._tailler = _vrai_tailler
+time.sleep(0.3)
+verifier("et une fois le disque revenu, il ne reste rien",
+         serveur.vider_journal(2) == 0)
+
+# ── 13. une ecriture coupee en plein UTF-8 ──────────────────────────────
+# UnicodeDecodeError descend de ValueError, pas d'OSError : ni le filet de la
+# ligne ni celui du fichier ne l'attrapaient. La docstring promettait de sauter
+# une ligne illisible ; le studio refusait de demarrer.
+SAUT = chr(10).encode()
+with open(serveur.FICHIER_COUTS, "ab") as f:
+    f.write(json.dumps({"mois": serveur._mois(), "compte": "entier",
+                        "fournisseur": "x", "modalite": "llm",
+                        "appels": 1}).encode() + SAUT)
+    f.write(b'{"compte": "cou')                   # coupee au milieu d'un accent
+    f.write("é".encode()[:1] + SAUT)
+_leve = None
+try:
+    serveur.charger_compteur()
+except Exception as e:                            # noqa: BLE001
+    _leve = e
+verifier("une ligne coupee en plein UTF-8 ne fait pas tomber le demarrage",
+         _leve is None, type(_leve).__name__ if _leve else "")
+verifier("et la ligne entiere qui la precede est bien comptee",
+         serveur.appels_du_mois("entier") == 1,
+         str(serveur.appels_du_mois("entier")))
 
 
 shutil.rmtree(DONNEES, ignore_errors=True)
