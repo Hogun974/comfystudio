@@ -25,6 +25,13 @@ Les trois sont arrives :
 Statique, sans reseau, sans studio : ce banc entre dans la CI. Ce qu'il ne peut
 PAS voir — un rendu, une largeur, un debordement — reste le travail de
 recette_chemin_page.py et de l'oeil.
+
+Quatre de ses releves ont ete refaits apres que banc_mutations.py les a montres
+troues : tous les quatre etaient des expressions regulieres qui decrivaient UNE
+facon d'ecrire la panne au lieu de la panne. Un banc ecrit pour un defaut precis
+qui ne voit pas ce defaut, c'est le pire des filets — il rassure. Chacun porte
+desormais, a l'endroit de la decision, ce que la version d'avant laissait
+passer.
 """
 import io
 import os
@@ -48,25 +55,125 @@ def dit(vrai, quoi, detail=""):
 # explique justement pourquoi la regle n'existe plus.
 CSS = re.sub(r'/\*.*?\*/', "", PAGE.split("</style>", 1)[0], flags=re.S)
 
-seules = set(re.findall(r'(?m)^\.([a-z][a-z0-9-]*)\s*[{,]', CSS))
-modifs = set(re.findall(r'\.puce\.([a-z][a-z0-9-]*)', CSS))
+# « .puce.devis.depasse » ne rendait que « devis » : le second modificateur
+# sortait du releve, et « depasse » n'etait verifie ni en collision ni en
+# dormance. On prend la SUITE des modificateurs, pas le premier.
+modifs = set()
+for suite in re.findall(r'\.puce((?:\.[a-z][a-z0-9-]*)+)', CSS):
+    modifs |= set(suite.lstrip(".").split("."))
 
-collisions = sorted(modifs & seules)
+
+def classes_attrapantes(css):
+    """Les classes qu'un simple <span class="puce X"> peut suffire a matcher.
+
+    Le releve d'origine lisait « ^\\.classe » : les seules regles ancrees en
+    colonne 0. Mesure : 53 classes vues sur 77 — les 24 autres ne sont definies
+    qu'en descendante ou en fin de liste de selecteurs (« .moteur .ligne »,
+    « .detail .ligne »). Poser « .puce.ligne » refaisait donc mot pour mot le
+    degat de « .puce.moteur », sous le nez du banc ecrit pour lui, et il restait
+    vert (banc_mutations.py, trou 2).
+
+    Ce qui fait le degat n'est pas l'endroit ou la regle est ecrite, c'est
+    qu'elle MORDE sur la pastille. Un <span class="puce X"> ne matche qu'un
+    selecteur dont le dernier compound se reduit a la seule classe « .X » : ce
+    qui precede n'est qu'un ancetre, et il finit toujours par y en avoir un.
+    « .reponse.rate::before » en demande deux sur l'element lui-meme, il ne peut
+    donc jamais mordre — le compter ferait rougir le depot sain sur
+    « .puce.rate », qui est une pastille parfaitement legitime.
+    """
+    noms = set()
+    # Le prefixe d'un bloc, c'est ce qui separe la derniere accolade de la
+    # suivante. « @media » et « @keyframes » sont ecartes : leur prelude n'est
+    # pas une liste de selecteurs.
+    for prelude in re.findall(r'(?:^|[{}])([^{}]*?)\{', css, re.S):
+        prelude = prelude.strip()
+        if not prelude or prelude.startswith("@"):
+            continue
+        for sel in prelude.split(","):
+            dernier = re.split(r'[\s>+~]+', sel.strip())[-1]
+            # Les pseudos et leurs arguments ne changent pas de qui la regle
+            # parle : « .retirer-armee:hover:not(:disabled) » vise bien
+            # « .retirer-armee ».
+            net = re.sub(r'::?[a-z-]+(\([^()]*\))?', "", dernier)
+            seule = re.fullmatch(r'\.([a-z][a-z0-9_-]*)', net)
+            if seule:
+                noms.add(seule.group(1))
+    return noms
+
+
+collisions = sorted(modifs & classes_attrapantes(CSS))
 dit(not collisions,
     "aucune pastille ne porte le nom d'une classe de mise en page",
     ", ".join(f".puce.{c} contre .{c}" for c in collisions) or "aucun doublon")
 
 # Une pastille se pose dans une chaine du script : « class="puce cours" », mais
-# aussi « class="puce devis${depasse ? " depasse" : ""}" ». Plutot que de
-# pretendre analyser du JavaScript, on prend les lignes qui parlent de pastilles
-# et l'on y cherche les noms connus. Grossier, et suffisant : ce qu'on veut
-# savoir, c'est si un nom apparait quelque part hors de la feuille.
+# aussi « class="puce devis${depasse ? " depasse" : ""}" ».
+#
+# Le releve d'origine prenait les LIGNES contenant « puce » et y cherchait les
+# noms connus. Il cherchait un mot, pas une classe : « <span class="puce
+# attente">en file — 3 devant</span> » fait passer « .puce.file » pour posee,
+# alors que la regle dort. C'est du texte francais affiche a l'utilisateur, et
+# rien ne l'empeche de contenir « rate », « cours » ou « devis » non plus
+# (banc_mutations.py, trou 4).
+#
+# On lit donc l'attribut « class » lui-meme. Ce n'est toujours pas analyser du
+# JavaScript : on suit les accolades de « ${…} » pour ne pas s'arreter sur les
+# guillemets qu'elles contiennent, et voila tout.
 CORPS = PAGE.split("</style>", 1)[1]
+
+
+def listes_de_classes(texte):
+    """Le contenu de chaque « class="…" », les « ${…} » traverses."""
+    for depart in re.finditer(r'class=(["\'])', texte):
+        guillemet, i, debut, prof = depart.group(1), depart.end(), depart.end(), 0
+        while i < len(texte):
+            c = texte[i]
+            if not prof and c == "$" and texte[i + 1:i + 2] == "{":
+                prof, i = 1, i + 2
+                continue
+            if prof:
+                prof += (c == "{") - (c == "}")
+                i += 1
+                continue
+            # Le saut de ligne autant que le guillemet : un attribut jamais
+            # ferme avalerait sinon la moitie du script.
+            if c == guillemet or c == "\n":
+                break
+            i += 1
+        yield texte[debut:i]
+
+
+def noms_poses(valeur):
+    """Les classes que cette liste pose vraiment.
+
+    Hors « ${…} », les mots sont des noms de classe. Dedans, SEULES les chaines
+    litterales en sont — « ${depasse ? " depasse" : ""} » pose « depasse », et
+    non « depasse » l'expression.
+
+    Deux facons de poser une pastille echappent a ce releve, et c'est voulu : une
+    classe calculee (« ${etat} ») et un « classList.add » sur un element
+    construit ailleurs. Les sept pastilles de la page passent toutes par un
+    attribut « class » litteral ; le jour ou l'une n'y passera plus, ce banc la
+    declarera dormante, ce qui est le bon sens de l'erreur — il vaut mieux
+    relire une pastille qui sert que croire posee une regle qui dort. Les
+    accepter demanderait de rendre a « classList.add("file") » sur n'importe
+    quel element le pouvoir de justifier « .puce.file », et l'on aurait rouvert
+    le trou par l'autre bout.
+    """
+    noms = set(re.findall(r'[a-z][a-z0-9-]*',
+                          re.sub(r'\$\{.*?\}', " ", valeur, flags=re.S)))
+    for expr in re.findall(r'\$\{(.*?)\}', valeur, flags=re.S):
+        for litteral in re.findall(r'"([^"]*)"|\'([^\']*)\'|`([^`]*)`', expr):
+            for morceau in litteral:
+                noms |= set(re.findall(r'[a-z][a-z0-9-]*', morceau))
+    return noms
+
+
 posees = set()
-for ligne in CORPS.splitlines():
-    if "puce" not in ligne:
-        continue
-    posees |= modifs & set(re.findall(r'[a-z][a-z0-9-]*', ligne))
+for liste in listes_de_classes(CORPS):
+    noms = noms_poses(liste)
+    if "puce" in noms:
+        posees |= modifs & noms
 
 dormantes = sorted(modifs - posees)
 dit(not dormantes, "aucune pastille decrite sans etre jamais posee",
@@ -75,16 +182,27 @@ dit(not dormantes, "aucune pastille decrite sans etre jamais posee",
 # Les deux tables des reglages, inverses l'une de l'autre, ecrites a deux cents
 # lignes d'ecart. C'est la derive de l'une des deux qui a tue les reglages par
 # conversation le 31 aout.
-menu = dict(re.findall(r'(\w+):\s*"(#\w+)"',
+#
+# « [\w-] » et non « \w » : le trait d'union est la ponctuation ordinaire d'un
+# identifiant HTML, et « \w » ne le franchit pas. Nommer « #forcer-moteur » dans
+# les deux tables faisait DISPARAITRE l'entree des trois releves d'un coup — les
+# tables restaient inverses l'une de l'autre, plus rien ne manquait, et le
+# reglage du moteur cessait simplement d'etre retenu. Le defaut du 31 aout, dans
+# sa forme la plus muette, sous le nez du banc ecrit pour lui
+# (banc_mutations.py, trou 3).
+menu = dict(re.findall(r'([\w-]+):\s*"(#[\w-]+)"',
                        PAGE.split("const MENU_REGLAGE = {", 1)[1].split("};", 1)[0]))
-cle = dict(re.findall(r'"(#\w+)":\s*"(\w+)"',
+cle = dict(re.findall(r'"(#[\w-]+)":\s*"([\w-]+)"',
                       PAGE.split("const CLE_REGLAGE = {", 1)[1].split("};", 1)[0]))
 dit(menu and cle and {v: k for k, v in menu.items()} == cle,
     "MENU_REGLAGE et CLE_REGLAGE disent la meme chose",
     f"{len(menu)} contre {len(cle)}")
 
+# re.escape : le selecteur vient de la page, pas de ce fichier. Un identifiant
+# a trait d'union passe encore, mais un point ou un plus feraient de la
+# recherche un motif, et le banc mesurerait autre chose que ce qu'il croit.
 manquants = sorted(sel for sel in menu.values()
-                   if not re.search(r'id="' + sel[1:] + r'"', PAGE))
+                   if not re.search(r'id="' + re.escape(sel[1:]) + r'"', PAGE))
 dit(not manquants, "chaque reglage nomme un menu qui existe dans la page",
     ", ".join(manquants) or f"{len(menu)} menus trouves")
 
@@ -105,7 +223,7 @@ dit("variantes" not in menu and "#variantes" not in cle,
 # cle renvoie LES QUATRE reglages d'un coup, c'est-a-dire le degat pour lequel
 # la table a ete decoupee, declenche par un menu qui n'a rien a voir avec eux.
 entrees = re.findall(
-    r'\{\s*sel:\s*"(#\w+)"(.*?)\}',
+    r'\{\s*sel:\s*"(#[\w-]+)"(.*?)\}',
     PAGE.split("const REGLAGES = [", 1)[1].split("\n];", 1)[0], re.S)
 orphelines = [s for s, reste in entrees
               if s not in cle and "geste: true" not in reste]
@@ -138,7 +256,93 @@ dit("c.variantes" in demande and '$("#variantes")' in demande,
 # ouvert effaçait donc le cran du premier au simple envoi d'un message.
 envois = re.findall(r'fetch\("/api/generer"[^;]*?\}\);', PAGE, re.S)
 dit(len(envois) >= 2, f"{len(envois)} envois vers /api/generer reperes")
-fautifs = [e for e in envois if re.search(r'priorite:\s*\$\("#priorite"\)', e)]
+
+# Ce releve cherchait « priorite: $("#priorite") » — UNE facon de l'ecrire. Le
+# vrai code portait l'abreviation ES6, « priorite, », le menu lu deux lignes
+# plus haut : la ligne fautive d'origine restauree sous cette forme-la, ce
+# banc-ci restait vert. C'est la panne qui a fait naitre banc_mutations.py, et
+# elle y dormait en trou 1.
+#
+# Ce qui fait le degat n'est pas la FORME de la propriete mais d'ou vient sa
+# VALEUR. On releve donc d'abord les noms qui portent le cran du menu, puis on
+# regarde si l'un d'eux entre dans un corps de demande — quelle que soit la
+# facon de l'y ecrire.
+#
+# Cette distinction n'est pas un raffinement : « priorite » figure DEJA pour de
+# bon dans le second envoi — « ...(priorite ? { priorite } : {}) », le
+# brouillon — et c'est le parametre de lancerDemande, jamais une lecture du
+# menu. Se contenter de « la cle priorite est dans le corps » ferait rougir le
+# depot sain.
+LECTURES_DU_MENU = (r'(?:\$|document\.querySelector)\("#priorite"\)'
+                    r'|valeurReglage\("priorite"\)'
+                    r'|reglagesVoulus\.priorite')
+
+
+def separer(args):
+    """Decoupe une liste d'arguments sur les virgules DE PREMIER NIVEAU."""
+    morceaux, prof, courant = [], 0, ""
+    for c in args:
+        if c in "([{":
+            prof += 1
+        elif c in ")]}":
+            prof -= 1
+        if c == "," and prof == 0:
+            morceaux.append(courant)
+            courant = ""
+            continue
+        courant += c
+    return morceaux + [courant]
+
+
+def noms_nourris_par(lecture):
+    """Les identifiants qui finissent par porter la valeur lue sur ce menu.
+
+    Deux facons de la recevoir, et la seconde est celle qu'avait la VRAIE panne
+    (page de 21c443c^) : « $("#go").onclick = () => lancerDemande($("#priorite")
+    .value) » deux mille lignes plus bas que le « priorite, » du corps. Le cran
+    entrait par le point d'APPEL, pas par une declaration voisine — s'arreter
+    aux « const » aurait ferme la mutation de banc_mutations.py en laissant
+    passer le defaut qu'elle imite.
+    """
+    noms = set()
+    for nom, valeur in re.findall(
+            r'(?:^|[;{}\n]|\b(?:const|let|var)\s+)\s*([A-Za-z_$][\w$]*)\s*=\s*([^;\n]*)',
+            PAGE, re.M):
+        if re.search(lecture, valeur):
+            noms.add(nom)
+    # « ([^()]*(?:\([^()]*\)[^()]*)*) » : un seul etage d'imbrication suffit a
+    # tenir « lancerDemande($("#priorite").value) », et evite le motif recursif.
+    for fonction, args in re.findall(
+            r'\b([A-Za-z_$][\w$]*)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)', PAGE):
+        rangs = [i for i, a in enumerate(separer(args)) if re.search(lecture, a)]
+        if not rangs:
+            continue
+        f = re.escape(fonction)
+        for params in re.findall(
+                r'function\s+' + f + r'\s*\(([^)]*)\)'
+                r'|\b(?:const|let|var)\s+' + f
+                + r'\s*=\s*(?:async\s+)?(?:function\s*)?\(([^)]*)\)', PAGE):
+            listes = [p.strip() for p in "".join(params).split(",")]
+            for i in rangs:
+                if i < len(listes) and re.fullmatch(r'[A-Za-z_$][\w$]*', listes[i]):
+                    noms.add(listes[i])
+    return noms
+
+
+noms_du_menu = noms_nourris_par(LECTURES_DU_MENU)
+
+
+def porte_le_cran(envoi):
+    # « priorite: <valeur> », guillemets ou non autour de la cle.
+    for valeur in re.findall(r'\bpriorite"?\s*:\s*([^,\n}]*)', envoi):
+        if re.search(LECTURES_DU_MENU, valeur):
+            return True
+    # L'abreviation : « priorite, » ou « priorite }». La valeur est alors la
+    # variable du meme nom, et c'est le releve ci-dessus qui dit d'ou elle vient.
+    return bool(re.search(r'\bpriorite\s*[,}]', envoi)) and "priorite" in noms_du_menu
+
+
+fautifs = [e for e in envois if porte_le_cran(e)]
 dit(not fautifs, "aucun envoi ne renvoie le cran de priorite du menu",
     f"{len(fautifs)} envoi(s) fautif(s)" if fautifs else "il vit sur la conversation")
 

@@ -37,6 +37,14 @@ le banc vise laisse ENCORE passer. Elles sont ecrites, nommees et signalees,
 mais ne font pas echouer : les compter en echec rendrait la CI rouge en
 permanence, et une CI qui rougit pour rien finit ignoree. Les basculer dans
 MUTATIONS est le geste qui clot la reparation du filet.
+
+Ils etaient cinq ; les quatre qui visaient banc_page.py sont fermes et ont
+rejoint PAGE. Ils disaient tous la meme chose : un releve par expression
+reguliere decrit UNE facon d'ecrire la panne, jamais la panne. Fermer le
+premier a d'ailleurs revele qu'il n'imitait pas encore le vrai defaut — la
+mutation posait un « const », la page de 21c443c^ recevait le cran en argument
+d'appel — et la mutation qui manquait est desormais dans PAGE elle aussi. C'est
+le meme service que ce fichier rend aux bancs : une mutation aussi s'eprouve.
 """
 import io
 import os
@@ -354,8 +362,17 @@ CONTENEUR = [
 ]
 
 # ──────────────────────────────────────────────────────────────────────
-#  banc_page.py — cinq mutations verifiees rouges (commit 21c443c)
+#  banc_page.py — dix mutations verifiees rouges (commit 21c443c)
 # ──────────────────────────────────────────────────────────────────────
+# Les cinq premieres viennent de 21c443c. Les cinq suivantes etaient des TROUS
+# CONNUS : quatre trouvees par la relecture adverse, plus celle du point
+# d'appel, trouvee en fermant la premiere. Les quatre trous ne faisaient qu'un
+# seul et meme defaut de banc — quatre releves par expression reguliere qui
+# decrivaient UNE facon d'ecrire la panne au lieu de la panne : le debut de
+# ligne, le trait d'union, le mot au lieu de la classe, la forme de la
+# propriete. Chacune a ete eprouvee dans les deux sens : rouge sur le banc
+# repare, verte sur le banc d'avant sa correction, et verte sur le banc repare
+# des trois AUTRES corrections seulement.
 PAGE = [
     dict(
         nom="une pastille reprend le nom d'une classe de mise en page",
@@ -413,19 +430,101 @@ PAGE = [
                 "body: JSON.stringify({ texte: complet, conversation: cid,"
                 ' priorite: $("#priorite").value,')),
         ]),
+    # ── Les quatre trous fermes, et leur descendante ──────────────────
+    dict(
+        nom="le cran de priorite en abreviation ES6",
+        banc="banc_page.py",
+        imite="exactement la panne qui a lance ce fichier : la ligne fautive "
+              "restauree sous sa vraie forme, « priorite, », que le releve ne "
+              "voyait pas parce qu'il cherchait « priorite: $(\"#priorite\") »",
+        rougit="aucun envoi ne renvoie le cran de priorite du menu",
+        editions=[
+            ("web/index.html", brut(
+                "      if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }\n"
+                '      const r = await fetch("/api/generer", {',
+                "      if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }\n"
+                '      const priorite = $("#priorite").value;\n'
+                '      const r = await fetch("/api/generer", {')),
+            ("web/index.html", brut(
+                "body: JSON.stringify({ texte: complet, conversation: cid,",
+                "body: JSON.stringify({ texte: complet, conversation: cid, priorite,")),
+        ]),
+    dict(
+        nom="le cran de priorite entre par le point d'appel",
+        banc="banc_page.py",
+        imite="la panne d'origine dans sa VRAIE forme, relevee sur "
+              "21c443c^ : le corps portait « priorite, » et le cran entrait "
+              "deux mille lignes plus bas, en argument de lancerDemande. Ni "
+              "« priorite: » ni « const » nulle part — la mutation ci-dessus, "
+              "seule, se fermait sans fermer le defaut qu'elle imite",
+        rougit="aucun envoi ne renvoie le cran de priorite du menu",
+        editions=[
+            ("web/index.html", brut(
+                '$("#go").onclick = () => lancerDemande(null);',
+                '$("#go").onclick = () => lancerDemande($("#priorite").value);')),
+        ]),
+    dict(
+        nom="une classe de mise en page definie ailleurs qu'en debut de ligne",
+        banc="banc_page.py",
+        imite="« .puce.ligne » contre « .moteur .ligne » : le meme degat que "
+              "« .puce.moteur », mais la classe heritee est definie en "
+              "descendante — 24 classes sur 77 echappaient au releve",
+        rougit="aucune pastille ne porte le nom d'une classe de mise en page",
+        editions=[
+            ("web/index.html", brut(
+                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}",
+                ".puce.ligne{color:var(--braise)}\n"
+                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}")),
+            # Posee pour de bon, sans quoi c'est « regle jamais posee » qui
+            # rougirait — la mutation passerait pour attrapee alors que la
+            # collision, elle, resterait invisible.
+            ("web/index.html", brut(
+                '(esquisse ? \'<span class="puce esquisse">brouillon</span>\'',
+                '(esquisse ? \'<span class="puce esquisse ligne">brouillon</span>\'')),
+        ]),
+    dict(
+        nom="un identifiant de menu a trait d'union",
+        banc="banc_page.py",
+        imite="« #forcer-moteur » : le reglage du moteur nomme un menu qui "
+              "n'existe pas et cesse d'etre retenu. « \\w » ne franchit pas le "
+              "trait d'union, donc l'entree DISPARAISSAIT des trois releves au "
+              "lieu de rougir — le defaut du 31 aout dans sa forme la plus muette",
+        rougit="chaque reglage nomme un menu qui existe dans la page",
+        editions=[
+            ("web/index.html", brut('modele: "#forcer"', 'modele: "#forcer-moteur"')),
+            ("web/index.html", brut('"#forcer": "modele"', '"#forcer-moteur": "modele"')),
+            ("web/index.html", brut('{ sel: "#forcer", nom: "moteur"',
+                                    '{ sel: "#forcer-moteur", nom: "moteur"')),
+        ]),
+    dict(
+        nom="une regle de pastille dont le nom traine dans du texte francais",
+        banc="banc_page.py",
+        imite="« .puce.file » dort sans element, et « en file — 3 devant », a "
+              "deux lignes de la, suffisait a la faire passer pour posee : le "
+              "releve cherchait un mot dans la ligne, pas une classe dans un "
+              "attribut",
+        rougit="aucune pastille decrite sans etre jamais posee",
+        editions=[
+            ("web/index.html", brut(
+                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}",
+                ".puce.file{color:var(--encre-pale)}\n"
+                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}")),
+        ]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
 #  Les trous connus : ecrits, nommes, et PAS ENCORE fermes
 # ──────────────────────────────────────────────────────────────────────
-# Ces cinq-la DOIVENT rougir et passent au vert aujourd'hui. Ce ne sont pas des
-# hypotheses : elles ont ete jouees, et le banc vise est reste vert sur chacune.
-# Les ecrire ici plutot que dans un rapport est le seul moyen qu'elles restent
-# mesurees — le premier trou de ce genre a ete decouvert des mois trop tard,
-# dans un rapport que personne n'a relu.
+# Celle-ci DOIT rougir et passe au vert aujourd'hui. Ce n'est pas une
+# hypothese : elle a ete jouee, et le banc vise est reste vert. L'ecrire ici
+# plutot que dans un rapport est le seul moyen qu'elle reste mesuree — le
+# premier trou de ce genre a ete decouvert des mois trop tard, dans un rapport
+# que personne n'a relu.
 #
-# Quand le banc saura les voir, elles rougiront : il le dira, et il suffira de
-# les deplacer dans PAGE ou CONTENEUR ci-dessus.
+# Quand le banc saura la voir, elle rougira : il le dira, et il suffira de la
+# deplacer dans PAGE ou CONTENEUR ci-dessus. Les quatre qui visaient
+# banc_page.py y sont passees ; il ne reste que celle de banc_conteneur.py,
+# qui demande d'EVALUER un defaut calcule et non de generaliser un releve.
 TROUS_CONNUS = [
     dict(
         nom="un defaut du compose qui repete un defaut CALCULE par le code",
@@ -440,70 +539,6 @@ TROUS_CONNUS = [
             ("docker-compose.yml", brut(
                 '      COMFY_MODELES: "${COMFY_MODELES:-}"',
                 '      COMFY_MODELES: "${COMFY_MODELES:-/comfy/models}"')),
-        ]),
-    dict(
-        nom="le cran de priorite en abreviation ES6",
-        banc="banc_page.py",
-        imite="exactement la panne qui a lance ce fichier : la ligne fautive "
-              "restauree sous sa vraie forme, « priorite, », et le banc ecrit "
-              "pour elle est reste vert",
-        rougit="aucun envoi ne renvoie le cran de priorite du menu",
-        editions=[
-            ("web/index.html", brut(
-                "      if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }\n"
-                '      const r = await fetch("/api/generer", {',
-                "      if (reglageEnVol) { try { await reglageEnVol; } catch (e) {} }\n"
-                '      const priorite = $("#priorite").value;\n'
-                '      const r = await fetch("/api/generer", {')),
-            ("web/index.html", brut(
-                "body: JSON.stringify({ texte: complet, conversation: cid,",
-                "body: JSON.stringify({ texte: complet, conversation: cid, priorite,")),
-        ]),
-    dict(
-        nom="une classe de mise en page definie ailleurs qu'en debut de ligne",
-        banc="banc_page.py",
-        imite="« .puce.ligne » contre « .moteur .ligne » : le meme degat que "
-              "« .puce.moteur », mais la classe heritee est definie en "
-              "descendante et le releve ne lit que les debuts de ligne",
-        rougit="aucune pastille ne porte le nom d'une classe de mise en page",
-        editions=[
-            ("web/index.html", brut(
-                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}",
-                ".puce.ligne{color:var(--braise)}\n"
-                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}")),
-            # Posee pour de bon, sans quoi c'est « regle jamais posee » qui
-            # rougirait — la mutation passerait pour attrapee alors que la
-            # collision, elle, reste invisible.
-            ("web/index.html", brut(
-                '(esquisse ? \'<span class="puce esquisse">brouillon</span>\'',
-                '(esquisse ? \'<span class="puce esquisse ligne">brouillon</span>\'')),
-        ]),
-    dict(
-        nom="un identifiant de menu a trait d'union",
-        banc="banc_page.py",
-        imite="« #forcer-moteur » : le reglage du moteur nomme un menu qui "
-              "n'existe pas et cesse d'etre retenu — et les trois releves "
-              "s'arretent sur « #\\w+ », donc l'entree disparait au lieu de "
-              "rougir",
-        rougit="chaque reglage nomme un menu qui existe dans la page",
-        editions=[
-            ("web/index.html", brut('modele: "#forcer"', 'modele: "#forcer-moteur"')),
-            ("web/index.html", brut('"#forcer": "modele"', '"#forcer-moteur": "modele"')),
-            ("web/index.html", brut('{ sel: "#forcer", nom: "moteur"',
-                                    '{ sel: "#forcer-moteur", nom: "moteur"')),
-        ]),
-    dict(
-        nom="une regle de pastille dont le nom traine dans du texte francais",
-        banc="banc_page.py",
-        imite="« .puce.file » dort sans element, et « en file — 3 devant », a "
-              "deux lignes de la, suffit a la faire passer pour posee : le "
-              "releve cherche un mot, pas une classe",
-        rougit="aucune pastille decrite sans etre jamais posee",
-        editions=[
-            ("web/index.html", brut(
-                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}",
-                ".puce.file{color:var(--encre-pale)}\n"
-                ".puce.rate{color:var(--rouge);border-color:var(--rouge)}")),
         ]),
 ]
 
