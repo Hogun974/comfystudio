@@ -31,6 +31,7 @@ import copy
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -39,6 +40,13 @@ os.environ["STUDIO_DONNEES"] = tempfile.mkdtemp(prefix="banc_variantes_")
 os.environ["STUDIO_AUTH"] = "libre"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import serveur as S  # noqa: E402
+
+# La page est lue pour UNE chose : le devis affiche a cote de la barre n'est pas
+# un champ de /api/etat, c'est la phrase du journal relue au vol (RE_DEVIS). Ce
+# banc peut donc verifier que la phrase du serveur et le releve de la page
+# parlent bien du meme rendu — ce qu'aucun des deux ne peut prouver seul.
+PAGE = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "web", "index.html"), encoding="utf-8").read()
 
 ok, rate = [], []
 
@@ -59,6 +67,11 @@ PID = "u" * 32
 GRAPHES = []            # [(tid, ident, graphe)]
 APPELS = {"aiguiller": 0, "enrichir": 0, "traduire": 0}
 LENT = {}               # tid -> secondes de faux calcul
+# Les rangs dont la carte refuse le rendu. Le premier tirage y a sa place : son
+# echec est precisement le cas que « c'est la premiere qui tient le rang » ne
+# savait pas traiter, et qu'aucun scenario n'atteignait — §8 retire une variante
+# de la file, jamais la premiere, parce que c'est elle qui lance les autres.
+ECHEC = set()
 INSTANTANE = {"file": None, "conv": None, "quand": "jamais"}
 
 
@@ -94,6 +107,10 @@ async def faux_soumettre(g, tid, ident, cle, patience=1800):
     # Le premier tirage traine expres dans certains scenarios : c'est ainsi
     # qu'on montre que « l'image courante » ne se joue pas a la course.
     rang = ((S.TACHES.get(tid) or {}).get("variantes") or {}).get("rang", 1)
+    if rang in ECHEC:
+        # Une carte qui lache en plein rendu : le tour part en erreur, et le
+        # groupe doit continuer a designer une image.
+        raise RuntimeError("la carte a lache")
     if INSTANTANE["quand"] == "premier rendu" and rang == 1:
         # L'etat du disque a la seconde ou le premier tirage calcule et ou les
         # autres attendent : exactement ce qu'un redemarrage retrouverait.
@@ -150,6 +167,7 @@ def poser(vram_zima=5.9):
     S.ENTREES.clear()
     del GRAPHES[:]
     LENT.clear()
+    ECHEC.clear()
     APPELS.update(aiguiller=0, enrichir=0, traduire=0)
     INTENTION[0] = "image"
     INSTANTANE.update(file=None, conv=None, quand="jamais")
@@ -321,6 +339,44 @@ async def main():
     dit("3 min" in mots(chef), "3 x 60 s annonces comme 3 min, pas 60 s",
         mots(chef)[-120:])
 
+    # DEUX CHIFFRES, DEUX CHOSES. Le devis pose sur la tache est le compte a
+    # rebours de CETTE bulle-la : c'est a lui que la page compare le temps
+    # ecoule pour dire « plus long que d'habitude ». Le total du groupe est un
+    # autre chiffre. Les deux etaient a l'ecran en meme temps sans que rien ne
+    # dise qu'ils ne comptent pas la meme chose — 60 s dans la pastille, 3 min
+    # dans le journal, pour un groupe de trois.
+    devis_ = (S.TACHES.get(chef) or {}).get("devis") or {}
+    dit(devis_.get("secondes") == 60,
+        "le devis de la tache compte UN rendu, pas le groupe", str(devis_))
+    dit(devis_.get("rendus") == 3 and devis_.get("total_s") == 180,
+        "et le cout du groupe est pose a cote, chiffre", str(devis_))
+    dit("60 s chacune" in mots(chef),
+        "le journal redit le chiffre de la pastille avant de le multiplier",
+        mots(chef)[-200:])
+    soeurs_ = [t["id"] for t in tours() if t["id"] != chef]
+    devis_soeurs = [(S.TACHES.get(s) or {}).get("devis", {}).get("secondes")
+                    for s in soeurs_]
+    dit(devis_soeurs == [60] * len(soeurs_),
+        "les autres tirages promettent le meme rendu : trois bulles, une seule "
+        "promesse", str(devis_soeurs))
+
+    # LA PASTILLE EST RELUE DANS LE TEXTE. /api/etat sert bien un champ
+    # « devis », mais la page ne le lit pas : elle cherche la phrase du journal.
+    # C'est donc cette phrase qui doit dire un rendu — et la ligne du groupe ne
+    # doit surtout pas s'y substituer, sinon le compte a rebours de la bulle se
+    # trompe de trois rendus.
+    m_re = re.search(r"const RE_DEVIS = /(.+?)/([a-z]*);", PAGE)
+    if not m_re:
+        print("  ——  la page ne releve plus le devis dans le journal "
+              "(RE_DEVIS introuvable) : ce couplage-la n'existe plus")
+    else:
+        motif = re.compile(m_re.group(1), re.I if "i" in m_re.group(2) else 0)
+        vus = [m for m in (motif.search(e["msg"])
+                           for e in S.TACHES[chef]["etapes"]) if m]
+        dit(len(vus) == 1 and vus[0].group(1) == "60" and vus[0].group(2) == "s",
+            "la page releve le rendu, et lui seul : une phrase, pas deux",
+            str([m.group(0) for m in vus]))
+
     # ══ 5. la ou l'on s'arrete ══════════════════════════════════════════
     print("\n  ── la ou l'on s'arrete ──")
     for intention in ("edition", "agrandir", "detourer", "retoucher_fond",
@@ -403,6 +459,64 @@ async def main():
     st, _ = lire(await S.api_variante_choisir(
         Req(corps={"conversation": "c1", "tour": "inexistant"})))
     dit(st == 404, "un tour inconnu aussi", str(st))
+
+    # QUAND LE PREMIER TIRAGE N'ABOUTIT PAS. « C'est la premiere qui tient le
+    # rang » ne disait rien de ce cas-la : aucune variante ne devenait l'image
+    # courante, et « agrandis-la » visait en silence l'image d'AVANT le groupe.
+    # Le rang 2 finit ici APRES les rangs 3 et 4 : si l'ordre d'arrivee decidait,
+    # ce serait la troisieme.
+    conv = poser()
+    S.FILE_ATTENTE = asyncio.Queue()
+    conv["derniere_sortie"] = {"noeud": "pc", "filename": "avant_le_groupe.png",
+                               "subfolder": "u/image"}
+    ECHEC.add(1)
+    LENT.update({2: 0.30, 3: 0.02, 4: 0.05})
+    await poster(variantes=4)
+    await tourner()
+    par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
+    dit(par_rang[1].get("etat") == "erreur",
+        "le premier tirage a echoue", str(par_rang[1].get("etat")))
+    dit(all(par_rang[r].get("etat") == "fini" for r in (2, 3, 4)),
+        "les trois autres ont rendu leur image")
+    dit(conv["derniere_sortie"]["filename"] != "avant_le_groupe.png",
+        "le groupe designe quand meme une image",
+        conv["derniere_sortie"]["filename"])
+    dit(conv["derniere_sortie"]["filename"]
+        == par_rang[2]["fichiers"][0]["filename"],
+        "et c'est le plus petit rang abouti, pas le premier arrive",
+        conv["derniere_sortie"]["filename"])
+
+    # UN CHOIX A LA MAIN NE SE REPREND PAS. La troisieme est designee pendant
+    # que la premiere calcule encore : celle-ci, en finissant, reprenait la place
+    # que l'utilisateur venait de donner a une autre — l'inverse exact de ce que
+    # la garde protege.
+    conv = poser()
+    S.FILE_ATTENTE = asyncio.Queue()
+    LENT.update({1: 0.6})
+    await poster(variantes=4)
+    gens = [asyncio.create_task(S.travailleur()) for _ in range(4)]
+    await asyncio.sleep(0.2)
+    par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
+    dit(par_rang[3].get("etat") == "fini" and par_rang[1].get("etat") != "fini",
+        "la troisieme est rendue, la premiere calcule encore",
+        f"{par_rang[1].get('etat')} / {par_rang[3].get('etat')}")
+    st, corps = lire(await S.api_variante_choisir(
+        Req(corps={"conversation": "c1", "tour": par_rang[3]["id"]})))
+    dit(st == 200, "on peut la designer sans attendre le groupe", str(corps))
+    await asyncio.wait_for(S.FILE_ATTENTE.join(), timeout=30)
+    for g in gens:
+        g.cancel()
+    await asyncio.gather(*gens, return_exceptions=True)
+    # Relus : enregistrer_tour REMPLACE l'entree de la liste, il ne la modifie
+    # pas — un tour garde en main pendant le rendu reste « en cours » pour
+    # toujours.
+    par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
+    dit(par_rang[1].get("etat") == "fini",
+        "la premiere a fini apres le choix", str(par_rang[1].get("etat")))
+    dit(conv["derniere_sortie"]["filename"]
+        == par_rang[3]["fichiers"][0]["filename"],
+        "et elle ne reprend pas la place donnee a la troisieme",
+        conv["derniere_sortie"]["filename"])
 
     # ══ 7. « refaire en soigne » vise celle qu'on a choisie ═════════════
     print("\n  ── refaire en soigne ──")

@@ -7373,6 +7373,41 @@ async def lancer_variantes(tid, texte, conv, plan, combien, taille=None,
     return lances
 
 
+def variante_tient_le_rang(conv, tid, marque):
+    """Ce tirage-ci devient-il « l'image courante » de la conversation ?
+
+    LE PLUS PETIT RANG ABOUTI, et non le premier arrive. Les tirages d'un groupe
+    finissent dans un ordre que personne ne choisit — deux machines, deux
+    vitesses — et « agrandis-la » viserait sinon une image tiree au sort,
+    differente a chaque fois pour le meme geste. Le rang, lui, ne depend
+    d'aucune vitesse : le groupe designe donc toujours la meme image, quel que
+    soit l'ordre d'arrivee.
+
+    Le rang 1 tout court ne suffisait pas : quand ce tirage-la echoue ou qu'on
+    le retire de la file — ce qui arrive apres un redemarrage, ou il attend dans
+    _file.json comme les autres — plus AUCUNE variante ne devenait l'image
+    courante, et « agrandis-la » visait en silence l'image d'avant le groupe.
+
+    Un choix fait a la main (api_variante_choisir) prime sur tout : le rang 1
+    qui finissait apres le clic reprenait la place que l'utilisateur venait de
+    donner a une autre.
+    """
+    if not (marque or {}).get("groupe"):
+        return True
+    rang = marque.get("rang", 1)
+    for t in conv.get("tours", []):
+        if t.get("id") == tid:
+            continue
+        if (t.get("variantes") or {}).get("groupe") != marque["groupe"]:
+            continue
+        if t.get("choisie"):
+            return False
+        if (t.get("etat") == "fini" and t.get("fichiers")
+                and (t.get("variantes") or {}).get("rang", 1) < rang):
+            return False
+    return True
+
+
 async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                    priorite="", noeud_force=None, plan_impose=None,
                    modele_choisi=False, graine=None, variantes=1):
@@ -7835,15 +7870,35 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             ident, cle, f"{plan.get('largeur')}x{plan.get('hauteur')}"
             if plan.get("largeur") else None,
             pid=(TACHES.get(tid) or {}).get("proprietaire"))
+        # LE DEVIS COMPTE UN SEUL RENDU, MEME QUAND ON EN LANCE QUATRE. C'est un
+        # choix, pas un oubli, et il se tranche par l'usage qu'on en fait :
+        # la page compare ce chiffre au TEMPS ECOULE DE CETTE BULLE pour dire
+        # « plus long que d'habitude ». Un total de groupe y retarderait
+        # l'alerte de quatre rendus — c'est-a-dire la supprimerait. Et chaque
+        # tirage a sa bulle et son devis : mettre le total sur le seul premier
+        # donnerait quatre promesses differentes pour quatre rendus identiques.
+        # Le cout du GROUPE est un autre chiffre ; il est pose A COTE et non
+        # par-dessus. Les deux etaient a l'ecran en meme temps sans que rien ne
+        # dise qu'ils ne comptaient pas la meme chose : « 60 s » dans la
+        # pastille, « 3 min » dans le journal, pour un groupe de trois.
+        mot_devis = ""
         if mediane_:
+            mot_devis = (f"{mediane_ / 60:.0f} min" if mediane_ >= 90
+                         else f"{mediane_:.0f} s")
             # SUR LA TACHE, et pas seulement dans le journal. La page lisait la
             # phrase française pour en tirer le chiffre : reformuler cette
             # ligne aurait fait disparaitre la pastille en silence.
-            TACHES.setdefault(tid, {})["devis"] = {"secondes": round(mediane_),
-                                                   "mesures": combien_}
+            devis_ = {"secondes": round(mediane_), "mesures": combien_}
+            if variantes > 1:
+                # Nommes, pour que le total n'ait plus a se deviner dans une
+                # phrase française. Du temps de CARTE et non une duree
+                # d'attente : la ligne de journal plus bas dit pourquoi on ne le
+                # divise pas par le nombre de machines.
+                devis_["rendus"] = variantes
+                devis_["total_s"] = round(mediane_ * variantes)
+            TACHES.setdefault(tid, {})["devis"] = devis_
             journal(tid, f"d'apres tes {combien_} rendus precedents, compte "
-                         + (f"{mediane_ / 60:.0f} min" if mediane_ >= 90
-                            else f"{mediane_:.0f} s"))
+                         f"{mot_devis}")
         # « en offre None » : la taille de la carte vient de l'annonce, et une
         # machine qui rendait deja avant un redemarrage du studio ne s'est pas
         # encore reannoncee. Annoncer un debordement qu'on n'a pas constate,
@@ -7871,8 +7926,15 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # libres a cette seconde-la, personne ne le sait — et promettre la
             # moitie parce qu'il y a deux cartes serait promettre a la place du
             # voisin qui a lui aussi une demande en file.
+            #
+            # LES DEUX CHIFFRES DANS LA MEME PHRASE, et le mot a mot de la
+            # pastille en premier. Sans « chacune », l'utilisateur lisait
+            # « 60 s » a cote de « 3 min » sans rien pour les rapprocher : deux
+            # nombres qui se contredisent au lieu de deux nombres qui se
+            # completent. Le seul cout est un « soit » de plus dans la ligne.
             journal(tid, f"{len(soeurs) + 1} variantes, donc autant de rendus"
-                         + (f" — environ {_duree_lisible(mediane_ * (len(soeurs) + 1))}"
+                         + (f" — environ {mot_devis} chacune, soit "
+                            f"{_duree_lisible(mediane_ * (len(soeurs) + 1))}"
                             f" de calcul en tout, reparti sur les machines libres"
                             if mediane_ else ""))
         # Le telechargement n'est possible que sur le disque du studio : un noeud
@@ -8210,11 +8272,14 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # UNE SEULE DES VARIANTES DEVIENT « L'IMAGE COURANTE ». Elles finissent
         # dans un ordre que personne ne choisit — deux machines, deux vitesses —
         # et « agrandis-la » aurait donc vise une image tiree au sort, differente
-        # a chaque fois pour le meme geste. C'est la premiere qui tient le rang,
-        # jusqu'a ce que l'utilisateur en designe une autre (api_variante_choisir).
-        rang_ = ((TACHES.get(tid) or {}).get("variantes") or {}).get("rang", 1)
-        if sorties and rang_ == 1 and intention in ("image", "edition", "planche",
-                                                    "agrandir", "detourer"):
+        # a chaque fois pour le meme geste. C'est le plus petit rang abouti qui
+        # la tient, jusqu'a ce que l'utilisateur en designe une autre
+        # (api_variante_choisir) — la regle et ses deux raisons sont dans
+        # variante_tient_le_rang.
+        marque_ = (TACHES.get(tid) or {}).get("variantes") or {}
+        if sorties and intention in ("image", "edition", "planche",
+                                     "agrandir", "detourer") \
+                and variante_tient_le_rang(conv, tid, marque_):
             # on garde le sous-dossier : il est indispensable pour retrouver le fichier
             conv["derniere_sortie"] = {"noeud": sorties[0].get("noeud"),
                                        "filename": sorties[0]["filename"],
@@ -8597,8 +8662,10 @@ async def api_variante_choisir(req):
     Sans ce geste, « agrandis-la », « rends-la fluide » ou « le meme personnage »
     visaient l'image courante de la conversation — et de quatre variantes, la
     courante etait la derniere ARRIVEE : deux machines, deux vitesses, un ordre
-    que personne ne choisit. Le studio s'en tient donc a la premiere (voir la
-    garde dans executer) jusqu'a ce qu'on en designe une autre ici.
+    que personne ne choisit. Le studio s'en tient donc au plus petit rang abouti
+    (voir variante_tient_le_rang) jusqu'a ce qu'on en designe une autre ici. Et
+    ce geste-ci prime : la meme garde empeche un tirage plus petit, qui finit
+    apres le clic, de reprendre la place qu'on vient de donner.
 
     Choisir ne supprime rien : chaque variante reste un tour entier, avec son
     fichier, son pouce et son bouton « refaire en soigne ». Ce bouton-la n'a
