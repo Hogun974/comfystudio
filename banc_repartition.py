@@ -358,6 +358,60 @@ async def _priorite():
     dit(v2.locked(), "et la carte se reprend normalement apres")
     v2.release()
 
+    # LE RELAIS DEJA RECU, ET L'ATTENTE ANNULEE QUAND MEME. Le cas ci-dessus
+    # dit dans son commentaire qu'il joue « le wait_for qui expire a la seconde
+    # ou le verrou se libere » ; il n'en joue rien. Il annule pendant que la
+    # promesse est ENCORE DANS LA FILE, donc il n'exerce que le « remove » —
+    # et son assertion passerait meme si le except ne faisait rien du tout,
+    # puisque la carte n'a jamais quitte son porteur. La branche
+    # « elif not promesse.cancelled() » n'etait eprouvee par rien, alors que
+    # c'est la SEULE qui puisse fermer une machine pour de bon : la carte y a
+    # deja ete donnee, et personne ne reviendra la rendre.
+    #
+    # On la force sans course et sans sommeil : release() resout la promesse et
+    # leve _en_vol, puis cancel() arrive avant que la tache n'ait repris la
+    # main. La promesse porte alors un RESULTAT — elle n'est pas cancelled() —
+    # et elle a quitte la file : c'est mot pour mot l'entree de la branche.
+    v5 = S.VerrouCarte()
+    await v5.acquire()
+    recevante = asyncio.create_task(v5.acquire())
+    await asyncio.sleep(0)
+    v5.release()                     # le relais part vers « recevante »
+    dit(not v5._attente[1] and v5._en_vol,
+        "le relais est bien EN VOL vers l'attente qu'on va annuler",
+        f"file={len(v5._attente[1])}, en_vol={v5._en_vol}")
+    recevante.cancel()
+    try:
+        await recevante
+    except asyncio.CancelledError:
+        pass
+    # Sans la branche, _tenu et _en_vol restent leves sur une carte que plus
+    # personne ne tient : la machine est fermee pour de bon.
+    dit(not v5.locked() and not v5._en_vol,
+        "un relais recu par une attente annulee est RENDU, pas emporte",
+        f"tenue={v5.locked()}, en_vol={v5._en_vol}")
+
+    # Et le relais ne se perd pas non plus : celui qui attendait derriere est
+    # servi. Sans la branche, il attendrait pour toujours — c'est la meme
+    # panne vue du cote de la file plutot que du cote de la carte.
+    v6 = S.VerrouCarte()
+    await v6.acquire()
+    partante = asyncio.create_task(v6.acquire())
+    await asyncio.sleep(0)
+    suivante = asyncio.create_task(v6.acquire())
+    await asyncio.sleep(0)
+    v6.release()                     # le relais part vers « partante »
+    partante.cancel()
+    try:
+        await partante
+    except asyncio.CancelledError:
+        pass
+    dit(suivante.done(), "et le relais passe a celui qui attendait derriere",
+        "servi" if suivante.done() else "toujours en attente")
+    if suivante.done():
+        await suivante
+        v6.release()
+
 
 asyncio.run(_priorite())
 

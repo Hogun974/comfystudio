@@ -273,8 +273,23 @@ dit(len(envois) >= 2, f"{len(envois)} envois vers /api/generer reperes")
 # brouillon — et c'est le parametre de lancerDemande, jamais une lecture du
 # menu. Se contenter de « la cle priorite est dans le corps » ferait rougir le
 # depot sain.
-LECTURES_DU_MENU = (r'(?:\$|document\.querySelector)\("#priorite"\)'
-                    r'|valeurReglage\("priorite"\)'
+# ET LA MEME FAUTE UNE CINQUIEME FOIS. La liste qui tenait ici etait
+# litteralement trois FACONS D'ECRIRE — « $("#priorite") »,
+# « valeurReglage("priorite") », « reglagesVoulus.priorite » — et la plus
+# banale de toutes manquait : « document.getElementById("priorite") ». Verifie
+# avant correction : « lancerDemande(document.getElementById("priorite").value) »
+# pose dans la page laissait ce banc VERT. Enumerer une ecriture de plus
+# n'aurait fait que reculer la sixieme.
+#
+# On ne nomme donc plus les lecteurs mais la FORME : un appel dont le seul
+# argument est ce menu-la, quel que soit le nom de l'appel et la sorte de
+# guillemets. « [\w$]+ » pour que « $( » entre aussi.
+#
+# Le sol reste le meme qu'avant : « mettre("#priorite", ...) » a DEUX arguments
+# et n'est donc pas une lecture, tandis que les tables « "#priorite":
+# "priorite" » ne sont pas des appels du tout. Sans ces deux exclusions, le
+# depot sain rougirait — et un banc qui rougit sur tout n'attrape rien.
+LECTURES_DU_MENU = (r'[\w$]+\(\s*["\']#?priorite["\']\s*\)'
                     r'|reglagesVoulus\.priorite')
 
 

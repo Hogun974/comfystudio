@@ -24,6 +24,7 @@ import io
 import os
 import re
 import sys
+import tempfile
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
@@ -94,7 +95,24 @@ ATTENDU_AILLEURS = {
                   "est tenu par un autre chantier a l'heure ou ce banc est "
                   "ecrit, et une correction concurrente s'y perdrait",
 }
-_EN_PHRASE = re.compile(r'\{[^{}]*(?:POIDS|poids)[^{}]*\}\s*Go')
+#
+# ET CE RELEVE-CI NE MORDAIT SUR AUCUNE FORME REELLE. Il cherchait « {…poids…}
+# Go » ; les trois lignes fautives d'avant 3bb235d s'ecrivaient
+# « {_environ(cle)} Go a prendre », « environ {total:.0f} Go. » et
+# « (environ {total:.0f} Go) » — pas une n'a « poids » entre accolades.
+# Verifie : installation.py d'avant le correctif restaure, y compris les deux
+# « environ 0 Go » dont celui qui precede l'ecriture sur le disque, ce banc
+# restait VERT. Un filet ecrit pour un defaut qu'il ne peut pas voir rassure.
+#
+# Ce qui distingue le poids d'un TELECHARGEMENT d'une capacite de carte — « {v}
+# Go de VRAM », « {libre} Go libres », « {m['vram']:4.1f} Go » — n'est pas le
+# nom de la variable mais la PHRASE autour : « a prendre », une parenthese de
+# total, ou le mot « environ ». Les trois alternatives ci-dessous sont exactement
+# ces trois phrases-la, et elles ne touchent aucune des neuf lignes de materiel
+# d'installation.py.
+_EN_PHRASE = re.compile(r'\{[^{}]*(?:POIDS|poids)[^{}]*\}\s*Go'
+                        r'|\{[^{}]+\}\s*Go(?=\s*(?:a prendre|\)))'
+                        r'|environ\s*\{[^{}]+\}\s*Go')
 # LU UNE SEULE FOIS. Les deux verifications se contredisaient — « un seul
 # endroit » vert et « aveu perime » rouge sur le meme fichier — parce qu'elles
 # le relisaient chacune de leur cote pendant qu'un autre chantier l'ecrivait.
@@ -114,6 +132,71 @@ perimees = sorted(n for n in ATTENDU_AILLEURS
                   if n in _SOURCES and not _EN_PHRASE.search(_SOURCES[n]))
 dit(not perimees, "aucun aveu perime dans ATTENDU_AILLEURS",
     ", ".join(perimees) or f"il en reste {len(ATTENDU_AILLEURS)}")
+
+# ── CE QUE L'INSTALLEUR IMPRIME ───────────────────────────────────────
+# Un releve sur le TEXTE de installation.py decrit une facon d'ecrire le
+# defaut ; il ne verifie jamais ce qui arrive a l'ecran. Les deux verifications
+# ci-dessous font parler l'installeur pour de bon et lisent sa sortie.
+#
+# COMFY_MODELES sur un dossier vide : rien n'est installe, donc chaque moteur
+# passe par la branche « a prendre » — celle qui annoncait « ~0 Go ». Sans
+# cela, une machine ou les modeles sont deja la n'exercerait rien du tout.
+#
+# stdin ferme : menu_moteurs attrape EOFError et retient sa proposition. On
+# traverse ainsi la ligne « Proposition : … (…) », le second des deux totaux
+# que 02fdae6 avait laisses faux.
+_VIDE = tempfile.mkdtemp(prefix="banc_catalogue_")
+os.environ["COMFY_MODELES"] = _VIDE
+import installation as I  # noqa: E402
+
+
+def _imprime(f, *a):
+    tampon, vrai = io.StringIO(), (sys.stdout, sys.stdin)
+    sys.stdout, sys.stdin = tampon, io.StringIO("")
+    try:
+        f(*a)
+    finally:
+        sys.stdout, sys.stdin = vrai
+    return tampon.getvalue()
+
+
+_tiennent, _debordent, _ = I.moteurs_possibles(24.0, 64, avec_licence=True)
+_possibles = _tiennent + _debordent
+SORTIE = (_imprime(I.afficher_moteurs, 24.0, 64)
+          + _imprime(I.menu_moteurs, _possibles, False))
+
+dit(SORTIE.count(" a prendre") >= len(_possibles),
+    f"l'installeur annonce {SORTIE.count(' a prendre')} poids a l'ecran",
+    f"{len(_possibles)} moteurs tenables sur cette machine de banc")
+
+# MOT POUR MOT. Chaque « … a prendre » doit se terminer par une phrase que
+# annonce_poids a produite. « au moins 0 Go a prendre », que _environ ecrivait,
+# n'en est pas une.
+_PHRASES = {C.annonce_poids([c]) for c in C.CATALOGUE}
+maison = sorted({SORTIE[:m.start()].rsplit("\n", 1)[-1].strip()[-46:]
+                 for m in re.finditer(r" a prendre", SORTIE)
+                 if not any(SORTIE[:m.start()].endswith(p) for p in _PHRASES)})
+dit(not maison, "chaque « a prendre » imprime vient mot pour mot de annonce_poids",
+    " | ".join(maison) or f"{len(_PHRASES)} phrases possibles")
+
+# LE TOTAL DE LA PROPOSITION, celui qu'on accepte en tapant entree. C'est l'un
+# des deux que 02fdae6 avait laisses a « environ 0 Go » ; il ne se lit nulle
+# part ailleurs que dans ce que l'installeur imprime.
+_absents = [c for c in _possibles if I.manquants(c)]
+_conseil = [c for c in I.proposition(_possibles) if c in _absents]
+dit(not _conseil or f"({C.annonce_poids(_conseil)})" in SORTIE,
+    "et le total de la proposition aussi",
+    f"attendu ({C.annonce_poids(_conseil)})" if _conseil else "aucune proposition")
+os.rmdir(_VIDE)
+
+# LE TITRE DU DEFAUT, relu dans la sortie elle-meme. « ~0 Go a prendre » et
+# « environ 0 Go » se lisent « c'est gratuit » devant un telechargement de
+# quarante minutes, et c'est par cette phrase-la que le defaut a ete trouve
+# deux fois de suite.
+gratuits = sorted({l.strip() for l in SORTIE.splitlines()
+                   if re.search(r"(?:~|environ )0(?:[.,]0+)?\s*Go", l)})
+dit(not gratuits, "et rien n'est annonce « ~0 Go » ni « environ 0 Go »",
+    " | ".join(gratuits) or "aucune ligne gratuite")
 
 # L'union et non la somme : deux moteurs partagent des fichiers, et les
 # additionner surestimerait le telechargement — c'est la raison d'etre de

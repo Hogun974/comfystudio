@@ -55,6 +55,37 @@ premier a d'ailleurs revele qu'il n'imitait pas encore le vrai defaut — la
 mutation posait un « const », la page de 21c443c^ recevait le cran en argument
 d'appel — et la mutation qui manquait est desormais dans PAGE elle aussi. C'est
 le meme service que ce fichier rend aux bancs : une mutation aussi s'eprouve.
+
+LA DIAGONALE, ou la preuve inverse, menee le 1er septembre sur les dix-neuf
+mutations de VARIANTES, CERVEAUX, COUT, CATALOGUE, ATTENTE, DUREES et ADULTE.
+Qu'une mutation rougisse ne dit pas qu'elle mesure le bon trou : elle peut
+rougir pour une autre raison que celle qu'elle nomme. Ce qui le dit, c'est de
+la rejouer contre le FILET D'AVANT — le banc tel qu'il etait au commit qui
+precede la correction — et de la voir passer au VERT. Si le vieux banc
+l'attrape quand meme, une autre garde la voit et la mutation ne mesure pas ce
+qu'elle nomme.
+
+Le tout au commit de la correction, code ET banc : un banc de 3cecca2^ lance
+contre le serveur.py d'aujourd'hui rougit sur une trentaine de cas sans rapport
+— trois mois de derive — et ne mesure plus rien du tout.
+
+  - SEIZE eprouvees dans les deux sens : rouges avec la garde, vertes sans.
+  - DEUX ont d'abord resiste — « le choix fait a la main » et « le rang 1 tout
+    court » restaient rouges sur le banc de 3cecca2^. Elles ne mesurent pas
+    une garde de 3cecca2 : la regle du rang y a ete FUSIONNEE, pas ecrite, et
+    ses deux gardes datent de cac8aa7. Rejouees sur le banc de cac8aa7^, elles
+    passent au vert. Elles mesurent donc bien ce qu'elles nomment, et c'est le
+    commentaire de VARIANTES qui les datait mal.
+  - TROIS ne sont pas prouvables ainsi, et il faut le dire : banc_durees.py,
+    banc_adulte.py et le poids() de banc_catalogue.py sont NES avec la
+    correction qu'ils gardent (717fb23, f467e11, 02fdae6). Il n'existe pas de
+    « filet d'avant » a leur opposer. Elles restent des mutations rouges dont
+    on ne sait pas ce qu'elles mesurent d'autre.
+
+Le sens inverse de banc_catalogue.py, lui, a ete pris autrement et il a
+repondu : installation.py d'avant 3bb235d restaure, le banc REPARE rougit sur
+quatre lignes dont les trois « ~0 Go a prendre » d'origine. Le banc d'avant
+restait vert dessus — c'est le trou B ci-dessous.
 """
 import io
 import os
@@ -406,7 +437,7 @@ CONTENEUR = [
 ]
 
 # ──────────────────────────────────────────────────────────────────────
-#  banc_page.py — dix mutations verifiees rouges (commit 21c443c)
+#  banc_page.py — onze mutations verifiees rouges (commit 21c443c)
 # ──────────────────────────────────────────────────────────────────────
 # Les cinq premieres viennent de 21c443c. Les cinq suivantes etaient des TROUS
 # CONNUS : quatre trouvees par la relecture adverse, plus celle du point
@@ -554,6 +585,20 @@ PAGE = [
                 ".puce.file{color:var(--encre-pale)}\n"
                 ".puce.rate{color:var(--rouge);border-color:var(--rouge)}")),
         ]),
+    dict(
+        nom="le cran de priorite lu par document.getElementById",
+        banc="banc_page.py",
+        imite="la MEME faute de banc une cinquieme fois : LECTURES_DU_MENU "
+              "etait litteralement trois facons d'ecrire, et l'ecriture la "
+              "plus banale du navigateur — document.getElementById — n'y "
+              "figurait pas. Verifie avant correction : ce banc restait vert",
+        rougit="aucun envoi ne renvoie le cran de priorite du menu",
+        editions=[
+            ("web/index.html", brut(
+                '$("#go").onclick = () => lancerDemande(null);',
+                '$("#go").onclick = () => '
+                'lancerDemande(document.getElementById("priorite").value);')),
+        ]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -644,6 +689,21 @@ REPARTITION = [
         editions=[("serveur.py", brut(
             "        file = self._attente[0 if prioritaire else 1]",
             "        file = self._attente[1]"))]),
+    dict(
+        nom="le relais recu par une attente annulee est emporte avec elle",
+        banc="banc_repartition.py",
+        imite="la carte a DEJA ete donnee quand l'annulation reveille celui "
+              "qui la recevait : ne rien faire ici la laisse prise pour "
+              "toujours — la machine est fermee pour de bon, et celui qui "
+              "attendait derriere n'est jamais servi. Le cas qui disait "
+              "eprouver cette branche n'annulait que depuis la FILE : il "
+              "passait meme quand le except ne faisait rien",
+        rougit="un relais recu par une attente annulee est RENDU, pas emporte",
+        editions=[("serveur.py", brut(
+            "                self._en_vol = False" + chr(10)
+            + "                self._rendre()" + chr(10)
+            + "            raise" + chr(10),
+            "                pass" + chr(10) + "            raise" + chr(10)))]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -658,6 +718,15 @@ REPARTITION = [
 # Chacune restaure le code d'AVANT le correctif, mot pour mot quand c'est
 # possible : une mutation qui invente une manipulation prouve que le banc voit
 # quelque chose, pas qu'il voit la panne.
+#
+# ET CES DEUX-LA NE SE DATENT PAS COMME LES QUATRE AUTRES. La diagonale les a
+# trouvees encore ROUGES sur le banc de 3cecca2^ — « le choix fait a la main »
+# et « le rang 1 tout court ». 3cecca2 a fusionne la regle du rang, il ne l'a
+# pas ecrite : ses deux gardes, « et elle ne reprend pas la place donnee a la
+# troisieme » et « le groupe designe quand meme une image », datent de cac8aa7.
+# C'est contre le banc de cac8aa7^ qu'elles passent au vert, et c'est la leur
+# preuve inverse. Une mutation datee du mauvais commit se serait declaree
+# prouvee contre un filet qui la voyait deja.
 VARIANTES = [
     dict(
         nom="la mediatheque ne sert ni le tour ni le groupe",
@@ -845,9 +914,16 @@ COUT = [
 #  banc_catalogue.py — « ~0 Go a prendre », une ligne avant le telechargement
 # ──────────────────────────────────────────────────────────────────────
 # Le chiffre sur lequel quelqu'un decide d'attendre quarante minutes. Les deux
-# mutations reprennent les deux facons de le fausser que le banc raconte : un
-# affichage arrondi a zero, et une somme qui compte deux fois les fichiers que
-# deux moteurs partagent.
+# premieres mutations reprennent les deux facons de le fausser que le banc
+# raconte : un affichage arrondi a zero, et une somme qui compte deux fois les
+# fichiers que deux moteurs partagent.
+#
+# Les deux mutations d'affichage se prouvent contre le banc de 3bb235d^, ou
+# elles passent au vert. « poids() additionne les moteurs », non : ce banc est
+# NE avec elle, au commit 02fdae6, et il n'y a pas de filet d'avant.
+#
+# LA QUATRIEME, elle, vient de la relecture adverse du 1er septembre, et le
+# banc a du etre repare pour la voir. Voir son commentaire.
 CATALOGUE = [
     dict(
         nom="l'affichage sous le demi-gigaoctet repasse aux gigaoctets",
@@ -883,6 +959,26 @@ CATALOGUE = [
             '        return "taille inconnue" if exact < 0.05 '
             'else f"au moins {quantite}"',
             '        return f"au moins {quantite}"'))]),
+    dict(
+        nom="le total de la proposition remis en phrase a la main",
+        banc="banc_catalogue.py",
+        imite="le second des deux TOTAUX que 02fdae6 avait laisses faux, "
+              "restaure mot pour mot depuis 3bb235d^ : « environ 0 Go » sur "
+              "la proposition qu'on accepte en tapant entree. Le banc ne "
+              "regardait que le TEXTE de installation.py, avec un releve qui "
+              "cherchait « poids » entre accolades — donc aucune des trois "
+              "lignes fautives reelles ; il ne lisait jamais ce que "
+              "l'installeur IMPRIME, et restait vert dessus",
+        rougit="et le total de la proposition aussi",
+        editions=[("installation.py", brut(
+            "        total = annonce_poids(conseil)   "
+            "# union : deux moteurs partagent des fichiers" + chr(10)
+            + "        print(f\"\\n  Proposition : {', '.join(conseil)}  "
+              "({total})\")",
+            "        total = poids(conseil)      "
+            "# union : deux moteurs partagent des fichiers" + chr(10)
+            + "        print(f\"\\n  Proposition : {', '.join(conseil)}  "
+              "(environ {total:.0f} Go)\")"))]),
 ]
 
 
@@ -928,6 +1024,12 @@ ATTENTE = [
 # defera. « Simplifier » sum()/len() ne change rien sur les jeux reguliers du
 # banc — 100/110/120 ont la meme moyenne que leur mediane — et ne se voit QUE
 # sur le rendu qui a attendu une carte occupee.
+#
+# SA PREUVE INVERSE N'EXISTE PAS, et c'est le seul aveu de la diagonale avec
+# ADULTE et le poids() de CATALOGUE : banc_durees.py est NE avec la mediane, au
+# meme commit 717fb23. Il n'y a pas de filet d'avant contre lequel la rejouer,
+# et la moyenne n'a jamais ete dans le depot. Elle rougit ; on ne sait pas ce
+# qu'elle mesure d'autre.
 DUREES = [
     dict(
         nom="la moyenne au lieu de la mediane",
@@ -953,6 +1055,14 @@ DUREES = [
 # qui a fait passer « a child in a sexual pose » : le souligne est un caractere
 # de mot, donc « \\b » ne separe pas « nude » de « _body », et les moteurs a
 # etiquettes recoivent justement du danbooru colle par des soulignes.
+#
+# SA PREUVE INVERSE N'EXISTE PAS NON PLUS. banc_adulte.py est ne avec la
+# correction, au commit f467e11, et le banc d'aujourd'hui ne sait meme pas lire
+# le serveur.py d'avant : _BORD, _FIN et _motif n'y existent pas, il s'arrete
+# sur « introuvable dans serveur.py ». Ce qui l'etaye n'est donc pas une
+# diagonale mais la mesure de f467e11 lui-meme — « 26 fautes sur la version de
+# ce matin, dont les 8 refus manques » — et le troisieme effet qu'il nomme est
+# exactement celui que cette mutation rejoue.
 ADULTE = [
     dict(
         nom="les frontieres du motif redeviennent des « \\b » ordinaires",
@@ -971,10 +1081,13 @@ ADULTE = [
 
 # ── Ce que la couverture coute, et ou part le temps ───────────────────
 # Mesure du 1er septembre, sur cette machine : 8,4 s pour 32 mutations sur
-# quatre bancs, 52,8 s pour 51 sur dix. Le sextuplement ne vient pas du nombre
-# mais des DEUX bancs qui montent un studio complet — banc_variantes.py met
-# 3,5 s par lancement et banc_cout.py 2,9, la ou banc_catalogue.py en met 0,07.
-# Les six mutations de banc_variantes pesent a elles seules 22 s.
+# quatre bancs, 52,8 s pour 51 sur dix, 54,6 s pour 54. Le sextuplement ne
+# vient pas du nombre mais des DEUX bancs qui montent un studio complet —
+# banc_variantes.py met 3,5 s par lancement et banc_cout.py 2,9, la ou
+# banc_catalogue.py en met 0,07. Les six mutations de banc_variantes pesent a
+# elles seules 22 s. Les trois mutations ajoutees le 1er septembre au soir
+# n'ont coute que 1,8 s : elles visent banc_page, banc_repartition et
+# banc_catalogue, les bancs bon marche, et c'est delibere.
 #
 # C'est le prix qu'on accepte, et il vaut la peine d'etre relu avant d'ajouter
 # une mutation de plus sur ces deux bancs-la : une couverture qui vaut vingt
