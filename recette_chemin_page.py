@@ -127,10 +127,16 @@ _, d, _ = appel("/api/conversations")
 CONV = d["courante"]
 
 # Le quatrieme reglage, « noeud », que la premiere recette n'exerçait jamais.
-_, NS, _ = appel("/api/noeuds")
-NOEUDS = [n for n in ((NS or {}).get("noeuds") or NS or [])
-          if isinstance(n, dict) and n.get("id")]
-CIBLE = next((n for n in NOEUDS if not n.get("pause")), NOEUDS[0] if NOEUDS else None)
+# /api/machines et non /api/admin/noeuds : c'est la route que la page appelle
+# pour remplir le menu, et elle rend une LISTE. La premiere version lisait un
+# « /api/noeuds » qui n'existe pas — la route de l'agent s'appelle
+# « /api/noeud/travail », au singulier, et c'est autre chose.
+_, NS, _ = appel("/api/machines")
+MACHINES = [n for n in (NS if isinstance(NS, list) else [])
+            if isinstance(n, dict) and n.get("id")]
+# Une machine A CARTE, qui repond : le studio du reseau n'en a pas, et lui
+# confier le travail ne prouverait rien sur le reglage.
+CIBLE = next((n for n in MACHINES if n.get("repond") and not n.get("local")), None)
 
 print("\n  ── on bouge les menus, un par un ───────────────────────")
 GESTES = [("modele", "realvis", "RealVisXL"),
