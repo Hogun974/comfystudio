@@ -231,4 +231,43 @@ def poids_incertain(cles):
     return bool(fichiers_requis(cles) & set(SANS_TAILLE))
 
 
+def annonce_poids(cles):
+    """Le poids A ANNONCER, en une phrase qui ne promet pas ce qu'on ignore.
+
+    UN SEUL endroit, parce que la correction precedente n'avait touche que les
+    lignes PAR MOTEUR : les deux TOTAUX de l'installeur — dont celui qui precede
+    l'ecriture sur le disque, et celui de la proposition qu'on accepte en tapant
+    entree — annonçaient toujours « environ 0 Go ». Le titre du defaut se
+    relisait mot pour mot une ligne avant le telechargement.
+
+    Trois cas, trois phrases :
+      - rien a telecharger automatiquement (les fichiers d'ACE-Step n'ont pas de
+        depot) : « a installer a la main ». « ~0 Go a prendre » se lisait
+        « c'est gratuit » pour un moteur qui ne marchera pas apres installation ;
+      - une taille manquante au catalogue : « au moins N Go », un plancher
+        annonce comme un plancher ;
+      - sous le demi-gigaoctet, on passe aux megaoctets : « ~0 Go » etait faux
+        pour detourer (0,44 Go RELEVE) et agrandir (0,07). Le banc interdisait
+        une taille relevee a zero ; il n'interdisait pas un AFFICHAGE a zero.
+    """
+    fichiers = fichiers_requis(cles)
+    if not fichiers:
+        return "a installer a la main"
+    # Sans passer par poids(), qui arrondit au dixieme de gigaoctet : 0,44 y
+    # devenait 0,4, donc « 400 Mo » au lieu de 440. Un arrondi utile pour des
+    # gigaoctets ne l'est plus quand on descend d'un cran.
+    exact = sum(TAILLES.get(f, 0.0) for f in fichiers)
+    if exact >= 10:
+        quantite = f"{exact:.0f} Go"
+    elif exact >= 1:
+        quantite = f"{exact:.1f} Go"
+    else:
+        quantite = f"{exact * 1000:.0f} Mo"
+    if poids_incertain(cles):
+        # « au moins 0 Go » n'annonce rien du tout : quand TOUT ce qui manque
+        # est justement ce qu'on ne sait pas mesurer, on le dit.
+        return "taille inconnue" if exact < 0.05 else f"au moins {quantite}"
+    return f"~{quantite}"
+
+
 POIDS = {c: poids([c]) for c in CATALOGUE}

@@ -29,7 +29,7 @@ import textwrap
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 from catalogue import (CATALOGUE, POIDS, poids,   # noqa: E402
-                       poids_incertain)
+                       annonce_poids)
 
 WINDOWS = os.name == "nt"
 
@@ -273,7 +273,7 @@ def afficher_moteurs(vram, ram):
         # pour zero, et « ~0 Go a prendre » se lit comme « c'est gratuit »
         # devant un fichier qu'on va bel et bien telecharger.
         etat = ("deja la" if not manquants(cle)
-                else f"{_environ(cle)} Go a prendre")
+                else f"{annonce_poids([cle])} a prendre")
         if licences(cle):
             note += "  (licence a accepter)"
         print(f"  {cle:16s} {m['vram']:4.1f} Go  {m['titre']:30s} {etat}{note}")
@@ -626,12 +626,6 @@ def racine_modeles():
     return os.environ.get("COMFY_MODELES") or os.path.join(RACINE_COMFY, "models")
 
 
-def _environ(cle):
-    """« ~4 Go » quand on sait, « au moins 4 Go » quand une taille manque."""
-    return (f"au moins {POIDS.get(cle, 0):.0f}" if poids_incertain([cle])
-            else f"~{POIDS.get(cle, 0):.0f}")
-
-
 def manquants(cle):
     base = racine_modeles()
     return [(s, n, r, d) for s, n, r, d in CATALOGUE[cle]["fichiers"]
@@ -702,9 +696,9 @@ def telecharger(cles, oui, avec_hub=True):
     if not a_faire:
         print("  tous les modeles demandes sont deja la.")
         return
-    total = poids({c for c, _ in faisables})
+    total = annonce_poids({c for c, _ in faisables})
     titre("Telechargement")
-    print(f"  {len(faisables)} fichier(s) a prendre, environ {total:.0f} Go.")
+    print(f"  {len(faisables)} fichier(s) a prendre, {total}.")
     if sans_source:
         print("  Ces fichiers n'ont pas de source automatique (depot sous licence "
               "ou modele a installer a la main) :")
@@ -916,10 +910,10 @@ def menu_moteurs(possibles, oui):
         if licences(cle):
             etoile += "  (licence a accepter)"
         print(f"    {i:2d}) {cle:16s} {m['vram']:4.1f} Go  "
-              f"{_environ(cle)} Go a prendre  {m['titre']}{etoile}")
+              f"{annonce_poids([cle])} a prendre  {m['titre']}{etoile}")
     if conseil:
-        total = poids(conseil)      # union : deux moteurs partagent des fichiers
-        print(f"\n  Proposition : {', '.join(conseil)}  (environ {total:.0f} Go)")
+        total = annonce_poids(conseil)   # union : deux moteurs partagent des fichiers
+        print(f"\n  Proposition : {', '.join(conseil)}  ({total})")
     print("  Reponds par des numeros separes par des espaces, ou :")
     print("    entree = la proposition,  tout = tous,  rien = aucun")
     try:

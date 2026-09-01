@@ -20,10 +20,13 @@ couvrira un jour un fichier neuf portant le meme nom.
 Statique, sans reseau : il entre dans la CI. Ce qu'il ne peut pas savoir, c'est
 si une taille RELEVEE est juste — seul un telechargement le dirait.
 """
+import io
 import os
+import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ICI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, ICI)
 import catalogue as C  # noqa: E402
 
 ok, rate = [], []
@@ -61,12 +64,56 @@ dit(not nulles, "aucune taille relevee a zero", ", ".join(nulles) or "aucune")
 orphelines = sorted(f"{s}/{n}" for s, n in set(C.TAILLES) - REQUIS)
 dit(not orphelines, "aucune taille orpheline", ", ".join(orphelines) or "aucune")
 
-# Le drapeau doit dire vrai dans les deux sens : c'est lui qui fait ecrire
-# « au moins » au lieu de « ~ » dans l'installeur.
-faux = [c for c in C.CATALOGUE
-        if C.poids_incertain([c])
-        != bool(C.fichiers_requis([c]) & set(C.SANS_TAILLE))]
-dit(not faux, "poids_incertain dit vrai pour chaque moteur", ", ".join(faux) or "les 20")
+# CE QUI EST AFFICHE, et non le drapeau qui le decide. La version d'avant
+# recopiait le corps de poids_incertain et le comparait a lui-meme — « f(x) !=
+# f(x) », une tautologie — en annonçant dans son commentaire qu'elle gardait ce
+# que l'installeur ecrit. Elle n'importait meme pas installation.py. Pendant ce
+# temps, DEUX totaux de l'installeur, dont celui qui precede l'ecriture sur le
+# disque, annonçaient toujours « environ 0 Go ».
+dit(C.annonce_poids(["fluidifier"]) == "taille inconnue",
+    "une taille jamais relevee s'annonce comme telle",
+    C.annonce_poids(["fluidifier"]))
+dit(C.annonce_poids(["audio"]) == "a installer a la main",
+    "un moteur sans source automatique ne s'annonce pas a zero",
+    C.annonce_poids(["audio"]))
+dit(C.annonce_poids(["detourer"]).endswith("Mo"),
+    "sous le demi-gigaoctet on passe aux megaoctets — « ~0 Go » se lisait "
+    "« c'est gratuit »", C.annonce_poids(["detourer"]))
+_gros = max(C.CATALOGUE, key=lambda c: C.poids([c]))
+dit(C.annonce_poids([_gros]).startswith("~") and "Go" in C.annonce_poids([_gros]),
+    f"et un gros moteur garde ses gigaoctets — {_gros}", C.annonce_poids([_gros]))
+
+# UN SEUL ENDROIT MET UN POIDS EN PHRASE. C'est la seule facon de ne pas
+# recommencer : la correction precedente n'avait touche que les lignes PAR
+# MOTEUR, et les deux TOTAUX etaient restes faux.
+#
+# ATTENDU_AILLEURS nomme ce qui n'est pas encore passe par annonce_poids, avec
+# sa raison. Une entree ici est un aveu, pas une dispense.
+ATTENDU_AILLEURS = {
+    "serveur.py": "catalogue_texte formate encore POIDS a la main ; le fichier "
+                  "est tenu par un autre chantier a l'heure ou ce banc est "
+                  "ecrit, et une correction concurrente s'y perdrait",
+}
+_EN_PHRASE = re.compile(r'\{[^{}]*(?:POIDS|poids)[^{}]*\}\s*Go')
+# LU UNE SEULE FOIS. Les deux verifications se contredisaient — « un seul
+# endroit » vert et « aveu perime » rouge sur le meme fichier — parce qu'elles
+# le relisaient chacune de leur cote pendant qu'un autre chantier l'ecrivait.
+# Un banc qui lit deux fois un fichier qui bouge mesure deux etats differents.
+_SOURCES = {}
+for _nom in ("installation.py", "serveur.py"):
+    _chemin = os.path.join(ICI, _nom)
+    if os.path.exists(_chemin):
+        _SOURCES[_nom] = io.open(_chemin, encoding="utf-8").read()
+
+en_dur = sorted(n for n, t in _SOURCES.items()
+                if _EN_PHRASE.search(t) and n not in ATTENDU_AILLEURS)
+dit(not en_dur, "aucun poids mis en phrase hors de annonce_poids",
+    ", ".join(en_dur) or "un seul endroit")
+
+perimees = sorted(n for n in ATTENDU_AILLEURS
+                  if n in _SOURCES and not _EN_PHRASE.search(_SOURCES[n]))
+dit(not perimees, "aucun aveu perime dans ATTENDU_AILLEURS",
+    ", ".join(perimees) or f"il en reste {len(ATTENDU_AILLEURS)}")
 
 # L'union et non la somme : deux moteurs partagent des fichiers, et les
 # additionner surestimerait le telechargement — c'est la raison d'etre de
