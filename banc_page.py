@@ -88,6 +88,51 @@ manquants = sorted(sel for sel in menu.values()
 dit(not manquants, "chaque reglage nomme un menu qui existe dans la page",
     ", ".join(manquants) or f"{len(menu)} menus trouves")
 
+# ── le nombre de variantes est un GESTE, pas un reglage ───────────────
+# Ce n'est pas un avis, c'est le serveur qui l'a tranche : REGLAGES_CONV ne
+# contient pas « variantes », poser_reglages ne le lit donc pas, et
+# /api/conversation/{cid}/reglages le jetterait sans un mot. Le jour ou
+# quelqu'un le rangera « avec les quatre autres », les deux tables resteront
+# inverses l'une de l'autre — la verification ci-dessus passerait — et le menu
+# cesserait simplement d'avoir un effet. Exactement le silence du 31 aout.
+dit("variantes" not in menu and "#variantes" not in cle,
+    "« variantes » reste hors des deux tables : le serveur ne le retient pas",
+    f"{sorted(menu)} / {sorted(cle)}")
+
+# Chaque entree de REGLAGES nomme un reglage connu, OU se declare « geste ».
+# Sans ce marqueur, le gestionnaire de « change » appelle
+# retenirReglages(CLE_REGLAGE[sel]) avec undefined — et retenirReglages sans
+# cle renvoie LES QUATRE reglages d'un coup, c'est-a-dire le degat pour lequel
+# la table a ete decoupee, declenche par un menu qui n'a rien a voir avec eux.
+entrees = re.findall(
+    r'\{\s*sel:\s*"(#\w+)"(.*?)\}',
+    PAGE.split("const REGLAGES = [", 1)[1].split("\n];", 1)[0], re.S)
+orphelines = [s for s, reste in entrees
+              if s not in cle and "geste: true" not in reste]
+dit(entrees and not orphelines,
+    "chaque entree de REGLAGES est un reglage connu ou un geste declare",
+    ", ".join(orphelines) or f"{len(entrees)} entrees")
+
+# VARIANTES_MAX = 4 (serveur.py). Au-dela, /api/generer repond 400 « de 1 a 4
+# variantes » : un menu qui propose ce que le serveur refuse fabrique une panne
+# visible pour un geste ordinaire. Rien en dessous de 2 non plus — « une
+# seule » est la valeur vide, et un « 1 » explicite ferait un doublon muet.
+choix = PAGE.split('<select id="variantes"', 1)[1].split("</select>", 1)[0]
+rangs = sorted(int(v) for v in re.findall(r'<option value="(\d+)"', choix))
+dit(rangs == [2, 3, 4],
+    "le menu des variantes ne propose rien que le serveur refuserait",
+    str(rangs))
+
+# LE DEFAUT QU'ON FERME. Les variantes existaient entierement cote serveur —
+# quatre-vingt-une verifications dans banc_variantes.py — et le mot
+# n'apparaissait pas une seule fois dans la page : rien ne le postait, rien ne
+# l'affichait. Un banc qui teste un contrat que personne n'emprunte ne mesure
+# rien (CONTRIBUTING.md).
+demande = PAGE.split("function reglagesDemandes()", 1)[1].split("\n}", 1)[0]
+dit("c.variantes" in demande and '$("#variantes")' in demande,
+    "le nombre de variantes part dans le corps de la demande",
+    "pose par reglagesDemandes")
+
 # « priorite » a vecu des mois dans le corps de /api/generer alors que les trois
 # autres reglages avaient demenage sur la conversation. Un second onglet reste
 # ouvert effaçait donc le cran du premier au simple envoi d'un message.
@@ -96,6 +141,34 @@ dit(len(envois) >= 2, f"{len(envois)} envois vers /api/generer reperes")
 fautifs = [e for e in envois if re.search(r'priorite:\s*\$\("#priorite"\)', e)]
 dit(not fautifs, "aucun envoi ne renvoie le cran de priorite du menu",
     f"{len(fautifs)} envoi(s) fautif(s)" if fautifs else "il vit sur la conversation")
+
+# Les DEUX chemins, pas seulement la fleche. Le formulaire de reponse a une
+# precision a longtemps oublie la moitie des champs de l'autre : deux listes
+# ecrites a mille lignes d'ecart divergent des la premiere correction. Le seul
+# remede tenu est qu'aucune des deux n'ecrive de liste — les deux appellent
+# reglagesDemandes().
+porteurs = [e for e in envois if "reglagesDemandes()" in e]
+dit(len(porteurs) == len(envois),
+    "les deux chemins d'envoi passent par reglagesDemandes()",
+    f"{len(porteurs)} sur {len(envois)}")
+
+# ── designer la variante retenue ──────────────────────────────────────
+# POST /api/variante decide laquelle « la » designe : « agrandis-la », « rends-la
+# fluide », « le meme personnage ». Sans ce geste dans la page, les quatre
+# images sortent bien, mais c'est toujours la premiere qui est visee et rien ne
+# permet d'en preferer une autre.
+dit('fetch("/api/variante"' in CORPS, "la page emprunte POST /api/variante")
+
+# api_mediatheque sert « variante » (le rang), « variantes » (le total) et
+# « choisie » depuis le debut, et la legende jetait les trois : quatre variantes
+# ont le meme prompt, le meme moteur, la meme taille et la meme minute, donc
+# quatre lignes rigoureusement indiscernables.
+grille = PAGE.split("function peindreGrille()", 1)[1].split("\nfunction ", 1)[0]
+# « \b » : sans lui, « f.variantes » suffirait a faire passer « f.variante ».
+oublies = [c for c in ("f.variante", "f.variantes", "f.choisie")
+           if not re.search(re.escape(c) + r'\b', grille)]
+dit(not oublies, "la mediatheque lit le rang et la marque que le serveur sert",
+    ", ".join(oublies) or "les trois")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

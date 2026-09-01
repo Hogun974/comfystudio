@@ -148,12 +148,17 @@ contrairement au moteur, à la taille, à la priorité et à la machine (voir
 brouillon : le garder ferait partir en quatre exemplaires les cinq demandes
 suivantes, sans que personne l'ait voulu.
 
-## Ce qui n'est pas encore dans la page
+## Ce que le banc vérifie
 
 Tout ce qui précède est du serveur, et `banc_variantes.py` en vérifie
-quatre-vingt-une décisions. **L'interface n'en envoie ni n'en affiche rien** :
-`web/index.html` ne poste jamais de champ `variantes`, et la légende de la
-médiathèque laisse de côté le rang et la marque que `/api/mediatheque` lui sert
-déjà. Le geste ne s'obtient aujourd'hui qu'en appelant les routes — c'est le
-défaut que décrit `CONTRIBUTING.md` : un banc qui teste un contrat que personne
-n'emprunte ne mesure rien.
+**quatre-vingt-quatorze décisions** — relevé le 1er septembre 2026 ; le banc
+grossit, relance-le plutôt que de recopier ce nombre.
+
+Le geste a longtemps existé sans que la page l'emprunte : `web/index.html` ne
+postait aucun champ `variantes`, et la légende de la médiathèque laissait de
+côté le rang et la marque que `/api/mediatheque` lui servait déjà. Un banc qui
+teste un contrat que personne n'emprunte ne mesure rien — c'est le défaut que
+décrit `CONTRIBUTING.md`, et c'est pour cela que `banc_page.py` relit désormais
+la page elle-même : le menu envoie le nombre par les **deux** chemins d'envoi,
+la bulle affiche « variante 2 sur 4 », et `POST /api/variante` part du bouton
+qui désigne celle que « la » vise.

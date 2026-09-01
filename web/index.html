@@ -299,6 +299,34 @@ main{flex:1;overflow-y:auto;min-width:0}
 .au-propre button:disabled{opacity:.45;cursor:default}
 .au-propre .fait{color:var(--vert)}
 .au-propre .mal{color:var(--rouge)}
+/* Quatre variantes sont quatre bulles qui se suivent : meme demande, meme
+   prompt, meme moteur, meme minute. Sans leur rang, on ne sait plus laquelle
+   on regarde — c'est le meme aveuglement que la mediatheque avait avant
+   d'afficher « variante 2 sur 4 ». Le rang se lit SOUS l'image, avec le geste
+   qui la designe, parce que c'est la qu'on compare ; au fond du depliant
+   « details » il ne servirait a personne. */
+.variante{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:9px;
+  font:11px var(--mono);color:var(--encre-pale)}
+.variante .rang{border:1px solid var(--trait-vif);border-radius:20px;
+  padding:2px 9px;background:var(--creux)}
+/* Creux et gris la ou « refaire en soigne » est braise : deux boutons braise
+   sous la meme image poseraient « lequel je presse ? » a chaque variante, et
+   celui-ci ne lance aucun rendu — il ne fait que designer. */
+.variante button{background:transparent;border:1px solid var(--trait-vif);
+  border-radius:8px;padding:4px 11px;font:11.5px var(--mono);
+  color:var(--encre-douce);cursor:pointer}
+.variante button:hover:not(:disabled){border-color:var(--braise);color:var(--braise)}
+.variante button:disabled{opacity:.45;cursor:default}
+.variante .fait{color:var(--vert)}
+.variante .mal{color:var(--rouge)}
+/* L'ENCADRE, et pas seulement un mot. De quatre images empilees, celle que
+   « la » designe doit se reconnaitre en parcourant la colonne, sans lire — la
+   phrase « agrandis-la » se tape sans remonter le fil. Le filet de gauche
+   passe du degrade au plein pour la meme raison : il se voit du coin de l'oeil
+   quand l'image est deja sortie de l'ecran. */
+.reponse.retenue::before{background:var(--braise)}
+.reponse.retenue .sortie img,.reponse.retenue .sortie video{
+  outline:2px solid var(--braise);outline-offset:2px}
 .sortie img,.sortie video{display:block;max-width:100%;border-radius:9px;
   border:1px solid var(--trait);background:var(--creux)}
 .sortie audio{width:100%;margin-top:4px}
@@ -363,6 +391,12 @@ main{flex:1;overflow-y:auto;min-width:0}
 .cadre-media{position:relative;display:block}
 .cadre-media .marque-esquisse{position:absolute;left:7px;top:7px;
   background:var(--braise);color:var(--nuit);border-radius:6px;padding:1px 7px;
+  font:10.5px/1.7 var(--mono);letter-spacing:.04em;pointer-events:none}
+/* Meme raison que la marque de brouillon, et a l'oppose pour qu'une esquisse
+   retenue porte les deux sans qu'elles se recouvrent. Vert et non braise : la
+   braise dit « pas encore fini », celle-ci dit un choix fait. */
+.cadre-media .marque-retenue{position:absolute;right:7px;top:7px;
+  background:var(--vert);color:var(--nuit);border-radius:6px;padding:1px 7px;
   font:10.5px/1.7 var(--mono);letter-spacing:.04em;pointer-events:none}
 .media figcaption{font:12.5px var(--serif);display:flex;flex-direction:column;gap:2px}
 .media figcaption small{font:10.5px var(--mono);color:var(--encre-pale)}
@@ -644,6 +678,24 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
         <option value="1080x1350">1080 × 1350 — portrait</option>
         <option value="768x1344">768 × 1344 — portrait haut</option>
       </select>
+      <!-- CE N'EST PAS UN REGLAGE DE CONVERSATION, et c'est le serveur qui l'a
+           tranche : « variantes » ne figure pas dans REGLAGES_CONV
+           (serveur.py), poser_reglages ne le lirait donc pas, et
+           /api/conversation/{cid}/reglages le jetterait en silence. C'est un
+           geste, comme le bouton brouillon : il part dans le corps de
+           /api/generer, pour CETTE demande. La raison est ecrite a cote de la
+           validation (serveur.py, api_generer) — le retenir ferait partir en
+           quatre exemplaires les cinq demandes suivantes, soit quatre fois le
+           temps de carte pour tout le monde, sans que personne l'ait voulu.
+           Il reste donc HORS de MENU_REGLAGE et de CLE_REGLAGE.
+           Quatre au plus : VARIANTES_MAX = 4, serveur.py. Au-dela, le studio
+           repond 400 — le menu ne propose pas ce qu'on lui refuserait. -->
+      <select id="variantes" aria-label="Nombre de variantes">
+        <option value="">variantes : une seule</option>
+        <option value="2">2 variantes — même prompt, autre graine</option>
+        <option value="3">3 variantes</option>
+        <option value="4">4 variantes</option>
+      </select>
     </div>
     <div class="jointe" id="jointe" style="display:none">
       <span id="apercu-zone"></span>
@@ -857,6 +909,101 @@ function barreAuPropre(t, cid) {
   return zone;
 }
 
+/* ── laquelle des N variantes porte « la » ────────────────────────────
+   « agrandis-la », « rends-la fluide », « le meme personnage » visent une
+   seule image. Le serveur ne pose « choisie » sur AUCUN tour tant que personne
+   n'a designe : sa regle est implicite — c'est la PREMIERE du groupe qui tient
+   le rang, meme finie en dernier (executer, serveur.py). Si la page se
+   contentait de lire « choisie », les quatre variantes s'afficheraient sans
+   marque au sortir du rendu, c'est-a-dire au seul moment ou la question se
+   pose. On refait donc ici la meme deduction que le serveur, et rien de plus :
+   celle qui est marquee, sinon celle de rang 1. */
+const CHOISIES = new Map();          // groupe -> id du tour retenu
+
+function releverChoisies(liste) {
+  for (const t of liste || []) {
+    const g = t.variantes || {};
+    if (!g.groupe) continue;
+    // La marque du serveur l'emporte toujours : elle vient d'un geste, le rang
+    // n'est qu'un defaut. Sans cet ordre, un groupe lu tour par tour retombait
+    // sur sa premiere des qu'elle passait apres la designee.
+    if (t.choisie) CHOISIES.set(g.groupe, t.id);
+    else if (g.rang === 1 && !CHOISIES.has(g.groupe)) CHOISIES.set(g.groupe, t.id);
+  }
+}
+
+/* La rangee sous l'image : quel tirage, sur combien, et le geste qui le
+   designe. Tout ce qu'il lui faut tient dans son « dataset » — c'est ce qui
+   permet de repeindre les N rangees d'un groupe apres un clic, sans garder en
+   memoire les N bulles ni rejouer garnirReponse dessus. */
+function peindreVariante(zone) {
+  const d = zone.dataset;
+  const retenue = CHOISIES.get(d.groupe) === d.tour;
+  const bulle = zone.closest(".reponse");
+  if (bulle) bulle.classList.toggle("retenue", retenue);
+  zone.innerHTML = "";
+  const rang = document.createElement("span");
+  rang.className = "rang";
+  rang.textContent = `variante ${d.rang} sur ${d.sur}`;
+  zone.appendChild(rang);
+  if (retenue) {
+    const s = document.createElement("span");
+    s.className = "fait";
+    s.textContent = "✓ c’est elle que « la » désigne";
+    zone.appendChild(s);
+    return;
+  }
+  // Un tirage retire de la file, ou rate, garde son rang mais n'a rien a
+  // designer : le serveur repond 404 sur un tour qui n'a pas produit de
+  // fichier, et proposer le bouton serait promettre un geste qui echoue.
+  if (d.designable !== "1") return;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = "désigner celle-ci";
+  b.title = "« agrandis-la », « rends-la fluide », « le même personnage » "
+          + "viseront cette image-là. Rien n'est supprimé : les autres "
+          + "variantes restent.";
+  const dit = document.createElement("span");
+  b.onclick = async () => {
+    b.disabled = true; dit.className = ""; dit.textContent = "…";
+    try {
+      const r = await fetch("/api/variante", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation: d.conv, tour: d.tour }) });
+      const rep = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(rep.erreur || "le serveur a refusé");
+      CHOISIES.set(d.groupe, d.tour);
+      // TOUTES les rangees du groupe, pas seulement celle-ci : le serveur
+      // decoche les soeurs, et deux images qui se diraient « la » en meme
+      // temps seraient pires que pas de marque du tout.
+      document.querySelectorAll(`#fil .variante[data-groupe="${d.groupe}"]`)
+              .forEach(peindreVariante);
+    } catch (err) {
+      b.disabled = false;
+      dit.className = "mal"; dit.textContent = err.message;
+    }
+  };
+  zone.append(b, dit);
+}
+
+/* La rangee est rendue NUE : c'est peindreVariante qui la garnit, et il faut
+   qu'elle soit deja posee dans la bulle pour cela. Il y pose aussi la classe
+   « retenue », par closest(".reponse") — sur un element pas encore attache,
+   closest() rend null : le texte « c'est elle » s'affichait, et l'encadre
+   jamais. Mesure a 375 px : contour « none » sur la variante marquee, class
+   absente sur les trois bulles. */
+function barreVariante(t, cid) {
+  const g = t.variantes || {};
+  const zone = document.createElement("div");
+  zone.className = "variante";
+  Object.assign(zone.dataset, {
+    groupe: g.groupe, tour: t.id, conv: cid, rang: g.rang, sur: g.sur,
+    designable: (t.etat !== "erreur" && (t.fichiers || []).length) ? "1" : "0",
+  });
+  return zone;
+}
+
 function garnirReponse(bloc, t, cid) {
   // une conversation rechargee peut contenir une question restee en suspens
   if (t.etat === "question" && (t.questions || []).length) {
@@ -931,6 +1078,17 @@ function garnirReponse(bloc, t, cid) {
   // Dans « .sortie », qui est vide a chaque passage : garnirReponse peut etre
   // rejoue sur la meme bulle (la relance tardive apres un arret, par exemple),
   // et une rangee posee plus haut s'y serait dupliquee.
+  //
+  // Le rang AVANT le bouton « refaire en soigne » : on lit d'abord ce qu'on
+  // regarde, on agit ensuite. Et il s'affiche meme sur un tirage rate — un
+  // retire de la file garde son rang dans le groupe, et une bulle en echec
+  // sans numero fait croire a une demande egaree plutot qu'a une variante.
+  if ((t.variantes || {}).sur > 1 && t.id) {
+    releverChoisies([t]);
+    // Posee d'abord, garnie ensuite : peindreVariante remonte a la bulle pour
+    // y mettre l'encadre, et ne la trouve pas tant que la rangee flotte.
+    peindreVariante(sortie.appendChild(barreVariante(t, cid || convActive)));
+  }
   if (esquisse && !rate && (t.fichiers || []).length && t.id)
     sortie.appendChild(barreAuPropre(t, cid || convActive));
   bloc.querySelectorAll("details.detail").forEach(d => d.remove());
@@ -1187,6 +1345,12 @@ async function ouvrir(cid) {
   $("#fil").innerHTML = "";
   // Les murmures s'ancrent APRES un tour : celui qui n'en nomme aucun est
   // anterieur au premier echange, et se lit donc en tete.
+  // Le groupe entier AVANT de peindre : la variante retenue peut etre la
+  // quatrieme, et une deduction faite tour par tour aurait marque la premiere
+  // le temps d'arriver a elle. Vide a chaque ouverture — c'est un releve de la
+  // conversation affichee, pas une memoire.
+  CHOISIES.clear();
+  releverChoisies(c.tours);
   const murmures = Array.isArray(c.murmures) ? c.murmures : [];
   const apres = tid => murmures.filter(m => (m.apres || null) === (tid || null));
   apres(null).forEach(ajouterMurmure);
@@ -1529,14 +1693,25 @@ function peindreGrille() {
     // Un brouillon garde la taille et le cadrage d'une image finie : rien ne les
     // separe a l'oeil. La marque va sur ce qui se regarde — la vignette — et
     // seulement a defaut dans la legende, pour un son qu'on n'a pas a masquer.
-    const vignette = f.esquisse && (f.famille === "image" || f.famille === "video");
+    //
+    // La variante RETENUE porte la sienne pour la meme raison, et a l'oppose :
+    // une esquisse peut etre la variante choisie, les deux marques doivent
+    // tenir cote a cote sans se recouvrir.
+    const marques = [];
+    if (f.esquisse) marques.push(["marque-esquisse", "brouillon"]);
+    if (f.choisie) marques.push(["marque-retenue", "✓ retenue"]);
+    const vignette = marques.length
+                  && (f.famille === "image" || f.famille === "video");
     if (vignette) {
       const cadre = document.createElement("div");
       cadre.className = "cadre-media";
-      const marque = document.createElement("span");
-      marque.className = "marque-esquisse";
-      marque.textContent = "brouillon";
-      cadre.append(el, marque);
+      cadre.appendChild(el);
+      for (const [classe, mot] of marques) {
+        const marque = document.createElement("span");
+        marque.className = classe;
+        marque.textContent = mot;
+        cadre.appendChild(marque);
+      }
       carte.appendChild(cadre);
     } else carte.appendChild(el);
 
@@ -1551,6 +1726,16 @@ function peindreGrille() {
     legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
                       + `<small>${f.a ? "<b>" + ech(f.a) + "</b> · " : ""}`
                       + `${f.esquisse && !vignette ? "brouillon · " : ""}`
+                      + `${f.choisie && !vignette ? "retenue · " : ""}`
+                      // QUEL TIRAGE, SUR COMBIEN. Le serveur sert « variante »
+                      // et « variantes » depuis le debut, et la legende les
+                      // jetait : quatre variantes ont le meme prompt, le meme
+                      // moteur, la meme taille et la meme minute — sans ce
+                      // rang, la grille en montre quatre lignes rigoureusement
+                      // indiscernables. « variante » n'arrive que si le groupe
+                      // en compte plus d'une, c'est le serveur qui le filtre.
+                      + `${f.variante ? "variante " + ech(f.variante) + " sur "
+                                      + ech(f.variantes) + " · " : ""}`
                       + `${ech(f.moteur || "")}`
                       // La taille et le temps : « pourquoi celle-ci a mis
                       // quatre minutes » se repond neuf fois sur dix par la
@@ -1752,6 +1937,16 @@ const REGLAGES = [
   { sel: "#machine", nom: "machine", lire: o => o.textContent.split(" — ")[0] },
   { sel: "#priorite", nom: "", lire: o => o.textContent.split(" — ")[0] },
   { sel: "#taille", nom: "", lire: o => o.textContent.split(" — ")[0] },
+  // « geste » : ce menu-ci ne s'ecrit PAS sur la conversation. Il n'a ni entree
+  // dans MENU_REGLAGE ni dans CLE_REGLAGE — les envoyer a
+  // /api/conversation/{cid}/reglages serait poster une cle que le serveur ne
+  // lit pas, et le murmure promis ne viendrait jamais. Il est ici pour une
+  // seule raison : la pastille. Sans elle, « 4 variantes » ne se verrait que
+  // le tiroir ouvert, et le tiroir est replie par defaut — on repartirait en
+  // quatre exemplaires sans rien voir venir, ce qui est exactement le degat
+  // que le serveur refuse de retenir sur la conversation.
+  { sel: "#variantes", nom: "", geste: true,
+    lire: o => o.textContent.split(" — ")[0] },
 ];
 
 function peindreActifs() {
@@ -1765,7 +1960,7 @@ function peindreActifs() {
     mot.textContent = (r.nom ? r.nom + " " : "") + r.lire(el.selectedOptions[0]);
     mot.title = "cliquer pour revenir à l'automatique";
     mot.onclick = () => { el.value = ""; accorderTaille(); peindreActifs();
-                          retenirReglages(CLE_REGLAGE[r.sel]); };
+                          if (!r.geste) retenirReglages(CLE_REGLAGE[r.sel]); };
     zone.appendChild(mot);
   }
 }
@@ -1822,7 +2017,12 @@ REGLAGES.forEach(r => {
   const el = document.querySelector(r.sel);
   if (el) el.addEventListener("change", () => {
     if (r.sel === "#forcer") moteurChoisi = true;
-    peindreActifs(); retenirReglages(CLE_REGLAGE[r.sel]);
+    peindreActifs();
+    // Un geste ne s'ecrit pas sur la conversation : CLE_REGLAGE[r.sel] vaudrait
+    // « undefined », et retenirReglages(undefined) renvoie les QUATRE reglages
+    // d'un coup — c'est-a-dire le degat que la table a ete decoupee pour
+    // eviter, declenche par un menu qui n'a rien a voir.
+    if (!r.geste) retenirReglages(CLE_REGLAGE[r.sel]);
   });
 });
 document.querySelector("#plier").onclick = e => {
@@ -1967,6 +2167,15 @@ function reglagesDemandes() {
   // part ici que ce qui appartient a CETTE demande.
   const c = { modele_choisi: moteurChoisi };
   moteurChoisi = false;
+  // LE NOMBRE DE VARIANTES PART ICI, avec les deux chemins d'envoi a la fois.
+  // Le menu ne le pose pas sur la conversation — le serveur ne le retient pas —
+  // donc s'il ne partait pas dans le corps, il ne partirait nulle part.
+  // Absent quand le menu est sur « une seule » : le serveur traite le champ
+  // absent, la chaine vide et zero comme « une seule » sans message, mais un
+  // corps qui ne dit rien est ce qu'envoie une demande ordinaire, et c'est ce
+  // qu'on veut envoyer.
+  const n = parseInt($("#variantes").value, 10);
+  if (n > 1) c.variantes = n;
   return c;
 }
 
