@@ -121,6 +121,13 @@ def lire(rep):
     return rep.status, json.loads(rep.text)
 
 
+def _vider_file():
+    """La file, videe entre deux cas. Un travail oublie fausse le cas suivant."""
+    while not S.FILE_ATTENTE.empty():
+        S.FILE_ATTENTE.get_nowait()
+        S.FILE_ATTENTE.task_done()
+
+
 async def main():
     print(f"\n  moteur du banc : {CLE} ({S.CATALOGUE[CLE].get('vram', 0)} Go)\n")
     S.FILE_ATTENTE = asyncio.Queue()
@@ -392,6 +399,63 @@ async def main():
     dit(S.PREFERENCES["armee_heures"] == 6 and S.PREFERENCES["pause_propose"] == 45,
         "et aucun refus n'a laisse de trace",
         str(dict(S.PREFERENCES)))
+
+    # ── 14. le clic n'attend pas le plancher ────────────────────────────
+    # Le plancher de 15 s protege d'une machine qui flotte entre pause et
+    # travail. Un administrateur qui clique ne flotte pas — et api_admin_pause
+    # annonçait « reveillees: 0 » pendant que les demandes repartaient au
+    # battement suivant. Un chiffre faux est pire que pas de chiffre.
+    S.PREFERENCES["armee_heures"] = 12
+    poser(pause_pc=time.time() - 40 * 60)
+    tid = demande()
+    S.armer(tid, S.MachineEnPause(CLE, [S.noeud("pc")]))
+    S.REGISTRE["pc"]["pause"] = None
+    dit(await S.reveiller_armees("pc") == 0,
+        "armee a l'instant : le battement la laisse dormir")
+    dit(await S.reveiller_armees("pc", plancher=False) == 1,
+        "le clic, lui, la reveille tout de suite")
+    _vider_file()
+
+    # ── 15. baisser le delai raccourcit ce qui attend DEJA ──────────────
+    # « armee_heures » ne valait que pour les demandes a venir : l'echeance
+    # etait figee a l'armement. L'administrateur croyait avoir coupe l'attente
+    # et s'en allait.
+    poser(pause_pc=time.time() - 40 * 60)
+    tid = demande()
+    S.armer(tid, S.MachineEnPause(CLE, [S.noeud("pc")]))
+    S.EN_FILE[tid]["arme_depuis"] = S.ARMEES[tid]["depuis"] = time.time() - 2 * 3600
+    avant = S.ARMEES[tid]["jusqua"]
+    S.PREFERENCES["armee_heures"] = 1
+    S.reviser_echeances()
+    dit(S.ARMEES[tid]["jusqua"] < avant,
+        "l'echeance recule avec le reglage",
+        f"{(avant - S.ARMEES[tid]['jusqua']) / 3600:.0f} h de moins")
+    dit(S.ARMEES[tid]["jusqua"] < time.time() and S.ARMEES[tid].get("raccourcie"),
+        "elle est deja passee, et l'on sait POURQUOI")
+    await S.expirer_armees()
+    dit("raccourci" in (tour_de(tid).get("erreur") or ""),
+        "la demande sort en disant que c'est /admin, pas la machine",
+        (tour_de(tid).get("erreur") or "")[:80])
+
+    # ── 16. et remonter le delai efface la marque ───────────────────────
+    # Sans cet effacement, une demande expirant des heures plus tard pour la
+    # VRAIE raison accusait encore un raccourcissement qui n'existait plus.
+    poser(pause_pc=time.time() - 40 * 60)
+    tid = demande()
+    S.armer(tid, S.MachineEnPause(CLE, [S.noeud("pc")]))
+    S.EN_FILE[tid]["arme_depuis"] = S.ARMEES[tid]["depuis"] = time.time() - 2 * 3600
+    S.PREFERENCES["armee_heures"] = 1
+    S.reviser_echeances()
+    dit(S.ARMEES[tid].get("raccourcie"), "marquee une premiere fois")
+    S.PREFERENCES["armee_heures"] = 12
+    S.reviser_echeances()
+    dit(not S.ARMEES[tid].get("raccourcie") and S.ARMEES[tid]["jusqua"] > time.time(),
+        "on remonte le delai : la marque tombe avec elle")
+    S.ARMEES[tid]["jusqua"] = time.time() - 1
+    await S.expirer_armees()
+    dit("n'est pas revenue" in (tour_de(tid).get("erreur") or ""),
+        "et l'expiration accuse de nouveau la machine",
+        (tour_de(tid).get("erreur") or "")[:80])
 
     S.PREFERENCES["armee_heures"] = 12
     S.sauver_reglages()

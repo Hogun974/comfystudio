@@ -482,6 +482,168 @@ verifier("au plafond, l'appel ne part plus chez le fournisseur",
          f"{serveur.appels_du_mois('quelqu-un')} appels comptes")
 serveur.PREFERENCES["plafond_nuage"] = 0
 
+print()
+print("=" * 70)
+print("10. le plafond sous la rafale : plus un « verifier puis agir »")
+print("=" * 70)
+
+# La course ne se voit qu'avec de la LATENCE : c'est pendant l'aller-retour que
+# le compteur reste immobile, puisqu'il n'est ecrit qu'au retour. On compte les
+# departs au ras du reseau, la ou l'argent sort.
+PARTIS = [0]
+
+
+class ReponseLente(FausseReponse):
+    async def text(self):
+        await asyncio.sleep(0.20)          # un aller-retour ordinaire
+        return json.dumps(self._corps)
+
+
+class SessionQuiCompte(FausseSession):
+    def post(self, url, json=None, headers=None):
+        PARTIS[0] += 1
+        return ReponseLente(REPONSE[0])
+
+
+async def rafale(combien):
+    return await asyncio.gather(*[
+        serveur._appeler_llm("un chat roux", None, None, False, None, 0.4,
+                             "banc-tid")
+        for _ in range(combien)], return_exceptions=True)
+
+
+serveur.TACHES["banc-tid"] = {"proprietaire": "rafale"}
+fournisseurs.aiohttp.ClientSession = SessionQuiCompte
+# TRAVAILLEURS d'abord : c'est le nombre que le studio peut reellement lancer
+# ensemble, et donc le depassement qu'on payait. Dix ensuite, pour montrer que
+# la correction ne tient pas a un nombre particulier.
+for combien in (serveur.TRAVAILLEURS, 10):
+    serveur.COMPTEUR.clear()
+    serveur._EN_VOL_NUAGE.clear()
+    PARTIS[0] = 0
+    serveur.PREFERENCES["plafond_nuage"] = 1
+    _b = asyncio.new_event_loop()
+    _b.run_until_complete(rafale(combien))
+    _b.close()
+    serveur._A_ECRIRE.join()
+    verifier(f"plafond a 1, {combien} appels lances ensemble : un seul part",
+             PARTIS[0] == 1 and serveur.appels_du_mois("rafale") == 1,
+             f"{PARTIS[0]} partis chez le fournisseur, "
+             f"{serveur.appels_du_mois('rafale')} consignes")
+fournisseurs.aiohttp.ClientSession = vraie_session
+verifier("aucune place n'est restee prise apres la rafale",
+         not serveur._EN_VOL_NUAGE, str(serveur._EN_VOL_NUAGE))
+
+
+class ReponseRefusee(FausseReponse):
+    status = 500
+
+    async def text(self):
+        return "cle refusee"
+
+
+class SessionQuiRefuse(FausseSession):
+    def post(self, url, json=None, headers=None):
+        return ReponseRefusee({})
+
+
+# Une place jamais rendue fermerait le robinet jusqu'a la fin du mois : c'est la
+# panne que la correction pourrait introduire, donc celle qu'on epingle.
+serveur.COMPTEUR.clear()
+serveur._EN_VOL_NUAGE.clear()
+serveur.PREFERENCES["plafond_nuage"] = 5
+fournisseurs.aiohttp.ClientSession = SessionQuiRefuse
+_b = asyncio.new_event_loop()
+try:
+    _b.run_until_complete(
+        serveur._appeler_llm("un chat roux", None, None, False, None, 0.4,
+                             "banc-tid"))
+except Exception:                                            # noqa: BLE001
+    pass
+finally:
+    _b.close()
+    fournisseurs.aiohttp.ClientSession = vraie_session
+verifier("un appel qui echoue rend sa place : une panne de fournisseur ne "
+         "ferme pas le robinet du mois",
+         not serveur._EN_VOL_NUAGE
+         and serveur.appels_du_mois("rafale") == 0,
+         f"{serveur._EN_VOL_NUAGE}, "
+         f"{serveur.appels_du_mois('rafale')} consignes")
+serveur.PREFERENCES["plafond_nuage"] = 0
+
+
+print()
+print("=" * 70)
+print("11. l'extinction ne mange pas la fin du journal")
+print("=" * 70)
+
+# Le fil d'ecriture est un demon : sans vidange, l'arret emportait tout ce qui
+# restait en file. Mesure avant correction, disque a 50 ms la ligne : trente-neuf
+# lignes sur quarante perdues, sans un mot — et un compte plafonne se remboursait
+# ses appels en redemarrant le studio.
+serveur.COMPTEUR.clear()
+_vrai_tailler = serveur._tailler
+serveur._tailler = lambda: time.sleep(0.01)
+_avant = sum(1 for l in io.open(serveur.FICHIER_COUTS, encoding="utf-8")
+             if l.strip())
+for _ in range(40):
+    serveur.consigner_appel_distant("anthropic", "llm", "extinction", 1.0,
+                                    octets=5, jetons=(1, 1))
+_en_file = serveur._A_ECRIRE.qsize()
+
+
+async def eteindre():
+    await serveur.arreter_file({})
+
+
+_b = asyncio.new_event_loop()
+_b.run_until_complete(eteindre())
+_b.close()
+serveur._tailler = _vrai_tailler
+serveur.ARRET = False
+_apres = sum(1 for l in io.open(serveur.FICHIER_COUTS, encoding="utf-8")
+             if l.strip())
+verifier("les quarante dernieres lignes survivent a l'arret du studio",
+         _apres - _avant == 40 and serveur._A_ECRIRE.qsize() == 0,
+         f"{_en_file} en file au moment de l'arret, {_apres - _avant} ecrites")
+verifier("un compte ne se rembourse plus ses appels en redemarrant",
+         serveur.appels_du_mois("extinction") == 40,
+         f"{serveur.appels_du_mois('extinction')} appels comptes")
+verifier("vider_journal rend zero quand il ne reste rien",
+         serveur.vider_journal() == 0)
+
+
+print()
+print("=" * 70)
+print("12. en STUDIO_AUTH=libre, le plafond dit ce qu'il ne protege pas")
+print("=" * 70)
+
+# LE REPROCHE ETAIT « tout le monde tombe dans le meme seau anonyme ». Mesure :
+# faux. Le seau par navigateur existe deja ; ce qu'il ne fait pas, c'est
+# proteger, parce que le cookie appartient au visiteur.
+_seaux = {serveur.dossier_utilisateur(p) for p in ("a" * 32, "b" * 32, "c" * 32)}
+verifier("trois navigateurs, trois seaux — et non un seul « anonyme »",
+         len(_seaux) == 3 and "anonyme" not in _seaux,
+         ", ".join(sorted(x[:8] for x in _seaux)))
+verifier("« anonyme » n'est que le seau d'un pid absent",
+         serveur.dossier_utilisateur(None) == "anonyme")
+
+_vrai_auth = serveur.AUTH
+serveur.AUTH = "libre"
+serveur.PREFERENCES["plafond_nuage"] = 0
+verifier("sans plafond, rien a avertir : le studio se tait",
+         serveur.avertissement_plafond() == "")
+serveur.PREFERENCES["plafond_nuage"] = 10
+_mot = serveur.avertissement_plafond()
+verifier("avec un plafond, il dit que vider ses cookies remet a zero",
+         "navigateur" in _mot and "cookies" in _mot, _mot[:70])
+serveur.AUTH = "obligatoire"
+verifier("avec des comptes, plus d'avertissement : le seau tient",
+         serveur.avertissement_plafond() == "")
+serveur.AUTH = _vrai_auth
+serveur.PREFERENCES["plafond_nuage"] = 0
+
+
 shutil.rmtree(DONNEES, ignore_errors=True)
 
 print()

@@ -1510,7 +1510,7 @@ async def _relancer_armee(tid, msg):
     return True
 
 
-async def reveiller_armees(ident=None):
+async def reveiller_armees(ident=None, plancher=True):
     """Relance les demandes armees qu'une machine peut enfin servir.
 
     On ne demande pas « la pause est-elle finie ? » mais « choisir_noeud rend-il
@@ -1522,6 +1522,15 @@ async def reveiller_armees(ident=None):
     « ident » restreint aux demandes qui attendaient CETTE machine : l'annonce
     arrive six fois par minute et par machine, et il n'y a pas de raison de
     reexaminer tout le monde a chaque battement.
+
+    « plancher » vaut pour les battements, pas pour un geste. Le plancher de
+    quinze secondes protege d'une machine qui flotte entre pause et travail ;
+    un administrateur qui clique « remettre au travail » ne flotte pas, et
+    l'attendre faisait annoncer « 0 relancee » a api_admin_pause pendant que
+    les demandes repartaient trente secondes plus tard par le veilleur. Mesure
+    du 1er septembre : trois demandes armees, reponse « reveillees: 0 », trois
+    departs une fois le plancher passe. Un chiffre faux est pire que pas de
+    chiffre.
     """
     if not ARMEES or FILE_ATTENTE is None:
         return 0
@@ -1533,7 +1542,7 @@ async def reveiller_armees(ident=None):
         # Quinze secondes de plancher. Une machine qui bascule entre pause et
         # travail relancerait sinon la demande a chaque aller-retour, et chaque
         # relance coute une analyse complete au modele de langage.
-        if time.time() - a.get("quand", 0) < 15:
+        if plancher and time.time() - a.get("quand", 0) < 15:
             continue
         cible = choisir_noeud(a["cle"]) if a.get("cle") in CATALOGUE else None
         if not cible:
@@ -1543,6 +1552,38 @@ async def reveiller_armees(ident=None):
                      f"demande repart d'elle-meme"):
             partis += 1
     return partis
+
+
+def reviser_echeances():
+    """Reporte l'echeance des demandes DEJA armees sur le reglage du moment.
+
+    « armee_heures » ne valait que pour les demandes a venir : l'echeance etait
+    figee a l'armement, et baisser le reglage ne raccourcissait rien. Mesure du
+    1er septembre — douze heures ramenees a une, la demande deja armee gardait
+    12,00 h devant elle. Un reglage qui ment sur ce qu'il fait est pire qu'un
+    reglage absent : l'administrateur croit avoir coupe l'attente et s'en va.
+
+    Le calcul repart de « depuis », la PREMIERE mise de cote, et jamais de
+    maintenant : sinon un simple passage dans /admin repousserait l'attente de
+    toutes les demandes en cours, ce qui est exactement le rearmement que
+    « depuis » avait ete introduit pour empecher.
+    """
+    heures = PREFERENCES["armee_heures"]
+    for a in ARMEES.values():
+        neuve = a.get("depuis", 0) + heures * 3600
+        # Marquee quand c'est le REGLAGE qui vient de faire passer l'echeance,
+        # et non le temps : expirer_armees ne doit pas accuser une machine de
+        # n'etre pas revenue quand c'est l'administration qui a coupe court.
+        #
+        # EFFACEE dans le cas contraire, et c'est le point : remonter le delai
+        # apres l'avoir baisse laissait la marque en place, et la demande, en
+        # expirant des heures plus tard pour la vraie raison, accusait encore
+        # un raccourcissement qui n'existait plus.
+        if neuve <= time.time() < a.get("jusqua", 0):
+            a["raccourcie"] = True
+        else:
+            a.pop("raccourcie", None)
+        a["jusqua"] = neuve
 
 
 async def expirer_armees():
@@ -1559,6 +1600,11 @@ async def expirer_armees():
         ARMEES.pop(tid, None)
         EN_FILE.pop(tid, None)
         sauver_file()
+        if a.get("raccourcie"):
+            echouer(tid, "le delai d'attente a ete raccourci dans /admin : ta "
+                         "demande a ete retiree de l'attente. Relance-la quand "
+                         "la machine sera la.")
+            continue
         heures = max(1, round((a.get("jusqua", 0) - a.get("depuis", 0)) / 3600))
         echouer(tid, f"{' et '.join(a.get('titres') or ['la machine'])} n'est "
                      f"pas revenue en {heures} h : ta demande a ete retiree de "
@@ -2068,6 +2114,17 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # 18 Go. C'est aussi pour cela qu'il est tente AVANT la mise en file.
     loin = ("" if image_b64
             else llm_distant_possible(texte, (TACHES.get(tid) or {}).get("proprietaire")))
+    # La place se prend AVANT le depart, pas au retour. llm_distant_possible a
+    # beau dire oui, le compteur qu'il interroge ne bougera qu'une fois la
+    # reponse revenue : sans cette reservation, trois travailleurs partis
+    # ensemble franchissaient tous les trois un plafond d'un seul appel.
+    _place = (reserver_nuage((TACHES.get(tid) or {}).get("proprietaire"))
+              if loin else None)
+    if loin and _place is None:
+        journal(tid, f"plafond du mois atteint "
+                     f"({PREFERENCES.get('plafond_nuage')} appels distants) "
+                     f"— le modele local prend le relais")
+        loin = ""
     if loin:
         _depart_loin = time.time()
         try:
@@ -2089,6 +2146,11 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # « cle refusee » ne se corrigent pas de la meme facon.
             journal(tid, f"{fournisseurs.LLM[loin]['titre']} indisponible ({e})"
                          f" — le modele local prend le relais")
+        finally:
+            # Apres consigner_appel_distant, donc : la place ne se rend qu'une
+            # fois le compteur a jour, sinon le suivant retrouverait le trou
+            # qu'on vient de boucher.
+            liberer_nuage(_place)
 
     # POURQUOI cet appel n'est pas parti au loin. La question s'est posee ce
     # matin et le journal ne savait pas y repondre : l'analyse est partie chez
@@ -3799,6 +3861,24 @@ LIGNES_COUTS = TAILLE_COUTS // OCTETS_PAR_LIGNE
 _A_ECRIRE = queue.Queue(maxsize=2000)
 _ECRIVAIN = None
 
+# Combien de temps l'arret attend ce fil. Mesure sur le volume monte du 191 :
+# 50 ms la ligne, donc cinq secondes couvrent une centaine de lignes en retard
+# — bien plus qu'un studio n'en accumule — et restent sous les dix secondes que
+# « docker stop » laisse avant le SIGKILL. Au-dela, on abandonne EN LE DISANT :
+# une comptabilite amputee qui s'annonce vaut mieux qu'une qui se tait.
+ATTENTE_JOURNAL = 5.0
+
+# Combien d'appels distants sont PARTIS et pas encore consignes, par compte.
+#
+# Sans ce registre, le plafond etait un « verifier puis agir » : le compteur
+# n'est ecrit qu'au RETOUR du fournisseur, donc tout ce qui part pendant
+# l'aller-retour voit la meme place libre. Mesure du 1er septembre, plafond a
+# un seul appel : trois travailleurs qui demarrent ensemble font TROIS appels
+# factures, une rafale de dix en fait dix. Le depassement vaut donc
+# STUDIO_TRAVAILLEURS — trois par defaut, davantage des qu'on releve le
+# reglage — et il se paie a chaque fois.
+_EN_VOL_NUAGE = {}          # compte -> appels partis, pas encore consignes
+
 
 def _mois(quand=None):
     return time.strftime("%Y-%m", time.localtime(quand))
@@ -3931,6 +4011,31 @@ def _fil_ecriture():
             _A_ECRIRE.task_done()
 
 
+def vider_journal(secondes=None):
+    """Attend que le fil d'ecriture ait pose la file sur le disque.
+
+    Rend le nombre de lignes encore en attente — zero quand tout est ecrit.
+
+    Le fil est un DEMON : l'interpreteur ne l'attend pas, et sans cette
+    fonction l'arret du studio emportait tout ce qui restait en file. Mesure du
+    1er septembre, quarante appels consignes sur un disque a 50 ms la ligne :
+    l'arret en laissait TRENTE-NEUF derriere lui, sans un mot. Un compte
+    plafonne se remboursait donc ses appels en redemarrant le studio, puisque
+    charger_compteur() ne relit que ce qui a ete ecrit.
+
+    L'attente passe par un fil et non par « _A_ECRIRE.join() » : join() n'a pas
+    de delai, et un volume monte qui ne repond plus figerait l'arret pour
+    toujours — le contraire de ce que la file bornee cherche a garantir.
+    """
+    if _ECRIVAIN is None:
+        return 0
+    veille = threading.Thread(target=_A_ECRIRE.join, daemon=True,
+                              name="couts-vidange")
+    veille.start()
+    veille.join(ATTENTE_JOURNAL if secondes is None else secondes)
+    return _A_ECRIRE.qsize()
+
+
 def _consigner_sans_filet(fournisseur, modalite, pid, secondes,
                             octets=0, jetons=(None, None)):
     """Un appel distant ABOUTI, et ce qu'on peut en mesurer objectivement.
@@ -3973,6 +4078,49 @@ def appels_du_mois(compte, mois=None):
     return sum(m["appels"] for m in par_compte.values())
 
 
+def engages(compte):
+    """Les appels du mois deja consignes, PLUS ceux qui sont encore en vol.
+
+    C'est ce nombre-la que le plafond doit regarder, et pas le seul compteur :
+    un appel parti est un appel paye, meme si le fournisseur n'a pas encore
+    repondu.
+    """
+    return appels_du_mois(compte) + _EN_VOL_NUAGE.get(compte, 0)
+
+
+def reserver_nuage(pid):
+    """Prend une place sous le plafond du mois, ou None s'il n'y en a plus.
+
+    Le decompte est atomique parce que RIEN ICI N'ATTEND : la boucle
+    d'evenements ne rend la main qu'a un « await », donc aucun autre appel ne
+    peut s'intercaler entre la lecture et l'increment. Toute la correction
+    tient dans cette absence d'await — deplacer une seule ligne asynchrone
+    dans cette fonction rouvrirait la course.
+    """
+    compte = dossier_utilisateur(pid)
+    limite = PREFERENCES.get("plafond_nuage") or 0
+    if 0 < limite <= engages(compte):
+        return None
+    _EN_VOL_NUAGE[compte] = _EN_VOL_NUAGE.get(compte, 0) + 1
+    return compte
+
+
+def liberer_nuage(place):
+    """Rend la place, que l'appel ait abouti, echoue ou ete annule.
+
+    TOUJOURS dans un « finally ». Une place jamais rendue fermerait le robinet
+    jusqu'a la fin du mois pour ce compte, et cette panne-la serait pire que le
+    depassement qu'on corrige.
+    """
+    if place is None:
+        return
+    reste = _EN_VOL_NUAGE.get(place, 0) - 1
+    if reste > 0:
+        _EN_VOL_NUAGE[place] = reste
+    else:
+        _EN_VOL_NUAGE.pop(place, None)
+
+
 def plafond_atteint(pid):
     """Vrai si ce compte a epuise son quota d'appels distants du mois.
 
@@ -3983,7 +4131,7 @@ def plafond_atteint(pid):
     limite = PREFERENCES.get("plafond_nuage") or 0
     if limite <= 0:
         return False
-    return appels_du_mois(dossier_utilisateur(pid)) >= limite
+    return engages(dossier_utilisateur(pid)) >= limite
 
 
 def etat_plafond(pid):
@@ -3992,9 +4140,39 @@ def etat_plafond(pid):
     if limite <= 0:
         return None
     compte = dossier_utilisateur(pid)
+    # « faits » compte ce qui est ECRIT : c'est le chiffre que la page montre a
+    # cote de la limite, et il doit correspondre a la ligne du journal. Le
+    # « atteint », lui, tient compte des appels en vol, sinon la page dirait
+    # « 2 sur 3, il reste de la place » a l'instant meme ou le troisieme part.
     faits = appels_du_mois(compte)
     return {"compte": compte, "mois": _mois(), "limite": limite,
-            "faits": faits, "atteint": faits >= limite}
+            "faits": faits, "atteint": engages(compte) >= limite}
+
+
+def avertissement_plafond():
+    """Ce que le plafond ne protege pas en STUDIO_AUTH=libre, dit en francais.
+
+    LA MESURE D'ABORD, parce qu'elle contredit ce qu'on croyait. Le reproche
+    etait « en mode libre, tout le monde tombe dans le meme seau anonyme ».
+    C'est faux : dossier_utilisateur() rend le cookie du navigateur des qu'il
+    y en a un, et trois navigateurs mesures le 1er septembre donnaient bien
+    trois seaux distincts. « anonyme » n'apparait que pour un pid absent —
+    une conversation orpheline d'avant les comptes.
+
+    Le seau par session existe donc deja. Ce qu'il ne fait pas, c'est
+    proteger : le cookie appartient au visiteur, qui le vide et repart a zero.
+    Un seau par session de plus n'y changerait rien — le probleme n'est pas le
+    decoupage, c'est que l'identite est declarative tant qu'aucun compte ne la
+    porte. On garde donc le decoupage, qui evite deja qu'un utilisateur affame
+    les autres, et ON LE DIT : un plafond qu'on croit etanche est plus
+    dangereux qu'un plafond dont on connait le trou.
+    """
+    if AUTH == "libre" and (PREFERENCES.get("plafond_nuage") or 0) > 0:
+        return ("STUDIO_AUTH=libre : le plafond du nuage se compte par "
+                "navigateur, et un visiteur qui vide ses cookies repart a "
+                "zero. Il repartit la depense, il ne la borne pas — pour "
+                "cela, il faut des comptes.")
+    return ""
 
 
 def fournisseur_dispo(modalite):
@@ -6990,70 +7168,85 @@ async def produire_distant(choix, plan, texte, entree, intention, tid, conv):
 
     cle_api = cle_distante(choix)
     modele = modele_de(conf["fournisseur"]) or None
-    debut = time.time()
-    if conf["type"] == "audio":
-        # Les paroles s'ecrivent ici et non plus bas : la branche locale qui
-        # s'en charge d'ordinaire est en aval de cet aiguillage, et un morceau
-        # chante partirait sans un mot.
-        if not plan.get("paroles") and _CHANSON.search(texte or ""):
-            duree = float((plan.get("parametres") or {}).get("duree_s", 60))
-            plan["paroles"] = await ecrire_paroles(texte, duree, tid,
-                                                   plan.get("langue") or "fr")
-        # Le style et les paroles partent ensemble : ces modeles ne prennent
-        # qu'un texte, contrairement a ACE-Step qui a deux champs distincts.
-        morceaux = [style_musical(texte, plan.get("parametres")) or texte]
-        if plan.get("paroles"):
-            morceaux.append("Paroles a chanter :\n" + plan["paroles"])
-        octets, mime = await fournisseurs.musique(conf["fournisseur"], cle_api,
-                                                  "\n\n".join(morceaux), modele)
-    elif conf["type"] == "objet3d":
-        octets, mime = await fournisseurs.objet3d(
-            conf["fournisseur"], cle_api, plan.get("prompt") or texte, modele,
-            charge, tid=tid, dire=lambda m: journal(tid, m))
-    elif conf["type"] == "video":
-        octets, mime = await fournisseurs.video(
-            conf["fournisseur"], cle_api, plan.get("prompt") or texte, modele,
-            charge, tid=tid, dire=lambda m: journal(tid, m))
-    else:
-        octets, mime = await fournisseurs.image(conf["fournisseur"], cle_api,
-                                                plan.get("prompt") or texte,
-                                                modele, charge)
-    ext = mimetypes.guess_extension(mime) or ".png"
-    nom = f"{time.strftime('%Y%m%d')}_{choix}_{uuid.uuid4().hex[:8]}{ext}"
-    # Meme rangement que les sorties calculees ici : ce qui vient d'un
-    # fournisseur distant n'a aucune raison d'atterrir ailleurs, sinon la moitie
-    # des images d'une personne serait dans son dossier et l'autre a cote.
-    sous = os.path.dirname(prefixe_sortie(conv, intention, "", ""))
-    # Sans ComfyUI sur cette machine, son output n'existe pas : le resultat
-    # atterrit dans le depot du studio, la meme ou arrivent ceux des machines a
-    # agent. Le lire fonctionne pareil ; c'est verifie a la lecture.
-    if output_comfy_a_nous():
-        dossier = os.path.join(BASE_COMFY, "output", *sous.split("/"))
-    else:
-        # noeud_local() a un identifiant que nous fabriquons : _sous() ne peut
-        # pas le refuser. On reste explicite plutot que d'en dependre.
-        depose = chemin_agent(noeud_local()["id"], nom)
-        if not depose:
-            raise RuntimeError(f"nom de fichier refuse : {nom}")
-        dossier = os.path.dirname(depose)
-    os.makedirs(dossier, exist_ok=True)
-    with open(os.path.join(dossier, nom), "wb") as f:
-        f.write(octets)
-    # Le temps sur la TACHE, comme pour une machine du parc : sans cette ligne,
-    # une piece produite au loin n'avait jamais de duree, ni dans le detail du
-    # tour ni dans la mediatheque — alors que ce sont justement celles qu'on
-    # paie a la seconde.
-    TACHES.setdefault(tid, {})["secondes"] = round(time.time() - debut, 1)
-    # Le proprietaire de la CONVERSATION et non celui de la tache : les deux
-    # sont le meme, mais c'est la conversation qui porte l'information jusqu'ici
-    # sans dependre de l'etat de TACHES au moment ou l'on ecrit.
-    consigner_appel_distant(conf["fournisseur"], conf["type"],
-                            conv.get("proprietaire"), time.time() - debut,
-                            octets=len(octets),
-                            jetons=fournisseurs.jetons_du_dernier_appel())
-    journal(tid, f"recu en {time.time() - debut:.0f} s ({len(octets) / 1024:.0f} ko)")
-    return [{"filename": nom, "subfolder": sous, "type": "output",
-             "noeud": noeud_local()["id"]}]
+    # LA PLACE SOUS LE PLAFOND SE PREND ICI, au ras du premier octet envoye, et
+    # non a l'examen du plan : entre les deux passent l'enrichissement et la
+    # traduction, soit des dizaines de secondes pendant lesquelles le compteur
+    # ne bouge pas. Elle est prise avant les paroles d'une chanson, a dessein :
+    # c'est le morceau que l'utilisateur a demande, et il vaut mieux lui garder
+    # la derniere place que la donner a l'appel de texte qui le prepare.
+    place = reserver_nuage(conv.get("proprietaire"))
+    if place is None:
+        raise fournisseurs.EchecFournisseur(
+            f"plafond du mois atteint ({PREFERENCES.get('plafond_nuage')} "
+            f"appels distants)")
+    try:
+        debut = time.time()
+        if conf["type"] == "audio":
+            # Les paroles s'ecrivent ici et non plus bas : la branche locale qui
+            # s'en charge d'ordinaire est en aval de cet aiguillage, et un morceau
+            # chante partirait sans un mot.
+            if not plan.get("paroles") and _CHANSON.search(texte or ""):
+                duree = float((plan.get("parametres") or {}).get("duree_s", 60))
+                plan["paroles"] = await ecrire_paroles(texte, duree, tid,
+                                                       plan.get("langue") or "fr")
+            # Le style et les paroles partent ensemble : ces modeles ne prennent
+            # qu'un texte, contrairement a ACE-Step qui a deux champs distincts.
+            morceaux = [style_musical(texte, plan.get("parametres")) or texte]
+            if plan.get("paroles"):
+                morceaux.append("Paroles a chanter :\n" + plan["paroles"])
+            octets, mime = await fournisseurs.musique(conf["fournisseur"], cle_api,
+                                                      "\n\n".join(morceaux), modele)
+        elif conf["type"] == "objet3d":
+            octets, mime = await fournisseurs.objet3d(
+                conf["fournisseur"], cle_api, plan.get("prompt") or texte, modele,
+                charge, tid=tid, dire=lambda m: journal(tid, m))
+        elif conf["type"] == "video":
+            octets, mime = await fournisseurs.video(
+                conf["fournisseur"], cle_api, plan.get("prompt") or texte, modele,
+                charge, tid=tid, dire=lambda m: journal(tid, m))
+        else:
+            octets, mime = await fournisseurs.image(conf["fournisseur"], cle_api,
+                                                    plan.get("prompt") or texte,
+                                                    modele, charge)
+        ext = mimetypes.guess_extension(mime) or ".png"
+        nom = f"{time.strftime('%Y%m%d')}_{choix}_{uuid.uuid4().hex[:8]}{ext}"
+        # Meme rangement que les sorties calculees ici : ce qui vient d'un
+        # fournisseur distant n'a aucune raison d'atterrir ailleurs, sinon la moitie
+        # des images d'une personne serait dans son dossier et l'autre a cote.
+        sous = os.path.dirname(prefixe_sortie(conv, intention, "", ""))
+        # Sans ComfyUI sur cette machine, son output n'existe pas : le resultat
+        # atterrit dans le depot du studio, la meme ou arrivent ceux des machines a
+        # agent. Le lire fonctionne pareil ; c'est verifie a la lecture.
+        if output_comfy_a_nous():
+            dossier = os.path.join(BASE_COMFY, "output", *sous.split("/"))
+        else:
+            # noeud_local() a un identifiant que nous fabriquons : _sous() ne peut
+            # pas le refuser. On reste explicite plutot que d'en dependre.
+            depose = chemin_agent(noeud_local()["id"], nom)
+            if not depose:
+                raise RuntimeError(f"nom de fichier refuse : {nom}")
+            dossier = os.path.dirname(depose)
+        os.makedirs(dossier, exist_ok=True)
+        with open(os.path.join(dossier, nom), "wb") as f:
+            f.write(octets)
+        # Le temps sur la TACHE, comme pour une machine du parc : sans cette ligne,
+        # une piece produite au loin n'avait jamais de duree, ni dans le detail du
+        # tour ni dans la mediatheque — alors que ce sont justement celles qu'on
+        # paie a la seconde.
+        TACHES.setdefault(tid, {})["secondes"] = round(time.time() - debut, 1)
+        # Le proprietaire de la CONVERSATION et non celui de la tache : les deux
+        # sont le meme, mais c'est la conversation qui porte l'information jusqu'ici
+        # sans dependre de l'etat de TACHES au moment ou l'on ecrit.
+        consigner_appel_distant(conf["fournisseur"], conf["type"],
+                                conv.get("proprietaire"), time.time() - debut,
+                                octets=len(octets),
+                                jetons=fournisseurs.jetons_du_dernier_appel())
+        journal(tid, f"recu en {time.time() - debut:.0f} s "
+                     f"({len(octets) / 1024:.0f} ko)")
+        return [{"filename": nom, "subfolder": sous, "type": "output",
+                 "noeud": noeud_local()["id"]}]
+    finally:
+        liberer_nuage(place)
 
 
 # Le nom du type dans l'arborescence. On garde le mot de l'intention, sauf la
@@ -10374,7 +10567,14 @@ async def api_admin_pause(req):
     # Le veilleur le ferait trente secondes plus tard ; ici c'est immediat, et
     # l'administrateur voit la file repartir dans le meme rafraichissement que
     # le bouton qu'il vient de cliquer.
-    reveillees = 0 if x.get("pause") else await reveiller_armees(x["id"])
+    #
+    # « plancher=False » : sans lui, une demande armee depuis moins de quinze
+    # secondes etait ecartee et la reponse annoncait « 0 relancee » alors
+    # qu'elle repartait au battement suivant. Le clic est deliberatif, pas un
+    # va-et-vient de machine — et _relancer_armee desarme avant le premier
+    # await, donc un double reveil ne peut de toute facon pas dedoubler l'envoi.
+    reveillees = (0 if x.get("pause")
+                  else await reveiller_armees(x["id"], plancher=False))
     return web.json_response({"ok": True, "pause": x.get("pause"),
                               "reveillees": reveillees})
 
@@ -10414,7 +10614,17 @@ async def api_admin_reglages(req):
             return web.json_response(
                 {"erreur": "aucun reglage connu dans cette demande"}, status=400)
         sauver_reglages()
-    return web.json_response(dict(PREFERENCES))
+        if "armee_heures" in d:
+            # Le reglage vaut pour les demandes DEJA armees, pas seulement pour
+            # les suivantes — et celles que le nouveau delai met hors jeu
+            # sortent tout de suite, plutot qu'a la ronde du veilleur.
+            reviser_echeances()
+            await expirer_armees()
+    reponse = dict(PREFERENCES)
+    avertit = avertissement_plafond()
+    if avertit:
+        reponse["avertissement"] = avertit
+    return web.json_response(reponse)
 
 
 async def api_admin_creer(req):
@@ -10648,6 +10858,16 @@ async def arreter_file(a):
         tache = a.get(nom)
         if tache is not None:
             tache.cancel()
+    # APRES l'annulation, pour que plus personne n'ajoute de ligne pendant la
+    # vidange. Dans un executeur, parce que l'attente est bloquante et qu'on est
+    # encore dans la boucle d'evenements : la figer ici retarderait la fermeture
+    # des connexions qu'aiohttp est en train de faire.
+    reste = await asyncio.get_running_loop().run_in_executor(None, vider_journal)
+    if reste:
+        # LE DIRE. Une comptabilite amputee qui s'annonce se rattrape ; celle
+        # qui se tait donne un studio ou l'on croit compter les appels distants.
+        print(f"  journal des couts : {reste} ligne(s) perdue(s) — le disque "
+              f"n'a pas suivi en {ATTENTE_JOURNAL:.0f} s", flush=True)
 
 def app():
     a = web.Application(client_max_size=128 * 1024 ** 2,
@@ -10785,6 +11005,11 @@ if __name__ == "__main__":
         print(f"  OUVERT AU RESEAU sur {HOTE}"
               + ("" if AUTH == "obligatoire"
                  else " — AUCUNE AUTHENTIFICATION (STUDIO_AUTH=libre)"))
+    # Au demarrage et pas seulement dans /admin : un plafond pose une fois puis
+    # oublie est justement celui qu'on croit etanche des mois durant.
+    _avertit = avertissement_plafond()
+    if _avertit:
+        print(f"  PLAFOND   : {_avertit}")
     print(f"  Conversations : {len(CONVERSATIONS)} chargee(s)")
     print(f"  VRAM      : "
           + (f"{VRAM_GO['total']} Go" if VRAM_GO["total"]
