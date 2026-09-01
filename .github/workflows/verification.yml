@@ -242,6 +242,18 @@ jobs:
       - name: La feuille et le script de la page s'accordent
         run: python banc_page.py
 
+      # QUI GARDE LES GARDIENS. Trois fois cette semaine, un banc vert a couvert
+      # une fonctionnalite entierement morte : banc_page.py, ecrit expres pour
+      # empecher un defaut de revenir, ne voyait pas ce defaut — il cherchait
+      # « priorite: $("#priorite").value » quand le code portait l'abreviation
+      # ES6, « priorite, ». La ligne fautive restauree, le banc restait vert.
+      # Un banc ne se relit pas, il s'eprouve : ce banc-ci mute le code et exige
+      # que le banc vise rougisse, sur la ligne nommee et pas une autre. Deux
+      # secondes, aucune dependance, et le depot n'est jamais touche — tout se
+      # passe sur des copies dans un dossier temporaire.
+      - name: Les bancs rougissent encore sur les pannes qu'ils gardent
+        run: python banc_mutations.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.
