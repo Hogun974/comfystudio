@@ -12,6 +12,9 @@ le Python embarque de ComfyUI.
 """
 import asyncio, base64, json, os, re, secrets, shlex, subprocess, sys, time, uuid
 import hashlib
+# Uniquement pour nommer le site d'appel quand un garde-fou tire (VerrouCarte) :
+# un avertissement sans pile ne se corrige pas dans un fichier de cette taille.
+import traceback
 import mimetypes
 import urllib.parse
 import unicodedata
@@ -248,6 +251,31 @@ class VerrouCarte:
 
     def __init__(self):
         self._tenu = False
+        # LE RELAIS EST-IL EN VOL ? asyncio.Lock, remplace ici, levait
+        # RuntimeError sur un release() sans detenteur ; ce garde-fou-la ne se
+        # transpose pas tel quel, parce que le passage de relais de _rendre() ne
+        # repasse JAMAIS par « libre » — _tenu reste vrai d'un porteur au
+        # suivant, pour qu'un nouveau venu ne puisse pas se glisser entre les
+        # deux. « Est-elle tenue ? » ne distingue donc pas le second release()
+        # de A du premier de B, et c'est exactement le cas rejoue par une
+        # relecture adverse : A tient, B attend, A relache deux fois, et C
+        # obtient la carte pendant que B calcule dessus.
+        #
+        # Ce drapeau-ci les distingue : il est leve de la remise de la carte au
+        # reveil de celui a qui elle est remise. Un second release() tombe
+        # dedans.
+        #
+        # PAS asyncio.current_task(), QUI SERAIT PLUS FIN ET FAUX ICI. Jusqu'a
+        # Python 3.11 inclus — la version de la CI — asyncio.wait_for enveloppe
+        # la coroutine dans une Task : verifie, acquire() y tourne dans
+        # « Task-2 » quand l'appelant est « appelant ». Or les deux prises
+        # bornees du studio passent par wait_for (_appeler_llm, poser_a).
+        # Comparer les taches y refuserait donc CHAQUE relachement legitime :
+        # une carte jamais rendue, c'est-a-dire une machine fermee pour de bon,
+        # a la place d'un diagnostic.
+        self._en_vol = False
+        # LE VIEILLISSEMENT DONNE UN TOUR, PAS LA MAIN. Voir _rendre().
+        self._vient_de_ceder = False
         self._attente = ([], [])        # 0 : analyse, 1 : rendu
 
     def locked(self):
@@ -271,17 +299,74 @@ class VerrouCarte:
             if reste:
                 file.remove(reste[0])
             elif not promesse.cancelled():
-                self.release()
+                # LE RELAIS ETAIT EN VOL ET C'EST NOUS QUI LE RECEVIONS : la
+                # carte est bien a nous, c'est l'annulation qui nous reveille au
+                # lieu de l'attente. Le poser avant de rendre, sinon le garde-fou de
+                # release() crierait sur le seul chemin ou l'on rend
+                # legitimement une carte sans etre jamais revenu la prendre.
+                self._en_vol = False
+                self._rendre()
             raise
+        self._en_vol = False
         return True
 
     def release(self):
+        # RENDRE UNE CARTE QU'ON NE TIENT PAS NE SERT PERSONNE, et surtout pas
+        # le suivant : servir un attendant ici, c'est donner la carte a deux
+        # taches a la fois, en silence et sans retour — trois calculs sur les
+        # memes gigaoctets, et rien pour le dire.
+        #
+        # ON NE LEVE PAS, ET C'EST UN CHOIX. Les trois sites d'appel rendent la
+        # carte depuis un « finally » ou un « __aexit__ » : _appeler_llm,
+        # poser_a, soumettre_robuste. Une exception levee la remplacerait
+        # l'erreur d'origine — « le modele de vision n'a pas repondu », que
+        # l'utilisateur doit lire — par un « verrou non tenu » qui ne parle
+        # qu'au studio, au moment precis ou le diagnostic compte. Le garde-fou
+        # rendrait alors la panne plus difficile a lire qu'avant lui.
+        #
+        # Ce qui repare, ce n'est pas de lever : c'est de NE RIEN FAIRE. La
+        # carte reste a celui qui la tient, personne n'est servi en trop, et la
+        # ligne ci-dessous nomme le site fautif — sans elle, la faute est muette
+        # dans un fichier de onze mille lignes.
+        if not self._tenu or self._en_vol:
+            journal(None, "GARDE-FOU : carte rendue alors que rien ne la tenait "
+                          "(ou deja rendue) — elle reste a son porteur, "
+                          "personne n'est servi en trop. Appelee depuis "
+                          + " <- ".join(f"{c.name}:{c.lineno}" for c in
+                                        reversed(traceback.extract_stack()[-4:-1])))
+            return
+        self._rendre()
+
+    def _rendre(self):
+        """Le passage de relais lui-meme, sans se demander qui appelle."""
+        # LA CARTE NE REPASSE PAS PAR « LIBRE » entre deux porteurs : _tenu
+        # reste vrai et la promesse suivante est resolue directement. Le
+        # relacher pour le laisser reprendre par l'attendant a son reveil
+        # ouvrirait une fenetre ou un nouveau venu, qui ne trouve ni carte tenue
+        # ni file, la prendrait avant lui.
+        self._en_vol = True
         # LE RENDU LE PLUS ANCIEN PASSE DEVANT quand il a trop attendu. Sans ce
         # renversement, la file des analyses etant servie EN ENTIER avant celle
         # des rendus, un flux continu d'analyses laissait le rendu dernier a
         # chaque tour — mesure : 61e sur 61.
+        #
+        # MAIS IL PREND UN TOUR, IL NE PREND PAS LA MAIN. Le renversement
+        # s'entretenait tout seul : une fois franchi le seuil, la nouvelle tete
+        # de la file des rendus a forcement attendu longtemps elle aussi, donc
+        # la condition restait vraie et TOUS les rendus passaient avant TOUTES
+        # les analyses. Mesure d'une relecture adverse : trois rendus de quatre
+        # minutes en file, et le message qu'on vient de taper attend douze
+        # minutes avant d'etre seulement lu — le symptome exact que cette classe
+        # existe pour empecher. Avec l'alternance : quatre minutes, un rendu.
+        #
+        # « Cesse d'etre double » se lit au singulier — c'est LE rendu le plus
+        # ancien qui cesse de l'etre, pas la file entiere.
+        vieux = (bool(self._attente[0]) and bool(self._attente[1])
+                 and time.time() - self._attente[1][0][1] > ATTENTE_MAX_RENDU
+                 and not self._vient_de_ceder)
+        self._vient_de_ceder = vieux
         files = list(self._attente)
-        if self._attente[1] and                 time.time() - self._attente[1][0][1] > ATTENTE_MAX_RENDU:
+        if vieux:
             files.reverse()
         for file in files:
             while file:
@@ -289,7 +374,12 @@ class VerrouCarte:
                 if not promesse.done():
                     promesse.set_result(True)
                     return
+        # PERSONNE N'ATTENDAIT : le relais retombe, il n'est pas en vol. Sans
+        # cette ligne, le drapeau resterait leve sur une carte libre et le
+        # garde-fou de release() refuserait le relachement SUIVANT — la machine
+        # se serait fermee pour de bon a la deuxieme prise.
         self._tenu = False
+        self._en_vol = False
 
     async def __aenter__(self):
         await self.acquire()
@@ -1827,7 +1917,24 @@ async def expirer_armees():
 # Ce qu'on a mesure, par (machine, moteur, taille). Reconstruit depuis les
 # conversations, qui portent deja tout : « noeud », « modele », « taille » et
 # « secondes » sont sur chaque tour termine.
-_DUREES = {"quand": 0.0, "table": {}}
+#
+# UNE TABLE PAR LECTEUR, et non une seule case clefee sur « qui ». Deux lecteurs
+# se croisent dans la MEME demande et ne demandent pas la meme chose : le devis
+# lit les rendus du proprietaire (pid=proprietaire), la repartition lit ceux de
+# tout le studio (pid=None, et c'est voulu — voir duree_typique). Avec une case
+# unique, chacun chassait l'autre et _relever_durees() reparcourait TOUTES les
+# conversations a chaque appel : FRAICHEUR_DUREES ne servait jamais.
+#
+# Mesure du 1er septembre, quatre demandes jouees de bout en bout (une image,
+# une image, une image, puis un groupe de quatre variantes) :
+#   avant — 2, 2, 2, 8 relevees, soit 2 par TIRAGE, indefiniment ;
+#   apres — 2, 0, 0, 0 : une par lecteur a la premiere demande, puis plus rien
+#           tant que la fraicheur tient.
+#
+# « quand » est le tampon de TOUTE la reserve et non d'une table : le remettre a
+# zero les perime toutes d'un coup, ce qui est ce que les bancs font pour forcer
+# la relecture apres avoir change les conversations.
+_DUREES = {"quand": 0.0, "tables": {}}
 FRAICHEUR_DUREES = 120
 # En dessous, on se tait. Deux rendus ne font pas une mediane : annoncer
 # « environ quatre minutes » sur un seul echantillon, c'est promettre au hasard.
@@ -1838,11 +1945,17 @@ def _relever_durees(pid=None):
     """Range les durees passees par (machine, moteur, taille), puis par
     (machine, moteur), puis par moteur seul — du plus precis au plus general.
 
-    PAR PERSONNE. Le journal dit « d'apres TES rendus precedents » : il ne peut
-    pas compter ceux d'un autre compte. C'etait faux — CONVERSATIONS porte tout
-    le studio — et ça revelait accessoirement le volume d'activite de quelqu'un
+    PAR PERSONNE QUAND ON LE DEMANDE, et tout le studio sinon. Avec un « pid »,
+    le journal peut dire « d'apres TES rendus precedents » : il ne peut pas
+    compter ceux d'un autre compte. C'etait faux — CONVERSATIONS porte tout le
+    studio — et ça revelait accessoirement le volume d'activite de quelqu'un
     d'autre. Un chiffre annonce comme personnel qui ne l'est pas fait perdre la
     confiance des qu'il ne colle pas.
+
+    Sans « pid », c'est le studio entier, et ce n'est pas un oubli : la
+    repartition appelle ainsi (voir duree_typique). Cette docstring a longtemps
+    promis « PAR PERSONNE » tout court alors qu'un des deux appelants ne l'est
+    pas — la promesse etait plus large que la fonction.
     """
     table = {}
     for conv in CONVERSATIONS.values():
@@ -1876,14 +1989,33 @@ def duree_typique(ident, cle, taille=None, pid=None, exact=False):
     debordement ne coutait rien. Le tout premier debordement etait ainsi
     toujours autorise, sur la foi des mesures de celle qu'on cherchait a
     epargner.
+
+    « pid » SEPARE DEUX QUESTIONS QUI N'ONT PAS LA MEME REPONSE, et il faut
+    qu'elles restent separees :
+
+      - CE QU'ON ANNONCE a quelqu'un est a lui. « D'apres tes 3 rendus
+        precedents » ne peut pas compter ceux du voisin, sous peine de mentir
+        et de dire au passage combien le voisin travaille.
+      - OU L'ON POSE UN RENDU ne regarde personne en particulier.
+        debordement_acceptable() appelle donc sans « pid », et c'est delibere :
+        la question est « cette carte-la met-elle beaucoup plus de temps que
+        celle-ci sur ce moteur », un fait de la MACHINE. Le restreindre au
+        proprietaire ferait attendre trois rendus PAR PERSONNE avant de savoir
+        ce que le studio sait deja, et deux comptes pourraient repartir
+        differemment sur le meme parc. C'est ce que docs/qui-prend-le-travail.md
+        promet noir sur blanc ; le code le faisait sans le dire.
     """
-    if (time.time() - _DUREES["quand"] > FRAICHEUR_DUREES
-            or _DUREES.get("qui") != pid):
-        _DUREES["table"], _DUREES["quand"] = _relever_durees(pid), time.time()
-        _DUREES["qui"] = pid
+    # UNE TABLE PAR LECTEUR. Voir _DUREES : une seule case clefee sur « qui »
+    # faisait relire toutes les conversations a chaque bascule entre ces deux
+    # questions, c'est-a-dire deux fois par tirage.
+    if time.time() - _DUREES["quand"] > FRAICHEUR_DUREES:
+        _DUREES["tables"].clear()
+        _DUREES["quand"] = time.time()
+    if pid not in _DUREES["tables"]:
+        _DUREES["tables"][pid] = _relever_durees(pid)
     for k in (((ident, cle, taille),) if exact
               else ((ident, cle, taille), (ident, cle), (cle,))):
-        v = _DUREES["table"].get(k)
+        v = _DUREES["tables"][pid].get(k)
         if v and len(v) >= ASSEZ_DE_MESURES:
             v = sorted(v)
             return v[len(v) // 2], len(v)
@@ -1910,6 +2042,12 @@ def debordement_acceptable(petit, grand, cle, taille=None):
     # pas sur la meme chose ne se comparent pas. Sans cela, la premiere fois
     # qu'on envisageait la petite carte, elle n'avait par definition aucune
     # mesure — et le repli lui pretait celles de la grosse.
+    #
+    # SANS « pid », DELIBEREMENT : ce qu'une carte met a rendre un moteur est un
+    # fait de la machine, pas du compte. Le restreindre au proprietaire ferait
+    # reapprendre le meme debordement trois rendus par personne, et deux comptes
+    # repartiraient differemment sur le meme parc. Le devis, lui, reste
+    # personnel — il est ANNONCE a quelqu'un. Voir duree_typique.
     a, _ = duree_typique(petit, cle, taille, exact=True)
     b, _ = duree_typique(grand, cle, taille, exact=True)
     if not a or not b:
@@ -1917,7 +2055,7 @@ def debordement_acceptable(petit, grand, cle, taille=None):
     return a <= b * SURCOUT_DEBORDEMENT
 
 
-def choisir_noeud(cle, viser="petite", taille=None):
+def choisir_noeud(cle, viser="petite", taille=None, exclus=()):
     """La machine qui prend le RENDU : la plus petite qui fait l'affaire.
 
     Regle de l'utilisateur, et elle est l'inverse de ce que cette docstring
@@ -1930,8 +2068,17 @@ def choisir_noeud(cle, viser="petite", taille=None):
     « viser="grosse" » pour l'escalade apres un avis negatif : on prend alors
     la plus grosse capable, quitte a l'attendre. « taille » sert a comparer des
     durees mesurees sur des rendus comparables (voir debordement_acceptable).
+
+    « exclus » EXISTE POUR QU'IL N'Y AIT QU'UNE REGLE. soumettre_robuste
+    choisissait la machine de reprise avec sa propre copie de ce corps, et la
+    copie divergeait : elle filtrait la charge AVANT le natif — l'inverse d'ici —
+    ignorait debordement_acceptable, et son « viser="grosse" » retombait sur la
+    plus petite des que le natif manquait. Une regle ecrite deux fois est une
+    regle qu'on corrige une fois sur deux ; c'est la lecon de variante_retenue.
+    Les machines deja tombees se passent donc en argument, plutot que de
+    reecrire le choix autour d'elles.
     """
-    bons = noeuds_pour(cle)
+    bons = [x for x in noeuds_pour(cle) if x["id"] not in exclus]
     if not bons:
         return None
     # Une machine ou le moteur tient VRAIMENT passe devant : le debordement
@@ -1979,6 +2126,18 @@ def choisir_noeud(cle, viser="petite", taille=None):
         # carte encore plus petite. C'est le reglage que l'utilisateur veut, et
         # il veut aussi qu'on l'apprenne plutot que de le deviner : tant qu'il
         # n'y a pas de mesure, on reste sur celle qui tient.
+        #
+        # LA PLUS PETITE ACCEPTABLE, ET NON LA VOISINE — le tri est croissant et
+        # l'on prend la PREMIERE qui passe. Le mot « on descend d'un cran »,
+        # ecrit ailleurs, decrit un autre code que celui-ci ; c'est celui-ci qui
+        # a raison, pour la raison meme du bloc au-dessus : ce qu'on achete en
+        # debordant, c'est de la carte laissee libre, et descendre d'un seul
+        # cran quand deux crans passent le seuil en achete moins.
+        #
+        # Le seuil protege chaque candidate separement : debordement_acceptable
+        # compare TOUJOURS a « petite », jamais a la voisine du dessus. Il n'y a
+        # donc pas d'escalier ou l'on gagnerait 1,5 fois a chaque marche — deux
+        # crans plus bas reste borne a 1,5 fois la carte qui tient.
         for x in sorted((x for x in bons
                          if not tient_vraiment(cle, x["id"])
                          and vram_de(x["id"]) < vram_de(petite["id"])
@@ -6490,6 +6649,17 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800, viser="petite"):
     rend la main avec un message qui dit ce qui s'est passe — c'est le seul cas
     ou un echec est acceptable.
     """
+    # LA TAILLE, LUE SUR LA TACHE ET NON RECUE EN ARGUMENT. choisir_noeud() en a
+    # besoin pour comparer des durees mesurees sur des rendus comparables : sans
+    # elle, la reprise trancherait un debordement sur des medianes qui ne
+    # portent pas sur la meme resolution — le repli exact que
+    # debordement_acceptable interdit, et pour lequel « exact » existe. Elle est
+    # deja la : la ligne « generation 1216x832… » la pose sur la tache, juste
+    # avant cet appel. Un argument de plus aurait casse les faux des bancs, qui
+    # copient cette signature.
+    _t = TACHES.get(tid) or {}
+    taille = (f"{_t['largeur']}x{_t['hauteur']}"
+              if _t.get("largeur") and _t.get("hauteur") else None)
     debut = time.time()
     ecartes = set()
     incapables = set()          # ecartees pour de bon : elles ne peuvent pas
@@ -6515,6 +6685,17 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800, viser="petite"):
                 async with verrou:
                     if tid in TACHES:
                         TACHES[tid].pop("attend_carte", None)
+                        # LE CHRONO DU RENDU PART D'ICI, la carte en main.
+                        # executer le posait avant cet appel, donc AVANT
+                        # l'attente du verrou qu'il contient : « ecoule_rendu »
+                        # comptait la file de la carte, alors que le devis
+                        # auquel la page le compare est la mediane de
+                        # tour["secondes"], dont le chrono demarre apres la
+                        # prise. Sur un parc a une seule carte, le second rendu
+                        # etait donc rouge avant sa premiere etape. On le repose
+                        # ici — et aussi a chaque reprise sur une autre machine,
+                        # ce qui est juste : le rendu recommence pour de bon.
+                        TACHES[tid]["debut_rendu"] = time.time()
                     if time.time() - attendu > 2:
                         journal(tid, f"la carte se libere apres "
                                      f"{time.time() - attendu:.0f} s d'attente")
@@ -6545,23 +6726,21 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800, viser="petite"):
         # tomber tant qu'une autre existe.
         autres = [x for x in noeuds_pour(cle) if x["id"] not in ecartes]
         if autres:
-            # Meme regle qu'au premier choix : la moins chargee d'abord. Une
-            # reprise a deja perdu du temps ; la faire attendre derriere un rendu
-            # en cours en perdrait deux fois.
-            moindre_ = min(charge_noeud(x["id"]) for x in autres)
-            autres = [x for x in autres if charge_noeud(x["id"]) == moindre_]
-            # LA MEME REGLE QU'AU PREMIER CHOIX, ce que le commentaire
-            # au-dessus affirmait sans que ce soit vrai : les deux inversions
-            # de la regle de repartition n'etaient pas passees ici. Il restait
-            # la preference inconditionnelle au studio — retiree partout
-            # ailleurs — et la plus GROSSE carte, alors que le rendu prend la
-            # plus petite qui tient.
-            natifs_ = [x for x in autres if tient_vraiment(cle, x["id"])]
-            entre = natifs_ or autres
-            if viser == "grosse" or not natifs_:
-                neuf = max(entre, key=lambda x: vram_de(x["id"]))
-            else:
-                neuf = min(entre, key=lambda x: vram_de(x["id"]))
+            # LA MEME FONCTION, ET NON LA MEME REGLE RECOPIEE. Ce bloc avait sa
+            # propre version du choix, et elle avait deja diverge trois fois :
+            # elle filtrait la charge AVANT le natif — choisir_noeud fait
+            # l'inverse — ignorait debordement_acceptable, donc descendait sur
+            # une carte ou le moteur ne tient pas alors que choisir_noeud le
+            # refuse par principe, et son « viser="grosse" » retombait sur la
+            # plus petite des qu'aucune machine ne tenait le moteur : mot pour
+            # mot le defaut qu'un commit precedent declarait corrige, parce que
+            # la correction n'avait ete posee que sur l'AUTRE appel, celui du
+            # bas — atteint seulement quand plus aucune machine ne repond.
+            #
+            # Une regle ecrite deux fois est une regle qu'on corrige une fois
+            # sur deux. On passe donc les machines tombees en argument.
+            neuf = choisir_noeud(cle, viser=viser, taille=taille,
+                                 exclus=ecartes) or autres[0]
             journal(tid, f"la demande repart sur {neuf.get('titre', neuf['id'])}")
             g = await deplacer_entrees(g, ident, neuf["id"], tid)
             ident = neuf["id"]
@@ -6601,7 +6780,7 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800, viser="petite"):
         # carte » qui doit patienter une fois retombait sinon sur la plus
         # petite — le contraire exact de ce que le bouton promet et de ce que
         # le journal vient d'annoncer.
-        choisi = choisir_noeud(cle, viser=viser)
+        choisi = choisir_noeud(cle, viser=viser, taille=taille)
         ident = choisi["id"] if choisi else ident
 
 
@@ -7501,6 +7680,14 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         "id": tid, "heure": time.strftime("%H:%M"), "demande": texte,
         "prompt": (plan or {}).get("prompt"), "modele": cle, "type": intention,
         "parametres": (plan or {}).get("parametres"), "raison": (plan or {}).get("raison"),
+        # LE NEGATIF ET LE CLASSEMENT, parce que « refaire » reconstruit un plan
+        # depuis ce tour et n'a nulle part ailleurs ou les lire. Sans eux, le
+        # negatif retombait sur le defaut du moteur — donc une autre image — et
+        # le classement sur « safe », ce qui change le prefixe de score de Pony.
+        # Deux champs courts ; le plan entier, lui, ne s'ecrit que pour une
+        # esquisse (voir plus bas) et c'est toujours le bon arbitrage.
+        "negatif": (plan or {}).get("negatif"),
+        "classement": (plan or {}).get("classement"),
         # LA TAILLE RENDUE. Elle vivait dans le plan, qui ne survit pas au tour,
         # et nulle part ailleurs : « pourquoi celle-ci a mis quatre minutes ? »
         # se repond neuf fois sur dix par la resolution, et rien ne la montrait.
@@ -7575,6 +7762,13 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
             # grande image identique.
             if ancien.get("au_propre"):
                 tour["au_propre"] = ancien["au_propre"]
+            # ET « refait » AVEC, qui manquait a cette liste. Meme nature :
+            # c'est un geste de l'utilisateur, pas un etat du deroulement. Sans
+            # cette ligne, toute reecriture du tour d'origine — rattacher_tardif,
+            # une reprise apres redemarrage — effacait la marque et reproposait
+            # le bouton, donc un second rendu sur la grosse carte.
+            if ancien.get("refait"):
+                tour["refait"] = ancien["refait"]
             # La correction du pouce non plus : elle appartient a
             # l'utilisateur, pas au deroulement. Un tour en erreur corrige puis
             # repris par la file au redemarrage la perdait sans un mot.
@@ -7596,6 +7790,22 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
             break
     else:
         conv["tours"].append(tour)
+    # UN REFAIT QUI ECHOUE REND SON BOUTON. La marque est posee AVANT le rendu,
+    # pour qu'un second onglet ne lance pas un second travail sur la grosse
+    # carte ; mais laissee la sur un echec, elle faisait disparaitre le bouton
+    # pour toujours et repondre 409 a jamais — alors que ce geste EST la
+    # reparation d'un rendu rate, et qu'il doit pouvoir se rejouer.
+    #
+    # C'est l'inverse de au_propre, et c'est voulu : la, mieux vaut un bouton
+    # disparu qu'une seconde grande image identique, parce que le premier essai
+    # a REUSSI. Ici, il n'a rien rendu.
+    #
+    # Ici et non dans executer : c'est ici qu'on sait qu'un tour a echoue, et la
+    # page se remet d'aplomb toute seule en relisant la conversation.
+    if etat == "erreur":
+        for t in conv["tours"]:
+            if t.get("refait") == tid:
+                t.pop("refait", None)
     coupes = {t.get("id") for t in conv["tours"][:-60]}
     conv["tours"] = conv["tours"][-60:]
     # LES MURMURES SUIVENT LEURS ANCRES. Un murmure s'ancre « apres » un tour ;
@@ -9198,6 +9408,17 @@ async def api_au_propre(req):
     if tour.get("etat") != "fini":
         return web.json_response(
             {"erreur": "l'esquisse n'est pas terminee"}, status=409)
+    # LE MEME CONTROLE QU'AU-DESSOUS DANS api_refaire, et pour la meme raison :
+    # ce plan a ete ecrit avant, le catalogue a pu changer depuis, et sans cette
+    # garde le KeyError remonte jusqu'au « except Exception » d'executer —
+    # « ERREUR : 'sdxl_vieux' », verifie. Les deux boutons rejouent un plan
+    # garde ; ils ont donc tous les deux besoin de la garde.
+    moteur_ = plan_.get("modele")
+    if moteur_ not in CATALOGUE and moteur_ not in MOTEURS_DISTANTS:
+        return web.json_response(
+            {"erreur": f"le moteur de cette esquisse ({moteur_}) n'est plus au "
+                       f"catalogue : relance la demande pour en choisir un autre"},
+            status=409)
     plan = dict(plan_)
     # Les etapes se recalculent depuis la proposition BRUTE du modele : c'est
     # exactement ce que la demande aurait donne sans le cran « brouillon ».
@@ -9279,15 +9500,52 @@ async def api_refaire(req):
     # taille, les parametres. C'est exactement ce que « meme prompt, meme
     # moteur, meme taille » promet.
     plan_ = tour.get("plan")
+    sans_taille = False
     if isinstance(plan_, dict) and plan_.get("prompt"):
         plan = dict(plan_)
     elif tour.get("prompt"):
+        # TOUT CE QUE LE TOUR PORTE, et pas seulement les quatre premiers
+        # champs. La reconstruction n'emportait que prompt, moteur, intention et
+        # parametres ; quatre champs manquaient, et chacun changeait le rendu en
+        # silence alors que la docstring promet « meme prompt, meme moteur,
+        # meme taille » :
+        #   « paroles » — sans elles, ecrire_paroles() est rappele et la
+        #     chanson repart sur d'AUTRES paroles, c'est-a-dire exactement le
+        #     passage par l'analyse qu'on promet d'eviter ;
+        #   « classement » — il commande le prefixe de score de Pony, donc une
+        #     autre image, et il est lu par adulte() ;
+        #   « negatif » — il retombait sur NEG_DEFAUT ;
+        #   « raison » — le journal affichait « FLUX.2 klein 9B — », tiret nu.
+        #
+        # Les cles absentes du tour ne sont PAS posees a None : plan.get(cle,
+        # defaut) rend None quand la cle existe, et « classement » None ne vaut
+        # pas « safe » — CLASSEMENT_PONY.get(None) retire la balise de score au
+        # lieu de mettre rating_safe.
         plan = {"prompt": tour["prompt"], "modele": tour.get("modele"),
                 "intention": tour.get("type") or "image",
                 "parametres": dict(tour.get("parametres") or {})}
+        for garde in ("negatif", "paroles", "classement", "raison"):
+            if tour.get(garde) is not None:
+                plan[garde] = tour[garde]
         taille_ = (tour.get("taille") or "").split("x")
         if len(taille_) == 2 and all(t.isdigit() for t in taille_):
             plan["largeur"], plan["hauteur"] = int(taille_[0]), int(taille_[1])
+        else:
+            # LA TAILLE N'A PAS TOUJOURS ETE ECRITE SUR LE TOUR. enregistrer_tour
+            # ne la pose que depuis le 31 aout, et une conversation garde
+            # soixante tours : sur tout tour anterieur, le plan repartait sans
+            # largeur ni hauteur et executer levait KeyError: 'largeur' — donc
+            # « ERREUR inattendue : 'largeur' », un plantage muet, sur ce qui est
+            # justement le cas le plus frequent du bouton.
+            #
+            # ON NE REFUSE PAS, et on n'invente pas non plus une taille : on
+            # rejoue le calcul que la demande d'origine a fait, caler_taille()
+            # sur le meme texte. Il relit une taille ecrite dans la demande, et
+            # retombe sinon sur le defaut du studio. C'est le seul repli qui
+            # puisse tomber juste, et quand il tombe faux on le DIT plus bas —
+            # refuser rendrait le bouton inoperant sur tout l'historique, ce qui
+            # est le defaut qu'on vient de corriger, pas un correctif.
+            sans_taille = True
     else:
         # Une question, une lecture d'image, un tour qui n'a jamais eu de
         # prompt : il n'y a rien a refaire sans repasser par l'analyse, et
@@ -9295,12 +9553,49 @@ async def api_refaire(req):
         return web.json_response(
             {"erreur": "ce tour n'a pas de prompt qu'on sache reprendre"},
             status=400)
+    # LE MEME CONTROLE QUE api_generer ET api_conv_reglages. Le plan vient d'un
+    # tour ecrit il y a peut-etre des semaines, et le catalogue, lui, bouge : un
+    # moteur retire n'existe plus quand on reclique. Sans cette garde, le
+    # KeyError partait jusqu'au « except Exception » d'executer et s'affichait
+    # tel quel — « ERREUR : 'sdxl_vieux' » — un message qui n'apprend rien a
+    # personne et n'apprend surtout pas que le moteur a disparu.
+    #
+    # UN MOTEUR DISTANT EST REFUSE A PART, avec son propre message. Un tour rendu
+    # chez un fournisseur porte SON nom dans « modele » (voir enregistrer_tour
+    # sur le chemin distant), et ce bouton-ci demande une CARTE : le laisser
+    # passer menait au meme KeyError, « ERREUR : 'veo' », un cran plus loin.
+    moteur_ = plan.get("modele")
+    if moteur_ in MOTEURS_DISTANTS:
+        return web.json_response(
+            {"erreur": f"ce rendu a ete confie a {MOTEURS_DISTANTS[moteur_]['titre']} : "
+                       f"« refaire sur la grosse carte » demande une carte de la "
+                       f"maison. Relance la demande pour repartir chez lui."},
+            status=409)
+    if moteur_ not in CATALOGUE:
+        return web.json_response(
+            {"erreur": f"le moteur de ce tour ({moteur_}) n'est plus au "
+                       f"catalogue : relance la demande pour en choisir un autre"},
+            status=409)
     plan.pop("graine", None)
+    # CE GESTE NE PART PAS AU LOIN, et c'est ce que son libelle dit deja :
+    # « refaire sur la grosse carte ». Sans cette marque, executer rappelait
+    # choix_distant() sur le plan reconstruit — et adulte() y lit
+    # « classement », que les tours d'avant ce jour ne portent pas. Un rendu
+    # marque explicite dont le texte ne mord pas sur le motif serait donc parti
+    # chez un fournisseur, contre la regle « ce qui est adulte ne sort pas de la
+    # maison ». Le moteur vient du tour, pas de l'aiguillage : il n'y a rien a
+    # re-router.
+    plan["modele_impose"] = True
     # « refaire » et non « esquisse » : sans cette marque, le journal annonçait
     # « meme prompt et meme moteur que l'esquisse, tout le soin » sur un rendu
     # qui n'a jamais ete une esquisse et dont les etapes ne changent pas.
     plan["refait"] = True
     texte = tour.get("demande") or ""
+    # Le repli de taille, une fois le texte en main : caler_taille() commence par
+    # y chercher une taille ecrite noir sur blanc (« en 1920x1080 »), ce qui est
+    # exactement ce que la demande d'origine a fait.
+    if sans_taille and plan.get("intention") == "image":
+        plan = caler_taille(plan, texte)
     # L'IMAGE DU TOUR, pas l'image courante de la conversation : « agrandis-la »
     # refait devait agrandir la MEME image, pas celle qu'on a produite depuis.
     entree = tour.get("entree")
@@ -9312,6 +9607,14 @@ async def api_refaire(req):
     enregistrer_tour(conv, tid, texte, {}, None, None, [], "en cours")
     tour["refait"] = tid
     sauver(conv)
+    # LE DIRE PLUTOT QUE DE LAISSER CROIRE. Le bouton promet « meme taille » ;
+    # quand le tour ne la portait pas, on rejoue le calcul du studio et cela
+    # peut donner autre chose. Un ecart annonce se lit ; un ecart muet fait
+    # douter du reste.
+    if sans_taille and plan.get("largeur"):
+        journal(tid, f"la taille de ce tour n'avait pas ete conservee — on "
+                     f"reprend celle que la demande donnerait aujourd'hui "
+                     f"({plan['largeur']}x{plan['hauteur']})")
     if devant:
         journal(tid, f"en file d'attente — {devant} demande(s) devant")
     ATTENTE.append(tid)
