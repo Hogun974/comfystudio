@@ -7435,6 +7435,13 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         # minutes » est une question qu'on se pose une semaine plus tard.
         "noeud": TACHES.get(tid, {}).get("noeud"),
         "secondes": TACHES.get(tid, {}).get("secondes"),
+        # CE QUE L'ANALYSE A COUTE, garde avec le reste. Le journal d'une
+        # demande vit en memoire et n'est jamais ecrit : une fois la demande
+        # finie, il ne restait que la duree du RENDU, et « pourquoi tout ce
+        # temps pour l'analyse ? » ne pouvait recevoir aucune reponse chiffree.
+        # Un nombre par tour coute quelques octets ; le journal entier aurait
+        # fait grossir chaque conversation sans qu'on le lise jamais.
+        "analyse_s": TACHES.get(tid, {}).get("analyse_s"),
         # La graine, pour pouvoir refaire EXACTEMENT la meme image avec tout le
         # soin. Sans elle, « passer au propre » rendrait une autre image — et
         # l'esquisse n'aurait servi a rien.
@@ -8226,6 +8233,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             cible = noeud(occupee_par)
             journal(tid, f"{cible.get('titre', occupee_par)} n'a jamais arrete "
                          f"cette demande — on la lui laisse")
+        # L'ANALYSE S'ARRETE ICI : le plan est pose, la machine va etre
+        # choisie. Mesure du 1er septembre, nuage coupe, carte libre : 7,3 s au
+        # premier appel — le modele se charge — puis 1,6 s tant qu'il reste
+        # chaud. Les cent quinze secondes que l'utilisateur a vues etaient sa
+        # carte EN PAUSE : le travail tombait sur la GTX 1060, ou le meme
+        # modele deborde.
+        if TACHES.get(tid) and TACHES[tid].get("debut"):
+            TACHES[tid].setdefault(
+                "analyse_s", round(time.time() - TACHES[tid]["debut"], 1))
+
         # ESCALADE APRES UN POUCE EN BAS. Consommee ici, une seule fois : le
         # signal vaut pour la demande SUIVANTE, pas pour toutes celles d'apres.
         _en_grand = bool((EN_FILE.get(tid) or {}).get("en_grand"))
