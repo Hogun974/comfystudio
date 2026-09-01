@@ -1,17 +1,28 @@
 # -*- coding: utf-8 -*-
-"""Une variable lue par le studio arrive-t-elle jusqu'au conteneur ?
+"""Une variable posee dans .env atteint-elle vraiment le studio ?
 
     python banc_conteneur.py
 
 Compose ne transmet QUE ce qu'il nomme. Une variable posee dans .env et absente
 du bloc « environment: » est lue hors conteneur et ignoree dedans, sans un mot
-— et le studio du reseau tourne en conteneur. Neuf reglages etaient dans ce cas
+— et le studio du reseau tourne en conteneur. Dix reglages etaient dans ce cas
 pendant que la documentation les donnait pour reconnus.
 
-Ce banc relit serveur.py, releve tout ce qu'il consulte, et exige que chaque nom
-soit relaye par le compose ou pose par l'image. Les exceptions sont nommees ici,
-avec leur raison : c'est le seul endroit ou l'on peut en ajouter une, et il faut
-l'ecrire.
+La premiere version de ce banc laissait passer trois choses, et une relecture
+adverse les a demontrees une par une. Elles sont fermees ici, chacune par une
+verification qui echoue sur la mutation correspondante :
+
+  - OLLAMA_URL etait invisible : le releve ne regardait que STUDIO_ et COMFY_.
+    On pouvait la retirer du compose ET du Dockerfile, le banc restait vert.
+    C'est la variable la plus importante d'un studio en conteneur.
+  - une ligne « ENV » du Dockerfile suffisait a rendre une variable « arrivee ».
+    Elle arrive, en effet — avec la valeur de l'image, et .env reste lettre
+    morte. C'est exactement le degat qu'on veut interdire, pas son contraire.
+  - seule la clef etait lue. « STUDIO_ANALYSE_MAX: "${STUDIO_ANALYSE_MAXX:-}" »
+    passait : la clef est bien relayee, sa valeur est vide pour toujours.
+
+Toute exception se nomme ici, avec sa raison. C'est le seul endroit ou l'on peut
+en ajouter une, et il faut l'ecrire.
 """
 import io
 import os
@@ -21,16 +32,25 @@ import sys
 ICI = os.path.dirname(os.path.abspath(__file__))
 ok, rate = [], []
 
-# Deliberement NON relayees. Une exception sans raison est un oubli.
-EXPRES = {
-    "STUDIO_PORT": "le conteneur ecoute toujours sur 8199 ; c'est le compose "
-                   "qui publie ailleurs, et STUDIO_PORT_HOTE le lui dit",
-}
-
-# Relayees mais NON reglables : l'image impose la valeur, .env n'y peut rien.
+# L'IMAGE impose la valeur, .env n'y peut rien. Une entree ici est un aveu :
+# « ce reglage n'est pas reglable en conteneur, et voici pourquoi. »
 IMPOSEES = {
     "STUDIO_HOTE": "127.0.0.1 dans un conteneur ne repond a personne : le port "
                    "publie tomberait dans le vide",
+    "STUDIO_PORT": "le conteneur ecoute TOUJOURS sur 8199 ; c'est le compose "
+                   "qui le publie ailleurs, et STUDIO_PORT_HOTE le lui dit",
+    "STUDIO_DONNEES": "/donnees est le point de montage du volume : le changer "
+                      "ferait ecrire les conversations dans la couche jetable",
+    "COMFY_DIR": "/comfy est le point de montage de ComfyUI, meme raison",
+}
+
+# Relayees par une AUTRE variable, volontairement. Le nom de gauche et celui de
+# droite different, et c'est le sujet.
+DERIVEES = {
+    "STUDIO_PORT_HOTE": "le studio doit annoncer le port de l'HOTE, qui est "
+                        "STUDIO_PORT — sans quoi la banniere envoie sur 8199, "
+                        "et sur une machine qui heberge deja un studio, cette "
+                        "adresse repond : c'est le studio d'a cote",
 }
 
 
@@ -44,23 +64,44 @@ def lire(nom):
 
 
 SRV = lire("serveur.py")
-lues = set(re.findall(r'os[.]environ[.]get[(]\s*"((?:STUDIO|COMFY)_[A-Z_]+)"', SRV))
-dit(len(lues) >= 15, f"{len(lues)} variables relevees dans serveur.py")
+
+# AUCUN prefixe. Le filtre « STUDIO_|COMFY_ » de la premiere version rendait
+# OLLAMA_URL invisible — et c'est celle sans laquelle le studio ne pense plus.
+lues = set(re.findall(r'os[.]environ[.]get[(]\s*"([A-Z][A-Z0-9_]*)"', SRV))
+lues |= set(re.findall(r'os[.]environ\[\s*"([A-Z][A-Z0-9_]*)"', SRV))
+dit(len(lues) >= 25 and "OLLAMA_URL" in lues,
+    f"{len(lues)} variables relevees dans serveur.py, sans filtre de nom",
+    "OLLAMA_URL comprise")
 
 compose = lire("docker-compose.yml")
 # Uniquement le service du studio : les conteneurs voisins ont les leurs.
 bloc = compose.split("comfystudio:", 1)[1].split("\n  # ", 1)[0]
-relayees = set(re.findall(r'^\s{6}((?:STUDIO|COMFY)_[A-Z_]+):', bloc, re.M))
-posees = set(re.findall(r'((?:STUDIO|COMFY)_[A-Z_]+)=', lire("Dockerfile")))
+# Valeur quotee OU NON : « STUDIO_ADMIN: jeton-en-dur » sans guillemets
+# echappait a la verification des valeurs figees.
+lignes = dict(re.findall(r'^\s{6}([A-Z][A-Z0-9_]*):\s*(.*?)\s*$', bloc, re.M))
+relayees = set(lignes)
 
-oubliees = sorted(lues - relayees - posees - set(EXPRES))
-dit(not oubliees, "tout ce qui est lu arrive au conteneur",
+# Le Dockerfile n'est PAS une facon d'arriver au conteneur : c'est une facon de
+# n'en jamais repartir. Une variable qu'il pose et que le compose ne relaie pas
+# est figee dans l'image — ce que .env en dit n'a plus aucun effet.
+posees = set(re.findall(r'^ENV\s+([A-Z][A-Z0-9_]*)=', lire("Dockerfile"), re.M))
+posees |= set(re.findall(r'^\s+([A-Z][A-Z0-9_]*)=', lire("Dockerfile"), re.M))
+
+oubliees = sorted(lues - relayees - set(IMPOSEES))
+dit(not oubliees, "tout ce qui est lu arrive au conteneur par le compose",
     ", ".join(oubliees) or "aucun oubli")
 
-# Une exception qui n'existe plus se retire : sinon elle couvre un jour une
-# variable neuve portant le meme nom.
-mortes = sorted((set(EXPRES) | set(IMPOSEES)) - lues)
+muettes = sorted((posees & lues) - relayees - set(IMPOSEES))
+dit(not muettes, "aucune variable figee par l'image sans raison ecrite",
+    ", ".join(muettes) or "aucune")
+
+mortes = sorted((set(IMPOSEES) | set(DERIVEES)) - lues)
 dit(not mortes, "aucune exception perimee", ", ".join(mortes) or "aucune")
+
+inutiles = sorted(n for n in IMPOSEES
+                  if n in relayees and lignes[n].startswith('"${'))
+dit(not inutiles, "aucune exception inutile",
+    ", ".join(inutiles) or "chacune sert encore")
 
 
 def defaut_du_code(n):
@@ -73,28 +114,43 @@ def defaut_du_code(n):
     return m.group(1) if m else None
 
 
+# Le cote DROIT de la ligne, celui que la premiere version ne lisait pas.
+mauvais_renvoi, figees, repetes = [], [], []
+for n in sorted(relayees & lues):
+    val = lignes[n].strip('"')
+    m = re.match(r'^[$][{]([A-Z][A-Z0-9_]*)(?::-(.*))?[}]$', val)
+    if not m:
+        if n not in IMPOSEES:
+            figees.append(f"{n}={val}")
+        continue
+    if m.group(1) != n and n not in DERIVEES:
+        mauvais_renvoi.append(f"{n} <- {m.group(1)}")
+    if m.group(2) and m.group(2) == defaut_du_code(n):
+        repetes.append(f"{n}={m.group(2)}")
+
+dit(not mauvais_renvoi, "chaque ligne renvoie a SA variable",
+    ", ".join(mauvais_renvoi) or "aucune faute de frappe")
+dit(not figees, "aucune valeur figee sans raison ecrite",
+    ", ".join(figees) or "toutes viennent de .env")
+
 # Une valeur en dur dans le compose est bonne quand elle DIFFERE du defaut du
 # code — c'est alors un choix propre au conteneur, et il se lit. Elle est un
 # piege quand elle le REPETE : deux maitres pour un reglage, et le jour ou le
 # code change, l'image garde l'ancien sans un mot.
-repetes, figees = [], []
-for n in sorted(relayees & lues):
-    m = re.search(r'^\s{6}' + n + r': "([^"]*)"', bloc, re.M)
-    if not m:
-        continue
-    val = m.group(1)
-    if not val.startswith("${"):
-        if n not in IMPOSEES:
-            figees.append(n)
-        continue
-    d = re.match(r'^[$][{]' + n + r':-(.*)[}]$', val)
-    if d and d.group(1) and d.group(1) == defaut_du_code(n):
-        repetes.append(f"{n}={d.group(1)}")
-
-dit(not figees, "aucune valeur figee sans raison ecrite",
-    ", ".join(figees) or "toutes viennent de .env")
-dit(not repetes, "pas deux defauts pour un meme reglage",
+dit(not repetes, "pas deux defauts pour un meme reglage dans le compose",
     ", ".join(repetes) or "un seul endroit chacun")
+
+# Meme piege, deplace d'un fichier. .env.exemple est copie tel quel — une ligne
+# ACTIVE qui recopie le defaut du code le fige dans toutes les installations
+# nees d'un « cp .env.exemple .env ».
+recopies = []
+for ligne in lire(".env.exemple").splitlines():
+    m = re.match(r'^([A-Z][A-Z0-9_]*)=(.*)$', ligne.strip())
+    if m and m.group(1) in lues and m.group(2) \
+            and m.group(2) == defaut_du_code(m.group(1)):
+        recopies.append(m.group(0))
+dit(not recopies, "aucun defaut du code recopie en dur dans .env.exemple",
+    ", ".join(recopies) or "aucune ligne active redondante")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
