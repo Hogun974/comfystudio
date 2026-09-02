@@ -273,6 +273,22 @@ jobs:
       - name: Le studio sans carte laisse travailler les noeuds
         run: python banc_repartition.py
 
+      # LA ROUTE LA PLUS FRAGILE DU DEPOT, et rien ne l'eprouvait : trois
+      # defauts d'affilee en deux jours sur /api/refaire, dont un de SURETE. Le
+      # plan qu'elle reconstruit vient d'un tour ecrit il y a peut-etre des
+      # semaines, donc tout ce que le tour ne porte pas est perdu en silence —
+      # « classement » l'etait, et adulte() le lit : un rendu marque explicite
+      # pouvait repartir chez un fournisseur distant, contre la regle « ce qui
+      # est adulte ne sort pas de la maison ». Les deux gardes qui le retiennent
+      # sont eprouvees SEPAREMENT, parce qu'elles se recouvrent et que la
+      # premiere suffit a elle seule. Le banc verifie aussi qu'un moteur retire
+      # du catalogue et un rendu confie a un fournisseur reçoivent une phrase et
+      # non « ERREUR : 'sdxl_vieux' », qu'un tour d'avant le 31 aout — sans
+      # champ « taille » — rend encore une image au lieu d'un KeyError, et
+      # qu'un refait rate REND SON BOUTON.
+      - name: « Refaire » refait la meme demande, et rien d'autre
+        run: python banc_refaire.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

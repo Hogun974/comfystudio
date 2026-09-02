@@ -97,6 +97,98 @@ poser([])
 m, _ = S.duree_typique("pc", "realvis", None)
 dit(m is None, "sans aucune mesure, aucun devis")
 
+
+# ── UNE TABLE PAR LECTEUR, ET NON UNE CASE CLEFEE SUR « QUI » ───────────
+# Deux lecteurs se croisent dans la MEME demande et ne posent pas la meme
+# question : le devis lit les rendus du proprietaire, la repartition ceux de
+# tout le studio. Avec une case unique, chacun chassait l'autre et
+# _relever_durees() reparcourait TOUTES les conversations a chaque appel —
+# FRAICHEUR_DUREES ne servait jamais.
+#
+# Mesure du 1er septembre, quatre demandes jouees de bout en bout :
+#   avant — 2, 2, 2, 8 relevees, soit 2 par TIRAGE, indefiniment ;
+#   apres — 2, 0, 0, 0.
+def poser_a(qui_a_quoi):
+    """Des conversations a plusieurs proprietaires. {pid: [tours]}"""
+    S.CONVERSATIONS.clear()
+    for n, (pid, tours) in enumerate(qui_a_quoi.items()):
+        S.CONVERSATIONS[f"c{n}"] = {"id": f"c{n}", "titre": "banc",
+                                    "proprietaire": pid, "tours": tours}
+    S._DUREES["quand"] = 0.0
+    S._DUREES["tables"].clear()
+
+
+MOI, VOISIN = "m" * 32, "v" * 32
+poser_a({MOI: [tour("pc", "realvis", "1216x832", 100),
+               tour("pc", "realvis", "1216x832", 110),
+               tour("pc", "realvis", "1216x832", 120)],
+         VOISIN: [tour("pc", "realvis", "1216x832", 300),
+                  tour("pc", "realvis", "1216x832", 310),
+                  tour("pc", "realvis", "1216x832", 320)]})
+
+_appels = {"n": 0}
+_vrai_relever = S._relever_durees
+
+
+def relever_espion(pid=None):
+    _appels["n"] += 1
+    return _vrai_relever(pid)
+
+
+S._relever_durees = relever_espion
+try:
+    # Quatre demandes de suite, chacune posant les DEUX questions : celle du
+    # devis, personnelle, et celle du placement, qui ne l'est pas.
+    for _ in range(4):
+        S.duree_typique("pc", "realvis", "1216x832", pid=MOI)
+        S.duree_typique("pc", "realvis", "1216x832")
+    dit(_appels["n"] == 2,
+        "deux lecteurs dans la meme demande ne relisent les conversations "
+        "qu'une fois chacun", f"{_appels['n']} relevees pour huit lectures")
+    # Et la fraicheur perime bien TOUTE la reserve d'un coup : « quand » est le
+    # tampon de la reserve, pas d'une table. C'est ce que les bancs emploient
+    # pour forcer la relecture apres avoir change les conversations.
+    S._DUREES["quand"] = 0.0
+    S.duree_typique("pc", "realvis", "1216x832", pid=MOI)
+    S.duree_typique("pc", "realvis", "1216x832")
+    dit(_appels["n"] == 4, "et la fraicheur les perime toutes ensemble",
+        str(_appels["n"]))
+finally:
+    S._relever_durees = _vrai_relever
+
+
+# ── LE DEVIS EST PERSONNEL, LE PLACEMENT NE L'EST PAS ───────────────────
+# Ce qu'on ANNONCE a quelqu'un est a lui : « d'apres tes 3 rendus precedents »
+# ne peut pas compter ceux du voisin, sous peine de mentir et de dire au passage
+# combien le voisin travaille. OU L'ON POSE un rendu ne regarde personne en
+# particulier : « cette carte-la met-elle beaucoup plus de temps que celle-ci
+# sur ce moteur » est un fait de la MACHINE. Restreindre le placement au
+# proprietaire ferait attendre trois rendus PAR PERSONNE avant de savoir ce que
+# le studio sait deja, et deux comptes repartiraient differemment sur le meme
+# parc.
+m_moi, _ = S.duree_typique("pc", "realvis", "1216x832", pid=MOI)
+m_voisin, _ = S.duree_typique("pc", "realvis", "1216x832", pid=VOISIN)
+m_tous, n_tous = S.duree_typique("pc", "realvis", "1216x832")
+dit(m_moi == 110 and m_voisin == 310 and n_tous == 6,
+    "le devis est personnel, la decision de placement ne l'est pas",
+    f"moi {m_moi} s, voisin {m_voisin} s, le studio {n_tous} rendus")
+
+# Le nouveau venu, qui est le cas qui tranche : il n'a rien rendu, donc rien a
+# lui annoncer — et pourtant le studio sait deja ou poser son rendu.
+NEUF = "n" * 32
+poser_a({VOISIN: [tour("zima", "realvis", "1216x832", 70),
+                  tour("zima", "realvis", "1216x832", 72),
+                  tour("zima", "realvis", "1216x832", 74),
+                  tour("pc", "realvis", "1216x832", 60),
+                  tour("pc", "realvis", "1216x832", 62),
+                  tour("pc", "realvis", "1216x832", 64)],
+         NEUF: []})
+dit(S.duree_typique("zima", "realvis", "1216x832", pid=NEUF)[0] is None,
+    "au nouveau venu, on n'annonce rien : ce sont SES rendus qu'on lui promet")
+dit(S.debordement_acceptable("zima", "pc", "realvis", "1216x832") is True,
+    "mais on sait deja ou poser le sien — le parc, lui, a ete mesure",
+    str(S.debordement_acceptable("zima", "pc", "realvis", "1216x832")))
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

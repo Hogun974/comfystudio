@@ -22,6 +22,10 @@ manquaient portaient 355 verifications a eux tous, et pas une n'avait jamais
 ete vue rougir : la regle de CONTRIBUTING.md, « si tu ajoutes un banc,
 ajoute-lui sa mutation », avait ete ecrite et pas tenue.
 
+Le onzieme est banc_refaire.py, arrive le 2 septembre avec ses douze mutations
+— une par correction de 1ad6c0d, et DEUX pour le defaut de surete, dont les
+gardes se recouvrent.
+
 Il reste verifier_formulations.py, et c'est le dernier : il nomme ses fautes
 par le NUMERO DE LIGNE de banc_formulations.jsonl, si bien qu'une ancre posee
 dessus se perimerait au premier cas insere au milieu du fichier. L'ancrer sur
@@ -86,6 +90,33 @@ Le sens inverse de banc_catalogue.py, lui, a ete pris autrement et il a
 repondu : installation.py d'avant 3bb235d restaure, le banc REPARE rougit sur
 quatre lignes dont les trois « ~0 Go a prendre » d'origine. Le banc d'avant
 restait vert dessus — c'est le trou B ci-dessous.
+
+LA DIAGONALE DU 2 SEPTEMBRE, sur les dix-huit mutations ajoutees pour 1ad6c0d.
+Les dix-huit sont rouges sur le depot du jour ; voici ce que le sens inverse a
+donne, et il a fallu deux facons de le prendre :
+
+  - LES DOUZE DE banc_refaire.py ne peuvent pas se prouver par un filet
+    d'avant : le banc est NE avec la correction, comme banc_durees et
+    banc_adulte avant lui. Le sens inverse a donc ete pris comme pour
+    banc_catalogue — serveur.py de 1ad6c0d^ restaure, le banc NEUF lance
+    dessus. Il rougit sur 32 lignes, et les DOUZE que ces mutations nomment y
+    sont toutes, une par une. C'est mieux qu'une diagonale : chaque mutation a
+    ete vue rougir sur le vrai defaut, pas seulement sur son imitation.
+  - LES QUATRE DE banc_repartition.py sont vertes sur le filet d'avant, et ce
+    filet n'est pas celui de 1ad6c0d^ : le banc y lit deja « v._en_vol », que
+    c337f82 avait ecrit pour un attribut que 1ad6c0d n'avait pas encore pose —
+    lance sur son propre serveur.py, il s'arrete sur AttributeError. C'est
+    contre banc_repartition.py de 0f0f3dc, la derniere version qui tourne, que
+    la diagonale a ete prise : 35/35 VERT sur le serveur.py qui porte pourtant
+    les six defauts. Et les defauts eux-memes ont ete releves a la main sur ce
+    serveur-la : « rendu 1 puis rendu 2 puis analyse 1 puis analyse 2 » pour le
+    vieillissement, la carte MOYENNE au lieu de la grosse et la descente sur
+    une carte ou le moteur ne tient pas pour la reprise, et « B servi ET C
+    servi » — deux titulaires — pour le release() de trop.
+  - LES DEUX DE banc_durees.py sont vertes sur banc_durees.py de 1ad6c0d^,
+    10/10, sur le meme serveur.py. Ce banc-la, ne avec la correction de
+    717fb23, restait donc aveugle a la case de cache unique comme au devis qui
+    comptait les rendus du voisin.
 """
 import io
 import os
@@ -160,6 +191,10 @@ BESOINS = {
     "banc_cout.py": ["banc_cout.py"] + fichiers_du_conteneur()[1:],
     "banc_attente.py": ["banc_attente.py"] + fichiers_du_conteneur()[1:],
     "banc_durees.py": ["banc_durees.py"] + fichiers_du_conteneur()[1:],
+    # banc_refaire.py monte un studio complet hors ligne comme banc_variantes,
+    # mais il ne relit pas la page : ce qu'il mesure se lit dans le GRAPHE
+    # soumis et dans les reponses HTTP, jamais dans web/index.html.
+    "banc_refaire.py": ["banc_refaire.py"] + fichiers_du_conteneur()[1:],
     # Celui-la n'importe pas le studio : il preleve deux expressions
     # regulieres dans le TEXTE de serveur.py. Il lui faut donc serveur.py, et
     # rien d'autre — pas meme les modules qu'il importe.
@@ -704,6 +739,70 @@ REPARTITION = [
             + "                self._rendre()" + chr(10)
             + "            raise" + chr(10),
             "                pass" + chr(10) + "            raise" + chr(10)))]),
+
+    # ── Les quatre corrections de 1ad6c0d qui vivent dans ce banc ──────
+    dict(
+        nom="le garde-fou du verrou retire : release() sert toujours",
+        banc="banc_repartition.py",
+        imite="A tient, B et C attendent, A relache DEUX fois — et C obtient la "
+              "carte pendant que B calcule dessus. Trois calculs sur les memes "
+              "gigaoctets, en silence et sans retour",
+        rougit="une carte que personne ne tenait reste libre, et se reprend "
+               "normalement apres",
+        editions=[("serveur.py", motif(
+            r'        if not self._tenu or self._en_vol:\n.*?\n            return\n',
+            ""))]),
+    dict(
+        nom="le PORTAGE NAIF du garde-fou : « if not _tenu » tout seul",
+        banc="banc_repartition.py",
+        imite="ce que asyncio.Lock aurait donne, et qui n'attrape RIEN du cas "
+              "reel : le passage de relais ne repasse jamais par « libre », "
+              "_tenu reste vrai d'un porteur au suivant, donc « est-elle "
+              "tenue ? » ne distingue pas le second release() de A du premier "
+              "de B. La carte que personne ne tenait, elle, reste attrapee — "
+              "c'est ce qui rend ce demi-portage credible et le fait passer",
+        rougit="un release() de trop ne donne pas la carte a un second titulaire",
+        editions=[("serveur.py", brut(
+            "        if not self._tenu or self._en_vol:" + chr(10),
+            "        if not self._tenu:" + chr(10)))]),
+    dict(
+        nom="le vieillissement reprend la main au lieu d'un tour",
+        banc="banc_repartition.py",
+        imite="une fois le seuil franchi, la nouvelle tete de la file des "
+              "rendus a forcement attendu longtemps elle aussi : la condition "
+              "reste vraie et TOUS les rendus passent avant TOUTES les "
+              "analyses. Trois rendus de quatre minutes, et le message qu'on "
+              "vient de taper attend douze minutes avant d'etre seulement lu — "
+              "le symptome exact que cette classe existe pour empecher",
+        rougit="un rendu qui a trop attendu prend UN tour, pas la main",
+        editions=[("serveur.py", brut(
+            chr(10) + "                 and not self._vient_de_ceder)", ")"))]),
+    dict(
+        nom="la regle de reprise recopiee au lieu d'etre appelee",
+        banc="banc_repartition.py",
+        imite="les vingt lignes que soumettre_robuste gardait pour lui, mot "
+              "pour mot : elles filtrent la charge AVANT le natif — l'inverse "
+              "de choisir_noeud — ignorent debordement_acceptable, et leur "
+              "« viser=grosse » retombe sur la plus petite des que le natif "
+              "manque. La copie rendait la carte MOYENNE quand on demandait la "
+              "grosse, et descendait sur une carte ou le moteur ne tient pas",
+        rougit="la reprise choisit comme le premier choix : viser=grosse garde "
+               "la grosse carte",
+        editions=[("serveur.py", brut(
+            '            neuf = choisir_noeud(cle, viser=viser, taille=taille,'
+            + chr(10) + '                                 exclus=ecartes) or autres[0]'
+            + chr(10),
+            '            moindre_ = min(charge_noeud(x["id"]) for x in autres)' + chr(10)
+            + '            autres = [x for x in autres'
+            + ' if charge_noeud(x["id"]) == moindre_]' + chr(10)
+            + '            natifs_ = [x for x in autres'
+            + ' if tient_vraiment(cle, x["id"])]' + chr(10)
+            + '            entre = natifs_ or autres' + chr(10)
+            + '            if viser == "grosse" or not natifs_:' + chr(10)
+            + '                neuf = max(entre, key=lambda x: vram_de(x["id"]))' + chr(10)
+            + '            else:' + chr(10)
+            + '                neuf = min(entre, key=lambda x: vram_de(x["id"]))'
+            + chr(10)))]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1041,6 +1140,201 @@ DUREES = [
         rougit="un rendu qui a attendu ne fausse pas le devis",
         editions=[("serveur.py", brut("            return v[len(v) // 2], len(v)",
                                       "            return sum(v) / len(v), len(v)"))]),
+    dict(
+        nom="une seule case de cache, clefee sur « qui »",
+        banc="banc_durees.py",
+        imite="deux lecteurs se croisent dans la MEME demande — le devis lit "
+              "les rendus du proprietaire, la repartition ceux de tout le "
+              "studio — et chacun chasse l'autre : _relever_durees reparcourt "
+              "TOUTES les conversations a chaque appel, deux fois par tirage, "
+              "et FRAICHEUR_DUREES ne sert jamais. Mesure : 2 / 2 / 2 / 8 "
+              "relevees sur quatre demandes, contre 2 / 0 / 0 / 0",
+        rougit="deux lecteurs dans la meme demande ne relisent les "
+               "conversations qu'une fois chacun",
+        editions=[("serveur.py", brut(
+            '    if pid not in _DUREES["tables"]:' + chr(10),
+            '    if _DUREES["tables"].get("qui") != pid:' + chr(10)
+            + '        _DUREES["tables"].clear()' + chr(10)
+            + '        _DUREES["tables"]["qui"] = pid' + chr(10)
+            + '    if pid not in _DUREES["tables"]:' + chr(10)))]),
+    dict(
+        nom="le devis compte les rendus de tout le monde",
+        banc="banc_durees.py",
+        imite="« d'apres TES 3 rendus precedents » compte ceux du voisin : le "
+              "chiffre est faux, et il revele au passage le volume d'activite "
+              "de quelqu'un d'autre. Un chiffre annonce comme personnel qui ne "
+              "l'est pas fait perdre la confiance des qu'il ne colle pas",
+        rougit="le devis est personnel, la decision de placement ne l'est pas",
+        editions=[("serveur.py", brut(
+            '        if pid is not None and conv.get("proprietaire") != pid:'
+            + chr(10) + "            continue" + chr(10), ""))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_refaire.py — les six defauts de 1ad6c0d, dont celui de surete
+# ──────────────────────────────────────────────────────────────────────
+# /api/refaire a pris trois defauts d'affilee en deux jours et n'etait eprouve
+# par RIEN. Le banc est ne avec la correction, comme banc_durees et banc_adulte
+# avant lui : il n'existe donc pas de « filet d'avant » a opposer a ces
+# mutations. Leur preuve inverse a ete prise autrement, et elle a repondu —
+# serveur.py de 1ad6c0d^ restaure, le banc NEUF rougit sur onze lignes, et ce
+# sont exactement les lignes que ces mutations nomment. C'est la meme mesure
+# que celle prise pour banc_catalogue.py au commit 3bb235d.
+#
+# LES DEUX GARDES DE LA SURETE SE RECOUVRENT, et la premiere suffit a elle
+# seule : « modele_impose » coupe choix_distant sans rien savoir du contenu.
+# Chacune est donc mutee a la place de l'autre, et c'est le BANC qui isole —
+# le cas du classement retire « modele_impose » de l'entree de file, le cas de
+# « modele_impose » emploie un tour d'AVANT, qui ne porte aucun classement.
+# Sans cette isolation, muter le classement laisserait le banc vert.
+REFAIRE = [
+    dict(
+        nom="LA SURETE : « modele_impose » retire du plan reconstruit",
+        banc="banc_refaire.py",
+        imite="executer rappelle choix_distant() sur le plan rejoue, et un "
+              "rendu marque explicite dont le TEXTE ne mord pas sur le motif "
+              "repart chez un fournisseur — contre la regle « ce qui est adulte "
+              "ne sort pas de la maison ». C'est la garde qui sauve le PASSE : "
+              "les tours ecrits avant le 1er septembre ne porteront jamais de "
+              "classement, et adulte() n'a donc rien a y lire",
+        rougit="et le rendu ne part pas chez un fournisseur",
+        editions=[("serveur.py", brut(
+            '    plan["modele_impose"] = True' + chr(10)
+            + "    # « refaire » et non « esquisse »",
+            "    # « refaire » et non « esquisse »"))]),
+    dict(
+        nom="LA SURETE : « classement » perdu par la reconstruction",
+        banc="banc_refaire.py",
+        imite="le plan reconstruit retombe sur « safe » : une autre image en "
+              "silence sur Pony, dont la table de score RETIRE la balise au "
+              "lieu d'en poser une — et adulte() perd le seul indice qu'il "
+              "avait quand le texte est anodin",
+        rougit="et sans « modele_impose », c'est le classement qui le retient ici",
+        editions=[("serveur.py", brut('"paroles", "classement", "raison"',
+                                      '"paroles", "raison"'))]),
+    dict(
+        nom="« paroles » perdues par la reconstruction",
+        banc="banc_refaire.py",
+        imite="ecrire_paroles() est rappele et la chanson repart sur d'AUTRES "
+              "paroles — c'est-a-dire exactement le passage par l'analyse que "
+              "la docstring promet d'eviter",
+        rougit="ecrire_paroles() n'est PAS rappele",
+        editions=[("serveur.py", brut('"negatif", "paroles", "classement"',
+                                      '"negatif", "classement"'))]),
+    dict(
+        nom="« negatif » perdu par la reconstruction",
+        banc="banc_refaire.py",
+        imite="le negatif retombe sur NEG_DEFAUT, donc une autre image, alors "
+              "que le bouton promet « meme prompt, meme moteur, meme taille »",
+        rougit="le negatif du tour est celui qui part a la carte, pas NEG_DEFAUT",
+        editions=[("serveur.py", brut('("negatif", "paroles",', '("paroles",'))]),
+    dict(
+        nom="un tour d'avant le 31 aout repart sans taille",
+        banc="banc_refaire.py",
+        imite="KeyError: 'largeur' sur tout tour anterieur au 31 aout — le "
+              "champ « taille » n'existe que depuis, et une conversation en "
+              "garde soixante. « ERREUR inattendue : 'largeur' », un plantage "
+              "muet, sur ce qui est le cas le plus frequent du bouton",
+        rougit="il rend une image, au lieu de « ERREUR inattendue : 'largeur' »",
+        editions=[("serveur.py", brut("            sans_taille = True" + chr(10),
+                                      "            pass" + chr(10)))]),
+    dict(
+        nom="la taille reprise n'est plus annoncee",
+        banc="banc_refaire.py",
+        imite="le bouton promet « meme taille » et en rend une autre sans le "
+              "dire. Un ecart annonce se lit ; un ecart muet fait douter du "
+              "reste — et c'est le prix a payer pour ne PAS refuser tout "
+              "l'historique",
+        rougit="et le studio ANNONCE la taille qu'il a reprise",
+        # Le CORPS de l'annonce a deja change une fois en une journee : on
+        # l'ancre sur sa premiere ligne et l'on avale ce qui suit tant que
+        # l'indentation le rattache, plutot que de recopier une phrase qui
+        # bougera encore.
+        editions=[("serveur.py", motif(
+            r'    if sans_taille:\n        journal\(tid, "la taille de ce tour'
+            r'[^\n]*\n(?:[ ]{8,}[^\n]+\n)*', ""))]),
+    dict(
+        nom="un moteur retire du catalogue passe quand meme",
+        banc="banc_refaire.py",
+        imite="le KeyError part jusqu'au « except Exception » d'executer et "
+              "s'affiche tel quel — « ERREUR : 'sdxl_vieux' » — un message qui "
+              "n'apprend rien a personne, et surtout pas que le moteur a "
+              "disparu du catalogue",
+        rougit="refaire un tour dont le moteur a disparu repond 409",
+        editions=[("serveur.py", motif(
+            r'    if moteur_ not in CATALOGUE:\n.*?status=409\)\n', ""))]),
+    dict(
+        nom="un rendu confie a un fournisseur passe quand meme",
+        banc="banc_refaire.py",
+        imite="un tour rendu au loin porte le nom du FOURNISSEUR dans "
+              "« modele », et ce bouton-ci demande une CARTE : le laisser "
+              "passer menait au meme KeyError, « ERREUR : 'veo' », un cran plus "
+              "loin. Le 409, lui, tombe quand meme : le controle du catalogue "
+              "repond a sa place, en conseillant de « choisir un autre "
+              "moteur » alors qu'il n'y a rien a choisir. C'est la PHRASE qui "
+              "rougit, pas le code de retour — et c'est bien pour cela que le "
+              "banc les verifie separement",
+        rougit="et la phrase nomme le fournisseur, au lieu de « ERREUR : 'veo' »",
+        editions=[("serveur.py", motif(
+            r'    if moteur_ in MOTEURS_DISTANTS:\n.*?status=409\)\n', ""))]),
+    dict(
+        nom="le MEME trou, laisse ouvert dans api_au_propre",
+        banc="banc_refaire.py",
+        imite="les deux boutons rejouent un plan garde des semaines plus tot ; "
+              "ils ont donc tous les deux besoin de la garde, et api_au_propre "
+              "ne l'avait pas. Le meme « ERREUR : 'sdxl_vieux' », a l'autre "
+              "bouton",
+        rougit="passer au propre une esquisse au moteur disparu repond 409",
+        editions=[("serveur.py", motif(
+            r'    if moteur_ not in CATALOGUE and moteur_ not in '
+            r'MOTEURS_DISTANTS:\n.*?status=409\)\n', ""))]),
+    dict(
+        nom="un refait qui echoue garde son bouton",
+        banc="banc_refaire.py",
+        imite="la marque est posee AVANT le rendu, contre le second onglet ; "
+              "laissee la sur un echec, elle fait disparaitre le bouton pour "
+              "toujours et repondre 409 a jamais — alors que ce geste EST la "
+              "reparation d'un rendu rate",
+        rougit="la marque est retiree du tour d'origine : le bouton revient",
+        editions=[("serveur.py", motif(
+            r'^    if etat == "erreur".*?\n        for t in conv\["tours"\]:\n'
+            r'            if t\.get\("refait"\) == tid:\n'
+            r'                t\.pop\("refait", None\)\n', ""))]),
+    dict(
+        nom="la marque « refait » effacee par une reecriture du tour",
+        banc="banc_refaire.py",
+        imite="toute reecriture du tour d'origine — rattacher_tardif, une "
+              "reprise apres redemarrage — efface la marque et repropose le "
+              "bouton, donc un second rendu sur la grosse carte, sans que rien "
+              "ne le dise",
+        rougit="et la marque est toujours la apres la reecriture",
+        editions=[("serveur.py", brut(
+            '            if ancien.get("refait"):' + chr(10)
+            + '                tour["refait"] = ancien["refait"]' + chr(10), ""))]),
+    dict(
+        nom="ecoule_rendu compte de nouveau l'attente de la carte",
+        banc="banc_refaire.py",
+        imite="le chrono part avant le verrou, donc il compte la file de la "
+              "carte — alors que le devis auquel la page le compare est la "
+              "mediane de tour[\"secondes\"], dont le chrono demarre apres la "
+              "prise. Sur un parc a une seule carte, le second rendu etait "
+              "rouge avant sa premiere etape",
+        rougit="le chrono est repose la carte EN MAIN, apres l'attente",
+        # Le chrono n'est pas supprime, il est REMIS ou il etait : dans
+        # executer, avant l'appel. Le supprimer imiterait « pas de chrono du
+        # tout », qui n'est pas la panne — celle-ci est un chrono qui part trop
+        # tot et compte la file de la carte.
+        editions=[
+            ("serveur.py", brut(
+                '                        TACHES[tid]["debut_rendu"] = time.time()'
+                + chr(10), "                        pass" + chr(10))),
+            ("serveur.py", brut(
+                "        sorties, secondes = await soumettre_robuste(" + chr(10),
+                '        TACHES.setdefault(tid, {})["debut_rendu"] = time.time()'
+                + chr(10)
+                + "        sorties, secondes = await soumettre_robuste(" + chr(10))),
+        ]),
 ]
 
 
@@ -1089,6 +1383,13 @@ ADULTE = [
 # n'ont coute que 1,8 s : elles visent banc_page, banc_repartition et
 # banc_catalogue, les bancs bon marche, et c'est delibere.
 #
+# 72,8 s pour 72 le 2 septembre, contre 54,6 pour 54 : les dix-huit mutations
+# de 1ad6c0d coutent 18 s, soit une seconde chacune. banc_refaire.py monte un
+# studio complet comme banc_variantes, mais il ne relit pas la page et ne
+# temporise que 0,4 s : 0,9 s par lancement contre 3,5. C'est le prix d'une
+# route qui a pris trois defauts en deux jours, dont un de surete — et il reste
+# nettement en dessous de ce que banc_variantes coute deja.
+#
 # C'est le prix qu'on accepte, et il vaut la peine d'etre relu avant d'ajouter
 # une mutation de plus sur ces deux bancs-la : une couverture qui vaut vingt
 # secondes de CI par panne finirait par se faire couper, et un filet coupe ne
@@ -1101,7 +1402,7 @@ ADULTE = [
 # disputent les coeurs reordonnent ces tirages, et le banc deviendrait
 # capricieux — un banc qui rougit au hasard vaut moins qu'un banc lent.
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
-             + CATALOGUE + ATTENTE + DUREES + ADULTE)
+             + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

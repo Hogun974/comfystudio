@@ -207,7 +207,17 @@ dit(choisi is not None and choisi["id"] == "pc",
 # ── LE DEBORDEMENT S'APPREND, il ne se devine pas ───────────────────────
 # « Le 3, mais il faut le temps d'apprendre, donc le 2/1 en fonction de ce
 # qu'il apprendra au fur et a mesure. » Sans mesure, on reste sur la carte qui
-# TIENT ; des qu'on sait ce que le debordement coute, on descend d'un cran.
+# TIENT ; des qu'on sait ce que le debordement coute, on descend sur la PLUS
+# PETITE carte qui passe le seuil.
+#
+# ET NON « d'un cran », qui etait ecrit ici et qui decrit un autre code : le tri
+# de choisir_noeud est par VRAM CROISSANTE et l'on prend la PREMIERE acceptable.
+# C'est celui-ci qui a raison, pour la raison meme de la regle — ce qu'on achete
+# en debordant, c'est de la carte laissee libre, et s'arreter au premier cran
+# quand deux crans passent le seuil en achete moins. Le seuil, lui, protege
+# chaque candidate separement : debordement_acceptable compare TOUJOURS a la
+# carte qui tient, jamais a la voisine du dessus, donc il n'y a pas d'escalier
+# ou l'on gagnerait 1,5 fois a chaque marche.
 poser(vram_studio=0.0, vram_zima=0.4)      # zima ne tient plus le moteur
 dit(S.debordement_acceptable("zima", "pc", CLE) is None,
     "sans mesure, on ne sait pas — et on ne devine pas")
@@ -341,6 +351,117 @@ async def _priorite():
         "un rendu qui a trop attendu cesse d'etre double par les analyses",
         " puis ".join(servis3))
 
+    # ET IL PREND UN TOUR, IL NE PREND PAS LA MAIN. Le renversement
+    # s'entretenait tout seul : une fois le seuil franchi, la nouvelle tete de
+    # la file des rendus a forcement attendu longtemps elle aussi, donc la
+    # condition restait vraie et TOUTE la file des rendus passait avant TOUTE
+    # celle des analyses. Mesure d'une relecture adverse : trois rendus de
+    # quatre minutes en file, et le message qu'on vient de taper attend douze
+    # minutes avant d'etre seulement lu — le symptome exact que cette classe
+    # existe pour empecher. « Cesse d'etre double » se lit au singulier.
+    #
+    # Le cas au-dessus ne peut pas le voir : avec UN seul rendu en file, il n'y
+    # a pas de seconde tete a laisser passer, et le defaut est invisible. Il en
+    # faut deux.
+    v4 = S.VerrouCarte()
+    servis4 = []
+
+    async def prendre4(nom, prioritaire):
+        await v4.acquire(prioritaire=prioritaire)
+        servis4.append(nom)
+        v4.release()
+
+    await v4.acquire()
+    lents = []
+    for n in (1, 2):
+        lents.append(asyncio.create_task(prendre4(f"rendu {n}", False)))
+        await asyncio.sleep(0)
+    # Les DEUX rendus attendent depuis plus longtemps que le plancher : on les
+    # vieillit a la main plutot que d'immobiliser le banc quatre minutes.
+    v4._attente[1][:] = [(p, S.time.time() - S.ATTENTE_MAX_RENDU - 1)
+                         for p, _ in v4._attente[1]]
+    flot4 = []
+    for n in (1, 2):
+        flot4.append(asyncio.create_task(prendre4(f"analyse {n}", True)))
+        await asyncio.sleep(0)
+    v4.release()
+    await asyncio.gather(*lents, *flot4)
+    dit(servis4 == ["rendu 1", "analyse 1", "rendu 2", "analyse 2"],
+        "un rendu qui a trop attendu prend UN tour, pas la main",
+        " puis ".join(servis4))
+
+    # ── LE GARDE-FOU DU VERROU ──────────────────────────────────────────
+    # Le cas rejoue par une relecture adverse, et que « if not _tenu: raise »
+    # n'aurait PAS attrape : le passage de relais ne repasse jamais par
+    # « libre » — _tenu reste vrai d'un porteur au suivant, pour qu'un nouveau
+    # venu ne se glisse pas entre les deux — donc « est-elle tenue ? » ne
+    # distingue pas le second release() de A du premier de B.
+    #
+    # A tient, B et C attendent, A relache DEUX fois. Sans le drapeau _en_vol,
+    # le second relachement sert C : deux taches calculent sur les memes
+    # gigaoctets, en silence et sans retour.
+    lignes = []
+    _vrai_journal = S.journal
+
+    def journal_espion(tid, msg, **extra):
+        lignes.append(msg)
+        return _vrai_journal(tid, msg, **extra)
+
+    S.journal = journal_espion
+    try:
+        v7 = S.VerrouCarte()
+        await v7.acquire()                      # A tient
+        b = asyncio.create_task(v7.acquire())   # B attend
+        await asyncio.sleep(0)
+        c = asyncio.create_task(v7.acquire())   # C attend derriere lui
+        await asyncio.sleep(0)
+        v7.release()                            # A rend : le relais part vers B
+        dit(v7._en_vol and not b.done(),
+            "le relais est en vol vers B, qui ne s'est pas encore reveille",
+            f"en_vol={v7._en_vol}")
+        v7.release()                            # LE RELEASE() DE TROP
+        # On laisse les deux attentes se reveiller avant de compter : la
+        # promesse resolue ne suffit pas, c'est la TACHE qui doit avoir repris
+        # la main pour qu'on puisse dire qu'elle tient la carte. Sans ce tour de
+        # boucle, « C n'est pas servi » etait vrai meme quand il venait de
+        # l'etre, et le cas passait sur un depot ou le garde-fou n'existe pas.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        dit(not c.done(),
+            "un release() de trop ne donne pas la carte a un second titulaire",
+            "C est servi pendant que B calcule" if c.done() else "C attend")
+        # La fonction d'ou part le relachement de trop, et non un simple
+        # « quelque chose a mal tourne » : sans elle, la faute est muette dans
+        # un fichier de onze mille lignes.
+        dit(any("GARDE-FOU" in l and "_priorite:" in l for l in lignes),
+            "et il le dit au lieu de se taire — la ligne nomme le site fautif",
+            next((l[-100:] for l in lignes if "GARDE-FOU" in l), "rien de dit"))
+        # Et la carte n'est pas perdue pour autant : B se reveille, rend, C est
+        # servi. Ne rien faire repare ; lever aurait remplace le diagnostic.
+        await b
+        v7.release()
+        await asyncio.sleep(0)
+        dit(c.done(), "puis B rend la carte, et C est servi : rien n'est perdu",
+            "servi" if c.done() else "toujours en attente")
+        await c
+        v7.release()
+
+        # UNE CARTE QUE PERSONNE NE TENAIT. L'autre moitie du garde-fou : ici
+        # « not _tenu » suffit, et ce qui repare est encore de NE RIEN FAIRE —
+        # servir un attendant donnerait la carte a quelqu'un qui ne l'a pas
+        # demandee, lever remplacerait le vrai diagnostic dans un finally.
+        del lignes[:]
+        v8 = S.VerrouCarte()
+        v8.release()
+        await v8.acquire()
+        dit(v8.locked() and any("GARDE-FOU" in l for l in lignes),
+            "une carte que personne ne tenait reste libre, et se reprend "
+            "normalement apres",
+            f"tenue={v8.locked()}, dit={any('GARDE-FOU' in l for l in lignes)}")
+        v8.release()
+    finally:
+        S.journal = _vrai_journal
+
     # Une attente annulee ne doit pas emporter la carte avec elle : c'est le
     # cas d'un wait_for qui expire a la seconde ou le verrou se libere.
     v2 = S.VerrouCarte()
@@ -414,6 +535,96 @@ async def _priorite():
 
 
 asyncio.run(_priorite())
+
+
+# ── LA REPRISE CHOISIT COMME LE PREMIER CHOIX ───────────────────────────
+# soumettre_robuste choisissait la machine de reprise avec sa PROPRE copie du
+# corps de choisir_noeud, et la copie avait deja diverge trois fois : elle
+# filtrait la charge AVANT le natif — l'inverse de choisir_noeud — ignorait
+# debordement_acceptable, et son « viser="grosse" » retombait sur la plus petite
+# des qu'aucune machine ne tenait le moteur. Une regle ecrite deux fois est une
+# regle qu'on corrige une fois sur deux : la correction de la repartition
+# n'avait ete posee que sur l'AUTRE appel, celui du bas, atteint seulement quand
+# plus aucune machine ne repond.
+#
+# On appelle donc le VRAI soumettre_robuste et l'on regarde ou il repart. Seule
+# la soumission nue et le transfert des entrees sont remplaces : recopier ici la
+# regle de reprise ne prouverait rien.
+async def _reprise():
+    envois = []
+    tombee = [""]
+
+    async def faux_soumettre(g, tid, ident=None):
+        envois.append(ident)
+        if ident == tombee[0]:
+            raise S.PanneNoeud("la carte ne repond plus")
+        return ([{"filename": "x_00001_.png", "subfolder": "", "type": "output",
+                  "noeud": ident}], 1.0)
+
+    async def faux_deplacer(g, ancien, nouveau, tid):
+        return g
+
+    _vrai_soumettre, _vrai_deplacer = S.soumettre, S.deplacer_entrees
+    S.soumettre, S.deplacer_entrees = faux_soumettre, faux_deplacer
+    try:
+        # ── « viser=grosse » garde la grosse carte, meme visee ──────────
+        # Mesure du defaut : la copie rendait la carte MOYENNE quand on
+        # demandait la grosse, parce qu'elle ecartait la grosse au filtre de
+        # charge avant de regarder sa taille. C'est le contraire exact de ce que
+        # « refaire sur la grosse carte, quitte a l'attendre » promet, et de ce
+        # que le journal vient d'annoncer a l'utilisateur.
+        poser(vram_studio=0.0)
+        S.CONVERSATIONS.clear()
+        S._DUREES["quand"] = 0.0
+        S.REGISTRE["geante"] = {"id": "geante", "titre": "station (RTX 5090)",
+                                "agent": True, "jeton": "z", "pause": None}
+        S.ETAT_NOEUDS["geante"] = {"repond": True, "vram": 24.0, "ram": 127.0,
+                                   "vu": S.time.time()}
+        # Un rendu vise deja la grosse carte : c'est ce qui l'ecartait.
+        S.EN_VOL["t1"] = {}
+        S.TACHES["t1"] = {"noeud": "geante"}
+        S.TACHES["r1"] = {"etapes": [], "noeud": "zima"}
+        del envois[:]
+        tombee[0] = "zima"
+        await S.soumettre_robuste({}, "r1", "zima", CLE, viser="grosse")
+        dit(envois[-1:] == ["geante"],
+            "la reprise choisit comme le premier choix : viser=grosse garde la "
+            "grosse carte", " puis ".join(envois))
+
+        # ── et elle ne descend pas sur une carte ou le moteur ne tient pas ─
+        # L'autre moitie de la meme divergence : la copie filtrait la charge
+        # AVANT le natif, si bien qu'une carte libre trop petite battait une
+        # carte chargee ou le moteur tient. choisir_noeud fait l'inverse — le
+        # debordement est un recours, pas un choix par defaut — et il ne
+        # l'accorde que sur mesure, qu'on n'a pas ici.
+        poser(vram_studio=0.0, vram_zima=0.4)     # zima ne tient plus le moteur
+        S.CONVERSATIONS.clear()
+        S._DUREES["quand"] = 0.0
+        S.REGISTRE["vieille"] = {"id": "vieille", "titre": "portable (GTX 1660)",
+                                 "agent": True, "jeton": "w", "pause": None}
+        S.ETAT_NOEUDS["vieille"] = {"repond": True, "vram": 8.0, "ram": 15.5,
+                                    "vu": S.time.time()}
+        dit(not S.tient_vraiment(CLE, "zima") and S.tient_vraiment(CLE, "pc"),
+            f"zima ne tient plus {CLE}, le pc si",
+            f"zima={S.ETAT_NOEUDS['zima']['vram']} Go")
+        # Le pc est deja vise par un rendu, zima est libre : c'est exactement la
+        # configuration ou la copie descendait.
+        S.EN_VOL["t1"] = {}
+        S.TACHES["t1"] = {"noeud": "pc"}
+        S.TACHES["r2"] = {"etapes": [], "noeud": "vieille"}
+        del envois[:]
+        tombee[0] = "vieille"
+        dit(S.debordement_acceptable("zima", "pc", CLE) is None,
+            "et l'on n'a aucune mesure de ce que le debordement couterait")
+        await S.soumettre_robuste({}, "r2", "vieille", CLE, viser="petite")
+        dit(envois[-1:] == ["pc"],
+            "et la reprise ne descend pas sur une carte ou le moteur ne tient pas",
+            " puis ".join(envois))
+    finally:
+        S.soumettre, S.deplacer_entrees = _vrai_soumettre, _vrai_deplacer
+
+
+asyncio.run(_reprise())
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
