@@ -231,6 +231,63 @@ dit(entrees and not orphelines,
     "chaque entree de REGLAGES est un reglage connu ou un geste declare",
     ", ".join(orphelines) or f"{len(entrees)} entrees")
 
+# ── la pastille des reglages ne DECOUPE plus un libelle visible ───────
+# Trois entrees de REGLAGES portaient leur propre lecteur, et il decoupait le
+# texte affiche d'une <option> sur le tiret cadratin :
+# « o.textContent.split(" — ")[0] ». Le separateur d'un texte d'INTERFACE
+# devenait le contrat d'un bout de code, et rien nulle part ne le disait :
+# reformuler « rapide — moins d'étapes », ou l'ecrire avec un tiret ordinaire,
+# et la pastille affichait la phrase entiere sans une plainte. Meme famille que
+# « /deja/i.test(d.erreur) » et que RE_DEVIS — du texte ecrit pour l'oeil qui
+# sert de contrat.
+#
+# Le libelle court est un ATTRIBUT desormais, « data-court », et les deux
+# moities se mesurent ici : que chaque option qui porte une valeur le porte
+# aussi, et qu'aucune lecture ne recoupe plus le libelle visible.
+#
+# UN SEUL LECTEUR, ET PAS UN PAR ENTREE. C'est la garde structurelle : tant que
+# la table peut porter « lire: », la coupure peut revenir par n'importe quelle
+# ecriture, et enumerer les ecritures est la faute que ce banc a deja faite
+# cinq fois (voir LECTURES_DU_MENU). On exige donc que les entrees ne portent
+# rien d'autre que « nom » et « geste ».
+lecteurs = sorted({m for _s, reste in entrees
+                   for m in re.findall(r'\b(\w+)\s*:', reste)} - {"nom", "geste"})
+dit(entrees and not lecteurs,
+    "aucune entree de REGLAGES ne porte son propre lecteur",
+    ", ".join(lecteurs) or f"{len(entrees)} entrees, un seul lecteur")
+
+
+def options_du_menu(sel):
+    """Les <option> ecrites dans la page pour ce menu-la, telles quelles."""
+    depart = re.search(r'<select id="' + re.escape(sel[1:]) + r'"', PAGE)
+    if not depart:
+        return []
+    bloc = PAGE[depart.start():].split("</select>", 1)[0]
+    return re.findall(r'<option\b[^>]*>', bloc)
+
+
+# Une option sans valeur est le « automatique » de tete : il ne pose pas de
+# pastille du tout, et lui reclamer un libelle court ferait rougir le depot
+# sain. Les deux menus construits en JavaScript n'ont ici que celle-la ; leur
+# moitie a eux est le releve suivant.
+nus = [f"{sel} {o}" for sel, _reste in entrees
+       for o in options_du_menu(sel)
+       if re.search(r'value="[^"]+"', o) and not re.search(r'data-court="[^"]+"', o)]
+
+# ENTRE SA CREATION ET SON AJOUT AU MENU : c'est la borne du bloc, et non un
+# nombre de lignes choisi au hasard. Les deux blocs de la page — /api/modeles
+# et /api/machines — posent la valeur, le libelle et l'attribut, puis
+# « sel.appendChild(o) ».
+faits = PAGE.split('document.createElement("option")')[1:]
+sans = [i + 1 for i, bloc in enumerate(faits)
+        if "dataset.court" not in bloc.split("appendChild", 1)[0]
+        and 'setAttribute("data-court"' not in bloc.split("appendChild", 1)[0]]
+dit(not nus and faits and not sans,
+    "chaque option d'un menu de reglage porte son libelle court",
+    ", ".join(nus + [f"option construite n°{i}" for i in sans])
+    or f"{sum(len(options_du_menu(s)) for s, _r in entrees)} ecrites, "
+       f"{len(faits)} construites")
+
 # VARIANTES_MAX = 4 (serveur.py). Au-dela, /api/generer repond 400 « de 1 a 4
 # variantes » : un menu qui propose ce que le serveur refuse fabrique une panne
 # visible pour un geste ordinaire. Rien en dessous de 2 non plus — « une
@@ -436,6 +493,113 @@ dit(cond is not None and "MARQUE_DEJA" in cond and "erreur" not in cond,
     "et la coche se decide sur ce champ, jamais sur le texte du message",
     "le libelle de la coche n'est plus sous un « if » : ce cas ne mesure plus "
     "rien" if cond is None else cond.strip())
+
+
+# ── LE DEVIS ET L'ARRET DIFFERE : DEUX CHAMPS, PLUS DEUX PHRASES ──────
+# Deux contrats de la meme famille que le « deja refait », et le second etait
+# pire que lui.
+#
+#   - LE DEVIS de la pastille etait tire d'une PHRASE DE JOURNAL par expression
+#     reguliere — « rendus precedents, compte 4 min » —, virgule decimale
+#     française comprise (« parseFloat(m[1].replace(",", ".")) »). Muet a la
+#     premiere reformulation, et FAUX de naissance : la phrase arrondit, et
+#     « 2 min » pour une mediane de 90 s faisait afficher 120 s. /api/etat sert
+#     le chiffre depuis le debut.
+#   - LA RELECTURE DIFFEREE apres une interruption se decidait sur
+#     « /^arret demande a /.test(t.erreur) ». Le texte teste venait d'etre
+#     ECRASE six lignes plus haut par la derniere ligne du journal : le contrat
+#     traversait deux fichiers ET une substitution. Journaliser une ligne de
+#     plus apres celle-la coupait la relecture en silence, et la bulle restait
+#     sur « arret demande » — une promesse — pendant que la carte s'arretait.
+#
+# Comme pour MARQUE_DEJA, chaque moitie est mesuree la ou elle se voit : ici la
+# page nomme le champ et ne lit plus le texte, dans banc_variantes.py les deux
+# routes le posent — et ce banc-la releve les noms DANS CE FICHIER-CI. Zero
+# declaration compte comme un NON, plusieurs aussi : on ne saurait plus laquelle
+# la page applique.
+for nom_marque, quoi in (("MARQUE_DEVIS",
+                          "la page NOMME le champ par lequel le studio chiffre "
+                          "le devis"),
+                         ("MARQUE_ARRET_DIFFERE",
+                          "et celui par lequel il dit qu'un arret n'est encore "
+                          "qu'une promesse")):
+    vues = re.findall(r'const\s+' + nom_marque + r'\s*=\s*"([^"]*)"\s*;', CORPS)
+    dit(len(vues) == 1 and bool(vues[0]), quoi,
+        f"{len(vues)} declaration(s) de {nom_marque} : ce banc NE MESURE PLUS "
+        "le couplage page/serveur, et banc_variantes.py non plus"
+        if len(vues) != 1 else vues[0])
+
+# L'ancre est la FONCTION qui rend le devis, et le releve porte sur ce qu'elle
+# lit : le champ, et plus les etapes. Les appels avec, car reverser le seul
+# point d'appel — « lireDevis(t.etapes) » — rendrait undefined a chaque tour et
+# ferait disparaitre la pastille sans qu'une ligne de la fonction ne bouge.
+corps_devis = CORPS.split("function lireDevis(", 1)
+appels = re.findall(r'lireDevis\(([^)]*)\)', CORPS)
+dit(len(corps_devis) == 2 and "MARQUE_DEVIS" in corps_devis[1].split("\n}", 1)[0]
+    and not any("etapes" in a for a in appels),
+    "et le devis affiche vient de ce champ, jamais du journal",
+    ", ".join(appels) or "lireDevis introuvable")
+
+# « condition_du_si » plutot qu'un motif : nommer la condition par une
+# expression reguliere reviendrait a decrire UNE facon de l'ecrire. L'ancre est
+# le corps du « if », c'est-a-dire le seul setTimeout du script.
+cond_arret = condition_du_si(CORPS, "setTimeout(async () => {")
+dit(cond_arret is not None and "MARQUE_ARRET_DIFFERE" in cond_arret
+    and not re.search(r'\.erreur\b|\[\s*["\']erreur["\']\s*\]', cond_arret),
+    "et la relecture differee se decide sur ce champ, jamais sur le message",
+    "la relecture differee n'est plus sous un « if » : ce cas ne mesure plus "
+    "rien" if cond_arret is None else cond_arret.strip())
+
+# ── ET LE MEME PIEGE NULLE PART AILLEURS ──────────────────────────────
+# Les trois defauts fermes se ressemblaient trop pour n'etre nommes qu'un par
+# un : chaque fois, une expression reguliere s'appliquait a un texte ecrit pour
+# etre LU — un message d'erreur, une ligne de journal. On releve donc TOUTES
+# les applications du script et l'on exige que leur operande soit un NOM DE
+# FICHIER, seul texte de la page dont la forme soit un vrai contrat technique
+# (EXT_IMG, EXT_VID, EXT_SON sur f.filename).
+#
+# Le sol est pris par le haut et non par une liste de mauvais operandes : une
+# liste aurait dit UNE facon d'ecrire la panne, la faute que ce banc a deja
+# faite cinq fois (voir LECTURES_DU_MENU). Le jour ou une application
+# legitime portera sur autre chose, ce cas rougira et demandera qu'on
+# l'inscrive ici — c'est le bon sens de l'erreur.
+#
+# LES COMMENTAIRES SONT RETIRES D'ABORD, comme pour le CSS plus haut : la page
+# explique « /deja/i.test(d.erreur) », « /^arret demande a /.test( » et
+# « split(" — ") » dans les commentaires qui disent justement pourquoi ces
+# lignes n'existent plus, et ce banc se signalerait lui-meme. Les trois
+# ecritures, HTML comprise : le libelle court est explique a cote des <option>
+# qui le portent, c'est-a-dire dans un commentaire HTML.
+CODE = re.sub(r'<!--.*?-->', " ", CORPS, flags=re.S)
+CODE = re.sub(r'/\*.*?\*/', " ", CODE, flags=re.S)
+CODE = re.sub(r'(?m)^\s*//.*$', "", CODE)
+
+
+def operandes(texte, verbe):
+    """Ce a quoi chaque « .test( » / « .exec( » / « .match( » s'applique."""
+    for depart in re.finditer(r'\.\s*' + verbe + r'\s*\(', texte):
+        i, prof = depart.end(), 1
+        while i < len(texte) and prof:
+            prof += (texte[i] in "([{") - (texte[i] in ")]}")
+            i += 1
+        # « || "" » n'est pas l'operande, c'est son garde-fou.
+        yield re.sub(r'\|\|.*$', "", texte[depart.end():i - 1]).strip()
+
+
+sur_du_texte = [o for verbe in ("test", "exec", "match")
+                for o in operandes(CODE, verbe)
+                if not re.fullmatch(r'[\w.$\[\]]*\.(?:filename|name)', o)]
+dit(not sur_du_texte,
+    "aucune expression reguliere ne s'applique a un texte ecrit pour etre lu",
+    ", ".join(sur_du_texte) or "toutes sur un nom de fichier")
+
+# Et le tiret cadratin ne recoupe plus rien nulle part : c'etait LE separateur
+# qui servait de contrat entre le libelle d'une <option> et la pastille, et il
+# n'y a pas deux facons de l'ecrire.
+coupes = [c for _g, c in re.findall(r'\.\s*split\s*\(\s*(["\'`])([^"\'`]*\u2014[^"\'`]*)\1',
+                                    CODE)]
+dit(not coupes, "et aucun libelle visible n'est recoupe sur le tiret cadratin",
+    ", ".join(f"« {c} »" for c in coupes) or "aucune coupure")
 
 # ── designer la variante retenue ──────────────────────────────────────
 # POST /api/variante decide laquelle « la » designe : « agrandis-la », « rends-la

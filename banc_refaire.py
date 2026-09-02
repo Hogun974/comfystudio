@@ -47,6 +47,12 @@ Ce que ce banc mesure, dans l'ordre de gravite :
     reecriture du tour d'origine.
   - « ecoule_rendu » ne compte plus l'attente de la carte : c'est le seul
     chiffre comparable au devis, qui est une mediane de rendus.
+  - LE TROISIEME BOUTON QUI REJOUE UNE SORTIE, POST /api/reprendre, rendait
+    l'exception Python telle quelle — « str(e) » sur un « except Exception »
+    nu, sur une route dont la page affiche l'erreur sans y toucher. Une phrase
+    a l'ecran, le detail au journal du studio : le meme « ERREUR :
+    'sdxl_vieux' » que ci-dessus, sur la seule des trois ou personne n'avait
+    regarde.
 
 TREIZE ASSERTIONS DE CE BANC NE POUVAIENT PAS DISTINGUER « la garde marche » de
 « rien ne s'est passe », et elles portent desormais leur temoin. Le motif est
@@ -1239,6 +1245,81 @@ async def main():
     dit(refait_.get("esquisse"),
         "un brouillon refait reste un brouillon, et le DIT",
         str(refait_.get("esquisse")))
+
+    # ══ 12. « reprendre » : une phrase a l'ecran, le detail au journal ═══
+    # LE TROISIEME BOUTON QUI REJOUE UNE SORTIE, et il rendait l'exception
+    # Python telle quelle. POST /api/reprendre remet une image deja produite
+    # dans le cache d'entree pour la retravailler ; la page affiche « d.erreur »
+    # SANS RIEN Y CHANGER dans son bandeau d'alerte. Le refus s'ecrivait
+    # « return web.json_response({"erreur": str(e)}, status=502) » sur un
+    # « except Exception » nu : le premier defaut venu partait a l'ecran, mot
+    # pour mot. C'est le meme « ERREUR : 'sdxl_vieux' » que §2 et §3 ferment sur
+    # les deux autres boutons, sur la seule route ou personne n'avait regarde.
+    #
+    # Ce « except » attrape tout ce qui separe le studio du fichier : le depot
+    # d'un agent, l'output d'un ComfyUI, un disque plein, un delai d'aiohttp,
+    # une machine eteinte. On imite ici le plus muet de tous — un
+    # PermissionError, dont le texte est un chemin absolu et un numero d'errno.
+    print("\n  ── reprendre une sortie ──")
+    conv = poser()
+    tour_repris = poser_tour()
+    fichier = tour_repris["fichiers"][0]
+
+    # LE CACHE D'ENTREE VA DANS LE DOSSIER DU BANC. Sans cette ligne il pointe
+    # sur l'input du ComfyUI de la machine (DOSSIER_ENTREE, serveur.py) des
+    # qu'il en existe un a cote du depot : un banc n'a rien a ecrire la, et
+    # celui-ci y deposerait un « reprise_*.png » a chaque lancement.
+    S.DOSSIER_ENTREE = os.path.join(S.DOSSIER_DONNEES, "entrees_du_banc")
+
+    async def reprendre(f):
+        return lire(await S.api_reprendre(Req(corps={
+            "filename": f["filename"], "subfolder": f.get("subfolder", ""),
+            "noeud": f.get("noeud")})))
+
+    # LE TEMOIN D'ABORD. Sans lui, « le refus ne fuit rien » serait vrai d'une
+    # route qui refuse tout, et l'on ne saurait meme pas qu'elle sait reussir.
+    _vraie_lecture = S.lire_sortie
+    async def lecture_qui_marche(info):
+        return b"\x89PNG\r\n\x1a\n des octets de banc"
+    S.lire_sortie = lecture_qui_marche
+    st, corps = await reprendre(fichier)
+    dit(st == 200 and str(corps.get("image", "")).startswith("reprise_"),
+        "une sortie relue redevient une piece jointe ordinaire", f"{st} {corps}")
+
+    async def lecture_qui_echoue(info):
+        raise PermissionError("[Errno 13] Permission denied: "
+                              "'/comfy/input/reprise_0.png'")
+    S.lire_sortie = lecture_qui_echoue
+    # La sortie du studio est captee : journal(None, …) n'ecrit que la, et
+    # « le detail existe quelque part » ne se prouve pas autrement.
+    tampon = io.StringIO()
+    _sortie = sys.stdout
+    sys.stdout = tampon
+    try:
+        st, corps = await reprendre(fichier)
+    finally:
+        sys.stdout = _sortie
+    au_studio = tampon.getvalue()
+    msg = corps.get("erreur") or ""
+    dit(st == 502, "une reprise qui echoue repond 502", f"{st} {msg}")
+    # On ne nomme PAS la tournure attendue : ce serait remettre un texte
+    # français au rang de contrat, et c'est le defaut qu'on ferme. On nomme ce
+    # qui ne doit pas fuir — le type de l'exception et son texte — et ce qui
+    # doit etre la : le nom de la machine, seule chose sur laquelle
+    # l'utilisateur puisse agir.
+    fuites = [f for f in ("PermissionError", "Errno 13", "/comfy/input")
+              if f in msg]
+    dit(not fuites and S.REGISTRE["pc"]["titre"] in msg,
+        "et il le DIT, au lieu de « [Errno 13] Permission denied: … »",
+        ", ".join(fuites) or msg)
+    # Le detail n'est pas perdu pour autant : sans lui, la phrase polie
+    # remplacerait un diagnostic par rien du tout, ce qui est l'autre facon de
+    # se tromper.
+    dit("PermissionError" in au_studio and "Errno 13" in au_studio
+        and fichier["filename"] in au_studio,
+        "et le detail technique part au journal du studio, pas a l'ecran",
+        au_studio.strip()[-110:] or "rien n'a ete journalise")
+    S.lire_sortie = _vraie_lecture
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

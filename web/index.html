@@ -673,21 +673,30 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       <select id="machine" aria-label="Machine">
         <option value="">machine : automatique</option>
       </select>
+      <!-- « data-court » : le mot que la pastille des reglages actifs
+           affiche. Elle le DECOUPAIT du libelle visible, sur le tiret
+           cadratin — « o.textContent.split(" — ")[0] » — ce qui faisait du
+           separateur d'un texte d'interface un contrat de code : retirer
+           « — moins d'étapes », ou l'ecrire avec un tiret ordinaire, et la
+           pastille affichait la phrase entiere sans rien signaler. Le libelle
+           visible est libre ; c'est cet attribut-ci qui est le contrat, et
+           banc_page.py exige qu'aucune option porteuse d'une valeur n'en
+           manque. -->
       <select id="priorite" aria-label="Priorité">
         <option value="">priorité : équilibre</option>
-        <option value="rapide">rapide — moins d'étapes</option>
-        <option value="soigne">soigné — plus d'étapes</option>
+        <option value="rapide" data-court="rapide">rapide — moins d'étapes</option>
+        <option value="soigne" data-court="soigné">soigné — plus d'étapes</option>
       </select>
       <select id="taille" aria-label="Résolution">
         <option value="">taille : automatique</option>
-        <option value="1920x1080">1920 × 1080 — paysage</option>
-        <option value="1600x900">1600 × 900 — paysage</option>
-        <option value="1280x720">1280 × 720 — paysage</option>
-        <option value="1216x832">1216 × 832 — défaut</option>
-        <option value="1024x1024">1024 × 1024 — carré</option>
-        <option value="832x1216">832 × 1216 — portrait</option>
-        <option value="1080x1350">1080 × 1350 — portrait</option>
-        <option value="768x1344">768 × 1344 — portrait haut</option>
+        <option value="1920x1080" data-court="1920 × 1080">1920 × 1080 — paysage</option>
+        <option value="1600x900" data-court="1600 × 900">1600 × 900 — paysage</option>
+        <option value="1280x720" data-court="1280 × 720">1280 × 720 — paysage</option>
+        <option value="1216x832" data-court="1216 × 832">1216 × 832 — défaut</option>
+        <option value="1024x1024" data-court="1024 × 1024">1024 × 1024 — carré</option>
+        <option value="832x1216" data-court="832 × 1216">832 × 1216 — portrait</option>
+        <option value="1080x1350" data-court="1080 × 1350">1080 × 1350 — portrait</option>
+        <option value="768x1344" data-court="768 × 1344">768 × 1344 — portrait haut</option>
       </select>
       <!-- CE N'EST PAS UN REGLAGE DE CONVERSATION, et c'est le serveur qui l'a
            tranche : « variantes » ne figure pas dans REGLAGES_CONV
@@ -703,9 +712,9 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
            repond 400 — le menu ne propose pas ce qu'on lui refuserait. -->
       <select id="variantes" aria-label="Nombre de variantes">
         <option value="">variantes : une seule</option>
-        <option value="2">2 variantes — même prompt, autre graine</option>
-        <option value="3">3 variantes</option>
-        <option value="4">4 variantes</option>
+        <option value="2" data-court="2 variantes">2 variantes — même prompt, autre graine</option>
+        <option value="3" data-court="3 variantes">3 variantes</option>
+        <option value="4" data-court="4 variantes">4 variantes</option>
       </select>
     </div>
     <div class="jointe" id="jointe" style="display:none">
@@ -1460,6 +1469,11 @@ fetch("/api/machines").then(r => r.json()).then(ns => {
   for (const x of ns) {
     const o = document.createElement("option");
     o.value = x.id;
+    // Le titre SERVI par /api/machines, et non un morceau du libelle qu'on
+    // assemble juste en dessous : la pastille nomme la machine choisie, pas
+    // son etat du moment. Redecoupe sur « — », elle rendait d'ailleurs
+    // « NAS (ne repond pas) » pour toute machine sans VRAM annoncee.
+    o.dataset.court = x.titre;
     // La VRAM est ce sur quoi le repartiteur tranche : la montrer explique le
     // choix automatique au lieu de le laisser paraitre arbitraire.
     o.textContent = x.titre + (x.vram ? ` — ${x.vram} Go` : "")
@@ -1486,6 +1500,10 @@ fetch("/api/modeles").then(r => r.json()).then(ms => {
     if (m.distant) locaux--;
     const o = document.createElement("option");
     o.value = m.cle; o.textContent = m.titre + (m.present ? "" : " (à télécharger)");
+    // Le titre SERVI par /api/modeles. « (à télécharger) » est un etat du
+    // catalogue et non le reglage : le menu ouvert le dit, la pastille nomme
+    // le moteur.
+    o.dataset.court = m.titre;
     sel.appendChild(o);
   });
   $("#jaugeModeles").innerHTML = `<b>${prets}/${locaux}</b> moteurs prêts`;
@@ -2104,12 +2122,27 @@ document.querySelector("#panneauFile").addEventListener("mouseleave", e => {
 
 /* Les reglages restent replies, mais jamais silencieux : ce qui s'ecarte du
    defaut s'affiche en clair, et se retire d'un clic. Un reglage applique sans
-   etre visible donne le sentiment de ne pas etre ecoute. */
+   etre visible donne le sentiment de ne pas etre ecoute.
+
+   LE LIBELLE COURT EST UN ATTRIBUT, PAS UN MORCEAU DU LIBELLE VISIBLE. Chaque
+   entree portait son propre lecteur, et trois d'entre eux decoupaient le texte
+   affiche d'une <option> sur le tiret cadratin : « o.textContent.split(" — ")
+   [0] ». Le separateur d'un texte d'interface devenait ainsi le contrat d'un
+   bout de code, sans que rien ne le dise nulle part — reformuler « rapide —
+   moins d'étapes », ou l'ecrire avec un tiret ordinaire, et la pastille
+   affichait la phrase entiere en silence.
+
+   Plus de lecteur par entree, donc : un seul, courtDe(), et l'attribut
+   « data-court » que chaque option porte (voir les menus, plus haut). Les deux
+   menus construits en JavaScript le posent depuis le titre que le serveur SERT
+   — /api/modeles, /api/machines — au lieu de redecouper ce qu'ils viennent
+   d'assembler. banc_page.py exige les deux moities : l'attribut sur toute
+   option qui porte une valeur, et une lecture qui ne recoupe plus rien. */
 const REGLAGES = [
-  { sel: "#forcer", nom: "moteur", lire: o => o.textContent },
-  { sel: "#machine", nom: "machine", lire: o => o.textContent.split(" — ")[0] },
-  { sel: "#priorite", nom: "", lire: o => o.textContent.split(" — ")[0] },
-  { sel: "#taille", nom: "", lire: o => o.textContent.split(" — ")[0] },
+  { sel: "#forcer", nom: "moteur" },
+  { sel: "#machine", nom: "machine" },
+  { sel: "#priorite", nom: "" },
+  { sel: "#taille", nom: "" },
   // « geste » : ce menu-ci ne s'ecrit PAS sur la conversation. Il n'a ni entree
   // dans MENU_REGLAGE ni dans CLE_REGLAGE — les envoyer a
   // /api/conversation/{cid}/reglages serait poster une cle que le serveur ne
@@ -2118,9 +2151,18 @@ const REGLAGES = [
   // le tiroir ouvert, et le tiroir est replie par defaut — on repartirait en
   // quatre exemplaires sans rien voir venir, ce qui est exactement le degat
   // que le serveur refuse de retenir sur la conversation.
-  { sel: "#variantes", nom: "", geste: true,
-    lire: o => o.textContent.split(" — ")[0] },
+  { sel: "#variantes", nom: "", geste: true },
 ];
+
+/* Le libelle court d'une option. Le repli sur le libelle entier n'est pas une
+   tolerance : c'est le seul comportement qui ne MENTE pas quand l'attribut
+   manque. Une pastille vide dirait « aucun reglage actif », ce qui est faux, et
+   c'est exactement le genre de silence qu'on ferme ici ; le libelle entier,
+   lui, est laid et se voit. banc_page.py rougit sur l'attribut manquant, de
+   sorte que ce repli ne serve jamais. */
+function courtDe(o) {
+  return (o && (o.dataset.court || o.textContent)) || "";
+}
 
 function peindreActifs() {
   const zone = document.querySelector("#actifs");
@@ -2130,7 +2172,7 @@ function peindreActifs() {
     if (!el || !el.value) continue;
     const mot = document.createElement("span");
     mot.className = "oter";
-    mot.textContent = (r.nom ? r.nom + " " : "") + r.lire(el.selectedOptions[0]);
+    mot.textContent = (r.nom ? r.nom + " " : "") + courtDe(el.selectedOptions[0]);
     mot.title = "cliquer pour revenir à l'automatique";
     mot.onclick = () => { el.value = ""; accorderTaille(); peindreActifs();
                           if (!r.geste) retenirReglages(CLE_REGLAGE[r.sel]); };
@@ -2445,31 +2487,41 @@ $("#go").onclick = () => lancerDemande(null);
 // vient de le demander explicitement, c'est le geste le plus recent.
 $("#lancerBrouillon").onclick = () => lancerDemande("brouillon");
 
-/* LE DEVIS, releve dans le journal de la demande.
+/* LE DEVIS, ET LE CHAMP PAR LEQUEL LE STUDIO LE DONNE.
 
-   Le studio l'annonce des qu'il a retenu une machine : « d'apres tes 6 rendus
-   precedents, compte 4 min » (duree_typique, serveur.py — la mediane de rendus
-   comparables, et rien du tout en dessous de trois mesures). Cette ligne
-   n'apparaissait que dans le depliant « details », ferme — c'est-a-dire nulle
-   part au moment ou la question se pose, devant la barre qui avance.
+   Le studio l'annonce des qu'il a retenu une machine : la mediane de ses
+   rendus comparables (duree_typique, serveur.py — rien du tout en dessous de
+   trois mesures). Elle n'apparaissait que dans le depliant « details », ferme
+   — c'est-a-dire nulle part au moment ou la question se pose, devant la barre
+   qui avance.
 
-   Elle est relue dans le texte parce que /api/etat ne sert pas ce chiffre
-   autrement : il n'y a pas de champ « devis », seulement des etapes. Le releve
-   est donc muet des que la phrase ne correspond plus — une estimation devinee
-   de travers vaut moins que pas d'estimation. */
-const RE_DEVIS = /rendus\s+pr[eé]c[eé]dents,\s*compte\s+(\d+(?:[.,]\d+)?)\s*(min|s)\b/i;
-function lireDevis(etapes) {
-  // Depuis la fin : une demande relancee au reveil d'une machine peut porter
-  // deux devis, et c'est le dernier qui parle du rendu en cours.
-  for (let i = (etapes || []).length - 1; i >= 0; i--) {
-    const m = RE_DEVIS.exec(etapes[i].msg || "");
-    if (!m) continue;
-    const combien = parseFloat(m[1].replace(",", "."));
-    const sur = /tes\s+(\d+)\s+rendus/.exec(etapes[i].msg);
-    return { secondes: combien * (m[2] === "min" ? 60 : 1),
-             mot: `${m[1]} ${m[2]}`, mesures: sur ? sur[1] : "" };
-  }
-  return null;
+   ELLE ETAIT RELUE DANS LA PHRASE DU JOURNAL, par une expression reguliere sur
+   « d'apres tes 6 rendus precedents, compte 4 min », avec son
+   « parseFloat(m[1].replace(",", ".")) » pour la virgule decimale française.
+   Le contrat etait donc un texte ecrit pour l'oeil : muet a la premiere
+   reformulation, et surtout FAUX de naissance, puisque la phrase arrondit —
+   « compte 2 min » pour une mediane de 90 s faisait afficher 120 s, soit 33 %
+   de trop. Le seuil des minutes avait du etre repousse a 300 s
+   (DEVIS_EN_SECONDES_JUSQUA, serveur.py) rien que pour borner cet ecart a
+   9,1 %.
+
+   /api/etat sert le chiffre depuis le debut, et il porte meme le mot a mot :
+   { secondes, mesures, mot, rendus, total_s }. On lit le champ. Aucun arrondi,
+   aucune arithmetique, aucune phrase.
+
+   Declare ici et nomme : banc_variantes.py releve CETTE ligne pour savoir quel
+   champ exiger de la route, exactement comme banc_refaire.py releve
+   MARQUE_DEJA. Le jour ou ce nom change d'un cote seulement, le banc rougit au
+   lieu de laisser la pastille disparaitre en silence. */
+const MARQUE_DEVIS = "devis";
+
+/* Le devis de CETTE demande, ou null. « secondes » ET « mot » : le premier
+   decide de « plus long que d'habitude », le second s'affiche. Un champ a
+   moitie ecrit mettrait « ≈ undefined » a cote de la barre, ce qui est pire
+   que pas de pastille. */
+function lireDevis(t) {
+  const d = (t || {})[MARQUE_DEVIS];
+  return d && d.secondes && d.mot ? d : null;
 }
 
 /* Le seul recours sur une demande armee, pose la ou l'utilisateur regarde. Le
@@ -2494,6 +2546,22 @@ function boutonRetirerArmee(id) {
   };
   return b;
 }
+
+/* Le champ par lequel le studio dit « cet arret est une PROMESSE, pas un fait
+   — une ligne viendra le confirmer », et le SEUL contrat de ce cas-la. Il a
+   remplace un test sur le TEXTE du message — « /^arret demande a /.test(
+   t.erreur) » — pire encore que celui du « deja refait » : le texte teste
+   venait d'etre ECRASE deux lignes plus haut par la derniere ligne du journal,
+   si bien que le contrat traversait deux fichiers ET une substitution.
+   Reformuler la phrase de serveur.py, ou seulement journaliser une ligne de
+   plus apres elle, coupait la relecture differee en silence — et la bulle
+   restait sur « arret demande » pendant que la carte du NAS s'arretait pour de
+   bon. C'est le mensonge du 29 aout, pris par l'autre bout.
+
+   Declare ici et nomme : banc_variantes.py releve CETTE ligne pour savoir quel
+   champ exiger de DELETE /api/file/{tid}, comme banc_refaire.py releve
+   MARQUE_DEJA. */
+const MARQUE_ARRET_DIFFERE = "arret_differe";
 
 /* Le sondage est indexe par tache : plusieurs demandes peuvent courir
    en parallele, y compris dans des conversations differentes. */
@@ -2558,7 +2626,7 @@ function suivre(id, bloc, cid) {
                                           : Math.round((Date.now() - depart) / 1000);
         // « Combien de temps ? » est la question qu'on se pose EN REGARDANT la
         // barre : la reponse se met a cote, pas dans le depliant.
-        const devis = lireDevis(t.etapes);
+        const devis = lireDevis(t);
         if (devis && !vuDevis) vuDevis = Date.now();
         // « Depasse » se compare au temps du RENDU, et non au temps total : le
         // devis est une mediane de rendus, pas d'attentes. Comparer au total
@@ -2611,7 +2679,12 @@ function suivre(id, bloc, cid) {
         // « arret demande », c'est-a-dire sur une promesse. Le 29 aout, c'est
         // exactement ce mecanisme qui a fait lire « interrompue » a
         // l'utilisateur pendant que le NAS calculait encore.
-        if (t.etat === "erreur" && /^arret demande a /.test(t.erreur || ""))
+        //
+        // Le champ et non le message : « t.erreur » vient d'etre remplace six
+        // lignes plus haut, et le serveur leve lui-meme la marque quand il
+        // ecrit le mot final — une machine deja silencieuse n'aura pas de suite
+        // a nous donner, et on ne relit pas pour rien.
+        if (t.etat === "erreur" && t[MARQUE_ARRET_DIFFERE])
           setTimeout(async () => {
             try {
               const r2 = await fetch("/api/etat/" + id);

@@ -2176,33 +2176,40 @@ def _duree_lisible(secondes):
 
 
 # LA PHRASE DU DEVIS PASSE AUX MINUTES A CINQ MINUTES, ET NON A UNE MINUTE ET
-# DEMIE. Elle est relue par la page — RE_DEVIS, web/index.html — parce que
-# celle-ci ne lit pas encore le champ « devis » de /api/etat, et l'arrondi au
-# quart de tour la faisait mentir :
+# DEMIE. Elle ETAIT relue par la page — RE_DEVIS, web/index.html — parce que
+# celle-ci ne lisait pas le champ « devis » de /api/etat, et l'arrondi au quart
+# de tour la faisait mentir :
 #
 #     mediane =  90 s -> champ 90,  phrase « 2 min », la page lisait 120 s  (+33 %)
 #     mediane = 100 s -> champ 100, phrase « 2 min », la page lisait 120 s  (+20 %)
 #
-# Le pire ecart passe de 33 % (a 90 s) a 9,1 % (a 330 s, annonce « 6 min ») :
-# au-dela de cinq minutes, la demi-minute d'arrondi ne pese plus. Sous le seuil,
-# la phrase est EXACTE, puisqu'elle dit la seconde.
+# Le pire ecart passait ainsi de 33 % (a 90 s) a 9,1 % (a 330 s, annonce
+# « 6 min ») : au-dela de cinq minutes, la demi-minute d'arrondi ne pese plus.
 #
-# Les secondes ne sont pas un pis-aller de lisibilite : la fin de rendu les
-# emploie deja — « termine en 223 s » — et le devis se compare desormais au
-# resultat sans arithmetique mentale. Le TOTAL d'un groupe garde _duree_lisible :
-# c'est un ordre de grandeur que personne ne relit au chiffre pres.
+# LA PAGE LIT LE CHAMP DEPUIS LE 2 SEPTEMBRE 2026 (MARQUE_DEVIS,
+# web/index.html), et cet ecart n'existe plus : ce seuil ne decide plus que de
+# la LISIBILITE d'une ligne de journal. On le garde tel quel, et pour une
+# raison qui n'a jamais dependu du releve : la fin de rendu dit deja les
+# secondes — « termine en 223 s » — et le devis se compare au resultat sans
+# arithmetique mentale. Le TOTAL d'un groupe garde _duree_lisible : c'est un
+# ordre de grandeur que personne ne relit au chiffre pres.
 #
-# Le vrai remede reste que la page lise devis.secondes ; ce seuil-ci n'est que
-# ce qu'on peut faire depuis le serveur seul. banc_variantes.py mesure l'ecart.
+# Les deux cas de banc_variantes.py qui mesuraient l'ecart phrase/champ sont
+# partis avec le couplage, comme leur commentaire l'annonçait.
 DEVIS_EN_SECONDES_JUSQUA = 300
 
 
 def mot_du_devis(secondes):
-    """Le devis tel que la phrase du journal l'annonce.
+    """Le devis tel que la phrase du journal l'annonce, et tel que la pastille
+    le REDIT — c'est ce meme mot a mot qui part dans devis["mot"].
 
-    Jamais d'heures, contrairement a _duree_lisible : RE_DEVIS ne connait que
-    « min » et « s », et une phrase en heures ferait disparaitre la pastille en
-    silence — une estimation devinee de travers vaut moins que pas d'estimation.
+    Jamais d'heures, contrairement a _duree_lisible. La contrainte d'origine
+    etait dure : la page tirait le chiffre de cette phrase (RE_DEVIS) et ne
+    connaissait que « min » et « s », si bien qu'une phrase en heures faisait
+    DISPARAITRE la pastille en silence. Elle lit le champ depuis le 2 septembre
+    2026 ; ce qui reste est la lisibilite — « 0,1 h » pour un rendu de six
+    minutes se lit moins bien que « 6 min », et rien d'autre dans le fil ne
+    compte en heures.
     """
     if secondes < DEVIS_EN_SECONDES_JUSQUA:
         return f"{secondes:.0f} s"
@@ -8955,14 +8962,19 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         mot_devis = ""
         if mediane_:
             mot_devis = mot_du_devis(mediane_)
-            # SUR LA TACHE, et pas seulement dans le journal — /api/etat le sert
-            # tel quel. La page relit encore la phrase française pour en tirer le
-            # chiffre (RE_DEVIS), et cet arrondi-la divergeait du champ de 33 % a
-            # 90 s : c'est le champ qui fait foi, la phrase n'est qu'un repli.
+            # SUR LA TACHE, et pas seulement dans le journal — /api/etat le
+            # sert tel quel, et c'est CE champ que la page lit (MARQUE_DEVIS,
+            # web/index.html). Elle en tirait le chiffre de la phrase française
+            # jusqu'au 2 septembre 2026, par expression reguliere et
+            # « parseFloat(m[1].replace(",", ".")) » pour la virgule decimale :
+            # l'arrondi de la phrase divergeait alors du champ de 33 % a 90 s.
+            # C'est le champ qui fait foi ; la phrase n'est plus qu'une ligne
+            # de journal pour l'oeil.
             devis_ = {"secondes": round(mediane_), "mesures": combien_,
-                      # Le mot a mot de la phrase, pour que la page n'ait plus a
-                      # le reconstruire — ni a relire le journal pour l'afficher.
-                      # C'est aussi ce qui rend l'ecart MESURABLE des deux cotes.
+                      # Le mot a mot, pour que la pastille n'ait pas a
+                      # reconstruire « 4 min » a partir de 240 — elle
+                      # l'afficherait autrement que le journal, et deux
+                      # ecritures du meme chiffre finissent par diverger.
                       "mot": mot_devis}
             if variantes > 1:
                 # Nommes, pour que le total n'ait plus a se deviner dans une
@@ -9619,7 +9631,16 @@ async def travailleur():
             if est_agent(ident_t) and ETAT_NOEUDS.get(ident_t, {}).get("repond"):
                 TACHES.setdefault(tid, {"etapes": []}).update(etat="erreur")
             else:
-                journal(tid, "interrompue", etat="erreur")
+                # « arret_differe=False » : la promesse posee par
+                # api_file_annuler est LEVEE ici. Elle ne valait que pour une
+                # machine a agent, et l'on arrive dans cette branche-ci quand
+                # cette machine s'est tue entre les deux appels — le mot final
+                # est ecrit, aucune confirmation ne viendra plus. Sans cette
+                # remise a zero, le champ dirait « attends encore » a cote de
+                # « interrompue » et la page relirait pour rien : un champ qui
+                # survit a ce qu'il annonce est exactement le defaut que la
+                # marque remplace.
+                journal(tid, "interrompue", etat="erreur", arret_differe=False)
             if ARRET:
                 # On relaie : sans ce « raise », le travailleur avalait son
                 # propre arret et repartait attendre a la porte. Le « finally »
@@ -9676,7 +9697,29 @@ async def api_reprendre(req):
         copie = await recuperer_sortie({"filename": nom, "subfolder": sous,
                                         "noeud": ident}, pid)
     except Exception as e:
-        return web.json_response({"erreur": str(e)}, status=502)
+        # UNE PHRASE A L'ECRAN, LE DETAIL DANS LE JOURNAL DU STUDIO. La page
+        # affiche « d.erreur » tel quel dans son bandeau d'alerte
+        # (web/index.html, le bouton « reprendre » de la mediatheque) : sur un
+        # « except Exception » nu, « str(e) » y envoyait le premier defaut venu,
+        # mot pour mot — « [Errno 13] Permission denied: '/comfy/input' », un
+        # delai d'aiohttp, un KeyError. C'est le meme « ERREUR : 'sdxl_vieux' »
+        # que les deux boutons de reprise ont deja ferme, et ce « except »
+        # attrape TOUT ce qui separe le studio du fichier : le depot d'un
+        # agent, l'output d'un ComfyUI, un disque plein, une machine eteinte.
+        #
+        # La phrase nomme la MACHINE et rien d'autre : c'est la seule chose sur
+        # laquelle l'utilisateur puisse agir — rallumer le NAS, reprendre une
+        # autre sortie. Son titre et non son identifiant, pour la raison qui
+        # est ecrite dans _dit_reglage : « pc » ne veut rien dire trois jours
+        # plus tard, « PC (RTX 2080 Ti) » si.
+        journal(None, f"reprise impossible ({ident}/{sous}/{nom}) : "
+                      f"{type(e).__name__}: {e}")
+        return web.json_response(
+            {"erreur": f"{(noeud(ident) or {}).get('titre', ident)} n'a pas "
+                       "rendu ce fichier : il a peut-etre ete efface, ou la "
+                       "machine ne repond plus. Reprends une autre sortie, ou "
+                       "reessaie plus tard."},
+            status=502)
     return web.json_response({"image": copie})
 
 
@@ -10485,8 +10528,26 @@ async def api_file_annuler(req):
             # coupe alors sa carte elle-meme ; la confirmation nous revient par
             # api_noeud_resultat. On promet donc un arret imminent, pas un arret
             # deja fait — c'est tout ce qu'on sait a cette seconde.
+            # ET UNE MARQUE A COTE DE LA PHRASE. La page relit l'etat huit
+            # secondes plus tard pour attraper cette confirmation-la ; elle
+            # reconnaissait ce cas au TEXTE du message, « /^arret demande a
+            # /.test(t.erreur) » — sur un « t.erreur » qu'elle venait
+            # elle-meme d'ecraser deux lignes plus haut par la derniere ligne
+            # du journal. Le contrat traversait donc deux fichiers ET une
+            # substitution : reformuler cette phrase, ou seulement journaliser
+            # une ligne de plus apres elle, coupait la relecture en silence et
+            # laissait la bulle sur « arret demande », c'est-a-dire sur une
+            # promesse — le mensonge du 29 aout, revenu sans qu'une ligne de
+            # la page ne bouge.
+            #
+            # Meme remede que MARQUE_DEJA : le serveur pose un champ, la page
+            # lit le champ, et le banc releve le nom du champ DANS la page pour
+            # exiger les deux moities. Il dit « ce que tu lis est une promesse,
+            # une ligne viendra la confirmer », et rien d'autre : c'est tout ce
+            # qu'on sait a cette seconde.
             journal(tid, f"arret demande a {(noeud(ident) or {}).get('titre', ident)}"
-                         f" — sa carte s'arrete des qu'elle nous rappelle")
+                         f" — sa carte s'arrete des qu'elle nous rappelle",
+                    arret_differe=True)
         else:
             # Une carte joignable s'arrete tout de suite : sans cela un rendu
             # dont plus personne ne veut occuperait le GPU jusqu'au bout.

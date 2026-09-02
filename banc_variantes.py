@@ -24,6 +24,15 @@ Ce banc verifie ce que la multiplication doit garantir, et rien d'autre :
   - on s'arrete la ou les variantes n'ont pas de sens : une retouche, un
     agrandissement, un fournisseur qui facture a l'image.
 
+Et DEUX CONTRATS PAGE/SERVEUR qui n'ont plus rien a voir avec les variantes,
+mais qui vivent la ou les demandes tournent pour de bon — donc ici. Tous deux
+tenaient sur du texte français destine a l'oeil, et tous deux sont devenus des
+champs, releves DANS web/index.html comme banc_refaire.py releve MARQUE_DEJA :
+le devis de la pastille (MARQUE_DEVIS, qui se relisait dans la phrase du
+journal par expression reguliere) et la promesse d'arret d'une machine a agent
+(MARQUE_ARRET_DIFFERE, qui se relisait au debut d'un message d'erreur que la
+page venait elle-meme d'ecraser).
+
 Aucune carte, aucun ComfyUI, aucun rendu : le parc est celui du 31 aout — pc
 (RTX 2080 Ti, 11 Go) et zima (GTX 1060, 5,9 Go) — pose en memoire, et la
 soumission a ComfyUI est remplacee par une fonction qui se contente de LIRE le
@@ -44,10 +53,14 @@ os.environ["STUDIO_AUTH"] = "libre"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import serveur as S  # noqa: E402
 
-# La page est lue pour UNE chose : le devis affiche a cote de la barre n'est pas
-# un champ de /api/etat, c'est la phrase du journal relue au vol (RE_DEVIS). Ce
-# banc peut donc verifier que la phrase du serveur et le releve de la page
-# parlent bien du meme rendu — ce qu'aucun des deux ne peut prouver seul.
+# LA PAGE EST LUE POUR DEUX NOMS DE CHAMP, et pour rien d'autre : MARQUE_DEVIS,
+# par lequel le studio chiffre le devis de la pastille, et MARQUE_ARRET_DIFFERE,
+# par lequel il dit qu'un arret demande n'est encore qu'une promesse. Les deux
+# se lisaient dans du TEXTE il y a peu — la phrase du journal pour l'un
+# (RE_DEVIS), le debut du message d'erreur pour l'autre. Un contrat a deux
+# cotes ne se mesure pas d'un seul : ce banc-ci appelle les routes et ne voit
+# pas ce que la page fait des reponses, banc_page.py fait l'inverse. Meme
+# doctrine que MARQUE_DEJA dans banc_refaire.py.
 PAGE = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "web", "index.html"), encoding="utf-8").read()
 
@@ -411,108 +424,52 @@ async def main():
         "les autres tirages promettent le meme rendu : trois bulles, une seule "
         "promesse", str(devis_soeurs))
 
-    # LA PASTILLE EST RELUE DANS LE TEXTE. /api/etat sert bien un champ
-    # « devis », mais la page ne le lit pas : elle cherche la phrase du journal.
-    # C'est donc cette phrase qui doit dire un rendu — et la ligne du groupe ne
-    # doit surtout pas s'y substituer, sinon le compte a rebours de la bulle se
-    # trompe de trois rendus.
-    # Le releve tolere le reformatage, et l'absence est un ECHEC. L'ancien
-    # « const RE_DEVIS = /(.+?)/([a-z]*); » exigeait une espace unique et une
-    # seule ligne, et son absence n'imprimait qu'une remarque. Scenario rejoue :
-    # la declaration coupee en deux lignes (« const RE_DEVIS = » puis le motif
-    # au retour a la ligne, reflexe banal quand la ligne s'allonge) ET la phrase
-    # du serveur passee de « compte » a « prevois » — le banc rendait 93
-    # verifications, 0 echouee, en annonçant le couplage disparu alors qu'il
-    # etait intact et la pastille du devis morte. L'echappatoire portait sur
-    # l'orthographe de la declaration, pas sur l'absence du couplage.
-    # \s* partout ou JS tolere du blanc ; « . » sans DOTALL pour le corps, car
-    # un litteral d'expression reguliere JS ne peut pas contenir de retour a la
-    # ligne — l'elargir ferait avaler la moitie du fichier au premier « / ».
-    # Zero occurrence compte comme un NON, meme doctrine que les ancres
-    # perimees de banc_mutations.py : une verification qui ne mesure plus rien
-    # et se compte verte ment deux fois. Plusieurs occurrences valent refus
-    # aussi — on ne saurait plus quel motif la page applique. Le cas reste UN
-    # cas dans les deux branches : le total du banc ne bouge pas selon qu'on
-    # mesure ou non, sinon la disparition se lit comme un simple 93 au lieu
-    # de 94, que personne ne remarque.
-    releves = re.findall(r"const\s+RE_DEVIS\s*=\s*/(.+?)/([a-z]*)\s*;", PAGE)
-    motif = None
-    if len(releves) != 1:
-        dit(False, "la page releve le rendu, et lui seul : une phrase, pas deux",
-            f"RE_DEVIS introuvable dans web/index.html ({len(releves)} "
-            "declaration(s)) : ce banc NE MESURE PLUS le couplage page/serveur. "
-            "Reparer le releve, ou retirer le cas en meme temps que le couplage")
-    else:
-        motif = re.compile(releves[0][0], re.I if "i" in releves[0][1] else 0)
-        vus = [m for m in (motif.search(e["msg"])
-                           for e in S.TACHES[chef]["etapes"]) if m]
-        dit(len(vus) == 1 and vus[0].group(1) == "60" and vus[0].group(2) == "s",
-            "la page releve le rendu, et lui seul : une phrase, pas deux",
-            str([m.group(0) for m in vus]))
+    # LA PASTILLE LIT LE CHAMP, ET CE BANC RELEVE SON NOM DANS LA PAGE.
+    # Elle relisait la PHRASE du journal par expression reguliere — RE_DEVIS,
+    # « rendus precedents, compte 4 min », virgule decimale française comprise.
+    # Un texte ecrit pour l'oeil servait donc de contrat a du code : muet a la
+    # premiere reformulation, et FAUX de naissance, puisque la phrase arrondit
+    # (« 2 min » pour une mediane de 90 s, soit 120 s affichees, +33 %). Les
+    # deux cas qui mesuraient cet ecart etaient ecrits ici avec la consigne de
+    # partir avec le couplage « le jour ou la page lira le champ » : ce jour est
+    # le 2 septembre 2026, et ils sont partis.
+    #
+    # Ce qui reste est le couplage lui-meme, pris comme MARQUE_DEJA : la page
+    # NOMME le champ, ce banc releve ce nom et l'exige de la route. Aucun des
+    # deux cotes ne suffit seul — banc_page.py voit ce que la page fait de la
+    # reponse et ne peut pas appeler la route, celui-ci fait l'inverse.
+    #
+    # Zero declaration vaut NON, plusieurs aussi : on ne saurait plus laquelle
+    # la page applique. Le cas reste UN cas dans les deux branches, sinon la
+    # disparition du couplage se lirait comme un simple 112 au lieu de 113, que
+    # personne ne remarque.
+    marques = re.findall(r'const\s+MARQUE_DEVIS\s*=\s*"([^"]*)"\s*;', PAGE)
+    MARQUE = marques[0] if len(marques) == 1 and marques[0] else None
+    dit(MARQUE is not None,
+        "la page nomme le champ par lequel le studio chiffre le devis",
+        f"{len(marques)} declaration(s) de MARQUE_DEVIS dans web/index.html : "
+        "ce banc NE MESURE PLUS le couplage page/serveur"
+        if MARQUE is None else MARQUE)
 
-    # CE QUE LA PAGE DEVRAIT LIRE. Le champ existe, /api/etat le sert tel quel —
-    # la page, elle, relit encore la phrase française. On verifie donc que le
-    # champ est irreprochable AU BOUT DE LA ROUTE et pas seulement sur TACHES :
-    # un banc qui lit S.TACHES prouve que le serveur calcule, pas que la page
-    # peut l'atteindre, et c'est precisement la confusion qui a laisse « les
-    # reglages par conversation » morts pendant sept bancs verts.
+    # AU BOUT DE LA ROUTE et pas seulement sur TACHES : un banc qui lit S.TACHES
+    # prouve que le serveur calcule, pas que la page peut l'atteindre, et c'est
+    # precisement la confusion qui a laisse « les reglages par conversation »
+    # morts pendant sept bancs verts.
     st_, corps_ = lire(await S.api_etat(Req(match={"tid": chef})))
-    devis_route = (corps_ or {}).get("devis") or {}
-    dit(st_ == 200 and devis_route.get("secondes") == 60
+    devis_route = (corps_ or {}).get(MARQUE or "devis") or {}
+    dit(MARQUE is not None and st_ == 200 and devis_route.get("secondes") == 60
         and devis_route.get("mesures") == 3,
-        "/api/etat sert le devis en chiffres : c'est CE champ que la page a a lire",
+        "/api/etat sert le devis en chiffres, SOUS LE NOM QUE LA PAGE LIT",
         f"{st_} {devis_route}")
     dit(devis_route.get("rendus") == 3 and devis_route.get("total_s") == 180,
         "et le cout du groupe y est chiffre aussi : plus rien a deduire d'une "
         "phrase", str(devis_route))
+    # Le mot a mot : sans lui la pastille reconstruirait « 4 min » a partir de
+    # 240, et deux ecritures du meme chiffre finissent toujours par diverger —
+    # c'est exactement de la que venait l'ecart de 33 %.
     dit(devis_route.get("mot") == "60 s",
         "le champ porte meme le mot a mot de la phrase : la page n'a plus a le "
         "reconstruire", str(devis_route.get("mot")))
-
-    # ══ L'ECART ENTRE LA PHRASE ET LE CHAMP ═════════════════════════════
-    # LE DEFAUT QU'ON FERME, ET LE FILET QUI LE RATTRAPERA. Tant que la page
-    # relit la phrase, le chiffre qu'elle affiche n'est pas celui que le serveur
-    # a mesure — la phrase arrondissait en minutes des 90 s :
-    #
-    #     mediane =  90 s -> champ 90,  phrase « 2 min », la page lit 120  (+33 %)
-    #     mediane = 100 s -> champ 100, phrase « 2 min », la page lit 120  (+20 %)
-    #
-    # Le seuil des minutes est passe a cinq minutes (DEVIS_EN_SECONDES_JUSQUA) :
-    # sous ce seuil la phrase dit la seconde, donc l'ecart est nul, et au-dessus
-    # la demi-minute d'arrondi ne pese plus que 9,1 % au pire (330 s annoncees
-    # « 6 min »). Ce cas balaie une demi-heure de medianes, avec la PHRASE que le
-    # serveur ecrit vraiment et le RELEVE que la page applique vraiment : le jour
-    # ou l'un des deux rebouge, il rougit — et il rougira encore le jour ou la
-    # page lira le champ, puisque le cas sera devenu sans objet et qu'il faudra
-    # le retirer avec le couplage.
-    ECART_TOLERE = 0.10
-    if motif is None or not devis_route.get("mot"):
-        dit(False, "la phrase ne s'ecarte jamais du champ de plus de 10 %",
-            "RE_DEVIS ou le mot du devis manquent : l'ecart N'EST PLUS MESURE")
-    else:
-        gabarit = next((e["msg"] for e in S.TACHES[chef]["etapes"]
-                        if motif.search(e["msg"])
-                        and devis_route["mot"] in e["msg"]), "")
-        pires = []
-        for secondes in range(5, 1801, 5):
-            # La tournure reste celle du serveur, seul l'arrondi change : on
-            # eprouve le chiffre, pas la phrase — qui a deja son cas plus haut.
-            phrase = gabarit.replace(devis_route["mot"], S.mot_du_devis(secondes))
-            m = motif.search(phrase)
-            if not m:
-                pires.append((1.0, secondes, phrase))
-                continue
-            lu = (float(m.group(1).replace(",", "."))
-                  * (60 if m.group(2).lower() == "min" else 1))
-            pires.append((abs(lu - secondes) / secondes, secondes, phrase))
-        pire = max(pires) if gabarit else (1.0, 0, "phrase du devis introuvable")
-        dit(pire[0] <= ECART_TOLERE,
-            "la phrase ne s'ecarte jamais du champ de plus de 10 %",
-            f"pire ecart {pire[0] * 100:.1f} % a {pire[1]} s — « {pire[2]} »")
-        dit(all(e == 0.0 for e, s, _ in pires if s < S.DEVIS_EN_SECONDES_JUSQUA),
-            "et sous le seuil des minutes elle est EXACTE, pas approchee",
-            str(sorted({s for e, s, _ in pires
-                        if e and s < S.DEVIS_EN_SECONDES_JUSQUA})[:6]))
 
     # ET IL NE SURVIT PAS A CE QUI NE LE JUSTIFIE PLUS. La tache garde son
     # identifiant d'une relance a l'autre ; le champ, lui, restait ecrit. Une
@@ -736,6 +693,129 @@ async def main():
     dit(retiree.get("etat") == "erreur" and (retiree.get("variantes") or {}),
         "et la retiree garde son rang dans le groupe",
         str(retiree.get("variantes")))
+
+    # ══ 8 bis. « arret demande » est une MARQUE, pas un debut de phrase ══
+    # LE CONTRAT TENAIT SUR SEPT MOTS, ET IL TRAVERSAIT UNE SUBSTITUTION.
+    # Quand la carte est celle d'une machine a agent, le studio ne peut pas
+    # l'arreter : il le lui DEMANDE, et la confirmation revient une a deux
+    # secondes plus tard par api_noeud_resultat. Le sondage de la page s'arrete
+    # avant, si bien que la bulle resterait sur « arret demande » — une
+    # promesse. Elle relit donc une fois, huit secondes apres.
+    #
+    # Elle reconnaissait ce cas-la au TEXTE : « /^arret demande a /.test(
+    # t.erreur) », sur la phrase française ecrite dans api_file_annuler. Pire
+    # que le « deja refait » : « t.erreur » venait d'etre ECRASE six lignes plus
+    # haut par la derniere ligne du journal. Reformuler la phrase, ou seulement
+    # journaliser une ligne de plus apres elle, coupait la relecture en silence,
+    # et l'utilisateur relisait « arret demande » sur un rendu deja mort — ou,
+    # le 29 aout, « interrompue » pendant que le NAS calculait encore 179 s.
+    #
+    # ON RELEVE DONC LE NOM DU CHAMP DANS LA PAGE, et on l'exige de la route,
+    # AU BOUT DE /api/etat : c'est par la que la page le lit, et un banc qui
+    # lirait S.TACHES prouverait que le serveur calcule, pas que la page peut
+    # l'atteindre. banc_page.py tient l'autre moitie.
+    print("\n  ── interrompre : une promesse qui se nomme ──")
+    marques_a = re.findall(r'const\s+MARQUE_ARRET_DIFFERE\s*=\s*"([^"]*)"\s*;', PAGE)
+    DIFFERE = marques_a[0] if len(marques_a) == 1 and marques_a[0] else None
+    dit(DIFFERE is not None,
+        "la page nomme le champ par lequel un arret se declare differe",
+        f"{len(marques_a)} declaration(s) de MARQUE_ARRET_DIFFERE dans "
+        "web/index.html : ce banc NE MESURE PLUS le couplage page/serveur"
+        if DIFFERE is None else DIFFERE)
+
+    async def interrompre_en_vol(muette=False):
+        """Un vrai rendu sur « pc », interrompu en plein calcul.
+
+        Un vrai, et pas une tache posee a la main : c'est travailleur() qui
+        rattrape la CancelledError et decide si le dernier mot revient a la
+        machine ou a nous, et c'est precisement cette decision-la qu'on mesure.
+        Rend (tid, corps de /api/etat).
+        """
+        poser()
+        S.FILE_ATTENTE = asyncio.Queue()
+        S.ARRET = False
+        LENT.update({1: 5.0})          # le temps d'aller l'interrompre
+        await poster()
+        gens = [asyncio.create_task(S.travailleur())]
+        tid_ = None
+        try:
+            for _ in range(200):
+                await asyncio.sleep(0.01)
+                if S.EN_VOL:
+                    break
+            tid_ = next(iter(S.EN_VOL), None)
+            if tid_ is None:
+                return None, {}
+            if muette:
+                # La machine s'est tue entre le clic et l'annulation. Elle ne
+                # rappellera pas : c'est le cas ou la promesse doit etre LEVEE.
+                S.ETAT_NOEUDS["pc"]["repond"] = False
+            await S.api_file_annuler(Req(match={"tid": tid_}))
+            for _ in range(200):
+                await asyncio.sleep(0.01)
+                if tid_ not in S.EN_VOL:
+                    break
+        finally:
+            for g in gens:
+                g.cancel()
+            await asyncio.gather(*gens, return_exceptions=True)
+        return tid_, lire(await S.api_etat(Req(match={"tid": tid_})))[1]
+
+    tid_a, etat_a = await interrompre_en_vol()
+    # LE TEMOIN : un graphe REELLEMENT soumis. Sans lui, « la marque est posee »
+    # serait vrai d'une demande qui n'a jamais atteint la carte, et « elle ne
+    # l'est pas » serait vrai de rien du tout.
+    dit(bool(GRAPHES) and etat_a.get("etat") == "erreur",
+        "un rendu confie a une machine a agent s'interrompt bien",
+        f"{len(GRAPHES)} graphe(s) soumis, etat {etat_a.get('etat')}")
+    if DIFFERE is None:
+        dit(False, "et /api/etat dit que ce mot-la n'est encore qu'une promesse",
+            "MARQUE_ARRET_DIFFERE introuvable dans la page : le couplage n'est "
+            "plus mesure")
+    else:
+        dit(bool(etat_a.get(DIFFERE)) and "arret demande a" in mots(tid_a),
+            "et /api/etat dit que ce mot-la n'est encore qu'une promesse",
+            f"{etat_a.get(DIFFERE)} — {mots(tid_a)[-80:]}")
+
+    # ET ELLE EST LEVEE DES QUE LE MOT FINAL EST ECRIT. Une machine deja
+    # silencieuse ne rappellera jamais : travailleur() ecrit « interrompue »
+    # lui-meme, et la marque doit tomber avec. Sans cela le champ dirait
+    # « attends encore » a cote d'un mot definitif — un champ qui survit a ce
+    # qu'il annonce ment exactement comme la phrase qu'il remplace.
+    tid_b, etat_b = await interrompre_en_vol(muette=True)
+    if DIFFERE is None:
+        dit(False, "une machine deja muette : le mot final est ecrit, la marque "
+                   "levee", "MARQUE_ARRET_DIFFERE introuvable dans la page")
+    else:
+        dit(bool(GRAPHES) and mots(tid_b).endswith("interrompue")
+            and not etat_b.get(DIFFERE),
+            "une machine deja muette : le mot final est ecrit, la marque levee",
+            f"{etat_b.get(DIFFERE)} — {mots(tid_b)[-80:]}")
+
+    # ET UN ARRET QUI EST UN FAIT NE LA PORTE PAS. Sans machine a agent, le
+    # studio coupe la carte lui-meme et le mot est definitif tout de suite : la
+    # page n'a rien a relire. La tache est posee a la main ici, et c'est le seul
+    # endroit ou ce banc le fait — le parc n'a que des agents, par construction,
+    # et monter un ComfyUI joignable pour trois lignes reviendrait a mesurer
+    # autre chose. Le temoin est que la route a VRAIMENT coupe le travail :
+    # sans lui, « pas de marque » serait vrai d'un appel qui n'a rien fait.
+    poser()
+    S.FILE_ATTENTE = asyncio.Queue()
+    tid_c = "t" + os.urandom(4).hex()
+    S.TACHES[tid_c] = {"etapes": [], "etat": "en cours", "proprietaire": PID,
+                       "conversation": "c1", "demande": "un chat en costume"}
+    dormeur = asyncio.create_task(asyncio.sleep(9))
+    S.EN_VOL[tid_c] = dormeur
+    st_c, corps_c = lire(await S.api_file_annuler(Req(match={"tid": tid_c})))
+    await asyncio.gather(dormeur, return_exceptions=True)
+    S.EN_VOL.pop(tid_c, None)
+    etat_c = lire(await S.api_etat(Req(match={"tid": tid_c})))[1]
+    dit(st_c == 200 and corps_c.get("quoi") == "interrompue" and dormeur.cancelled()
+        and "demande interrompue" in mots(tid_c)
+        and not etat_c.get(DIFFERE or "arret_differe"),
+        "un arret qui est un FAIT ne porte pas la marque",
+        f"{st_c} {corps_c} — {mots(tid_c)} — "
+        f"{etat_c.get(DIFFERE or 'arret_differe')}")
 
     # ══ 9. la reprise ne relance pas un essaim ══════════════════════════
     print("\n  ── redemarrage ──")

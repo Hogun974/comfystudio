@@ -183,6 +183,38 @@ les DEUX manieres, et la seconde est neuve :
     rougit ailleurs. C'est exactement le reproche : verte parce que rien ne
     s'etait passe.
 
+LES SEPT DE LA ONZIEME RELECTURE, 2 septembre 2026 au soir, pour quatre
+corrections d'une seule famille : du texte ecrit pour etre LU servait de
+contrat a du code. Une phrase de journal relue par expression reguliere pour en
+tirer le devis, le libelle visible d'une <option> decoupe sur son tiret
+cadratin, le debut d'un message d'erreur teste pour declencher une relecture —
+sur un message que la page venait d'ecraser elle-meme —, et une exception
+Python renvoyee telle quelle a l'ecran. Le remede est celui de MARQUE_DEJA
+partout : le serveur pose un champ, la page lit le champ, et un banc releve le
+nom du champ DANS la page pour exiger les deux moities.
+
+Sept et non quatre parce que trois de ces corrections ont deux moities, et
+qu'une moitie jamais vue rougir ne mesure rien. Le sens inverse a ete pris
+comme pour les douze de banc_refaire : les deux fichiers remis dans leur etat
+d'avant, les bancs NEUFS lances dessus, et les sept lignes nommees y rougissent
+toutes. Le detail est ecrit au-dessus de PROSE.
+
+DEUX CAS DE banc_variantes.py SONT PARTIS AVEC LA CORRECTION, et c'est leur
+propre commentaire qui l'avait prevu : « il rougira encore le jour ou la page
+lira le champ, puisque le cas sera devenu sans objet et qu'il faudra le retirer
+avec le couplage ». Ils mesuraient l'ecart entre la phrase du journal et le
+champ — la phrase arrondit, le champ non. La page lit le champ : il n'y a plus
+d'ecart a mesurer, et le seuil de DEVIS_EN_SECONDES_JUSQUA n'a plus a le
+borner. Le banc passe de 115 a 118 : trois cas de plus pour l'arret differe,
+deux de moins pour l'ecart, et le releve de la phrase remplace par celui du
+champ.
+
+ET UNE MUTATION D'ICI EST PARTIE AVEC EUX : « la phrase du devis repasse aux
+minutes des 90 s » ne nommait plus rien, faute du cas qu'elle faisait rougir.
+La garder l'aurait rendue « MUTATION PERIMEE », c'est-a-dire un echec — une
+mutation qui ne mesure plus rien se retire en meme temps que sa garde, jamais
+apres. Le compte va de 99 a 105.
+
 CE QUE LE PARALLELISME DES LANCEMENTS COUTERAIT, mesure le 2 septembre et
 refuse. Les huit bancs sans sommeil pourraient tourner ensemble, et l'ordre des
 resultats se garderait sans peine — il suffit de collecter les verdicts dans
@@ -254,10 +286,11 @@ BESOINS = {
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
-    # banc_variantes.py relit web/index.html pour UNE chose : RE_DEVIS, le
-    # releve par lequel la page tire un chiffre de la phrase du journal. Sans
-    # cette page, le banc annonce lui-meme que l'ecart « N'EST PLUS MESURE » —
-    # et la mutation du seuil du devis rougirait pour la mauvaise raison.
+    # banc_variantes.py relit web/index.html pour DEUX noms de champ, depuis
+    # que le releve de la phrase du journal (RE_DEVIS) a laisse la place a la
+    # lecture d'un champ : MARQUE_DEVIS et MARQUE_ARRET_DIFFERE. Sans cette
+    # page, le banc annonce lui-meme que les couplages « NE SONT PLUS MESURES »
+    # — et les mutations qui les visent rougiraient pour la mauvaise raison.
     "banc_variantes.py": (["banc_variantes.py", "web/index.html"]
                           + fichiers_du_conteneur()[1:]),
     # banc_cout.py et banc_attente.py importent serveur.py comme les autres.
@@ -1075,16 +1108,20 @@ VARIANTES = [
         editions=[("serveur.py", brut(
             "    return min(aboutis)[1] if aboutis else None",
             "    return next((i for r, i in aboutis if r == 1), None)"))]),
-    dict(
-        nom="la phrase du devis repasse aux minutes des 90 s",
-        banc="banc_variantes.py",
-        imite="la page ne lit pas le champ, elle relit la phrase : a 90 s de "
-              "mediane le serveur ecrivait « 2 min » et la page affichait "
-              "120 s — 33,3 % d'ecart sur le seul chiffre que l'utilisateur "
-              "voie avant de lancer",
-        rougit="la phrase ne s'ecarte jamais du champ de plus de 10 %",
-        editions=[("serveur.py", brut("DEVIS_EN_SECONDES_JUSQUA = 300",
-                                      "DEVIS_EN_SECONDES_JUSQUA = 90"))]),
+    # « la phrase du devis repasse aux minutes des 90 s » ETAIT ICI, et elle
+    # est partie avec ce qu'elle mesurait, le 2 septembre 2026 au soir. Elle
+    # ramenait DEVIS_EN_SECONDES_JUSQUA a 90 pour faire rougir « la phrase ne
+    # s'ecarte jamais du champ de plus de 10 % » — un ecart qui n'existait que
+    # parce que la page relisait la PHRASE du journal pour en tirer le chiffre
+    # de sa pastille. Elle lit le champ (MARQUE_DEVIS) : la phrase peut
+    # arrondir comme elle veut, plus personne n'en tire de nombre, et le seuil
+    # ne decide plus que de la lisibilite d'une ligne de journal. Le cas qu'elle
+    # nommait a ete retire de banc_variantes.py comme son propre commentaire
+    # l'annonçait ; garder la mutation l'aurait rendue « MUTATION PERIMEE », ce
+    # qui est un echec et non un succes silencieux.
+    #
+    # Ce qui la remplace est dans PROSE, et vise le vrai contrat plutot que son
+    # symptome : « le champ du devis renomme d'un seul cote ».
     dict(
         nom="le devis d'un essai precedent survit a la relance",
         banc="banc_variantes.py",
@@ -2111,9 +2148,153 @@ MULTILINGUE = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  Les quatre contrats en PROSE du 2 septembre 2026 au soir
+# ──────────────────────────────────────────────────────────────────────
+# Quatre defauts d'une seule famille, celle que MARQUE_DEJA a ouverte le matin
+# meme : DU TEXTE ECRIT POUR ETRE LU PAR UN HUMAIN SERVAIT DE CONTRAT A DU
+# CODE. Une phrase de journal, un libelle de menu, un debut de message
+# d'erreur, une exception Python. Chacun se defait en reformulant quelque chose
+# qu'on a parfaitement le droit de reformuler, et aucun ne leve d'erreur.
+#
+# SEPT MUTATIONS POUR QUATRE CORRECTIONS : trois d'entre elles ont deux
+# moities, et une moitie qu'on n'a jamais vue rougir ne mesure rien. Le libelle
+# court a la sienne pour la lecture et une pour l'attribut ; le devis, une pour
+# la page qui relit la phrase et une pour le champ renomme d'un seul cote ;
+# l'arret differe, une par fichier.
+#
+# LE SENS INVERSE a ete pris comme pour les douze de banc_refaire.py : ces cas
+# sont NES avec la correction, il n'existe pas de filet d'avant a leur opposer.
+# serveur.py et web/index.html ont donc ete REMIS DANS LEUR ETAT D'AVANT — les
+# editions de la correction defaites une a une dans un dossier temporaire, sans
+# jamais toucher au depot — et les bancs NEUFS lances dessus :
+#
+#     banc_page.py         15/23, 8 rouges
+#     banc_variantes.py   113/118, 5 rouges
+#     banc_refaire.py      83/85, 2 rouges
+#
+# Les sept lignes que ces mutations nomment y sont toutes, une par une. C'est
+# mieux qu'une diagonale : chacune a ete vue rougir sur le VRAI defaut, pas
+# seulement sur son imitation.
+#
+# ET L'ISOLEMENT, releve mutation par mutation. Aucune ne rougit ailleurs que
+# sur son propre contrat : quatre n'allument qu'une ligne, et les trois autres
+# n'allument que l'autre moitie du meme contrat — « la page reteste le TEXTE »
+# allume aussi la condition du « if », « la page relit le devis » allume aussi
+# la regle generale des expressions regulieres, « le champ renomme » allume les
+# trois cas qui lisent ce champ-la au bout de la route. Aucune ne touche a un
+# cas d'un autre sujet.
+PROSE = [
+    dict(
+        nom="la page reteste le TEXTE de l'arret demande",
+        banc="banc_page.py",
+        imite="« /^arret demande a /.test(t.erreur) » sur un « t.erreur » que "
+              "la page vient d'ecraser six lignes plus haut : le contrat "
+              "traverse deux fichiers ET une substitution, et une ligne de "
+              "journal de plus coupe la relecture differee en silence",
+        rougit="aucune expression reguliere ne s'applique a un texte ecrit pour etre lu",
+        editions=[
+            ("web/index.html", brut(
+                'if (t.etat === "erreur" && t[MARQUE_ARRET_DIFFERE])',
+                'if (t.etat === "erreur" && /^arret demande a /.test(t.erreur || ""))')),
+        ]),
+    dict(
+        nom="le serveur ne pose plus la marque de l'arret differe",
+        banc="banc_variantes.py",
+        imite="la page ne peut plus savoir qu'un « arret demande » est une "
+              "PROMESSE : elle ne relit pas huit secondes plus tard, et la "
+              "bulle reste sur la promesse pendant que la carte s'arrete",
+        rougit="et /api/etat dit que ce mot-la n'est encore qu'une promesse",
+        editions=[
+            ("serveur.py", brut(
+                """ — sa carte s'arrete des qu'elle nous rappelle",
+                    arret_differe=True)""",
+                """ — sa carte s'arrete des qu'elle nous rappelle")""")),
+        ]),
+    dict(
+        nom="la pastille redecoupe le libelle visible d'une option",
+        banc="banc_page.py",
+        imite="« o.textContent.split(\" — \")[0] » : le tiret cadratin d'un "
+              "texte d'interface redevient un contrat de code, et reformuler "
+              "« rapide — moins d'étapes » fait afficher la phrase entiere "
+              "dans la pastille, sans un mot",
+        rougit="et aucun libelle visible n'est recoupe sur le tiret cadratin",
+        editions=[
+            ("web/index.html", brut(
+                '  return (o && (o.dataset.court || o.textContent)) || "";',
+                '  return (o && o.textContent.split(" — ")[0]) || "";')),
+        ]),
+    dict(
+        nom="une option perd son libelle court",
+        banc="banc_page.py",
+        imite="l'autre moitie du meme contrat : le lecteur est bon, mais "
+              "l'option n'a rien a lui donner. La pastille retombe sur le "
+              "libelle entier — « taille 1024 × 1024 — carré » — et le repli "
+              "de courtDe() rend la panne parfaitement muette",
+        rougit="chaque option d'un menu de reglage porte son libelle court",
+        editions=[
+            ("web/index.html", brut(
+                '<option value="1024x1024" data-court="1024 × 1024">',
+                '<option value="1024x1024">')),
+        ]),
+    dict(
+        nom="la page relit le devis dans la phrase du journal",
+        banc="banc_page.py",
+        imite="RE_DEVIS restaure : le chiffre de la pastille est tire d'une "
+              "phrase française par expression reguliere, virgule decimale "
+              "comprise. Muet a la premiere reformulation, et faux de "
+              "naissance — la phrase arrondit, « 2 min » pour 90 s mesurees",
+        rougit="et le devis affiche vient de ce champ, jamais du journal",
+        editions=[
+            ("web/index.html", brut(
+                """function lireDevis(t) {
+  const d = (t || {})[MARQUE_DEVIS];
+  return d && d.secondes && d.mot ? d : null;
+}""",
+                """function lireDevis(etapes) {
+  for (let i = (etapes || []).length - 1; i >= 0; i--) {
+    const m = RE_DEVIS.exec(etapes[i].msg || "");
+    if (!m) continue;
+    const combien = parseFloat(m[1].replace(",", "."));
+    return { secondes: combien * (m[2] === "min" ? 60 : 1),
+             mot: `${m[1]} ${m[2]}`, mesures: "" };
+  }
+  return null;
+}""")),
+            ("web/index.html", brut("const devis = lireDevis(t);",
+                                    "const devis = lireDevis(t.etapes);")),
+        ]),
+    dict(
+        nom="le champ du devis renomme d'un seul cote",
+        banc="banc_variantes.py",
+        imite="la page lit « estimation », la route sert « devis » : la "
+              "pastille disparait pour toujours, et rien dans la page ne "
+              "paraît faux — c'est le mensonge de MARQUE_DEJA pris par "
+              "l'autre bout, celui du champ qui ne repond a personne",
+        rougit="/api/etat sert le devis en chiffres, SOUS LE NOM QUE LA PAGE LIT",
+        editions=[
+            ("web/index.html", brut('const MARQUE_DEVIS = "devis";',
+                                    'const MARQUE_DEVIS = "estimation";')),
+        ]),
+    dict(
+        nom="l'exception Python de /api/reprendre repart a l'ecran",
+        banc="banc_refaire.py",
+        imite="« str(e) » sur un « except Exception » nu, sur une route dont "
+              "la page affiche l'erreur telle quelle : « [Errno 13] Permission "
+              "denied: '/comfy/input/…' » dans le bandeau d'alerte. Le meme "
+              "« ERREUR : 'sdxl_vieux' » que les deux autres boutons ont ferme",
+        rougit="et il le DIT, au lieu de « [Errno 13] Permission denied: … »",
+        editions=[
+            ("serveur.py", motif(
+                r"        journal\(None, f\"reprise impossible.*?status=502\)\n",
+                """        return web.json_response({"erreur": str(e)}, status=502)\n""")),
+        ]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
-             + MULTILINGUE)
+             + MULTILINGUE + PROSE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
