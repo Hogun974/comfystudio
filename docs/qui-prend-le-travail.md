@@ -101,11 +101,22 @@ studio ne le devine pas, il l'apprend :
 - **Sans mesure, on reste sur la carte qui tient.** C'est la réponse la plus
   fréquente au début, et c'est voulu.
 - **Dès que la durée typique de ce moteur est connue sur les deux cartes**, on
-  descend d'un cran tant que le débordement ne coûte pas plus de la moitié de
-  temps en plus (`SURCOUT_DEBORDEMENT` dans `serveur.py`).
+  descend tant que le débordement ne coûte pas plus de la moitié de temps en
+  plus (`SURCOUT_DEBORDEMENT` dans `serveur.py`).
+- **Et l'on descend au plus bas, pas d'un cran.** Les cartes qui débordent sont
+  triées par mémoire **croissante**, et c'est la **première** qui passe le seuil
+  qui est prise : la plus petite acceptable, et non la voisine du dessous de la
+  carte qui tient. Même raison que le seuil lui-même — ce qu'on achète en
+  débordant, c'est de la carte laissée libre, et s'arrêter au premier cran quand
+  deux passent le seuil en achète moins.
 
 Le seuil est un **choix, pas une mesure**, et c'est écrit à côté de lui :
 au-delà, on paie deux fois — le rendu est lent **et** la grosse carte dormait.
+
+Il ne se cumule pas non plus d'une marche à l'autre : chaque candidate est
+comparée à la carte **qui tient**, jamais à sa voisine du dessus. Il n'y a donc
+pas d'escalier où l'on perdrait une fois et demie à chaque cran — deux crans
+plus bas restent bornés à une fois et demie la carte qui tient.
 
 « Connue » veut dire **trois rendus comparables au moins**, par la même prudence
 que le devis : un chiffre tiré d'un seul rendu ne vaut rien. La comparaison lit
@@ -126,10 +137,31 @@ comptent autant l'une que l'autre.
   même pas encore lue.
 - **« Jamais en plein rendu »** — rien n'interrompt le travail qui tient la
   carte. La priorité ne joue qu'entre ceux qui **attendent**.
+- **Une carte rendue deux fois n'est pas donnée à deux.** Le passage de relais
+  ne repasse jamais par « libre » : la carte va d'un porteur au suivant sans
+  fenêtre où un nouveau venu pourrait s'y glisser, si bien que « la carte
+  est-elle tenue ? » ne suffit plus à distinguer le second relâchement de A du
+  premier de B. Un drapeau dédié les sépare. Un relâchement en trop est
+  **ignoré** — la carte reste à son porteur — et nomme son site d'appel dans le
+  journal, sans lever : les trois sites la rendent depuis un `finally`, où lever
+  remplacerait *« le modèle de vision n'a pas répondu »* par *« verrou non
+  tenu »* au moment précis où le diagnostic compte.
 
-Aucune famine n'est possible ici : les analyses d'une demande sont en nombre
-borné — trois — et chacune se termine. Ce n'est pas vrai d'une file à priorités
-en général ; c'est vrai dans ce cas-là, et c'est ce qui la rend tenable.
+**La famine était possible**, et l'argument qui figurait ici — *« les analyses
+d'une demande sont en nombre borné, donc la file des rendus finit par passer »* —
+ne tenait pas : il borne **une** demande, pas le flux. Il y a huit sites d'appel
+au modèle de langage, une chanson en fait cinq ou six, et chaque adresse Ollama
+essayée reprend le verrou. Mesure d'une relecture adverse : trois travailleurs
+qui enchaînent leurs analyses, et le rendu est servi **61ᵉ sur 61**.
+
+D'où le **vieillissement** : passé `ATTENTE_MAX_RENDU` — deux minutes — le rendu
+le plus ancien cesse d'être doublé. Il prend **un tour, pas la main**, et cette
+nuance est tout le correctif : le renversement s'entretenait sinon lui-même,
+puisque la nouvelle tête de la file des rendus a elle aussi attendu longtemps.
+Toute la file des rendus passait alors avant toute celle des analyses — trois
+rendus de quatre minutes, et le message qu'on venait de taper attendait douze
+minutes avant d'être seulement lu, le symptôme exact que ce verrou existe pour
+empêcher. Avec l'alternance : quatre minutes, un rendu.
 
 Quand il n'y a plus d'autre machine, une analyse attend la carte occupée pendant
 `STUDIO_ATTENTE_CARTE` — trente minutes par défaut, voir
@@ -144,13 +176,19 @@ La plus grosse se choisit **avant** le filtre de charge. La prendre parmi les
 moins chargées seulement, c'est retomber sur la petite dès qu'un rendu vise la
 grosse — exactement ce que le geste cherche à éviter.
 
+**Et la visée survit aux reprises.** Une machine qui lâche, ou un tour de
+patience quand plus aucune ne répond, faisaient repartir le travail par le choix
+ordinaire : le bouton promettait la grosse carte, le journal venait de
+l'annoncer, et le rendu finissait sur la petite. La reprise vise donc la même
+chose que le premier choix.
+
 Le détail du bouton — ce qu'il reprend, ce qu'il ne reprend pas, et pourquoi il
 est séparé du pouce — est dans [Pouce en l'air, pouce en bas](avis.md).
 
 ## Ce que les bancs vérifient
 
-`banc_repartition.py` (**27** vérifications) et `banc_cerveaux.py` (**39**)
-tiennent cette page : relevé le **1er septembre 2026**, sans carte, sans ComfyUI
+`banc_repartition.py` (**48** vérifications) et `banc_cerveaux.py` (**39**)
+tiennent cette page : relevé le **2 septembre 2026**, sans carte, sans ComfyUI
 et sans réseau — le parc y est posé en mémoire. Les bancs grossissent ;
 lance-les plutôt que de recopier ces nombres.
 

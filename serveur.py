@@ -7738,6 +7738,21 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         # Les paroles ne sont ni le prompt ni la description : sans elles, un
         # pouce en bas sur une chanson ne dirait pas ce qui a deplu.
         "paroles": (plan or {}).get("paroles"),
+        # ET LES DEUX CHAMPS QUI DISENT COMMENT LES CHANTER. Meme raison que le
+        # negatif et le classement juste au-dessus : « refaire » reconstruit un
+        # plan depuis ce tour et n'a nulle part ailleurs ou les lire, si bien
+        # qu'ils retombaient sur les defauts de g_audio — « en » et « C minor ».
+        # Une chanson francaise refaite repartait donc en annoncant l'anglais a
+        # ACE-Step, avec les paroles francaises que ce meme correctif venait de
+        # sauver, et dans une autre tonalite : trois raisons d'entendre autre
+        # chose que ce qu'on demandait de refaire.
+        #
+        # Deux champs courts de plus, sur le meme arbitrage que les precedents :
+        # ecrire le plan ENTIER sur chaque tour reglerait la famille d'un coup,
+        # mais grossirait chaque conversation pour un usage que personne n'en a
+        # — c'est une question ouverte, pas une conclusion.
+        "langue": (plan or {}).get("langue"),
+        "tonalite": (plan or {}).get("tonalite"),
         "questions": TACHES.get(tid, {}).get("questions"),
         "avis": 0, "note": "",
     }
@@ -7802,7 +7817,48 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
     #
     # Ici et non dans executer : c'est ici qu'on sait qu'un tour a echoue, et la
     # page se remet d'aplomb toute seule en relisant la conversation.
-    if etat == "erreur":
+    #
+    # TOUS LES CHEMINS D'ANNULATION ECRIVENT BIEN « erreur » — traces un par un,
+    # et c'est la reponse a la question laissee ouverte :
+    #   - retiree de la file (DELETE /api/file/{tid}, demande en attente ou
+    #     armee) : api_file_annuler appelle enregistrer_tour(« erreur »,
+    #     « retiree de la file ») ;
+    #   - interrompue en plein vol (meme route) : tache.cancel(), et le
+    #     « except CancelledError » de travailleur() ecrit « erreur »,
+    #     « interrompue » ;
+    #   - machine armee qui ne revient pas, delai raccourci dans /admin,
+    #     conversation purgee pendant l'attente : expirer_armees et armer
+    #     passent par echouer(), qui ecrit « erreur » ;
+    #   - patience epuisee, moteur disparu, panne non rattrapee : le
+    #     « except Exception » d'executer, « erreur » aussi.
+    # Une machine qui lache SANS que la demande meure ne passe pas par ici du
+    # tout : soumettre_robuste reprend sur une autre carte sans rien ecrire, et
+    # la marque doit justement rester — c'est le meme travail qui continue.
+    #
+    # ET L'UTILISATEUR QUI ANNULE LUI-MEME RETROUVE SON BOUTON. C'est le meme
+    # raisonnement qu'au-dessus, pas une tolerance : le 409 est la pour empecher
+    # DEUX rendus sur la grosse carte, pas pour punir. Une annulation ne laisse
+    # aucune image ; refuser le geste ensuite, c'est retirer pour toujours la
+    # reparation d'un rendu rate a cause d'un clic sur « retirer ». La
+    # difference avec au_propre tient toujours : la, le premier essai a REUSSI.
+    #
+    # MAIS PAS QUAND LA DEMANDE VA REPARTIR TOUTE SEULE. L'arret du studio et
+    # l'annulation d'utilisateur passent par la MEME CancelledError, et
+    # travailleur() les separe deja par ce test exact : annulee, la demande est
+    # finie ; coupee par l'arret, elle reste dans _file.json et reprendre_file()
+    # la relance au reveil. Or reprendre_file ne remet « en cours » que SON
+    # tour, jamais la marque du tour d'origine — rendre le bouton ici, c'etait
+    # le rendre au moment precis ou le refait repart tout seul, donc offrir d'un
+    # clic les DEUX rendus sur la grosse carte que le 409 existe pour empecher,
+    # sans que rien ne le dise.
+    #
+    # Reste une fenetre qu'on ne ferme pas : un rendu qui echoue vraiment
+    # pendant les quelques secondes de l'arret garde sa marque et perd son
+    # bouton. C'est la mauvaise moitie du choix, mais c'est celle d'au_propre —
+    # un bouton disparu plutot qu'un second rendu — et la savoir n'est pas la
+    # meme chose que la subir en silence.
+    reprise_au_reveil = ARRET and not (TACHES.get(tid) or {}).get("annulee")
+    if etat == "erreur" and not reprise_au_reveil:
         for t in conv["tours"]:
             if t.get("refait") == tid:
                 t.pop("refait", None)
@@ -9408,6 +9464,31 @@ async def api_au_propre(req):
     if tour.get("etat") != "fini":
         return web.json_response(
             {"erreur": "l'esquisse n'est pas terminee"}, status=409)
+    # UNE ESQUISSE RENDUE AU LOIN N'A PAS DE VERSION SOIGNEE, et c'est le
+    # premier controle : la vraie raison du refus prime sur celle du catalogue
+    # juste en dessous, qui parlerait du repli local sans jamais nommer le
+    # fournisseur. Le bouton promet « le meme prompt, le meme moteur et la meme
+    # taille, avec toutes les etapes » : ses deux leviers sont la GRAINE et le
+    # NOMBRE D'ETAPES, et un fournisseur n'a ni l'une ni l'autre. Il rendrait
+    # une image sans rapport, facturee une seconde fois, sous un libelle qui
+    # promet le contraire.
+    #
+    # « modele » DU TOUR et non du plan : sur le chemin distant, plan["modele"]
+    # porte le repli LOCAL — c'est « cle », l'argument d'enregistrer_tour, qui
+    # recoit le nom du fournisseur. Le controle du catalogue ci-dessous lit donc
+    # le repli, et sa branche MOTEURS_DISTANTS ne mord jamais.
+    #
+    # 400 et non 409 : la page traduit tout 409 de cette route par « deja refait
+    # en soigne » (barreAuPropre, web/index.html), ce qui serait un mensonge.
+    # Un 400 affiche la phrase.
+    rendu_par = tour.get("modele")
+    if rendu_par in MOTEURS_DISTANTS:
+        return web.json_response(
+            {"erreur": f"cette esquisse a ete rendue par "
+                       f"{MOTEURS_DISTANTS[rendu_par]['titre']} : « en soigne » "
+                       f"n'y veut rien dire, il n'a ni graine ni etapes a "
+                       f"reprendre. Relance la demande pour repartir chez lui."},
+            status=400)
     # LE MEME CONTROLE QU'AU-DESSOUS DANS api_refaire, et pour la meme raison :
     # ce plan a ete ecrit avant, le catalogue a pu changer depuis, et sans cette
     # garde le KeyError remonte jusqu'au « except Exception » d'executer —
@@ -9425,6 +9506,23 @@ async def api_au_propre(req):
     plan["priorite"] = ""
     plan = appliquer_parametres(plan)
     plan["graine"] = tour.get("graine")
+    # ET CE GESTE-CI NON PLUS NE PART PAS AU LOIN, pour la meme raison que dans
+    # api_refaire mais pas par le meme defaut : ici le plan est complet, il
+    # porte son « classement », et adulte() fait donc son travail — il n'y a
+    # AUCUN trou de surete a refermer.
+    #
+    # Ce qu'on ferme est un trou de COMPARABILITE, et c'est toute la raison
+    # d'etre du bouton. Sans cette marque, executer rappelle choix_distant() sur
+    # le plan rejoue : il relit le tiroir « nuage » TEL QU'IL EST AU CLIC, qui
+    # n'est pas celui du jour de l'esquisse. Une esquisse rendue ici sur klein4b
+    # puis « refaite en soigne » trois jours plus tard, apres qu'on a bascule le
+    # tiroir sur Nano Banana, repartait chez le fournisseur : autre moteur,
+    # graine ignoree, etapes ignorees — les trois promesses de l'infobulle
+    # rompues d'un coup, en silence, et une ligne de facture en prime.
+    #
+    # Le moteur vient de l'esquisse, pas de l'aiguillage : il n'y a rien a
+    # re-router, et le tiroir n'a pas a trancher a la place du geste.
+    plan["modele_impose"] = True
     texte = tour.get("demande") or ""
     tid = uuid.uuid4().hex
     devant = len(ATTENTE) + len(EN_VOL)
@@ -9517,14 +9615,25 @@ async def api_refaire(req):
         #   « negatif » — il retombait sur NEG_DEFAUT ;
         #   « raison » — le journal affichait « FLUX.2 klein 9B — », tiret nu.
         #
+        # ET DEUX DE PLUS, DE LA MEME FAMILLE : « langue » et « tonalite ». Les
+        # paroles etaient sauvees, mais rien ne disait plus dans quelle langue
+        # les chanter — g_audio retombe sur « en » et « C minor ». Une chanson
+        # francaise refaite repartait donc en annoncant l'anglais a ACE-Step,
+        # avec ses paroles francaises, et dans une autre tonalite. Ils ne
+        # servent qu'a l'audio ; ailleurs le tour ne les porte pas et la boucle
+        # ci-dessous ne les pose pas.
+        #
         # Les cles absentes du tour ne sont PAS posees a None : plan.get(cle,
         # defaut) rend None quand la cle existe, et « classement » None ne vaut
         # pas « safe » — CLASSEMENT_PONY.get(None) retire la balise de score au
-        # lieu de mettre rating_safe.
+        # lieu de mettre rating_safe. Meme piege exactement pour « langue » :
+        # plan.get("langue") or "en" s'en sort, mais rien ne garantit que le
+        # prochain lecteur ecrira « or » plutot que « , defaut ».
         plan = {"prompt": tour["prompt"], "modele": tour.get("modele"),
                 "intention": tour.get("type") or "image",
                 "parametres": dict(tour.get("parametres") or {})}
-        for garde in ("negatif", "paroles", "classement", "raison"):
+        for garde in ("negatif", "paroles", "classement", "raison",
+                      "langue", "tonalite"):
             if tour.get(garde) is not None:
                 plan[garde] = tour[garde]
         taille_ = (tour.get("taille") or "").split("x")

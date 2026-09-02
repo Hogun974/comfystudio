@@ -64,9 +64,14 @@ carte, aucune tolérance** : la tolérance dit de combien on peut dépasser la
 carte, il faut donc une carte.
 
 Une machine où le moteur tient **vraiment** passe devant ; le débordement est un
-recours, et il est annoncé dans le journal. Le studio ne descend d'un cran que
-s'il a **mesuré** que ce débordement-là coûte peu — voir [Qui prend le
-travail](qui-prend-le-travail.md).
+recours, et il est annoncé dans le journal. Le studio ne descend sur une carte
+qui déborde que s'il a **mesuré** que ce débordement-là coûte peu. Et quand il
+descend, il descend **au plus bas** : les cartes qui débordent sont triées par
+mémoire croissante et c'est la **première** qui passe le seuil qui est prise, la
+plus petite donc, et non la voisine du dessous de celle qui tient. Ce qu'on
+achète en débordant, c'est de la carte laissée libre pour le rendu suivant :
+s'arrêter au premier cran quand deux passent le seuil en achète moins. Voir [Qui
+prend le travail](qui-prend-le-travail.md).
 
 Sans cette règle, le studio refusait d'employer des modèles que l'installeur
 avait justement téléchargés pour cette machine : trente-deux gigaoctets dormant
@@ -122,6 +127,14 @@ embarque `sm_50` à `sm_90`.
 Le studio distingue ce cas d'une simple panne : une machine incapable est
 écartée **définitivement** pour ce travail et la demande repart ailleurs, au
 lieu d'attendre trente minutes une machine qui ne pourra jamais.
+
+**Et elle repart par la même règle que le premier choix**, machines tombées
+exclues — pas par une copie de cette règle. La reprise avait longtemps la
+sienne, et elle avait divergé trois fois : elle filtrait la charge avant de
+regarder si le moteur tenait vraiment, elle ignorait le seuil de débordement, et
+un rendu lancé sur la plus grosse carte retombait sur la plus petite dès qu'il
+devait être repris. Une règle écrite deux fois est une règle qu'on corrige une
+fois sur deux.
 
 ## Déclarer les machines
 
