@@ -1808,7 +1808,19 @@ function peindreGrille() {
        indiscernables — le fil les montre l'une sous l'autre, la grille cote a
        cote. Un banc etait vert sur un contrat que la grille n'empruntait pas :
        c'est le defaut que ce projet passe ses journees a fermer. */
-    if (f.tour && f.groupe && f.variantes > 1 && !f.choisie && !vignette) {
+    // « !vignette » EXCLUAIT TOUS LES BROUILLONS. La vignette est vraie des
+    // qu'une marque est posee ; « choisie » est deja exclu par la ligne, donc
+    // la seule marque restante est « brouillon » — et une variante rendue en
+    // brouillon n'obtenait jamais son bouton. C'est le cas EXACT que sa propre
+    // recette lance (« priorite: brouillon, variantes: 2 »), et la recette
+    // etait verte parce qu'elle n'ouvre jamais la page : elle poste sur
+    // /api/variante directement. Le motif que ce commit denonçait, reproduit
+    // dans le correctif lui-meme.
+    //
+    // Ce qu'il fallait exclure, ce n'est pas « une marque est posee », c'est
+    // « ce media ne porte pas de legende » — le son et l'objet 3D, ou le cadre
+    // n'existe pas.
+    if (f.tour && f.groupe && f.variantes > 1 && !f.choisie) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "repartir";
       b.textContent = "repartir de celle-ci";
@@ -1825,10 +1837,21 @@ function peindreGrille() {
             body: JSON.stringify({ conversation: f.conversation, tour: f.tour }) });
           const rep = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(rep.erreur || "le serveur a refusé");
-          // Toutes les soeurs changent d'un clic : celle qui portait la marque
-          // la perd. Repeindre la grille est la seule facon de le montrer sans
-          // tenir un etat de plus dans la page.
+          // RELIRE AVANT DE REPEINDRE. peindreGrille() ne lit que le cache
+          // « mediaCharge », qui n'etait invalide que par le bouton de la
+          // mediatheque : la grille se reconstruisait a l'identique, l'ancienne
+          // marque restait, et le bouton qu'on venait de desactiver revenait
+          // neuf. L'utilisateur voyait l'etat d'avant son clic et recliquait.
+          //
+          // La position de defilement se garde a la main : g.innerHTML = ""
+          // remet la grille en haut, et c'est desagreable au milieu de deux
+          // cents vignettes qu'on est justement en train de comparer.
+          const g_ = document.querySelector("#grilleMedia");
+          const haut = g_ ? g_.scrollTop : 0;
+          mediaCharge = await (await fetch("/api/mediatheque",
+                                           { credentials: "same-origin" })).json();
           peindreGrille();
+          if (g_) g_.scrollTop = haut;
         } catch (err) {
           b.disabled = false;
           // Sur la legende elle-meme : la barre d'alerte est en haut de la

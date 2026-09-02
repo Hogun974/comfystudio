@@ -6642,7 +6642,8 @@ async def deplacer_entrees(g, ancien, nouveau, tid=None):
     return g
 
 
-async def soumettre_robuste(g, tid, ident, cle, patience=1800, viser="petite"):
+async def soumettre_robuste(g, tid, ident, cle, patience=1800,
+                            viser="petite", taille=None):
     """Soumet, et reprend sur panne : ailleurs, ou ici des que possible.
 
     « patience » borne l'acharnement. Passe ce delai sans aucune machine, on
@@ -6654,12 +6655,13 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800, viser="petite"):
     # elle, la reprise trancherait un debordement sur des medianes qui ne
     # portent pas sur la meme resolution — le repli exact que
     # debordement_acceptable interdit, et pour lequel « exact » existe. Elle est
-    # deja la : la ligne « generation 1216x832… » la pose sur la tache, juste
-    # avant cet appel. Un argument de plus aurait casse les faux des bancs, qui
-    # copient cette signature.
-    _t = TACHES.get(tid) or {}
-    taille = (f"{_t['largeur']}x{_t['hauteur']}"
-              if _t.get("largeur") and _t.get("hauteur") else None)
+    # LA TAILLE VIENT DU PLAN, comme au premier choix. La lire sur la TACHE
+    # paraissait economique — la ligne « generation 1216x832… » l'y pose — mais
+    # cette ligne n'existe que pour l'intention IMAGE. Une video repartait donc
+    # avec taille=None : duree_typique cherchait une clef qui n'existe pas, et
+    # la reprise REFUSAIT systematiquement un debordement que le premier choix
+    # venait d'autoriser. Deux chemins, deux reponses — la divergence meme que
+    # « exclus » avait ete ajoute pour supprimer, revenue par l'argument.
     debut = time.time()
     ecartes = set()
     incapables = set()          # ecartees pour de bon : elles ne peuvent pas
@@ -6780,7 +6782,12 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800, viser="petite"):
         # carte » qui doit patienter une fois retombait sinon sur la plus
         # petite — le contraire exact de ce que le bouton promet et de ce que
         # le journal vient d'annoncer.
-        choisi = choisir_noeud(cle, viser=viser, taille=taille)
+        # « exclus » ICI AUSSI, sans quoi le code disait l'inverse du
+        # commentaire deux lignes plus haut : une machine INCAPABLE etait
+        # rechoisie a chaque cycle de trente secondes, levait MachineIncapable,
+        # ecrivait « ecartee, on cherche ailleurs », et l'on recommencait. Un
+        # aller-retour perdu et une ligne trompeuse par tour de boucle.
+        choisi = choisir_noeud(cle, viser=viser, taille=taille, exclus=ecartes)
         ident = choisi["id"] if choisi else ident
 
 
@@ -9093,15 +9100,17 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                         prefixe_sortie(conv, intention, horod, cle), plan.get("classement", "safe"), par)
             journal(tid, f"generation {w}x{h}…", largeur=w, hauteur=h)
 
-        # LE RENDU COMMENCE ICI, et c'est un autre instant que « debut ». Le
-        # devis est une mediane de tour["secondes"], c'est-a-dire du RENDU seul ;
-        # le comparer au temps ecoule depuis l'ENVOI faisait passer la pastille
-        # au rouge des la premiere image de la barre pour une demande qui avait
-        # attendu quatre minutes dans la file. Pire pour une demande armee onze
-        # heures : elle se reveillait avec « 39 600 s » et le devis rouge.
-        TACHES.setdefault(tid, {})["debut_rendu"] = time.time()
+        # PAS DE « debut_rendu » ICI. Il y etait, et il comptait toute
+        # l'attente de la carte : sur un parc a une seule carte, la demande
+        # sortait de la file, posait son chrono, puis patientait quatre minutes
+        # derriere un rendu — la pastille passait au rouge AVANT la premiere
+        # etape, puis le compteur retombait a zero a la prise de la carte, sous
+        # les yeux. C'est soumettre_robuste qui le pose, carte EN MAIN, et a
+        # chaque reprise sur une autre machine.
         sorties, secondes = await soumettre_robuste(
-            g, tid, ident, cle, viser="grosse" if _en_grand else "petite")
+            g, tid, ident, cle, viser="grosse" if _en_grand else "petite",
+            taille=f"{plan.get('largeur')}x{plan.get('hauteur')}"
+            if plan.get("largeur") and plan.get("hauteur") else None)
         TACHES[tid]["fichiers"] = sorties
         if sorties and intention in ("video", "video_image", "fluidifier"):
             # Les videos ont leur propre memoire : « agrandis-la » doit viser la
@@ -9703,7 +9712,12 @@ async def api_refaire(req):
     # Le repli de taille, une fois le texte en main : caler_taille() commence par
     # y chercher une taille ecrite noir sur blanc (« en 1920x1080 »), ce qui est
     # exactement ce que la demande d'origine a fait.
-    if sans_taille and plan.get("intention") == "image":
+    # LA PLANCHE AUSSI. Elle ne leve pas de KeyError — cadrer() absorbe un None
+    # — mais elle rend une AUTRE taille : 960x1344 a l'origine, 832x1152
+    # refaite, parce que cadrer(None, ...) retombe sur sa borne basse. Un bouton
+    # qui promet « meme taille » ne peut pas changer le format en silence, et la
+    # garde du journal plus bas ne se declenchait meme pas.
+    if sans_taille and plan.get("intention") in ("image", "planche"):
         plan = caler_taille(plan, texte)
     # L'IMAGE DU TOUR, pas l'image courante de la conversation : « agrandis-la »
     # refait devait agrandir la MEME image, pas celle qu'on a produite depuis.
@@ -9720,10 +9734,16 @@ async def api_refaire(req):
     # quand le tour ne la portait pas, on rejoue le calcul du studio et cela
     # peut donner autre chose. Un ecart annonce se lit ; un ecart muet fait
     # douter du reste.
-    if sans_taille and plan.get("largeur"):
-        journal(tid, f"la taille de ce tour n'avait pas ete conservee — on "
-                     f"reprend celle que la demande donnerait aujourd'hui "
-                     f"({plan['largeur']}x{plan['hauteur']})")
+    # ANNONCE MEME QUAND ON N'A PAS SU. « plan.get("largeur") » taisait
+    # justement le cas ou le repli n'avait rien pu reprendre — celui ou l'ecart
+    # est le plus grand.
+    if sans_taille:
+        journal(tid, "la taille de ce tour n'avait pas ete conservee — on "
+                     + (f"reprend celle que la demande donnerait aujourd'hui "
+                        f"({plan['largeur']}x{plan['hauteur']})"
+                        if plan.get("largeur") and plan.get("hauteur")
+                        else "laisse le studio la choisir, elle peut differer "
+                             "de celle d'origine"))
     if devant:
         journal(tid, f"en file d'attente — {devant} demande(s) devant")
     ATTENTE.append(tid)

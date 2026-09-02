@@ -129,7 +129,8 @@ def rang_du_tirage(tid):
 # executer pour que la reprise sur une autre machine garde l'escalade du
 # bouton « refaire sur la grosse carte ». Sans ce parametre ici, le banc
 # mourait sur un TypeError au lieu de mesurer quoi que ce soit.
-async def faux_soumettre(g, tid, ident, cle, patience=1800, viser="petite"):
+async def faux_soumettre(g, tid, ident, cle, patience=1800,
+                         viser="petite", taille=None):
     GRAPHES.append((tid, ident, copy.deepcopy(g)))
     # Le premier tirage traine expres dans certains scenarios : c'est ainsi
     # qu'on montre que « l'image courante » ne se joue pas a la course.
