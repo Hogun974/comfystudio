@@ -898,9 +898,17 @@ function barreAuPropre(t, cid) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation: cid, tour: t.id }) });
       const d = await r.json().catch(() => ({}));
-      // 409 : un autre onglet est passe avant nous. Ce n'est pas un echec, c'est
-      // la reponse a la question posee — l'image est en route ou deja la.
-      if (r.status === 409) { fait("déjà refait en soigné"); return; }
+      // 409 « DEJA REFAIT » ET RIEN D'AUTRE. Traduire TOUT 409 de cette route
+      // par « ✓ déjà refait en soigné » etait un mensonge : le serveur en rend
+      // trois — un autre onglet est passe avant nous, l'esquisse n'est pas
+      // terminee, et son moteur a quitte le catalogue. Les deux derniers
+      // affichaient une coche verte et retiraient le bouton alors que RIEN
+      // n'avait ete rendu. Le commit qui a ajoute le troisieme argumentait
+      // longuement pour un 400 « parce que la page traduit tout 409 » — et
+      // laissait le mensonge onze lignes plus bas.
+      if (r.status === 409 && /deja/i.test(d.erreur || "")) {
+        fait("déjà refait en soigné"); return;
+      }
       if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la reprise");
       fait("refait en soigné");
       // La nouvelle demande prend le chemin de toutes les autres : une bulle en
@@ -1848,8 +1856,20 @@ function peindreGrille() {
           // cents vignettes qu'on est justement en train de comparer.
           const g_ = document.querySelector("#grilleMedia");
           const haut = g_ ? g_.scrollTop : 0;
-          mediaCharge = await (await fetch("/api/mediatheque",
-                                           { credentials: "same-origin" })).json();
+          // LE MEME FILET QUE ouvrirMediatheque, qui l'avait des le depart. Sans
+          // lui, deux chemins s'ouvraient APRES un clic qui avait REUSSI : une
+          // reponse non JSON — studio redemarre pendant le clic — faisait
+          // ecrire « impossible » sur un geste qui a marche ; et un 401
+          // « connexion requise » est un JSON valide SANS « fichiers », donc il
+          // remplaçait le cache et la mediatheque entiere affichait « rien de
+          // ce type pour l'instant », sans un mot. Le cache empoisonne
+          // survivait : ouvrirMediatheque ne relit que si mediaCharge est nul.
+          try {
+            const m = await fetch("/api/mediatheque",
+                                  { credentials: "same-origin" });
+            const d_ = await m.json();
+            if (m.ok && Array.isArray(d_.fichiers)) mediaCharge = d_;
+          } catch (e) { /* la marque bougera au prochain chargement */ }
           peindreGrille();
           if (g_) g_.scrollTop = haut;
         } catch (err) {
