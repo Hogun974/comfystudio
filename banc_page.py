@@ -371,6 +371,72 @@ dit(len(porteurs) == len(envois),
     "les deux chemins d'envoi passent par reglagesDemandes()",
     f"{len(porteurs)} sur {len(envois)}")
 
+# ── la coche « deja refait » ne se lit plus dans le TEXTE du refus ────
+# Le contrat de ce refus-la tenait sur un mot. La page affichait « ✓ déjà refait
+# en soigné » — donc RETIRAIT le bouton — quand le message du serveur contenait
+# « deja » : « r.status === 409 && /deja/i.test(d.erreur) ». Les trois messages
+# 409 de /api/au_propre avaient bien ete verifies un par un, mais RIEN ne
+# reliait ce test aux chaines du serveur — ni ce banc ni recette_chemin_page.py
+# ne contenaient « 409 » ni « deja ». Un accent (« déjà »), une reformulation,
+# et la coche verte revenait sur les deux refus ou rien n'a ete rendu : le
+# mensonge que d24980a venait de fermer, revenu sans qu'une ligne de la page ne
+# bouge.
+#
+# LES DEUX MOITIES DU CONTRAT SONT MESUREES A DEUX ENDROITS, et c'est voulu :
+# ici la page — elle nomme le champ et ne lit plus le texte —, dans
+# banc_refaire.py le serveur, qui releve ce meme nom DANS CE FICHIER-CI et
+# exige que la route le pose sur ce refus et sur aucun autre. Ce banc-ci est
+# statique et ne peut pas appeler la route ; celui-la ne peut pas voir ce que
+# la page fait de la reponse.
+#
+# Zero declaration compte comme un NON, et plusieurs aussi — on ne saurait plus
+# laquelle la page applique. Meme doctrine que RE_DEVIS dans banc_variantes.py :
+# une verification qui ne mesure plus rien et se compte verte ment deux fois.
+marques = re.findall(r'const\s+MARQUE_DEJA\s*=\s*"([^"]*)"\s*;', CORPS)
+dit(len(marques) == 1 and bool(marques[0]),
+    "la page NOMME le champ par lequel le serveur dit « c'est deja fait »",
+    f"{len(marques)} declaration(s) de MARQUE_DEJA : ce banc NE MESURE PLUS le "
+    "couplage page/serveur, et banc_refaire.py non plus"
+    if len(marques) != 1 else marques[0])
+
+
+def condition_du_si(texte, ancre):
+    """La condition du « if » dont cette ancre-la est le corps, ou None.
+
+    On remonte de l'ancre a la parenthese fermante qui la precede, puis on
+    equilibre a rebours : nommer la condition par une expression reguliere
+    reviendrait a decrire UNE facon de l'ecrire, la faute que ce banc a deja
+    faite cinq fois (voir LECTURES_DU_MENU). « (d.erreur || "") » en porte
+    d'ailleurs une paire, que « [^)]* » coupait en deux.
+    """
+    i = texte.find(ancre)
+    if i < 0:
+        return None
+    ferme = texte.rfind(")", 0, i)
+    if ferme < 0:
+        return None
+    prof, j = 1, ferme - 1
+    while j >= 0 and prof:
+        prof += (texte[j] == ")") - (texte[j] == "(")
+        j -= 1
+    if prof:
+        return None
+    ouvre = j + 1
+    if not re.search(r'\bif\s*$', texte[:ouvre]):
+        return None
+    return texte[ouvre + 1:ferme]
+
+
+# L'ancre est le LIBELLE AFFICHE, accents compris : c'est la donnee, et c'est
+# le seul point du script ou la coche du « deja » se pose. S'il est reformule,
+# ce cas rougit en disant qu'il ne mesure plus — ce qui est le bon sens de
+# l'erreur, et non un silence de plus.
+cond = condition_du_si(CORPS, 'fait("déjà refait en soigné")')
+dit(cond is not None and "MARQUE_DEJA" in cond and "erreur" not in cond,
+    "et la coche se decide sur ce champ, jamais sur le texte du message",
+    "le libelle de la coche n'est plus sous un « if » : ce cas ne mesure plus "
+    "rien" if cond is None else cond.strip())
+
 # ── designer la variante retenue ──────────────────────────────────────
 # POST /api/variante decide laquelle « la » designe : « agrandis-la », « rends-la
 # fluide », « le meme personnage ». Sans ce geste dans la page, les quatre

@@ -20,7 +20,15 @@ Ce que ce banc mesure, dans l'ordre de gravite :
     septembre ne porteront jamais le second.
   - un moteur qui a quitte le catalogue, un rendu confie a un fournisseur : une
     phrase, et non « ERREUR : 'sdxl_vieux' » ni « ERREUR : 'veo' ». Le meme trou
-    existait a l'identique dans api_au_propre ; il est eprouve ici aussi.
+    existait a l'identique dans api_au_propre ; il est eprouve ici aussi. ET LE
+    MEME CODE AUX DEUX BOUTONS depuis le 2 septembre 2026 : ils refusaient ces
+    deux classes-la en 400 d'un cote et en 409 de l'autre.
+  - « C'EST DEJA FAIT » EST UNE MARQUE, PAS UNE PHRASE. La page retire le bouton
+    et pose une coche verte sur ce refus-la ; elle le reconnaissait au TEXTE du
+    message. Ce banc releve le nom du champ DANS web/index.html et exige les
+    deux moities du contrat : que ce refus le porte, et qu'aucun autre ne le
+    porte. C'est la seule chose qu'il lit dans la page, comme banc_variantes.py
+    avec RE_DEVIS.
   - LE TOUR PORTE LE PLAN ENTIER depuis le 2 septembre 2026, et c'est le
     chemin normal : la liste de champs recopies s'etait allongee de six
     entrees en deux jours, une par defaut constate. Le repli champ par champ
@@ -40,6 +48,18 @@ Ce que ce banc mesure, dans l'ordre de gravite :
   - « ecoule_rendu » ne compte plus l'attente de la carte : c'est le seul
     chiffre comparable au devis, qui est une mediane de rendus.
 
+TREIZE ASSERTIONS DE CE BANC NE POUVAIENT PAS DISTINGUER « la garde marche » de
+« rien ne s'est passe », et elles portent desormais leur temoin. Le motif est
+toujours le meme : la route refuse, l'identifiant vaut None, le dictionnaire
+consulte est vide — et « pas de largeur », « zero appel », « rien n'est parti
+au loin » deviennent vrais DE RIEN. Trois comparaient meme un identifiant
+absent a une marque absente, « None == None ». NEUF sont nommees par une
+mutation de banc_mutations.py, et deux tiennent le cas de SURETE : une
+assertion creuse y aurait certifie une garde par un refus. Le temoin est le
+fait qu'on attendait — un graphe soumis a la carte, un plan mis en file, un
+tour ecrit, un 200. Une assertion voisine l'exigeait deja et son commentaire
+l'expliquait : c'est la ligne qui a servi de modele, celle de la planche.
+
 Aucune carte, aucun ComfyUI, aucun fournisseur : le parc est pose en memoire —
 pc (11 Go) et zima (5,9 Go) — et la soumission est remplacee par une fonction
 qui se contente de LIRE le graphe. C'est le graphe qui prouve le classement et
@@ -51,14 +71,22 @@ import copy
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import time
 
+ICI = os.path.dirname(os.path.abspath(__file__))
 os.environ["STUDIO_DONNEES"] = tempfile.mkdtemp(prefix="banc_refaire_")
 os.environ["STUDIO_AUTH"] = "libre"
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ICI)
 import serveur as S  # noqa: E402
+
+# LA PAGE, ET POUR UNE SEULE CHOSE : le nom du champ par lequel /api/au_propre
+# dit « c'est deja fait ». Ce banc-la mesure des reponses HTTP, pas du HTML —
+# mais ce contrat-ci a DEUX cotes, et un banc qui n'en lit qu'un ne le mesure
+# pas. C'est exactement ce que banc_variantes.py fait avec RE_DEVIS.
+PAGE = io.open(os.path.join(ICI, "web", "index.html"), encoding="utf-8").read()
 
 ok, rate = [], []
 
@@ -441,8 +469,15 @@ async def main():
         "le plan reconstruit porte « modele_impose »",
         str((S.EN_FILE.get(tid) or {}).get("plan", {}).get("modele_impose")))
     await tourner()
-    dit(not DISTANTS, "et le rendu ne part pas chez un fournisseur",
-        ", ".join(c for c, _ in DISTANTS) or "personne")
+    # « UN RENDU A EU LIEU, ET PAS LA-BAS ». « not DISTANTS » tout seul est vrai
+    # de tout ce qui n'a rien fait : une route qui refuse, une file qui ne part
+    # pas, un travailleur qui meurt. Sur un cas de SURETE, cette nuance est
+    # toute la mesure — le vert dirait « la garde tient » quand il ne dit que
+    # « rien ne s'est passe ». GRAPHES est le temoin : la carte a recu un graphe.
+    dit(GRAPHES and not DISTANTS,
+        "et le rendu ne part pas chez un fournisseur",
+        ", ".join(c for c, _ in DISTANTS)
+        or ("personne" if GRAPHES else "rien n'a ete rendu du tout"))
     dit(len(GRAPHES) == 1 and GRAPHES[0][1] == "pc",
         "il est calcule sur une carte de la maison",
         str([i for _, i, _ in GRAPHES]))
@@ -470,9 +505,13 @@ async def main():
         "le plan reconstruit garde le classement du tour",
         str(rejoue_.get("classement")) if job else "rien n'a ete mis en file")
     await tourner()
-    dit(not DISTANTS,
+    # LE MEME TEMOIN QUE CI-DESSUS, et il manquait ici bien davantage : ce
+    # cas-la n'exige meme pas le 200 de la route. Sans GRAPHES, la seconde
+    # garde de surete se serait declaree prouvee par un refus.
+    dit(GRAPHES and not DISTANTS,
         "et sans « modele_impose », c'est le classement qui le retient ici",
-        ", ".join(c for c, _ in DISTANTS) or "personne")
+        ", ".join(c for c, _ in DISTANTS)
+        or ("personne" if GRAPHES else "rien n'a ete rendu du tout"))
 
     # ── et le classement arrive JUSQU'A LA CARTE ───────────────────────
     # Sur le tour, il pourrait n'etre qu'un champ recopie. Dans le graphe, il
@@ -507,9 +546,13 @@ async def main():
     # Ecrire ce plan-la ferait afficher le moteur de la maison sous une image
     # rendue au loin : la page lit « plan.modele » en premier.
     au_loin = tour_de(corps.get("id"))
-    dit(au_loin.get("plan") is None,
+    # « LE TOUR EXISTE, ET IL N'A PAS DE PLAN ». tour_de rend {} quand la route
+    # a refuse — c'est ce qui empeche le banc de se casser — et « pas de plan »
+    # serait alors vrai d'un tour qui n'a jamais ete ecrit.
+    dit(bool(au_loin) and au_loin.get("plan") is None,
         "un rendu confie au loin n'ecrit pas de plan sur son tour",
-        str((au_loin.get("plan") or {}).get("modele")))
+        str((au_loin.get("plan") or {}).get("modele")) if au_loin
+        else "aucun tour : la demande n'est jamais partie")
     dit(au_loin.get("modele") == "nanobanana",
         "et son tour nomme le FOURNISSEUR, pas le repli local",
         str(au_loin.get("modele")))
@@ -519,6 +562,7 @@ async def main():
     # esquisse qu'on sache refaire » — vrai de nulle part et utile a personne.
     au_loin["esquisse"] = True
     st, corps = await au_propre(au_loin)
+    st_loin_propre = st
     dit(st == 400, "passer au propre une esquisse rendue au loin repond 400",
         f"{st} {corps.get('erreur') or ''}")
     dit(S.MOTEURS_DISTANTS["nanobanana"]["titre"] in (corps.get("erreur") or ""),
@@ -531,7 +575,12 @@ async def main():
     conv = poser()
     perdu = poser_tour(modele="sdxl_vieux")
     st, corps = await refaire(perdu)
-    dit(st == 409, "refaire un tour dont le moteur a disparu repond 409", str(st))
+    st_cat_refaire = st
+    # 400 depuis le 2 septembre 2026, 409 avant : un moteur retire du catalogue
+    # ne revient pas parce qu'on reclique, et 409 promet exactement cela. La
+    # regle des deux boutons est ecrite dans api_au_propre ; le cas qui la tient
+    # ensemble est plus bas, « le meme refus, le meme code ».
+    dit(st == 400, "refaire un tour dont le moteur a disparu repond 400", str(st))
     dit("sdxl_vieux" in (corps.get("erreur") or "")
         and "catalogue" in (corps.get("erreur") or ""),
         "et il le DIT, au lieu de « ERREUR : 'sdxl_vieux' »",
@@ -550,7 +599,8 @@ async def main():
                                 "largeur": 1216, "hauteur": 832,
                                 "parametres": {"etapes": 5}})
     st, corps = await au_propre(esquisse)
-    dit(st == 409, "passer au propre une esquisse au moteur disparu repond 409",
+    st_cat_propre = st
+    dit(st == 400, "passer au propre une esquisse au moteur disparu repond 400",
         str(st))
     dit("sdxl_vieux" in (corps.get("erreur") or "")
         and "catalogue" in (corps.get("erreur") or ""),
@@ -568,7 +618,8 @@ async def main():
     conv = poser()
     loin = poser_tour(modele="veo", type="video")
     st, corps = await refaire(loin)
-    dit(st == 409, "refaire un rendu confie a un fournisseur repond 409", str(st))
+    st_loin_refaire = st
+    dit(st == 400, "refaire un rendu confie a un fournisseur repond 400", str(st))
     dit(S.MOTEURS_DISTANTS["veo"]["titre"] in (corps.get("erreur") or ""),
         "et la phrase nomme le fournisseur, au lieu de « ERREUR : 'veo' »",
         corps.get("erreur", ""))
@@ -581,6 +632,116 @@ async def main():
     dit("catalogue" not in (corps.get("erreur") or ""),
         "et ce n'est pas le message du catalogue qui repond a sa place",
         corps.get("erreur", ""))
+
+    # ── LE MEME REFUS, LE MEME CODE, AUX DEUX BOUTONS ──────────────────
+    # Ils refusaient LES DEUX MEMES CLASSES avec deux codes differents :
+    # api_au_propre en 400, api_refaire en 409. Sans danger le jour ou on l'a
+    # vu — le gestionnaire de /api/refaire n'a aucun cas particulier sur 409 —
+    # mais c'etait le piege d'apres : le jour ou quelqu'un donne a « refaire »
+    # la traduction que « au propre » avait, le meme mensonge revient par
+    # l'autre porte.
+    #
+    # 400 ET NON 409 POUR CES DEUX-LA, et la regle est ecrite dans
+    # api_au_propre : 409 promet « rejoue-le, l'etat te laissera passer ».
+    # Aucun second clic ne remet un moteur au catalogue ni ne donne une graine
+    # a un fournisseur. Les 409 qui restent sont les deux qui se levent tout
+    # seuls — l'onglet voisin passe avant nous, et le rendu encore en cours.
+    #
+    # « == 400 » EN PLUS DE L'EGALITE DES DEUX : deux routes qui refusent
+    # ensemble en 409 seraient d'accord et fausses, et ce cas-ci les
+    # certifierait. On nomme le code, pas seulement l'accord.
+    dit(st_loin_refaire == st_loin_propre == 400,
+        "les deux boutons refusent un rendu confie au loin avec le MEME code",
+        f"refaire {st_loin_refaire}, au propre {st_loin_propre}")
+    dit(st_cat_refaire == st_cat_propre == 400,
+        "et un moteur sorti du catalogue, de meme : 400, pas un conflit",
+        f"refaire {st_cat_refaire}, au propre {st_cat_propre}")
+
+    # ── « C'EST DEJA FAIT » : UNE MARQUE, ET PAS UNE PHRASE ────────────
+    # LE CONTRAT TENAIT SUR UN MOT. La page affiche « ✓ déjà refait en soigné »
+    # et RETIRE le bouton sur ce refus-la ; elle le reconnaissait en testant le
+    # TEXTE du message — « /deja/i.test(d.erreur) ». Les trois messages 409 de
+    # la route avaient bien ete verifies un par un, mais RIEN ne reliait ce test
+    # aux chaines du serveur : ni banc_page.py ni recette_chemin_page.py ne
+    # contenaient « 409 » ni « deja ». Un accent (« déjà »), une reformulation,
+    # et la coche verte revenait sur les deux refus ou rien n'a ete rendu.
+    #
+    # ON RELEVE DONC LE NOM DU CHAMP DANS LA PAGE, et on l'exige de la route.
+    # banc_page.py tient l'autre moitie — que la page nomme ce champ et ne lise
+    # plus le texte. Aucun des deux ne suffit seul : celui-la est statique et ne
+    # peut pas appeler la route, celui-ci ne voit pas ce que la page fait de la
+    # reponse.
+    #
+    # Zero declaration vaut NON, plusieurs aussi : on ne saurait plus laquelle
+    # la page applique. Le cas reste UN cas dans les deux branches — meme
+    # doctrine que RE_DEVIS — sinon la disparition du couplage se lirait comme
+    # un simple 76 au lieu de 77, que personne ne remarque.
+    print("\n  ── « deja refait » : une marque, pas une phrase ──")
+
+    def plan_esquisse(moteur=CLE):
+        return {"intention": "image", "modele": moteur, "prompt": "a test bench",
+                "priorite": "brouillon", "largeur": 1216, "hauteur": 832,
+                "parametres": {"etapes": 5}}
+
+    marques = re.findall(r'const\s+MARQUE_DEJA\s*=\s*"([^"]*)"\s*;', PAGE)
+    MARQUE = marques[0] if len(marques) == 1 and marques[0] else None
+    dit(MARQUE is not None,
+        "la page nomme le champ que ce refus doit porter",
+        f"{len(marques)} declaration(s) de MARQUE_DEJA dans web/index.html : "
+        "ce banc NE MESURE PLUS le couplage page/serveur"
+        if MARQUE is None else MARQUE)
+
+    conv = poser()
+    propre = poser_tour(esquisse=True, graine=864102317,
+                        plan=plan_esquisse())
+    st, corps = await au_propre(propre)
+    dit(st == 200, "passer au propre une esquisse est accepte", str(corps))
+    await tourner()
+    st2, corps2 = await au_propre(propre)
+    # « st2 == 409 ET la marque » : la marque seule serait vraie sur une route
+    # qui accepterait deux fois, et le 409 seul est ce qu'on vient de retirer a
+    # la page. Les deux ensemble sont le contrat.
+    if MARQUE is None:
+        dit(False, "le second clic est refuse en 409 ET porte la marque",
+            "MARQUE_DEJA introuvable dans la page : le couplage n'est plus mesure")
+    else:
+        dit(st2 == 409 and bool(corps2.get(MARQUE)),
+            "le second clic est refuse en 409 ET porte la marque",
+            f"{st2} {corps2}")
+
+    # ET AUCUN AUTRE REFUS NE LA PORTE. C'est la moitie qui manquait : le 409
+    # « deja » etait bon, ce sont les AUTRES qui mentaient. Cinq refus, un par
+    # garde de la route, dans l'ordre ou elle les rend.
+    #
+    # « tous ont refuse » EN PLUS de « aucun ne porte la marque » : sans cette
+    # moitie, le cas serait vert le jour ou ces cinq appels REUSSIRAIENT tous —
+    # une reponse 200 ne porte pas la marque non plus. Une assertion qui ne
+    # distingue pas « la garde marche » de « rien ne s'est passe » ne mesure
+    # rien.
+    conv = poser()
+    autres = [
+        ("un rendu confie au loin",
+         await au_propre(poser_tour(esquisse=True, modele="veo", type="video"))),
+        ("un tour qui n'est pas une esquisse",
+         await au_propre(poser_tour(plan=plan_esquisse()))),
+        ("une esquisse encore en cours",
+         await au_propre(poser_tour(esquisse=True, etat="en cours",
+                                    plan=plan_esquisse()))),
+        ("un moteur sorti du catalogue",
+         await au_propre(poser_tour(esquisse=True, modele="sdxl_vieux",
+                                    plan=plan_esquisse("sdxl_vieux")))),
+        ("un tour qui n'existe pas",
+         await _appeler(S.api_au_propre, {"id": "jamais-ecrit"})),
+    ]
+    if MARQUE is None:
+        dit(False, "et aucun des cinq autres refus ne la porte",
+            "MARQUE_DEJA introuvable dans la page : le couplage n'est plus mesure")
+    else:
+        portent = [nom for nom, (_s, c_) in autres if c_.get(MARQUE)]
+        dit(not portent and all(s_ != 200 for _n, (s_, _c) in autres),
+            "et aucun des cinq autres refus ne la porte",
+            ", ".join(portent) or
+            f"refus en {[s_ for _n, (s_, _c) in autres]}")
 
     # ══ 5. un tour SANS TAILLE ══════════════════════════════════════════
     # « taille » n'est ecrit sur le tour que depuis le 31 aout, et une
@@ -605,9 +766,11 @@ async def main():
         and "1216x832" in mots(tid),
         "et le studio ANNONCE la taille qu'il a reprise",
         mots(tid)[:130])
-    dit(APPELS["aiguiller"] == 0,
+    # LE MEME TEMOIN : un compteur reste a zero parce que rien n'est parti dit
+    # « rien ne s'est passe », pas « on n'a pas repasse par l'analyse ».
+    dit(GRAPHES and APPELS["aiguiller"] == 0,
         "sans repasser par l'analyse, qui rendrait une autre image",
-        str(APPELS["aiguiller"]))
+        str(APPELS["aiguiller"]) if GRAPHES else "rien n'a ete rendu du tout")
 
     # ── une taille ecrite dans la demande est relue, pas inventee ──────
     # caler_taille() commence par chercher une taille noir sur blanc : c'est
@@ -639,9 +802,22 @@ async def main():
     dit(st == 200, "refaire une planche sans taille est accepte", str(corps))
     tid = corps.get("id")
     plan_bd = (S.EN_FILE.get(tid) or {}).get("plan") or {}
-    dit(not plan_bd.get("largeur") and not plan_bd.get("hauteur"),
+    # LA GARDE QUE LA LIGNE D'EN DESSOUS PORTAIT DEJA, ET PAS CELLE-CI. Quand la
+    # route refuse, « tid » vaut None, S.EN_FILE.get(None) rend {}, et « ni
+    # largeur ni hauteur » devient vrai DE RIEN : ce cas passait au vert sans
+    # qu'aucune planche ne soit partie. Inoffensif tant que la seule mutation
+    # qui le nomme passe par un 200 — mais c'est mot pour mot le motif que la
+    # ligne suivante denonce, et une assertion qui ne distingue pas « la garde
+    # marche » de « rien ne s'est passe » ne mesure rien.
+    #
+    # LE PLAN MIS EN FILE, et non le seul 200 : il n'existe que si la demande
+    # est vraiment partie avec un plan, ce qui est exactement ce qu'on veut lire
+    # dedans.
+    dit(st == 200 and bool(plan_bd)
+        and not plan_bd.get("largeur") and not plan_bd.get("hauteur"),
         "le repli de taille ne pose PAS 1216x832 sur une planche",
-        f"{plan_bd.get('largeur')}x{plan_bd.get('hauteur')}")
+        f"{plan_bd.get('largeur')}x{plan_bd.get('hauteur')}" if plan_bd
+        else f"aucun plan en file (reponse {st})")
     # « la demande est bien partie ET le journal ne dit pas ça », et non « il
     # ne dit pas ça » : un silence obtenu parce que la route a refuse n'est pas
     # le silence qu'on mesure, et ce cas resterait vert le jour ou le bouton
@@ -672,8 +848,12 @@ async def main():
     dit(st == 200, "refaire une chanson est accepte", str(corps))
     tid = corps.get("id")
     await tourner()
-    dit(APPELS["paroles"] == 0,
-        "ecrire_paroles() n'est PAS rappele", str(APPELS["paroles"]))
+    # ENCORE LE MEME TEMOIN. « zero appel » est vrai de toute chanson qui n'est
+    # jamais partie, et c'est justement ce que fait la mutation qui supprime le
+    # repli : elle rendrait ce cas-ci vert.
+    dit(GRAPHES and APPELS["paroles"] == 0,
+        "ecrire_paroles() n'est PAS rappele",
+        str(APPELS["paroles"]) if GRAPHES else "aucune chanson n'est partie")
     dit(paroles_du_graphe(premier_graphe()) == PAROLES,
         "et ce sont les memes paroles qui partent a la carte",
         (paroles_du_graphe(premier_graphe()) or "aucune")[:60])
@@ -724,9 +904,14 @@ async def main():
     casse = poser_tour()
     st, corps = await refaire(casse)
     tid = corps.get("id")
-    dit(casse.get("refait") == tid,
+    # « bool(tid) ET » : sans lui, une route qui REFUSE rend tid=None, le tour
+    # ne porte pas de marque, et « None == None » declare la marque posee. Trois
+    # assertions de ce banc comparaient ainsi un identifiant absent a une marque
+    # absente et se comptaient vertes — celle-ci, et les deux de la reecriture
+    # plus bas.
+    dit(bool(tid) and casse.get("refait") == tid,
         "la marque est posee AVANT le rendu, contre le second onglet",
-        str(casse.get("refait")))
+        str(casse.get("refait")) if tid else "la route a refuse la demande")
     st2, corps2 = await refaire(casse)
     dit(st2 == 409, "et un second clic est refuse pendant le rendu", str(st2))
     ECHEC["soumettre"] = True
@@ -735,9 +920,12 @@ async def main():
     dit(rate_.get("etat") == "erreur", "le rendu a bien echoue",
         str(rate_.get("etat")))
     origine = tour_de(casse["id"])
-    dit(not origine.get("refait"),
+    # « bool(tid) ET » ici aussi : une marque jamais posee est absente elle
+    # aussi, et « le bouton revient » se lirait vert sur un bouton qui n'est
+    # jamais parti.
+    dit(bool(tid) and not origine.get("refait"),
         "la marque est retiree du tour d'origine : le bouton revient",
-        str(origine.get("refait")))
+        str(origine.get("refait")) if tid else "la route a refuse la demande")
     ECHEC["soumettre"] = False
     st3, corps3 = await refaire(origine)
     dit(st3 == 200, "et le geste se rejoue, au lieu de repondre 409 a jamais",
@@ -755,17 +943,20 @@ async def main():
     st, corps = await refaire(vieux2)
     tid = corps.get("id")
     await tourner()
-    dit(vieux2.get("refait") == tid, "le tour est marque refait",
-        str(vieux2.get("refait")))
+    dit(bool(tid) and vieux2.get("refait") == tid, "le tour est marque refait",
+        str(vieux2.get("refait")) if tid else "la route a refuse la demande")
     # La reecriture, par la fonction que TOUS ces chemins empruntent, et avec
     # l'etat qu'ils y posent : « fini », comme un resultat recolle.
     S.enregistrer_tour(conv, vieux2["id"], vieux2["demande"],
                        {"prompt": vieux2["prompt"]}, "image", CLE,
                        vieux2["fichiers"], "fini")
     relu = tour_de(vieux2["id"])
-    dit(relu.get("refait") == tid,
+    # LA TROISIEME DU MEME GENRE, et la plus couteuse : c'est une ancre de
+    # banc_mutations.py. Deux absences comparees l'une a l'autre auraient
+    # certifie une marque qui survit alors que rien n'avait jamais ete marque.
+    dit(bool(tid) and relu.get("refait") == tid,
         "et la marque est toujours la apres la reecriture",
-        str(relu.get("refait")))
+        str(relu.get("refait")) if tid else "la route a refuse la demande")
     st4, corps4 = await refaire(relu)
     dit(st4 == 409,
         "donc le bouton ne repropose pas un second rendu sur la grosse carte",
@@ -806,9 +997,12 @@ async def main():
         # en main — la page n'a alors rien a comparer au devis, ce qui est la
         # verite.
         st_, etat = lire(await S.api_etat(Req(match={"tid": tid})))
-        dit(etat.get("ecoule_rendu") is None,
+        # « st_ == 200 ET » : sur une demande refusee, /api/etat ne connait pas
+        # la tache et son corps ne porte pas « ecoule_rendu » non plus — le cas
+        # se serait declare vert sur un chrono qui n'existe pas.
+        dit(st_ == 200 and etat.get("ecoule_rendu") is None,
             "tant que la carte n'est pas en main, il n'y a pas de temps de "
-            "rendu a montrer", str(etat.get("ecoule_rendu")))
+            "rendu a montrer", f"{st_} {etat.get('ecoule_rendu')}")
         verrou.release()
         try:
             await asyncio.wait_for(S.FILE_ATTENTE.join(), timeout=30)
@@ -942,9 +1136,9 @@ async def main():
     st, corps = await refaire(chantee)
     dit(st == 200, "refaire la chanson est accepte", str(corps))
     await tourner()
-    dit(APPELS["paroles"] == 0,
+    dit(GRAPHES and APPELS["paroles"] == 0,
         "ecrire_paroles() n'est PAS rappele : le plan portait les paroles",
-        str(APPELS["paroles"]))
+        str(APPELS["paroles"]) if GRAPHES else "aucune chanson n'est partie")
     encodeur = next((n.get("inputs") or {} for n in premier_graphe().values()
                      if "lyrics" in (n.get("inputs") or {})), {})
     dit(encodeur.get("lyrics") == PAROLES_2,
@@ -996,9 +1190,13 @@ async def main():
                                 "parametres_ajustes", "prompt_repli",
                                 "raccourci", "questions", "questions_forcees")
                     if c in porte]
-    dit(not indesirables,
+    # « bool(porte) ET » : un tour SANS plan ne porte aucune cle indesirable,
+    # et cette ancre de banc_mutations.py se serait declaree verte sur un plan
+    # qui n'a jamais ete ecrit.
+    dit(bool(porte) and not indesirables,
         "le plan ecrit ne porte que la liste nommee",
-        ", ".join(indesirables) or "aucune cle en trop")
+        ", ".join(indesirables) or ("aucune cle en trop" if porte
+                                    else "aucun plan sur le tour"))
     dit("commentaire" not in (porte.get("parametres_bruts") or {}),
         "et « parametres_bruts » est borne a ce que BORNES sait lire",
         str(sorted(porte.get("parametres_bruts") or {})))

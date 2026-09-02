@@ -862,6 +862,19 @@ function plein(f) {
   fermer.onclick = e => { e.stopPropagation(); partir(); };
 }
 
+/* Le champ par lequel /api/au_propre dit « c'est deja fait », et le SEUL
+   contrat de ce refus-la. Il a remplace un test sur le TEXTE du message —
+   « /deja/i.test(d.erreur) » — qu'un accent ou une reformulation cote serveur
+   suffisait a rompre en silence : la coche verte serait revenue sur les deux
+   autres refus, avec le bouton retire, alors que rien n'avait ete rendu. C'est
+   le mensonge que d24980a avait ferme, et qui n'attendait qu'un « déjà ».
+
+   Declare ici et nomme : banc_refaire.py releve CETTE ligne pour savoir quel
+   champ exiger du serveur, exactement comme banc_variantes.py releve RE_DEVIS.
+   Le jour ou ce nom change d'un cote seulement, le banc rougit au lieu de
+   laisser la coche mentir. */
+const MARQUE_DEJA = "deja";
+
 /* « Passer au propre » : meme prompt, meme graine, meme moteur, meme taille, et
    toutes les etapes. Rien n'est renvoye au serveur que l'identifiant du tour —
    c'est lui qui garde de quoi refaire l'image a l'identique.
@@ -898,15 +911,24 @@ function barreAuPropre(t, cid) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation: cid, tour: t.id }) });
       const d = await r.json().catch(() => ({}));
-      // 409 « DEJA REFAIT » ET RIEN D'AUTRE. Traduire TOUT 409 de cette route
-      // par « ✓ déjà refait en soigné » etait un mensonge : le serveur en rend
-      // trois — un autre onglet est passe avant nous, l'esquisse n'est pas
-      // terminee, et son moteur a quitte le catalogue. Les deux derniers
+      // LA MARQUE DU SERVEUR, ET RIEN D'AUTRE. Traduire TOUT 409 de cette route
+      // par « ✓ déjà refait en soigné » etait un mensonge : le serveur en
+      // rendait trois — un autre onglet est passe avant nous, l'esquisse n'est
+      // pas terminee, et son moteur a quitte le catalogue. Les deux derniers
       // affichaient une coche verte et retiraient le bouton alors que RIEN
-      // n'avait ete rendu. Le commit qui a ajoute le troisieme argumentait
-      // longuement pour un 400 « parce que la page traduit tout 409 » — et
-      // laissait le mensonge onze lignes plus bas.
-      if (r.status === 409 && /deja/i.test(d.erreur || "")) {
+      // n'avait ete rendu. (Le troisieme est un 400 depuis : voir la regle des
+      // deux boutons dans api_au_propre. Il en reste deux, et c'est bien un de
+      // trop pour un code de retour.)
+      //
+      // Le correctif d'alors ajoutait « et le message contient deja », ce qui
+      // deplaçait le contrat sur une PHRASE FRANCAISE ecrite dans serveur.py :
+      // le seul des trois messages qui porte « deja » l'ecrit sans accent, et
+      // il n'y a aucune raison qu'il le garde. Le champ, lui, ne se reformule
+      // pas — et le code de retour n'est plus interroge du tout, pour que le
+      // jour ou ce refus passera de 409 a autre chose la coche ne disparaisse
+      // pas en silence. Il suffit que le serveur ait REFUSE et qu'il ait pose
+      // sa marque.
+      if (!r.ok && d[MARQUE_DEJA]) {
         fait("déjà refait en soigné"); return;
       }
       if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la reprise");

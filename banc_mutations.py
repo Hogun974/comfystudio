@@ -155,6 +155,34 @@ moitie : 47/48 chacune, sur SA ligne, la copie entiere rendant 46/48. Le sens
 inverse est celui des quatre autres — banc_repartition.py de 0f0f3dc, 35/35
 VERT sur les deux moities comme sur la copie entiere.
 
+LES SIX DE LA DIXIEME RELECTURE, 2 septembre 2026 au soir. Trois defauts
+nommes et laisses ouverts, dont aucun n'etait dangereux ce jour-la : le contrat
+du « deja refait » qui tenait sur un mot du message francais, les deux boutons
+qui refusaient les memes classes avec deux codes, et une assertion de
+banc_refaire.py verte parce que la route avait refuse. Le sens inverse a demande
+les DEUX manieres, et la seconde est neuve :
+
+  - QUATRE se prouvent contre le code d'AVANT, comme les douze de banc_refaire :
+    serveur.py et web/index.html de 1a762b9 restaures, les bancs NEUFS lances
+    dessus. banc_page.py y rougit sur ses deux lignes, banc_refaire.py sur six,
+    et les lignes que ces mutations nomment y sont. Avec la page NEUVE sur le
+    serveur d'AVANT — pour que le releve de MARQUE_DEJA aboutisse et que la
+    marque manquante soit la seule difference — « le second clic est refuse en
+    409 ET porte la marque » rougit en imprimant le corps sans marque.
+  - « la marque « deja » posee sur un second refus » N'A PAS DE CODE D'AVANT :
+    la regle qu'elle garde — un seul refus la porte — nait avec la marque
+    elle-meme, et le depot d'avant n'en avait aucune. Ce qui a ete mesure a la
+    place, c'est son ISOLEMENT : posee seule, elle rend 80/81 sur banc_refaire,
+    la SEULE ligne rouge etant la sienne, qui nomme le refus fautif. Elle ne
+    rougit donc pas pour une autre raison que celle qu'elle dit.
+  - « le repli de taille REFUSE au lieu de reprendre » est d'une autre famille
+    encore : ce n'est pas le code qui a ete corrige mais le BANC. Son sens
+    inverse se prend en remettant l'assertion creuse — « not
+    plan_bd.get("largeur") » sans le temoin — et la mutation passe alors au VERT
+    sur la ligne qu'elle nomme, « NonexNone » a l'appui, pendant que le banc
+    rougit ailleurs. C'est exactement le reproche : verte parce que rien ne
+    s'etait passe.
+
 CE QUE LE PARALLELISME DES LANCEMENTS COUTERAIT, mesure le 2 septembre et
 refuse. Les huit bancs sans sommeil pourraient tourner ensemble, et l'ordre des
 resultats se garderait sans peine — il suffit de collecter les verdicts dans
@@ -240,9 +268,14 @@ BESOINS = {
     "banc_attente.py": ["banc_attente.py"] + fichiers_du_conteneur()[1:],
     "banc_durees.py": ["banc_durees.py"] + fichiers_du_conteneur()[1:],
     # banc_refaire.py monte un studio complet hors ligne comme banc_variantes,
-    # mais il ne relit pas la page : ce qu'il mesure se lit dans le GRAPHE
-    # soumis et dans les reponses HTTP, jamais dans web/index.html.
-    "banc_refaire.py": ["banc_refaire.py"] + fichiers_du_conteneur()[1:],
+    # et il relit la page pour UNE chose depuis le 2 septembre 2026 : MARQUE_DEJA,
+    # le nom du champ par lequel /api/au_propre dit « c'est deja fait ». Sans
+    # cette page, le banc annonce lui-meme que le couplage « N'EST PLUS MESURE »
+    # — et les deux mutations de la marque rougiraient pour la mauvaise raison.
+    # Tout le reste de ce qu'il mesure se lit dans le GRAPHE soumis et dans les
+    # reponses HTTP.
+    "banc_refaire.py": (["banc_refaire.py", "web/index.html"]
+                        + fichiers_du_conteneur()[1:]),
     # Celui-la n'importe pas le studio : il preleve deux expressions
     # regulieres dans le TEXTE de serveur.py. Il lui faut donc serveur.py, et
     # rien d'autre — pas meme les modules qu'il importe.
@@ -1404,23 +1437,23 @@ REFAIRE = [
               "s'affiche tel quel — « ERREUR : 'sdxl_vieux' » — un message qui "
               "n'apprend rien a personne, et surtout pas que le moteur a "
               "disparu du catalogue",
-        rougit="refaire un tour dont le moteur a disparu repond 409",
+        rougit="refaire un tour dont le moteur a disparu repond 400",
         editions=[("serveur.py", motif(
-            r'    if moteur_ not in CATALOGUE:\n.*?status=409\)\n', ""))]),
+            r'    if moteur_ not in CATALOGUE:\n.*?status=400\)\n', ""))]),
     dict(
         nom="un rendu confie a un fournisseur passe quand meme",
         banc="banc_refaire.py",
         imite="un tour rendu au loin porte le nom du FOURNISSEUR dans "
               "« modele », et ce bouton-ci demande une CARTE : le laisser "
               "passer menait au meme KeyError, « ERREUR : 'veo' », un cran plus "
-              "loin. Le 409, lui, tombe quand meme : le controle du catalogue "
+              "loin. Le 400, lui, tombe quand meme : le controle du catalogue "
               "repond a sa place, en conseillant de « choisir un autre "
               "moteur » alors qu'il n'y a rien a choisir. C'est la PHRASE qui "
               "rougit, pas le code de retour — et c'est bien pour cela que le "
               "banc les verifie separement",
         rougit="et la phrase nomme le fournisseur, au lieu de « ERREUR : 'veo' »",
         editions=[("serveur.py", motif(
-            r'    if moteur_ in MOTEURS_DISTANTS:\n.*?status=409\)\n', ""))]),
+            r'    if moteur_ in MOTEURS_DISTANTS:\n.*?status=400\)\n', ""))]),
     dict(
         nom="le MEME trou, laisse ouvert dans api_au_propre",
         banc="banc_refaire.py",
@@ -1428,10 +1461,10 @@ REFAIRE = [
               "ils ont donc tous les deux besoin de la garde, et api_au_propre "
               "ne l'avait pas. Le meme « ERREUR : 'sdxl_vieux' », a l'autre "
               "bouton",
-        rougit="passer au propre une esquisse au moteur disparu repond 409",
+        rougit="passer au propre une esquisse au moteur disparu repond 400",
         editions=[("serveur.py", motif(
             r'    if moteur_ not in CATALOGUE and moteur_ not in '
-            r'MOTEURS_DISTANTS:\n.*?status=409\)\n', ""))]),
+            r'MOTEURS_DISTANTS:\n.*?status=400\)\n', ""))]),
     dict(
         nom="un refait qui echoue garde son bouton",
         banc="banc_refaire.py",
@@ -1610,6 +1643,108 @@ REFAIRE = [
             + '        journal(tid, f"la taille de ce tour',
             "    if sans_taille:" + chr(10)
             + '        journal(tid, f"la taille de ce tour'))]),
+    # ── LES TROIS DEFAUTS DE LA DIXIEME RELECTURE ─────────────────────
+    # Ils etaient nommes et laisses ouverts : aucun n'etait dangereux ce
+    # jour-la, les trois etaient des pieges poses pour plus tard.
+    #
+    # LA PREUVE INVERSE DES CINQ PREMIERES a ete prise comme pour les douze
+    # d'avant, ce banc etant ne avec ses corrections : serveur.py et
+    # web/index.html d'avant restaures, les bancs NEUFS lances dessus. Les cinq
+    # lignes nommees y rougissent. La sixieme est d'une autre famille — c'est le
+    # BANC qui a ete corrige, pas le code — et son sens inverse se prend en
+    # remettant la garde d'avant : la mutation repasse alors au VERT sur la
+    # ligne qu'elle nomme, ce qui est exactement ce qu'on lui reprochait.
+    dict(
+        nom="le refus « deja passe au propre » perd sa marque",
+        banc="banc_refaire.py",
+        imite="la page n'a plus, pour reconnaitre ce refus-la parmi les trois "
+              "de la route, que le TEXTE francais du message. Elle retire le "
+              "bouton et pose une coche verte « deja refait en soigne » ; un "
+              "accent, une reformulation, et elle le fait sur les deux refus "
+              "ou rien n'a ete rendu. C'est le mensonge que d24980a avait "
+              "ferme, et il tenait sur un mot",
+        rougit="le second clic est refuse en 409 ET porte la marque",
+        editions=[("serveur.py", brut(
+            '            {"erreur": "cette esquisse a deja ete passee au propre",'
+            + chr(10) + '             "deja": True}, status=409)',
+            '            {"erreur": "cette esquisse a deja ete passee au propre"},'
+            + chr(10) + "            status=409)"))]),
+    dict(
+        nom="la marque « deja » posee sur un second refus",
+        banc="banc_refaire.py",
+        imite="l'AUTRE moitie du contrat, celle qui manquait : le refus « deja "
+              "fait » etait bon, ce sont les autres qui mentaient. Une esquisse "
+              "encore en cours recoit la coche verte et perd son bouton, alors "
+              "que son rendu soigne n'a meme pas commence — et il ne sera "
+              "jamais repropose",
+        rougit="et aucun des cinq autres refus ne la porte",
+        editions=[("serveur.py", brut(
+            '            {"erreur": "l\'esquisse n\'est pas terminee"}, status=409)',
+            '            {"erreur": "l\'esquisse n\'est pas terminee",'
+            + chr(10) + '             "deja": True}, status=409)'))]),
+    dict(
+        nom="la coche « deja refait » redevient un test sur le TEXTE",
+        banc="banc_page.py",
+        imite="le contrat d'avant, du cote de la page cette fois : "
+              "« /deja/i.test(d.erreur) ». Il tenait sur un mot du serveur, et "
+              "RIEN ne reliait ce test aux chaines de serveur.py — ni "
+              "banc_page.py ni recette_chemin_page.py ne contenaient « 409 » ni "
+              "« deja ». Le serveur peut poser sa marque : si la page ne la lit "
+              "pas, le mensonge revient entier",
+        rougit="et la coche se decide sur ce champ, jamais sur le texte du message",
+        editions=[("web/index.html", brut(
+            "      if (!r.ok && d[MARQUE_DEJA]) {",
+            '      if (r.status === 409 && /deja/i.test(d.erreur || "")) {'))]),
+    dict(
+        nom="les deux boutons refusent le rendu distant avec deux codes",
+        banc="banc_refaire.py",
+        imite="l'etat d'avant : api_au_propre refuse un rendu confie au loin en "
+              "400, api_refaire en 409 — la meme classe de refus, deux codes. "
+              "409 promet « rejoue-le, l'etat te laissera passer », et aucun "
+              "second clic ne donnera de graine a un fournisseur. Sans danger "
+              "tant que la page n'a aucun cas particulier sur les 409 de "
+              "/api/refaire ; le jour ou elle recoit celui que « au propre » "
+              "avait, la coche verte ment par l'autre porte",
+        rougit="les deux boutons refusent un rendu confie au loin avec le MEME code",
+        editions=[("serveur.py", brut(
+            '                       f"maison. Relance la demande pour repartir '
+            'chez lui."},' + chr(10) + "            status=400)",
+            '                       f"maison. Relance la demande pour repartir '
+            'chez lui."},' + chr(10) + "            status=409)"))]),
+    dict(
+        nom="et un moteur sorti du catalogue, avec deux codes aussi",
+        banc="banc_refaire.py",
+        imite="la seconde moitie du meme desaccord : les deux boutons rejouent "
+              "un plan ecrit il y a des semaines, et le catalogue a bouge "
+              "depuis. Ce n'est pas une concurrence — c'est l'etat GARDE qui a "
+              "change, et il ne rechangera pas au second clic",
+        rougit="et un moteur sorti du catalogue, de meme : 400, pas un conflit",
+        editions=[("serveur.py", brut(
+            '            {"erreur": f"le moteur de ce tour ({moteur_}) n\'est plus au "'
+            + chr(10)
+            + '                       f"catalogue : relance la demande pour en '
+            'choisir un autre"},' + chr(10) + "            status=400)",
+            '            {"erreur": f"le moteur de ce tour ({moteur_}) n\'est plus au "'
+            + chr(10)
+            + '                       f"catalogue : relance la demande pour en '
+            'choisir un autre"},' + chr(10) + "            status=409)"))]),
+    dict(
+        nom="le repli de taille REFUSE au lieu de reprendre",
+        banc="banc_refaire.py",
+        imite="le bouton devient inoperant sur tout tour anterieur au 31 aout — "
+              "c'est la tentation que le commentaire du repli ecarte en toutes "
+              "lettres, « refuser rendrait le bouton inoperant sur tout "
+              "l'historique ». Mais ce que cette mutation-ci eprouve, c'est le "
+              "BANC : l'assertion de la planche lisait S.EN_FILE.get(None), "
+              "donc {}, et se comptait verte sur une demande que la route "
+              "venait de refuser. Elle ne pouvait pas distinguer « la garde "
+              "marche » de « rien ne s'est passe », et la ligne voisine portait "
+              "deja la garde qui lui manquait",
+        rougit="le repli de taille ne pose PAS 1216x832 sur une planche",
+        editions=[("serveur.py", brut(
+            "            sans_taille = True" + chr(10),
+            '            return web.json_response(' + chr(10)
+            + '                {"erreur": "taille inconnue"}, status=400)' + chr(10)))]),
 ]
 
 
@@ -1857,6 +1992,13 @@ FORMULATIONS = [
 # plus : ils etaient deja lances, seule la liste qui les porte a change. Mesure
 # apres bascule : 95,2 s pour 90 mutations et 1 trou connu, contre 103 s pour
 # 87 et 4 — le meme travail, au bruit de la machine pres.
+#
+# Les SIX de la dixieme relecture coutent 104,5 s pour 96 mutations, soit
+# 9,3 s : cinq lancements de banc_refaire a 1,6 s et un de banc_page a 0,3 s.
+# C'est plus que la seconde par lancement mesuree la veille sur ce banc-la — il
+# monte maintenant un studio de plus, celui du cas « deja refait », qui rend une
+# image. On reste loin des 3,5 s de banc_variantes, et c'est le prix de la seule
+# route du depot dont la page traduit une reponse.
 #
 # On ne les lance pas en parallele, et ce n'est pas un oubli : banc_variantes
 # ordonne ses tirages par des sommeils de 0,02 a 0,6 s pour eprouver « le

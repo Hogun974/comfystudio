@@ -9680,8 +9680,23 @@ async def api_au_propre(req):
     if not tour:
         return web.json_response({"erreur": "inconnue"}, status=404)
     if tour.get("au_propre"):
+        # LA MARQUE, ET NON LA PHRASE. La page retire le bouton et pose une
+        # coche verte « deja refait en soigne » sur CE refus-ci et sur aucun
+        # autre ; elle le reconnaissait en cherchant « deja » dans le TEXTE
+        # francais du message (barreAuPropre, web/index.html). Le contrat tenait
+        # donc sur un mot : un accent — « deja » ecrit « déjà » —, une
+        # reformulation, et les deux autres refus de cette route reprenaient la
+        # coche verte sur un rendu qui n'a jamais eu lieu. C'est exactement le
+        # mensonge que d24980a venait de fermer, revenu sans qu'une seule ligne
+        # de la page ne bouge, et RIEN ne le mesurait : ni banc_page.py ni
+        # recette_chemin_page.py ne contenaient « 409 » ni « deja ».
+        #
+        # Un champ ne se reformule pas et ne s'accentue pas. banc_refaire.py
+        # releve son nom DANS LA PAGE et exige les deux moities du contrat : que
+        # ce refus-ci le porte, et qu'aucun autre refus de la route ne le porte.
         return web.json_response(
-            {"erreur": "cette esquisse a deja ete passee au propre"}, status=409)
+            {"erreur": "cette esquisse a deja ete passee au propre",
+             "deja": True}, status=409)
     # UNE ESQUISSE RENDUE AU LOIN N'A PAS DE VERSION SOIGNEE, et c'est le
     # premier controle : la vraie raison du refus prime sur les deux qui
     # suivent, qui parleraient du plan absent ou du repli local sans jamais
@@ -9703,9 +9718,26 @@ async def api_au_propre(req):
     # recoit le nom du fournisseur. Le controle du catalogue plus bas lit donc
     # le repli, et sa branche MOTEURS_DISTANTS ne mord jamais.
     #
-    # 400 et non 409 : la page traduit tout 409 de cette route par « deja refait
-    # en soigne » (barreAuPropre, web/index.html), ce qui serait un mensonge.
-    # Un 400 affiche la phrase.
+    # ══ 400 OU 409, LA REGLE DES DEUX BOUTONS ═══════════════════════════
+    # Elle est ecrite ici une fois, et api_refaire y renvoie. Les deux boutons
+    # refusaient LES DEUX MEMES CLASSES avec deux codes differents — celui-ci
+    # en 400, l'autre en 409 — et l'argument qui tenait ce 400-la, « la page
+    # traduit tout 409 de cette route par deja refait en soigne », n'existe plus
+    # depuis que la page lit une marque au lieu de deviner (voir au-dessus). Il
+    # ne restait qu'un desaccord, sans danger le jour ou on l'a vu, et le piege
+    # d'apres : le jour ou quelqu'un donne a « refaire » la traduction que
+    # « au propre » avait, le meme mensonge revient par l'autre porte.
+    #
+    # CE QUI TRANCHE EST CE QUE LE CODE PROMET A CELUI QUI RECLIQUE.
+    #   409, c'est « rejoue-le, l'etat te laissera passer » : un conflit de
+    #     concurrence. Deux refus le meritent ici — l'onglet voisin qui est
+    #     passe avant nous, et l'esquisse encore en cours. Les deux se levent
+    #     tout seuls, le second en une minute.
+    #   400, c'est « cette demande-la n'aboutira jamais » : le moteur a quitte
+    #     le catalogue, le rendu a ete confie a un fournisseur. Ce n'est pas une
+    #     concurrence, c'est l'etat GARDE qui a change sous un plan ecrit il y a
+    #     des semaines, et aucun second clic ne le defera. Les deux messages
+    #     disent d'ailleurs la seule issue : « relance la demande ».
     rendu_par = tour.get("modele")
     if rendu_par in MOTEURS_DISTANTS:
         return web.json_response(
@@ -9725,6 +9757,8 @@ async def api_au_propre(req):
         return web.json_response(
             {"erreur": "ce tour n'est pas une esquisse qu'on sache refaire"},
             status=400)
+    # 409 ET IL LE RESTE : celui-la se leve tout seul des que l'esquisse finit,
+    # c'est-a-dire en une minute. « Rejoue-le » est vrai (regle des deux boutons).
     if tour.get("etat") != "fini":
         return web.json_response(
             {"erreur": "l'esquisse n'est pas terminee"}, status=409)
@@ -9733,12 +9767,16 @@ async def api_au_propre(req):
     # garde le KeyError remonte jusqu'au « except Exception » d'executer —
     # « ERREUR : 'sdxl_vieux' », verifie. Les deux boutons rejouent un plan
     # garde ; ils ont donc tous les deux besoin de la garde.
+    #
+    # 400 depuis le 2 septembre 2026, et 409 avant : voir la regle des deux
+    # boutons ci-dessus. Un moteur retire du catalogue ne revient pas parce
+    # qu'on reclique.
     moteur_ = plan_.get("modele")
     if moteur_ not in CATALOGUE and moteur_ not in MOTEURS_DISTANTS:
         return web.json_response(
             {"erreur": f"le moteur de cette esquisse ({moteur_}) n'est plus au "
                        f"catalogue : relance la demande pour en choisir un autre"},
-            status=409)
+            status=400)
     plan = dict(plan_)
     # Les etapes se recalculent depuis la proposition BRUTE du modele : c'est
     # exactement ce que la demande aurait donne sans le cran « brouillon ».
@@ -9819,11 +9857,21 @@ async def api_refaire(req):
     if not tour:
         return web.json_response({"erreur": "inconnue"}, status=404)
     if tour.get("refait"):
-        # MEME GARDE QUE au_propre. Sans elle, deux onglets ouverts sur la meme
-        # conversation lançaient deux rendus sur la grosse carte, et rien ne le
-        # disait — la page ne relit pas le tour entre deux clics.
+        # MEME GARDE QUE au_propre, ET MEME 409 : c'est un vrai conflit de
+        # concurrence, l'onglet voisin est passe avant nous. Sans elle, deux
+        # onglets ouverts sur la meme conversation lançaient deux rendus sur la
+        # grosse carte, et rien ne le disait — la page ne relit pas le tour
+        # entre deux clics.
+        #
+        # PAS DE MARQUE « deja » ICI, contrairement a au_propre : ce bouton-ci
+        # ne se remplace pas par une coche, il disparait avec le pouce en bas
+        # (peindre, web/index.html) et son gestionnaire n'a aucun cas
+        # particulier. Poser le champ quand meme, ce serait une regle qui dort
+        # — et une regle qui dort finit par etre lue de travers.
         return web.json_response(
             {"erreur": "ce tour a deja ete refait"}, status=409)
+    # 409 lui aussi, et pour la meme raison qu'au propre : il se leve tout seul
+    # quand le rendu finit.
     if tour.get("etat") != "fini":
         return web.json_response({"erreur": "ce tour n'est pas termine"},
                                  status=409)
@@ -9930,18 +9978,24 @@ async def api_refaire(req):
     # chez un fournisseur porte SON nom dans « modele » (voir enregistrer_tour
     # sur le chemin distant), et ce bouton-ci demande une CARTE : le laisser
     # passer menait au meme KeyError, « ERREUR : 'veo' », un cran plus loin.
+    #
+    # LES DEUX EN 400 DEPUIS LE 2 SEPTEMBRE 2026, et c'etaient les deux seuls
+    # 409 que api_au_propre rendait en 400 sur les memes classes de refus : la
+    # regle est ecrite en toutes lettres dans api_au_propre, au-dessus de son
+    # controle du fournisseur. Ni l'un ni l'autre ne se leve en recliquant, et
+    # 409 promettait le contraire.
     moteur_ = plan.get("modele")
     if moteur_ in MOTEURS_DISTANTS:
         return web.json_response(
             {"erreur": f"ce rendu a ete confie a {MOTEURS_DISTANTS[moteur_]['titre']} : "
                        f"« refaire sur la grosse carte » demande une carte de la "
                        f"maison. Relance la demande pour repartir chez lui."},
-            status=409)
+            status=400)
     if moteur_ not in CATALOGUE:
         return web.json_response(
             {"erreur": f"le moteur de ce tour ({moteur_}) n'est plus au "
                        f"catalogue : relance la demande pour en choisir un autre"},
-            status=409)
+            status=400)
     plan.pop("graine", None)
     # CE GESTE NE PART PAS AU LOIN, et c'est ce que son libelle dit deja :
     # « refaire sur la grosse carte ». Sans cette marque, executer rappelait
