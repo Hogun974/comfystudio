@@ -52,14 +52,62 @@ Une esquisse déjà refaite porte la mention **refait en soigné** à la place d
 bouton. Insister depuis un second onglet répond `409` plutôt que de lancer une
 seconde grande image identique.
 
+### Trois refus, et un seul met la coche
+
+Le serveur refuse aussi une esquisse **non terminée** et une esquisse dont le
+**moteur a quitté le catalogue**. La page traduisait ces trois refus par la même
+chose : « ✓ déjà refait en soigné », coche verte et bouton retiré, alors que
+**rien n'avait été rendu**. Elle ne pose désormais la coche que sur le refus qui
+la mérite ; les deux autres affichent leur phrase et laissent le bouton.
+
+Le banc certifiait pourtant le texte de ces messages — un banc vert sur un
+contrat que la page n'empruntait pas, dans le banc écrit pour fermer ce
+motif-là. Voir [Éprouver les bancs](eprouver-les-bancs.md).
+
+### Une esquisse rendue au loin n'a pas de version soignée
+
+Elle est refusée **avant** les contrôles du plan et de l'esquisse, et avec sa
+vraie raison : « *cette esquisse a été rendue par …* ». Placée après eux, cette
+phrase devenait injoignable et l'on recevait « ce tour n'est pas une esquisse
+qu'on sache refaire » — vrai de nulle part et utile à personne. Les deux leviers
+de ce bouton sont la **graine** et le **nombre d'étapes**, et un [fournisseur
+distant](cles-api.md) n'expose ni l'une ni l'autre.
+
+Le contrôle lit le moteur **du tour** et non celui du plan : sur le chemin
+distant, le plan porte le repli local (voir [Ce que le tour garde du
+plan](ce-que-le-tour-garde.md)). Lu sur le plan, il ne mordait jamais, et une
+esquisse rendue par un fournisseur se serait refaite sur son repli — encore un
+autre moteur.
+
+Et le geste **ne part pas au loin** non plus. Ici la raison n'est pas la sûreté
+— le plan d'une esquisse est complet, il porte son classement — c'est la
+**comparabilité** : le studio relit le tiroir « nuage » tel qu'il est **au
+clic**. Esquisse rendue à la maison, tiroir basculé trois jours plus tard, clic :
+le soigné partait chez le fournisseur. Autre moteur, graine ignorée, étapes
+ignorées — les trois promesses de l'infobulle rompues d'un coup, en silence, et
+une ligne de facture en prime.
+
+Ce refus-là répond **`400` et non `409`** : la page a longtemps traduit tout
+`409` de cette route par « déjà refait », et un refus qui se déguise en réussite
+est pire qu'un refus. La page a été corrigée depuis ; le code de retour reste
+distinct, parce qu'une page se réécrit plus souvent qu'un contrat.
+
 **À ne pas confondre avec « refaire sur la grosse carte »**, qui apparaît après
 un pouce en bas. Celui-là garde la graine et change le soin ; celui-ci change la
 carte et **abandonne** la graine — refaire à l'identique ailleurs rendrait la
 même image, or ce qu'on demande alors est un autre tirage. Voir [Pouce en l'air,
 pouce en bas](avis.md).
 
-Le plan n'est écrit **que** sur les tours d'esquisse. Sur tous les tours, il
-ferait grossir chaque conversation pour un usage que personne n'en a.
+Le plan n'était longtemps écrit **que** sur les tours d'esquisse, au motif que
+personne d'autre n'en avait l'usage. Cet argument est mort le jour où « refaire
+sur la grosse carte » est né. **Depuis le 2 septembre 2026, tout tour rendu à la
+maison porte son plan** — +776 o par tour d'image, mesuré, et une conversation
+plafonnée à soixante tours ne dépasse pas 150 ko. Voir [Ce que le tour garde du
+plan](ce-que-le-tour-garde.md).
+
+Ce n'est pas ce plan-là qui garde la porte de ce bouton-ci : c'est la marque
+**esquisse**. L'ouvrir à un rendu ordinaire promettrait « le même, avec toutes
+les étapes » sur un rendu qui les avait déjà toutes.
 
 ## Où le brouillon veut dire quelque chose
 

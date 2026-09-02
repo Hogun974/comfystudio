@@ -96,6 +96,18 @@ entier — et une seule à la fois porte la marque, sinon deux images se disent
 variante choisie, mais seulement s'il y en avait déjà un. La conversation d'un
 autre, un tour inconnu, un tour qui n'a rien produit : `404` dans les trois cas.
 
+**Le même bouton est dans la grille de la [médiathèque](mediatheque.md)**, sous
+chaque variante non retenue, et il y est plus utile que dans le fil : le fil
+montre les tirages l'un sous l'autre, la grille côte à côte. Quatre images qui
+ont le même prompt, le même moteur, la même taille et la même minute ne se
+départagent qu'à l'œil, et l'œil a besoin de les voir ensemble. La médiathèque
+servait l'identifiant du tour et celui du groupe depuis le début ; la grille les
+jetait, et affichait le rang sans donner le geste. Un banc était vert sur ce
+contrat — servi par le serveur, emprunté par personne.
+
+Un tirage retiré de la file, ou raté, garde son rang mais n'a rien à désigner :
+le bouton ne lui est pas proposé, puisque le serveur répondrait `404`.
+
 ## Où l'on s'arrête
 
 `VARIANTES_POSSIBLE = ("image", "planche")`. **On ne multiplie que ce qui est
@@ -149,7 +161,13 @@ prendre](combien-de-temps.md).
 Quatre variantes ont le même prompt, le même moteur, la même taille et la même
 minute : sans leur rang, la [médiathèque](mediatheque.md) en montrait quatre
 lignes rigoureusement indiscernables. Chaque pièce porte donc son numéro —
-**variante 2 sur 4** — et la marque de celle qui a été retenue.
+**variante 2 sur 4** —, la marque de celle qui a été retenue, et le bouton qui
+en désigne une autre.
+
+Ce bouton-là a failli manquer son propre cas : la condition qui l'affichait
+écartait toute pièce portant une marque, donc **tous les brouillons** — c'est-à-dire
+exactement ce que sa recette lance. La recette était verte parce qu'elle poste
+sur la route sans jamais ouvrir la page.
 
 Le nombre de variantes, lui, ne se retient **pas** sur la conversation,
 contrairement au moteur, à la taille, à la priorité et à la machine (voir
