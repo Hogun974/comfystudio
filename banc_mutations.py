@@ -26,10 +26,16 @@ Le onzieme est banc_refaire.py, arrive le 2 septembre avec ses douze mutations
 — une par correction de 1ad6c0d, et DEUX pour le defaut de surete, dont les
 gardes se recouvrent.
 
-Il reste verifier_formulations.py, et c'est le dernier : il nomme ses fautes
-par le NUMERO DE LIGNE de banc_formulations.jsonl, si bien qu'une ancre posee
-dessus se perimerait au premier cas insere au milieu du fichier. L'ancrer sur
-la formulation elle-meme est possible ; ce n'est simplement pas fait.
+Le douzieme est verifier_formulations.py, le plus vieux banc du depot et le
+dernier sans mutation, ferme le 2 septembre. Ce qui l'en tenait ecarte — il
+nomme ses fautes par le NUMERO DE LIGNE de banc_formulations.jsonl — se regle
+en ancrant sur la FORMULATION, qu'il imprime a cote du numero et qui ne bouge
+pas quand un cas s'insere au milieu du fichier. Quatre mutations, et TROIS
+TROUS dont le premier est le plus grave de ce fichier : le banc ne voit pas la
+panne pour laquelle il a ete ecrit. Il recopie dans aiguillage_ecrit() la
+sequence de serveur.py au lieu de l'emprunter, alors que sa docstring promet
+que « toute permutation la-bas doit se voir ici » — c'est « priorite, » une
+seconde fois, sur le banc qui gardait « enleve le fond ».
 
 Trois facons d'echouer, et la premiere est la plus precieuse :
 
@@ -117,6 +123,30 @@ donne, et il a fallu deux facons de le prendre :
     10/10, sur le meme serveur.py. Ce banc-la, ne avec la correction de
     717fb23, restait donc aveugle a la case de cache unique comme au devis qui
     comptait les rendus du voisin.
+
+LA DECOUPE DE C2, trouvee le 2 septembre. La correction repare DEUX defauts —
+la carte MOYENNE rendue quand on demande la grosse, et la descente sur une
+carte ou le moteur ne tient pas — et le banc porte une ligne pour chacun. Une
+seule mutation les couvrait : elle rougissait sur les deux a la fois, donc la
+seconde ligne n'avait jamais ete vue mordre SEULE, et l'agent qui l'a posee
+ecrivait n'avoir trouve aucune decoupe. Elle existe. Les deux defauts naissent
+du meme geste — l'ordre du filtre de charge et du filtre natif — mais pas de la
+meme facon : « grosse » se tranche AVANT tout filtre dans choisir_noeud, la
+descente se joue APRES. Deux demi-copies suffisent donc, chacune reparant une
+moitie : 47/48 chacune, sur SA ligne, la copie entiere rendant 46/48. Le sens
+inverse est celui des quatre autres — banc_repartition.py de 0f0f3dc, 35/35
+VERT sur les deux moities comme sur la copie entiere.
+
+CE QUE LE PARALLELISME DES LANCEMENTS COUTERAIT, mesure le 2 septembre et
+refuse. Les huit bancs sans sommeil pourraient tourner ensemble, et l'ordre des
+resultats se garderait sans peine — il suffit de collecter les verdicts dans
+une liste indexee et de n'imprimer qu'a la fin. Ce n'est pas l'ordre qui
+l'interdit, c'est la MESURE : ce fichier met 77,4 s seul sur cette machine, et
+le meme lancement a depasse 300 s pendant que deux autres travaux occupaient
+les coeurs. Un facteur quatre par la seule charge, sur des bancs dont plusieurs
+temporisent — banc_variantes de 0,02 a 0,6 s, banc_refaire 0,4 s — dit que huit
+processus simultanes les reordonneraient. On echangerait quarante secondes de
+CI contre un banc capricieux, et c'est le mauvais sens de l'echange.
 """
 import io
 import os
@@ -204,18 +234,27 @@ BESOINS = {
     # serveur.py, son aveu d'ATTENDU_AILLEURS se declarerait perime.
     "banc_catalogue.py": ["banc_catalogue.py", "catalogue.py",
                           "installation.py", "serveur.py"],
+    # Il importe serveur.py pour appeler les veut_* directement, et relit ses
+    # 64 cas dans banc_formulations.jsonl. Sans ce fichier de cas, il ne
+    # verifie plus rien et s'arrete sur une erreur d'ouverture — un plantage
+    # qui ressemblerait a une mutation attrapee.
+    "verifier_formulations.py": (["verifier_formulations.py",
+                                  "banc_formulations.jsonl"]
+                                 + fichiers_du_conteneur()[1:]),
 }
 
 
 # ── Ou se lit la ligne rouge ──────────────────────────────────────────
-# Huit bancs sur dix impriment « NON » ; banc_cout.py imprime « RATE » et
-# banc_adulte.py n'a pas de dit() du tout — il liste ses fautes indentees sous
-# leur compte. Sans cette table, TOUTE mutation qui les vise serait rendue
-# « le banc s'est casse au lieu de rougir » alors qu'il l'a parfaitement
-# attrapee : le faux positif que ce fichier existe pour interdire, retourne.
+# Huit bancs sur onze impriment « NON » ; banc_cout.py imprime « RATE », et
+# banc_adulte.py comme verifier_formulations.py n'ont pas de dit() du tout —
+# ils listent leurs fautes indentees sous leur compte. Sans cette table, TOUTE
+# mutation qui les vise serait rendue « le banc s'est casse au lieu de
+# rougir » alors qu'il l'a parfaitement attrapee : le faux positif que ce
+# fichier existe pour interdire, retourne.
 #
 # L'exigence, elle, ne bouge pas — la ligne NOMMEE et pas un code de retour.
-MARQUE_ROUGE = {"banc_cout.py": "  RATE ", "banc_adulte.py": "    "}
+MARQUE_ROUGE = {"banc_cout.py": "  RATE ", "banc_adulte.py": "    ",
+                "verifier_formulations.py": "    "}
 
 
 # ── Les deux formes d'ancre ───────────────────────────────────────────
@@ -647,8 +686,10 @@ PAGE = [
 #
 # Quand le banc saura la voir, elle rougira : il le dira, et il suffira de la
 # deplacer dans PAGE ou CONTENEUR ci-dessus. Les quatre qui visaient
-# banc_page.py y sont passees ; il ne reste que celle de banc_conteneur.py,
-# qui demande d'EVALUER un defaut calcule et non de generaliser un releve.
+# banc_page.py y sont passees ; celle-ci demande d'EVALUER un defaut calcule et
+# non de generaliser un releve. TROUS_FORMULATIONS, plus bas, en ajoute trois
+# qui tiennent a la meme cause et se lisent la-bas : verifier_formulations.py
+# recopie la sequence de serveur.py au lieu de l'emprunter.
 TROUS_CONNUS = [
     dict(
         nom="un defaut du compose qui repete un defaut CALCULE par le code",
@@ -777,6 +818,25 @@ REPARTITION = [
         rougit="un rendu qui a trop attendu prend UN tour, pas la main",
         editions=[("serveur.py", brut(
             chr(10) + "                 and not self._vient_de_ceder)", ")"))]),
+    # ── C2, ET LA DECOUPE QUI MANQUAIT ────────────────────────────────
+    # La correction repare DEUX defauts distincts — « viser=grosse » retombe
+    # sur la carte moyenne, et la reprise descend sur une carte ou le moteur ne
+    # tient pas — et le banc porte une ligne pour chacun. Une seule mutation
+    # les couvrait toutes les deux : elle rougit sur les deux lignes a la fois,
+    # donc la seconde n'avait jamais ete vue mordre SEULE. L'agent qui l'a
+    # posee ecrivait n'avoir trouve aucune decoupe ; elle existe, et la voici.
+    #
+    # Les deux defauts naissent du MEME geste — l'ordre du filtre de charge et
+    # du filtre natif — mais ils n'en dependent pas de la meme facon : « grosse »
+    # se tranche AVANT tout filtre dans choisir_noeud, la descente se joue APRES.
+    # Reparer l'un dans la copie sans reparer l'autre est donc possible, et
+    # chaque demi-copie ci-dessous ne fait rougir QUE sa ligne. Mesure : la
+    # copie entiere rend 46/48, chaque moitie 47/48.
+    #
+    # La copie entiere reste, et ce n'est pas un doublon : elle seule restaure
+    # le code tel qu'il etait, mot pour mot. Les deux moities sont des
+    # demi-reparations ecrites pour l'occasion — credibles, comme « le portage
+    # naif » plus haut, mais inventees. On garde le vrai defaut ET ce qui isole.
     dict(
         nom="la regle de reprise recopiee au lieu d'etre appelee",
         banc="banc_repartition.py",
@@ -785,7 +845,9 @@ REPARTITION = [
               "de choisir_noeud — ignorent debordement_acceptable, et leur "
               "« viser=grosse » retombe sur la plus petite des que le natif "
               "manque. La copie rendait la carte MOYENNE quand on demandait la "
-              "grosse, et descendait sur une carte ou le moteur ne tient pas",
+              "grosse, et descendait sur une carte ou le moteur ne tient pas. "
+              "Elle rougit sur les DEUX lignes ; les deux mutations suivantes "
+              "les separent",
         rougit="la reprise choisit comme le premier choix : viser=grosse garde "
                "la grosse carte",
         editions=[("serveur.py", brut(
@@ -803,6 +865,67 @@ REPARTITION = [
             + '            else:' + chr(10)
             + '                neuf = min(entre, key=lambda x: vram_de(x["id"]))'
             + chr(10)))]),
+    dict(
+        nom="la copie de reprise, MOITIE « grosse » seule",
+        banc="banc_repartition.py",
+        imite="le natif est filtre le premier, comme dans choisir_noeud — donc "
+              "la reprise ne descend PLUS sur une carte ou le moteur ne tient "
+              "pas — mais la plus grosse se cherche encore APRES le filtre de "
+              "charge. Un rendu qui vise deja la geante l'ecarte, et « refaire "
+              "sur la grosse carte, quitte a l'attendre » rend la carte "
+              "MOYENNE sans rien dire. L'autre moitie de C2 est laissee "
+              "reparee ici ; c'est la mutation suivante qui la porte",
+        rougit="la reprise choisit comme le premier choix : viser=grosse garde "
+               "la grosse carte",
+        editions=[("serveur.py", brut(
+            '            neuf = choisir_noeud(cle, viser=viser, taille=taille,'
+            + chr(10) + '                                 exclus=ecartes) or autres[0]'
+            + chr(10),
+            '            natifs_ = [x for x in autres'
+            + ' if tient_vraiment(cle, x["id"])]' + chr(10)
+            + '            entre = natifs_ or autres' + chr(10)
+            + '            moindre_ = min(charge_noeud(x["id"]) for x in entre)' + chr(10)
+            + '            entre = [x for x in entre'
+            + ' if charge_noeud(x["id"]) == moindre_]' + chr(10)
+            + '            if viser == "grosse" or not natifs_:' + chr(10)
+            + '                neuf = max(entre, key=lambda x: vram_de(x["id"]))' + chr(10)
+            + '            else:' + chr(10)
+            + '                neuf = min(entre, key=lambda x: vram_de(x["id"]))'
+            + chr(10)))]),
+    dict(
+        nom="la copie de reprise, MOITIE « natif » seule",
+        banc="banc_repartition.py",
+        imite="« viser=grosse » est tranche avant tout filtre et garde donc la "
+              "grosse carte — la moitie precedente est reparee — mais le reste "
+              "filtre la charge AVANT le natif, l'inverse de choisir_noeud. Une "
+              "carte libre trop petite bat alors une carte chargee ou le moteur "
+              "tient : le debordement devient le choix par defaut au lieu du "
+              "recours mesure qu'il doit rester",
+        rougit="et la reprise ne descend pas sur une carte ou le moteur ne "
+               "tient pas",
+        editions=[("serveur.py", brut(
+            '            neuf = choisir_noeud(cle, viser=viser, taille=taille,'
+            + chr(10) + '                                 exclus=ecartes) or autres[0]'
+            + chr(10),
+            '            natifs_ = [x for x in autres'
+            + ' if tient_vraiment(cle, x["id"])]' + chr(10)
+            + '            if viser == "grosse":' + chr(10)
+            + '                neuf = max(natifs_ or autres,'
+            + ' key=lambda x: vram_de(x["id"]))' + chr(10)
+            + '            else:' + chr(10)
+            + '                moindre_ = min(charge_noeud(x["id"])'
+            + ' for x in autres)' + chr(10)
+            + '                proches_ = [x for x in autres' + chr(10)
+            + '                            if charge_noeud(x["id"]) == moindre_]' + chr(10)
+            + '                natifs_ = [x for x in proches_'
+            + ' if tient_vraiment(cle, x["id"])]' + chr(10)
+            + '                entre = natifs_ or proches_' + chr(10)
+            + '                if natifs_:' + chr(10)
+            + '                    neuf = min(entre,'
+            + ' key=lambda x: vram_de(x["id"]))' + chr(10)
+            + '                else:' + chr(10)
+            + '                    neuf = max(entre,'
+            + ' key=lambda x: vram_de(x["id"]))' + chr(10)))]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1247,12 +1370,13 @@ REFAIRE = [
               "reste — et c'est le prix a payer pour ne PAS refuser tout "
               "l'historique",
         rougit="et le studio ANNONCE la taille qu'il a reprise",
-        # Le CORPS de l'annonce a deja change une fois en une journee : on
-        # l'ancre sur sa premiere ligne et l'on avale ce qui suit tant que
-        # l'indentation le rattache, plutot que de recopier une phrase qui
-        # bougera encore.
+        # Le CORPS de l'annonce a deja change deux fois en deux jours — et sa
+        # GARDE une fois de plus : on l'ancre sur sa premiere ligne et l'on
+        # avale ce qui suit tant que l'indentation le rattache, plutot que de
+        # recopier une phrase qui bougera encore.
         editions=[("serveur.py", motif(
-            r'    if sans_taille:\n        journal\(tid, "la taille de ce tour'
+            r'    if sans_taille and plan\.get\("intention"\) == "image":\n'
+            r'        journal\(tid, f"la taille de ce tour'
             r'[^\n]*\n(?:[ ]{8,}[^\n]+\n)*', ""))]),
     dict(
         nom="un moteur retire du catalogue passe quand meme",
@@ -1335,6 +1459,138 @@ REFAIRE = [
                 + chr(10)
                 + "        sorties, secondes = await soumettre_robuste(" + chr(10))),
         ]),
+    # ── LE PLAN ENTIER SUR LE TOUR, 2 septembre 2026 ───────────────────
+    # Cinq gardes, cinq mutations, une par garde. Elles ne se recouvrent pas :
+    # la premiere retire le plan, la deuxieme le repli, la troisieme fait
+    # diverger les deux chemins, la quatrieme ouvre la porte a ce que le modele
+    # a invente, la cinquieme reprend le defaut de la chanson par le nouveau
+    # chemin. Chacune est nommee sur une ligne que les autres ne touchent pas.
+    dict(
+        nom="le plan redevient reserve aux esquisses",
+        banc="banc_refaire.py",
+        imite="l'etat d'avant le 2 septembre : « refaire » reconstruit de "
+              "nouveau le plan champ par champ sur tout rendu ordinaire, et "
+              "cette liste-la avait deja coute six defauts en deux jours, dont "
+              "un de surete. Le suivant sera le septieme, et il ne se verra "
+              "qu'au rendu",
+        rougit="un tour ordinaire porte desormais son plan",
+        editions=[("serveur.py", brut(
+            '        "plan": plan_du_tour(plan, cle),',
+            '        "plan": plan_du_tour(plan, cle) if ((plan or {}).get("priorite")'
+            + chr(10) + '                                       == "brouillon"'
+            + chr(10) + '                                       and (plan or {}).get("intention")'
+            + chr(10) + "                                       in ESQUISSE_POSSIBLE) else None,"))]),
+    dict(
+        nom="le repli des tours d'avant supprime avec la reconstruction",
+        banc="banc_refaire.py",
+        imite="le bouton devient inoperant sur tout l'historique — une "
+              "conversation garde soixante tours, et ceux d'avant le "
+              "2 septembre 2026 n'ont pas de plan. C'est exactement le defaut "
+              "de 0f0f3dc, qui exigeait deja le plan et repondait 400 sur tout "
+              "rendu ordinaire ; le nettoyage qui suit une bonne migration le "
+              "rejoue tel quel",
+        rougit="refaire y est accepte quand meme",
+        editions=[("serveur.py", brut(
+            '    elif tour.get("prompt"):',
+            '    elif tour.get("plan") and tour.get("prompt"):'))]),
+    dict(
+        nom="le plan et le repli cessent de rendre la meme image",
+        banc="banc_refaire.py",
+        imite="le bouton rend une image differente selon l'AGE du tour sur "
+              "lequel on a clique, et rien ne le dit. Deux chemins pour un "
+              "seul geste ne valent que tant qu'ils s'accordent",
+        rougit="meme prompt, meme negatif, meme taille, memes etapes a la carte",
+        editions=[("serveur.py", brut(
+            "        plan = dict(plan_)" + chr(10),
+            '        plan = {c: v for c, v in plan_.items() if c != "negatif"}'
+            + chr(10)))]),
+    dict(
+        nom="le tour recopie le plan tel quel, sans liste nommee",
+        banc="banc_refaire.py",
+        imite="le plan sort de json.loads(reponse du modele) : tout ce que le "
+              "modele a invente est ecrit sur le disque de l'utilisateur et "
+              "relu a chaque ouverture de conversation. C'est la seule chose du "
+              "tour qui grossisse sans borne — et les marques de geste "
+              "recopiees avec, dont « enrichissement_rate », qui fait reposer "
+              "une question a la place de l'image",
+        rougit="le plan ecrit ne porte que la liste nommee",
+        editions=[("serveur.py", brut(
+            "    garde = {c: plan[c] for c in PLAN_SUR_LE_TOUR if c in plan}",
+            "    garde = dict(plan)"))]),
+    dict(
+        nom="« langue » et « tonalite » retirees de ce que le plan emporte",
+        banc="banc_refaire.py",
+        imite="le meme defaut qu'avant la migration, par l'autre chemin : "
+              "g_audio retombe sur « en » et « C minor », et une chanson "
+              "francaise refaite repart en annoncant l'anglais a ACE-Step, avec "
+              "ses paroles francaises, dans une autre tonalite",
+        rougit="et dans la MEME langue et la meme tonalite",
+        editions=[("serveur.py", brut(
+            '    "paroles", "langue", "tonalite", "tags_audio", "cases", "raison",',
+            '    "paroles", "tags_audio", "cases", "raison",'))]),
+    dict(
+        nom="un rendu confie au loin ecrit quand meme son plan",
+        banc="banc_refaire.py",
+        imite="sur le chemin distant, plan[\"modele\"] porte le repli LOCAL et "
+              "c'est « cle » qui nomme le fournisseur. Le plan ecrit sur le "
+              "tour, la page affiche « FLUX.2 klein 9B » sous une image rendue "
+              "par Nano Banana — elle lit « plan.modele » en premier et ne "
+              "retombe sur le champ du tour qu'a defaut. Le detail perd au "
+              "passage la ligne « fournisseur », que le plan borne ne garde pas",
+        rougit="un rendu confie au loin n'ecrit pas de plan sur son tour",
+        editions=[("serveur.py", brut(
+            "    if not isinstance(plan, dict) or cle in MOTEURS_DISTANTS:",
+            "    if not isinstance(plan, dict):"))]),
+    dict(
+        nom="la phrase du fournisseur devient injoignable dans api_au_propre",
+        banc="banc_refaire.py",
+        imite="l'effet exact de la remettre APRES le controle du plan, depuis "
+              "qu'un rendu confie au loin n'ecrit plus de plan sur son tour : "
+              "le controle du plan tombe le premier et cette phrase-ci n'est "
+              "plus jamais atteinte. Une esquisse rendue chez un fournisseur "
+              "recoit alors « ce tour n'est pas une esquisse qu'on sache "
+              "refaire » — vrai de nulle part et utile a personne",
+        rougit="et la phrase nomme le fournisseur, sans plan a lire",
+        editions=[("serveur.py", motif(
+            r'    rendu_par = tour\.get\("modele"\)\n'
+            r'    if rendu_par in MOTEURS_DISTANTS:\n.*?status=400\)\n', ""))]),
+    # ── L'ANNONCE DE TAILLE, ET LES DEUX FOIS OU ELLE MENTAIT ─────────
+    # Deux gardes posees le 2 septembre sur la meme phrase, et deux mutations :
+    # elles ne mordent pas au meme endroit — la premiere sur le PLAN mis en
+    # file, la seconde sur le seul journal.
+    dict(
+        nom="le repli de taille reprend aussi la planche",
+        banc="banc_refaire.py",
+        imite="caler_taille() n'est jamais appele pour une planche sur le "
+              "chemin normal, et la branche planche d'executer n'en lit pas le "
+              "resultat : elle plafonne la largeur a 960 et tire la hauteur "
+              "d'un rapport A4. Le 1216x832 pose ici ressort en 960x1344, le "
+              "journal se contredit a deux lignes d'intervalle, et ce 1216x832 "
+              "ment ensuite dans tour[\"taille\"] — donc dans la mediatheque, "
+              "et dans la table des durees sur laquelle "
+              "debordement_acceptable(exact=True) tranche un debordement de "
+              "carte. Une mesure fausse qui decide d'un placement",
+        rougit="le repli de taille ne pose PAS 1216x832 sur une planche",
+        editions=[("serveur.py", brut(
+            '    if sans_taille and plan.get("intention") == "image":' + chr(10)
+            + "        plan = caler_taille(plan, texte)",
+            '    if sans_taille and plan.get("intention") in ("image", "planche"):'
+            + chr(10) + "        plan = caler_taille(plan, texte)"))]),
+    dict(
+        nom="l'annonce de taille parle a qui n'a pas de taille",
+        banc="banc_refaire.py",
+        imite="une chanson, une video, un objet 3D n'ont pas de resolution : "
+              "« sans_taille » y est vrai par nature, et la PREMIERE ligne que "
+              "voit quelqu'un qui refait une chanson devient « la taille de ce "
+              "tour n'avait pas ete conservee — on laisse le studio la "
+              "choisir ». Rien n'a ete conserve ni choisi : il n'y a pas de "
+              "taille",
+        rougit="et le journal ne parle pas de taille a une chanson",
+        editions=[("serveur.py", brut(
+            '    if sans_taille and plan.get("intention") == "image":' + chr(10)
+            + '        journal(tid, f"la taille de ce tour',
+            "    if sans_taille:" + chr(10)
+            + '        journal(tid, f"la taille de ce tour'))]),
 ]
 
 
@@ -1373,6 +1629,164 @@ ADULTE = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  verifier_formulations.py — le dernier banc sans mutation
+# ──────────────────────────────────────────────────────────────────────
+# Le plus vieux banc du depot, 64 formulations, et le seul jamais eprouve. Ce
+# qui l'en tenait ecarte est ecrit plus haut : il nomme ses fautes par le
+# NUMERO DE LIGNE de banc_formulations.jsonl, si bien qu'une ancre posee dessus
+# se perimerait au premier cas insere au milieu du fichier. On l'ancre donc sur
+# LA FORMULATION elle-meme — le banc l'imprime entre guillemets a cote du
+# numero — et l'ancre survit alors a toute insertion.
+#
+# Les quatre ci-dessous ne sont pas des manipulations plausibles : ce sont
+# quatre fautes qui ONT EU LIEU, reprises dans le code d'avant leur correction.
+# Les trois autres que l'histoire donne sont plus bas, dans TROUS_FORMULATIONS :
+# le banc ne les voit pas, et la premiere est celle qu'il existe pour empecher.
+#
+# LEUR SENS INVERSE, pris le 2 septembre :
+#   - « detaille » et les verbes de _PAS_LIRE sont VERTES sur le banc de
+#     c6bfacd^ (55 cas), qui tourne encore sur le serveur.py d'aujourd'hui et y
+#     rend 55/55. Preuve inverse pleine.
+#   - « l arriere-plan avec une espace » n'a pas de filet d'avant : le banc est
+#     NE avec la correction, e149893, et il a trouve la faute a son premier
+#     essai. Le sens inverse a donc ete pris comme pour banc_refaire — le banc
+#     de e149893 (30 cas) lance sur le serveur.py d'aujourd'hui MUTE. Il rougit,
+#     et il rougit sur le SYMPTOME d'origine : « attendu detourer, obtenu
+#     retoucher_sujet », le sujet efface a la place du fond. Le banc
+#     d'aujourd'hui, lui, ne dit que « obtenu aucun » — sa ligne 4 ne porte pas
+#     de piece jointe, donc la retouche ne s'ouvre pas. Il voit la faute, plus
+#     la panne.
+#   - « la cible NOMMEE » n'est prouvable ni d'une facon ni de l'autre, et il
+#     faut le dire : la garde vient de bb7ab72, plus vieille que le banc, et le
+#     serveur.py d'alors n'a pas encore veut_zone_nommee — le banc
+#     d'aujourd'hui s'arrete dessus sur AttributeError. C'est le cas de
+#     banc_durees et banc_adulte, une troisieme fois : une mutation rouge dont
+#     on ne sait pas ce qu'elle mesure d'autre.
+FORMULATIONS = [
+    dict(
+        nom="le detourage reattend « l arriere-plan » avec une espace",
+        banc="verifier_formulations.py",
+        imite="la faute qui a fait naitre ce banc : sans_accents() enleve les "
+              "accents, pas les apostrophes. « retire l'arriere-plan » — la "
+              "forme que tout le monde ecrit, et celle du corpus — ne "
+              "correspondait a rien. Benigne tant que la demande partait au "
+              "modele de langage, elle tombait depuis l'arrivee des moteurs de "
+              "retouche sur la retouche du SUJET : fond transparent demande, "
+              "sujet efface obtenu",
+        rougit="« retire l'arriere-plan »",
+        editions=[("serveur.py", brut(
+            'r".{0,12}(?:le fond|l.?arriere.?plan|le decor)|"',
+            'r".{0,12}(?:le fond|l arriere.?plan|le decor)|"'))]),
+    dict(
+        nom="« detaille » revient dans le motif de lecture",
+        banc="verifier_formulations.py",
+        imite="avec une image jointe, « detaille davantage le visage » demande "
+              "PLUS DE DETAIL, pas une description — et le raccourci rendait un "
+              "paragraphe la ou l'on attendait une image. Un verbe ambigu dans "
+              "un raccourci ecrit coute plus qu'il ne rapporte : ce qu'on ne "
+              "reconnait pas part au modele, comme avant",
+        rougit="« detaille davantage le visage »",
+        editions=[("serveur.py", brut(
+            r'r"\b(decri[st]|decrire|raconte|analyse|commente|explique)\b"',
+            r'r"\b(decri[st]|decrire|raconte|analyse|commente|detaille|explique)\b"'))]),
+    dict(
+        nom="les verbes de transformation les plus courants quittent _PAS_LIRE",
+        banc="verifier_formulations.py",
+        imite="mesure de c6bfacd : « analyse cette photo et corrige les "
+              "couleurs » partait en description. Le raccourci de lecture est "
+              "place AVANT le detourage et l'agrandissement — ce qu'il avale, "
+              "aucun autre ne le voit, et l'utilisateur recoit un paragraphe au "
+              "lieu de l'image qu'il demandait",
+        rougit="« analyse cette photo et corrige les couleurs »",
+        editions=[("serveur.py", brut(
+            r'    r"|\b(corrige|supprime|efface|recadre|eclairci[st]?|assombri[st]?|floute?s?|"'
+            + chr(10)
+            + r'    r"applique|rends|augmente|reduis|nettoie|repare|detoure|isole|recolore|"'
+            + chr(10)
+            + r'    r"agrandis|reduis|coupe|rogne)\b"' + chr(10),
+            ""))]),
+    dict(
+        nom="la retouche localisee cesse d'exiger une cible NOMMEE",
+        banc="verifier_formulations.py",
+        imite="« enleve le sujet » et « efface la personne » ne nomment rien de "
+              "plus que ce que BiRefNet sait deja trouver. Sans cette garde ils "
+              "partent sur SAM 3.1 : un modele que l'utilisateur n'a peut-etre "
+              "pas telecharge, une traduction de la cible, et quinze secondes "
+              "de carte pour un masque qu'on avait deja gratuitement",
+        rougit="« enleve le sujet »",
+        editions=[("serveur.py", brut(
+            "    return bool(apres) and not re.match(" + chr(10)
+            + '        r"^(le|la|l.|les)?'
+            + r'\s*(sujet|personnage|personne|fond|arriere)", apres, re.I)',
+            "    return bool(apres)"))]),
+]
+
+
+# ── Les trois que ce banc-la ne voit pas ──────────────────────────────
+# Elles ont ete jouees, et verifier_formulations.py est reste vert sur les
+# trois. La premiere est la pire de tout ce fichier : c'est LA PANNE QUE CE
+# BANC EXISTE POUR EMPECHER, citee dans son propre en-tete, et il ne la voit
+# pas. Le motif est le meme que celui de « priorite, » : le banc RECOPIE dans
+# aiguillage_ecrit() la sequence de serveur.py au lieu de l'emprunter, et sa
+# docstring affirme pourtant que « toute permutation la-bas doit se voir ici ».
+# Il eprouve les predicats veut_*, jamais leur ORDRE ni les gardes qui les
+# entourent — c'est-a-dire tout ce que 25ce7d2 et 83e334d ont corrige.
+#
+# Les fermer ne se fait pas ici : la premiere demande que le banc appelle
+# aiguiller() plutot que de reecrire son enchainement, les deux autres qu'un
+# cas du jsonl bouge. Elles restent donc signalees a chaque lancement.
+TROUS_FORMULATIONS = [
+    dict(
+        nom="le detourage cesse de passer AVANT la retouche localisee",
+        banc="verifier_formulations.py",
+        imite="la panne d'origine, mot pour mot : « enleve le fond », « retire "
+              "l'arriere-plan », « mets-la sur fond transparent » contiennent "
+              "les memes verbes que la retouche, et sans cette garde ils "
+              "remplacent le SUJET. Le banc ne peut pas la voir : il recopie "
+              "l'ordre au lieu de l'emprunter",
+        rougit="« enleve le fond »",
+        editions=[("serveur.py", brut(
+            '    if a_une_image == "image" and not modele_choisi'
+            + " and not veut_detourer(texte):",
+            '    if a_une_image == "image" and not modele_choisi:'))]),
+    dict(
+        nom="« que » revient dans le mot qui dit qu'on vise une zone",
+        banc="verifier_formulations.py",
+        imite="« je voudrais QUE tu changes le style » et « est-ce QUE tu peux "
+              "refaire cette image » partaient en retouche localisee. Le banc "
+              "porte les deux formulations — mais SANS piece jointe, et la "
+              "retouche localisee ne s'ouvre qu'avec une image : elles "
+              "n'atteignent jamais le motif qu'elles devaient garder",
+        rougit="« je voudrais que tu changes le style »",
+        editions=[("serveur.py", brut(
+            r'_SEULEMENT = re.compile(r"\b(seulement|uniquement|juste)\b", re.I)',
+            r'_SEULEMENT = re.compile(r"\b(seulement|uniquement|juste|que)\b", re.I)'))]),
+    dict(
+        nom="le raccourci de lecture ne refuse plus une phrase ambigue",
+        banc="verifier_formulations.py",
+        imite="« decris cette image puis supprime le fond » declenchait la "
+              "lecture ET le detourage, et la lecture etant placee avant, "
+              "l'utilisateur recevait un paragraphe au lieu de son image "
+              "detouree. Le cas est au banc — mais « supprime » figure aussi "
+              "dans _PAS_LIRE, ajoute par le MEME commit : la seconde garde le "
+              "voit deja. Le piege des gardes qui se recouvrent, pour la "
+              "quatrieme fois",
+        rougit="« decris cette image puis supprime le fond »",
+        editions=[("serveur.py", brut(
+            "    if not _LIRE.search(nu):" + chr(10)
+            + "        return False" + chr(10)
+            + "    return not (veut_detourer(texte) or veut_agrandir(texte)" + chr(10)
+            + "                or veut_fluidifier(texte) or veut_ralenti(texte)" + chr(10)
+            + "                or veut_zone_nommee(texte) or veut_retoucher_fond(texte)"
+            + chr(10)
+            + "                or veut_retoucher_sujet(texte))" + chr(10),
+            "    return bool(_LIRE.search(nu))" + chr(10)))]),
+]
+
+TROUS_CONNUS += TROUS_FORMULATIONS
+
+
 # ── Ce que la couverture coute, et ou part le temps ───────────────────
 # Mesure du 1er septembre, sur cette machine : 8,4 s pour 32 mutations sur
 # quatre bancs, 52,8 s pour 51 sur dix, 54,6 s pour 54. Le sextuplement ne
@@ -1396,13 +1810,27 @@ ADULTE = [
 # mesure plus rien. Sur les huit autres bancs, une mutation neuve coute moins
 # d'une demi-seconde — c'est la qu'il reste de la place.
 #
+# Les six mutations ajoutees le 2 septembre au soir tiennent dans la place qui
+# restait : verifier_formulations.py met 0,8 s par lancement — il n'ouvre aucun
+# reseau et ne temporise pas — et banc_repartition.py autant. Dix lancements de
+# plus au total : les quatre mutations, les trois trous, le sien sur le depot
+# sain, et les deux moities de C2. 7,3 s mesurees, sur les bancs bon marche.
+#
 # On ne les lance pas en parallele, et ce n'est pas un oubli : banc_variantes
 # ordonne ses tirages par des sommeils de 0,02 a 0,6 s pour eprouver « le
 # premier fini n'est pas celui qui tient le rang ». Huit processus qui se
 # disputent les coeurs reordonnent ces tirages, et le banc deviendrait
 # capricieux — un banc qui rougit au hasard vaut moins qu'un banc lent.
+#
+# CE N'EST PAS L'ORDRE DES RESULTATS QUI L'INTERDIT — il se garde en collectant
+# les verdicts dans une liste indexee et en n'imprimant qu'a la fin. C'est la
+# mesure du 2 septembre : ce fichier met 77,4 s seul, et le meme lancement a
+# depasse 300 s pendant que deux autres travaux occupaient les coeurs de cette
+# machine. Un facteur quatre par la seule charge, sur des bancs qui temporisent,
+# dit exactement ce que huit processus simultanes leur feraient. Le gain
+# attendu — environ 38 s — s'achete au prix d'un banc capricieux.
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
-             + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE)
+             + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
@@ -1413,6 +1841,12 @@ def source(banc):
     if banc not in _CACHE:
         _CACHE[banc] = {rel: lire(rel) for rel in BESOINS[banc]}
     return dict(_CACHE[banc])
+
+
+# Au-dela, on considere que le banc mute ne rendra jamais la main. Voir le
+# commentaire de lancer() : c'est une marge pour la CHARGE de la machine, pas
+# pour le banc lui-meme.
+DELAI_BANC = 30.0
 
 
 def lancer(banc, fichiers, racine):
@@ -1427,9 +1861,27 @@ def lancer(banc, fichiers, racine):
     # console Windows en cp1252 faisait mourir le fils sur son propre affichage
     # — un plantage qui ressemblait a une mutation attrapee.
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    fini = subprocess.run([sys.executable, os.path.join(dossier, banc)],
-                          cwd=dossier, env=env, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT)
+    # UN DELAI, ET UN VERDICT NOMME QUAND IL EXPIRE. Sans lui, une mutation qui
+    # fait PENDRE le banc au lieu de le faire rougir bloquait le lanceur pour
+    # toujours — donc la CI, sans un message. Constate le 2 septembre : six
+    # lancements empiles, deux depuis dix-sept minutes, sur une mutation qui
+    # retirait un repli et faisait boucler banc_refaire.
+    #
+    # C'est la meme famille que l'exigence de la ligne NOMMEE, ecrite dans
+    # l'en-tete : « une mutation qui casse le banc par une exception rend elle
+    # aussi un code non nul, et se ferait passer pour une reussite ». Le
+    # pendage est pire — il ne se declare pas du tout.
+    #
+    # Trente secondes : le plus lent des bancs mute met 3,5 s (banc_variantes),
+    # 2,9 s (banc_cout). Dix fois la marge, et l'agent voisin a mesure qu'un
+    # lancement passe de 77 a plus de 300 s quand la machine est chargee — la
+    # marge est donc pour la CHARGE, pas pour le banc.
+    try:
+        fini = subprocess.run([sys.executable, os.path.join(dossier, banc)],
+                              cwd=dossier, env=env, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, timeout=DELAI_BANC)
+    except subprocess.TimeoutExpired:
+        return None, ""
     return fini.returncode, fini.stdout.decode("utf-8", "replace")
 
 
@@ -1444,6 +1896,12 @@ def verdict(mut, racine):
             return "perimee", f"{rel} : {souci}"
         fichiers[rel] = neuf
     code, sortie = lancer(mut["banc"], fichiers, racine)
+    if code is None:
+        # PENDRE N'EST PAS ROUGIR. Un banc qui ne rend jamais la main ne dit
+        # rien du defaut qu'on lui presente, et il emporte la CI avec lui.
+        return "casse", (f"la mutation fait PENDRE {mut['banc']} au lieu de le "
+                         f"faire rougir — plus de {DELAI_BANC:.0f} s sans "
+                         f"reponse")
     marque = MARQUE_ROUGE.get(mut["banc"], "  NON")
     lignes_non = [l for l in sortie.splitlines() if l.startswith(marque)]
     if any(mut["rougit"] in l for l in lignes_non):

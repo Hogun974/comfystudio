@@ -6650,12 +6650,13 @@ async def soumettre_robuste(g, tid, ident, cle, patience=1800,
     rend la main avec un message qui dit ce qui s'est passe — c'est le seul cas
     ou un echec est acceptable.
     """
-    # LA TAILLE, LUE SUR LA TACHE ET NON RECUE EN ARGUMENT. choisir_noeud() en a
-    # besoin pour comparer des durees mesurees sur des rendus comparables : sans
-    # elle, la reprise trancherait un debordement sur des medianes qui ne
-    # portent pas sur la meme resolution — le repli exact que
-    # debordement_acceptable interdit, et pour lequel « exact » existe. Elle est
-    # LA TAILLE VIENT DU PLAN, comme au premier choix. La lire sur la TACHE
+    # LA TAILLE ARRIVE EN ARGUMENT, ET VIENT DU PLAN — comme au premier choix.
+    # choisir_noeud() en a besoin pour comparer des durees mesurees sur des
+    # rendus comparables : sans elle, la reprise trancherait un debordement sur
+    # des medianes qui ne portent pas sur la meme resolution, le repli exact que
+    # debordement_acceptable interdit et pour lequel « exact » existe.
+    #
+    # La lire sur la TACHE
     # paraissait economique — la ligne « generation 1216x832… » l'y pose — mais
     # cette ligne n'existe que pour l'intention IMAGE. Une video repartait donc
     # avec taille=None : duree_typique cherchait une clef qui n'existe pas, et
@@ -7676,6 +7677,125 @@ async def api_admin_couts(req):
                               "plafond": PREFERENCES.get("plafond_nuage", 0)})
 
 
+# ══════════ ce que le tour emporte du plan, et pourquoi pas tout ══════════
+#
+# LE TOUR PORTE LE PLAN ENTIER DEPUIS LE 2 SEPTEMBRE 2026. Avant cette date il
+# recopiait une LISTE de champs, allongee de six entrees en deux jours, une par
+# defaut constate :
+#   « negatif » retombait sur NEG_DEFAUT, donc une autre image ;
+#   « classement » retombait sur « safe » — ce qui retire la balise de score de
+#     Pony au lieu d'en poser une, ET rend adulte() aveugle : un rendu marque
+#     explicite dont le texte est anodin partait chez un fournisseur, contre la
+#     regle « ce qui est adulte ne sort pas de la maison ». Celui-la etait un
+#     defaut de SURETE ;
+#   « paroles » faisait reecrire la chanson par ecrire_paroles() ;
+#   « langue » et « tonalite » la faisaient repartir en anglais, dans une autre
+#     tonalite, avec les paroles francaises que le correctif precedent venait
+#     de sauver ;
+#   « raison » laissait un tiret nu dans le journal.
+# Six fois la meme panne : « refaire » rejoue un plan que le tour ne porte pas
+# en entier. Porter le plan supprime la classe de defaut au lieu de la traiter
+# au cas par cas — et c'est api_refaire qui l'a rendue reelle, le tour n'avait
+# auparavant aucun relecteur.
+#
+# CE QUE CELA COUTE, mesure le 2 septembre a travers le VRAI enregistrer_tour et
+# le VRAI sauver (json.dump ensure_ascii=False, indent=1 — l'indentation compte,
+# elle ajoute une ligne par cle) :
+#   +776 o par tour d'image, +1053 o par tour de chanson ;
+#   une conversation de soixante tours d'images passe de 77,5 a 124,1 ko,
+#   soixante chansons de 86,8 a 150,0 ko.
+# Les vingt conversations reelles de cette machine pesent 1184 o par tour en
+# moyenne, la plus grosse 16,3 ko pour onze tours. Le plafond de soixante tours
+# de enregistrer_tour borne le tout : une conversation ne depassera pas 150 ko.
+#
+# MAIS PAS LE PLAN TEL QUEL, et c'est tout l'objet de cette liste. Le plan sort
+# de json.loads(reponse du modele) et garde TOUTES les cles que le modele a
+# emises, y compris celles que personne ne lit jamais. Le tour est ecrit sur le
+# disque de l'utilisateur et relu a chaque ouverture de conversation : ce qui y
+# entre doit etre BORNE. On recopie donc une liste nommee, et rien d'autre.
+#
+# Ce qui n'y entre pas, et pourquoi :
+#   « graine » — le tour la porte deja, prise sur la tache, et api_au_propre lit
+#     celle-la. Deux sources pour la meme graine, c'est deux graines le jour ou
+#     l'une des deux se decale.
+#   « modele_impose », « refait », « variante » — des marques du GESTE, posees
+#     par api_refaire, api_au_propre et lancer_variantes a chaque rejeu. Ecrites
+#     sur le tour, elles seraient heritees en silence par le rejeu suivant.
+#   « priorite » — meme nature, et un defaut concret : « brouillon » recopie sur
+#     le tour d'un refait ferait marquer ce refait comme une esquisse et lui
+#     reposerait le bouton « refaire en soigne ». Aucun rejeu n'en veut :
+#     api_au_propre la met a "" par construction, et appliquer_parametres lit
+#     l'absence comme "".
+#   « enrichissement_rate » — celui-la casserait le bouton. executer le relit
+#     APRES la branche du plan impose : un refait reposerait la question « je
+#     l'envoie telle quelle ? » au lieu de rendre l'image, sur un chemin qui ne
+#     repasse justement pas par l'enrichissement.
+#   « parametres_ajustes » — la trace des bornes appliquees a l'analyse
+#     d'ORIGINE. Rejouee, elle ferait annoncer « bornes appliquees : cfg 12 -> 8 »
+#     pour un ajustement qui n'a pas eu lieu cette fois. api_au_propre la
+#     reecrit de toute maniere, appliquer_parametres la recalcule.
+#   « attente », « raccourci », « prompt_repli », « questions »,
+#     « questions_forcees » — des traces de l'analyse qui vient d'avoir lieu, et
+#     le rejeu ne refait pas d'analyse. « questions » est deja sur le tour.
+#   TOUT LE RESTE — c'est-a-dire ce que le modele a invente. C'est la seule
+#     chose ici qui grossisse sans borne.
+#
+# Ce qui n'y entre pas non plus, et n'a jamais eu l'occasion d'y entrer : aucune
+# image encodee en base64 (img_b64 est calcule dans executer et n'est jamais
+# pose sur le plan), aucun jeton ni cle d'API (ils vivent dans _cles.json et
+# dans le registre des machines), aucun chemin absolu (l'image de depart voyage
+# en NOM DE FICHIER relatif a DOSSIER_ENTREE, sur « entree »). Verifie cle par
+# cle, et c'est le banc qui le tient maintenant.
+PLAN_SUR_LE_TOUR = (
+    "intention", "modele", "prompt", "negatif", "classement",
+    "largeur", "hauteur", "parametres", "parametres_bruts",
+    "paroles", "langue", "tonalite", "tags_audio", "cases", "raison",
+)
+# Les deux dictionnaires de reglages sont bornes a ce que BORNES sait lire :
+# « parametres » est deja construit ainsi par appliquer_parametres, mais
+# « parametres_bruts » est la proposition BRUTE du modele et peut porter
+# n'importe quelle cle. C'est lui que api_au_propre relit pour recalculer les
+# etapes, on ne peut donc pas s'en passer — on le borne.
+_PARAMETRES_CONNUS = frozenset(n for b in BORNES.values() for n in b)
+# Six cases au plus : c'est le plafond que g_planche_composee applique deja
+# (« cases[:6] »). En garder davantage serait ecrire ce que la carte ne lira
+# jamais.
+_CASES_MAX = 6
+
+
+def plan_du_tour(plan, cle=None):
+    """Ce que le tour garde du plan : une liste nommee, et rien d'autre.
+
+    Rend None sur un plan vide — enregistrer_tour est appele avec « {} » a la
+    mise en file et sur les trois chemins d'annulation, et un dictionnaire vide
+    n'apprendrait rien a personne.
+
+    ET RIEN DU TOUT SUR UN RENDU CONFIE AU LOIN. Sur ce chemin-la le plan ne
+    decrit pas ce qui a tourne : plan["modele"] porte le repli LOCAL, celui qui
+    aurait servi si le fournisseur avait echoue, et plan["parametres"] est
+    remplace par le seul titre du fournisseur. C'est « cle » — l'argument que
+    produire_distant passe a enregistrer_tour — qui nomme le moteur reellement
+    employe. Ecrire ce plan-la ferait donc afficher a la page « FLUX.2 klein 9B »
+    sous une image rendue par Nano Banana : elle lit « plan.modele » en premier
+    et ne retombe sur le champ du tour qu'a defaut (web/index.html, garnirReponse).
+    Et il n'y a rien a y gagner : les deux boutons qui relisent le plan refusent
+    justement un rendu confie au loin, chacun avec sa phrase.
+    """
+    if not isinstance(plan, dict) or cle in MOTEURS_DISTANTS:
+        return None
+    garde = {c: plan[c] for c in PLAN_SUR_LE_TOUR if c in plan}
+    if not garde:
+        return None
+    for quoi in ("parametres", "parametres_bruts"):
+        valeurs = garde.get(quoi)
+        if isinstance(valeurs, dict):
+            garde[quoi] = {n: v for n, v in valeurs.items()
+                           if n in _PARAMETRES_CONNUS}
+    if isinstance(garde.get("cases"), list):
+        garde["cases"] = garde["cases"][:_CASES_MAX]
+    return garde
+
+
 def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erreur=None):
     """Ecrit le tour, ou met a jour celui qui porte deja cet identifiant.
 
@@ -7687,17 +7807,16 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         "id": tid, "heure": time.strftime("%H:%M"), "demande": texte,
         "prompt": (plan or {}).get("prompt"), "modele": cle, "type": intention,
         "parametres": (plan or {}).get("parametres"), "raison": (plan or {}).get("raison"),
-        # LE NEGATIF ET LE CLASSEMENT, parce que « refaire » reconstruit un plan
-        # depuis ce tour et n'a nulle part ailleurs ou les lire. Sans eux, le
-        # negatif retombait sur le defaut du moteur — donc une autre image — et
-        # le classement sur « safe », ce qui change le prefixe de score de Pony.
-        # Deux champs courts ; le plan entier, lui, ne s'ecrit que pour une
-        # esquisse (voir plus bas) et c'est toujours le bon arbitrage.
-        "negatif": (plan or {}).get("negatif"),
-        "classement": (plan or {}).get("classement"),
-        # LA TAILLE RENDUE. Elle vivait dans le plan, qui ne survit pas au tour,
-        # et nulle part ailleurs : « pourquoi celle-ci a mis quatre minutes ? »
-        # se repond neuf fois sur dix par la resolution, et rien ne la montrait.
+        # « negatif », « classement », « langue » et « tonalite » ne sont PLUS
+        # recopies ici depuis le 2 septembre 2026 : ils vivent dans « plan »,
+        # plus bas, et n'avaient jamais eu d'autre lecteur que la reconstruction
+        # de api_refaire. Les garder aux deux endroits, c'etait deux sources
+        # pour la meme chose — le defaut meme que porter le plan referme.
+        # LA TAILLE RENDUE. Le plan porte largeur et hauteur, mais ce champ-ci
+        # reste, et ce n'est pas une redite : c'est la CLE de la table des
+        # durees (durees_par_modele) et ce que sert la mediatheque, deux
+        # lecteurs qui n'ouvrent jamais le plan. « pourquoi celle-ci a mis
+        # quatre minutes ? » se repond neuf fois sur dix par la resolution.
         "taille": (f"{(plan or {}).get('largeur')}x{(plan or {}).get('hauteur')}"
                    if (plan or {}).get("largeur") and (plan or {}).get("hauteur")
                    else None),
@@ -7733,33 +7852,21 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         "variantes": (TACHES.get(tid) or {}).get("variantes"),
         "esquisse": ((plan or {}).get("priorite") == "brouillon"
                      and (plan or {}).get("intention") in ESQUISSE_POSSIBLE) or None,
-        # Le plan entier, mais SEULEMENT pour une esquisse : c'est ce qui permet
-        # de la repasser au propre a l'identique, sans refaire l'analyse — donc
-        # sans risquer un autre prompt, donc une autre image. L'ecrire sur tous
-        # les tours grossirait chaque conversation pour un usage que personne
-        # n'en a.
-        "plan": (plan or None) if ((plan or {}).get("priorite") == "brouillon"
-                                   and (plan or {}).get("intention")
-                                   in ESQUISSE_POSSIBLE) else None,
+        # LE PLAN, SUR TOUS LES TOURS ET PLUS SEULEMENT SUR LES ESQUISSES.
+        # C'est ce qui permet de rejouer la demande a l'identique — meme prompt,
+        # meme moteur, meme taille — sans repasser par l'analyse, donc sans
+        # risquer un autre prompt, donc une autre image. Il ne servait qu'a
+        # « refaire en soigne » ; « refaire sur la grosse carte » lui a donne un
+        # second lecteur, et six defauts ont dit un par un que la liste de
+        # champs recopiee ne suffisait pas. Ce qu'il emporte, ce qu'il laisse et
+        # ce que cela pese : PLAN_SUR_LE_TOUR, juste au-dessus.
+        "plan": plan_du_tour(plan, cle),
         "etat": etat, "erreur": erreur,
-        # Les paroles ne sont ni le prompt ni la description : sans elles, un
-        # pouce en bas sur une chanson ne dirait pas ce qui a deplu.
+        # Les paroles restent aussi en clair sur le tour, et ce n'est pas une
+        # redite du plan : c'est ce que la fiche d'avis ecrit dans avis.jsonl,
+        # qui ne lit pas le plan. Sans elles, un pouce en bas sur une chanson ne
+        # dirait pas ce qui a deplu.
         "paroles": (plan or {}).get("paroles"),
-        # ET LES DEUX CHAMPS QUI DISENT COMMENT LES CHANTER. Meme raison que le
-        # negatif et le classement juste au-dessus : « refaire » reconstruit un
-        # plan depuis ce tour et n'a nulle part ailleurs ou les lire, si bien
-        # qu'ils retombaient sur les defauts de g_audio — « en » et « C minor ».
-        # Une chanson francaise refaite repartait donc en annoncant l'anglais a
-        # ACE-Step, avec les paroles francaises que ce meme correctif venait de
-        # sauver, et dans une autre tonalite : trois raisons d'entendre autre
-        # chose que ce qu'on demandait de refaire.
-        #
-        # Deux champs courts de plus, sur le meme arbitrage que les precedents :
-        # ecrire le plan ENTIER sur chaque tour reglerait la famille d'un coup,
-        # mais grossirait chaque conversation pour un usage que personne n'en a
-        # — c'est une question ouverte, pas une conclusion.
-        "langue": (plan or {}).get("langue"),
-        "tonalite": (plan or {}).get("tonalite"),
         "questions": TACHES.get(tid, {}).get("questions"),
         "avis": 0, "note": "",
     }
@@ -9465,26 +9572,25 @@ async def api_au_propre(req):
     if tour.get("au_propre"):
         return web.json_response(
             {"erreur": "cette esquisse a deja ete passee au propre"}, status=409)
-    plan_ = tour.get("plan")
-    if not tour.get("esquisse") or not isinstance(plan_, dict):
-        return web.json_response(
-            {"erreur": "ce tour n'est pas une esquisse qu'on sache refaire"},
-            status=400)
-    if tour.get("etat") != "fini":
-        return web.json_response(
-            {"erreur": "l'esquisse n'est pas terminee"}, status=409)
     # UNE ESQUISSE RENDUE AU LOIN N'A PAS DE VERSION SOIGNEE, et c'est le
-    # premier controle : la vraie raison du refus prime sur celle du catalogue
-    # juste en dessous, qui parlerait du repli local sans jamais nommer le
-    # fournisseur. Le bouton promet « le meme prompt, le meme moteur et la meme
-    # taille, avec toutes les etapes » : ses deux leviers sont la GRAINE et le
-    # NOMBRE D'ETAPES, et un fournisseur n'a ni l'une ni l'autre. Il rendrait
-    # une image sans rapport, facturee une seconde fois, sous un libelle qui
-    # promet le contraire.
+    # premier controle : la vraie raison du refus prime sur les deux qui
+    # suivent, qui parleraient du plan absent ou du repli local sans jamais
+    # nommer le fournisseur. Le bouton promet « le meme prompt, le meme moteur
+    # et la meme taille, avec toutes les etapes » : ses deux leviers sont la
+    # GRAINE et le NOMBRE D'ETAPES, et un fournisseur n'a ni l'une ni l'autre.
+    # Il rendrait une image sans rapport, facturee une seconde fois, sous un
+    # libelle qui promet le contraire.
+    #
+    # AVANT LE CONTROLE DU PLAN depuis le 2 septembre 2026, et ce n'est pas un
+    # rangement : un rendu confie au loin n'ecrit plus de plan sur son tour —
+    # ce plan-la decrit le repli LOCAL, pas ce qui a tourne (voir plan_du_tour).
+    # Laisse en dessous, cette phrase-ci devenait injoignable, et une esquisse
+    # rendue par un fournisseur recevait « ce tour n'est pas une esquisse qu'on
+    # sache refaire » — vrai de nulle part et utile a personne.
     #
     # « modele » DU TOUR et non du plan : sur le chemin distant, plan["modele"]
     # porte le repli LOCAL — c'est « cle », l'argument d'enregistrer_tour, qui
-    # recoit le nom du fournisseur. Le controle du catalogue ci-dessous lit donc
+    # recoit le nom du fournisseur. Le controle du catalogue plus bas lit donc
     # le repli, et sa branche MOTEURS_DISTANTS ne mord jamais.
     #
     # 400 et non 409 : la page traduit tout 409 de cette route par « deja refait
@@ -9498,6 +9604,20 @@ async def api_au_propre(req):
                        f"n'y veut rien dire, il n'a ni graine ni etapes a "
                        f"reprendre. Relance la demande pour repartir chez lui."},
             status=400)
+    # LE PLAN DU TOUR, comme api_refaire — et sans repli, lui : ce bouton n'a
+    # jamais existe que pour les esquisses, et une esquisse rendue a la maison a
+    # toujours porte son plan. C'est « esquisse » qui garde la porte, pas la
+    # presence du plan : depuis le 2 septembre 2026 TOUS les tours locaux en
+    # portent un, et ouvrir ce bouton a un rendu ordinaire promettrait « le
+    # meme, avec toutes les etapes » sur un rendu qui les avait deja toutes.
+    plan_ = tour.get("plan")
+    if not tour.get("esquisse") or not isinstance(plan_, dict):
+        return web.json_response(
+            {"erreur": "ce tour n'est pas une esquisse qu'on sache refaire"},
+            status=400)
+    if tour.get("etat") != "fini":
+        return web.json_response(
+            {"erreur": "l'esquisse n'est pas terminee"}, status=409)
     # LE MEME CONTROLE QU'AU-DESSOUS DANS api_refaire, et pour la meme raison :
     # ce plan a ete ecrit avant, le catalogue a pu changer depuis, et sans cette
     # garde le KeyError remonte jusqu'au « except Exception » d'executer —
@@ -9597,40 +9717,52 @@ async def api_refaire(req):
     if tour.get("etat") != "fini":
         return web.json_response({"erreur": "ce tour n'est pas termine"},
                                  status=409)
-    # LE PLAN SE RECONSTRUIT DEPUIS LE TOUR. tour["plan"] n'est ecrit que pour
-    # une ESQUISSE (voir enregistrer_tour) : exiger sa presence faisait repondre
-    # 400 sur tout rendu ordinaire, c'est-a-dire sur le seul cas qui compte —
-    # l'esquisse, elle, a deja son bouton « refaire en soigne ». Le bouton
-    # s'affichait quand meme, et le clic rendait « ce tour n'a pas de plan ».
-    #
-    # Le tour porte tout ce qu'il faut : le prompt traduit, le moteur, la
-    # taille, les parametres. C'est exactement ce que « meme prompt, meme
-    # moteur, meme taille » promet.
+    # LE PLAN DU TOUR, ET RIEN D'AUTRE — c'est le chemin normal depuis le
+    # 2 septembre 2026. enregistrer_tour ecrit le plan sur TOUS les tours ; il
+    # porte le prompt traduit, le moteur, la taille, les parametres, le
+    # classement, les paroles et leur langue, c'est-a-dire exactement ce que
+    # « meme prompt, meme moteur, meme taille » promet. Il n'y a plus rien a
+    # reconstruire, donc plus rien a oublier de reconstruire : c'est ce qui
+    # ferme les six defauts de la liste (voir PLAN_SUR_LE_TOUR).
     plan_ = tour.get("plan")
     sans_taille = False
     if isinstance(plan_, dict) and plan_.get("prompt"):
         plan = dict(plan_)
     elif tour.get("prompt"):
-        # TOUT CE QUE LE TOUR PORTE, et pas seulement les quatre premiers
-        # champs. La reconstruction n'emportait que prompt, moteur, intention et
-        # parametres ; quatre champs manquaient, et chacun changeait le rendu en
-        # silence alors que la docstring promet « meme prompt, meme moteur,
-        # meme taille » :
+        # ══ REPLI POUR LES TOURS ECRITS AVANT LE 2 SEPTEMBRE 2026 ══════════
+        #
+        # CE N'EST PLUS LE CHEMIN NORMAL. Il ne sert qu'aux tours qui n'ont
+        # jamais eu de plan : une conversation en garde soixante, et ceux-la
+        # sont sur le disque de l'utilisateur pour de bon. Le jour ou plus
+        # aucune conversation ne contient de tour anterieur au 2 septembre 2026,
+        # ces lignes-ci et le repli de taille juste en dessous ne servent plus a
+        # rien et peuvent partir ensemble.
+        #
+        # Il reconstruit le plan a partir des champs plats du tour, et c'est
+        # justement ce qui a coute six defauts en deux jours — chacun un champ
+        # qu'on avait oublie de recopier :
         #   « paroles » — sans elles, ecrire_paroles() est rappele et la
         #     chanson repart sur d'AUTRES paroles, c'est-a-dire exactement le
         #     passage par l'analyse qu'on promet d'eviter ;
         #   « classement » — il commande le prefixe de score de Pony, donc une
         #     autre image, et il est lu par adulte() ;
         #   « negatif » — il retombait sur NEG_DEFAUT ;
-        #   « raison » — le journal affichait « FLUX.2 klein 9B — », tiret nu.
+        #   « raison » — le journal affichait « FLUX.2 klein 9B — », tiret nu ;
+        #   « langue » et « tonalite » — les paroles etaient sauvees, mais rien
+        #     ne disait plus dans quelle langue les chanter, et g_audio retombe
+        #     sur « en » et « C minor ». Ils ne servent qu'a l'audio ; ailleurs
+        #     le tour ne les porte pas et la boucle ci-dessous ne les pose pas.
         #
-        # ET DEUX DE PLUS, DE LA MEME FAMILLE : « langue » et « tonalite ». Les
-        # paroles etaient sauvees, mais rien ne disait plus dans quelle langue
-        # les chanter — g_audio retombe sur « en » et « C minor ». Une chanson
-        # francaise refaite repartait donc en annoncant l'anglais a ACE-Step,
-        # avec ses paroles francaises, et dans une autre tonalite. Ils ne
-        # servent qu'a l'audio ; ailleurs le tour ne les porte pas et la boucle
-        # ci-dessous ne les pose pas.
+        # CE QUE CE REPLI NE SAIT PAS REPRENDRE, et il faut le savoir en le
+        # lisant : « langue » et « tonalite » ne sont ecrits a plat sur le tour
+        # que depuis le 1er septembre 2026, et « classement » depuis le meme
+        # jour. Une chanson d'AVANT refaite par ce chemin repart donc bel et
+        # bien en « en » et « C minor » — la boucle ne peut pas reprendre ce que
+        # le tour ne porte pas. On ne le devine pas et on ne le refuse pas : ces
+        # tours-la sont sur le disque de l'utilisateur, et un bouton inoperant
+        # sur tout l'historique serait pire. C'est la derniere fenetre que ce
+        # repli laisse ouverte, et elle se referme d'elle-meme a mesure que les
+        # soixante tours d'une conversation se renouvellent.
         #
         # Les cles absentes du tour ne sont PAS posees a None : plan.get(cle,
         # defaut) rend None quand la cle existe, et « classement » None ne vaut
@@ -9649,12 +9781,14 @@ async def api_refaire(req):
         if len(taille_) == 2 and all(t.isdigit() for t in taille_):
             plan["largeur"], plan["hauteur"] = int(taille_[0]), int(taille_[1])
         else:
-            # LA TAILLE N'A PAS TOUJOURS ETE ECRITE SUR LE TOUR. enregistrer_tour
-            # ne la pose que depuis le 31 aout, et une conversation garde
-            # soixante tours : sur tout tour anterieur, le plan repartait sans
-            # largeur ni hauteur et executer levait KeyError: 'largeur' — donc
-            # « ERREUR inattendue : 'largeur' », un plantage muet, sur ce qui est
-            # justement le cas le plus frequent du bouton.
+            # LE REPLI DANS LE REPLI, et il se perime le meme jour que lui.
+            # « taille » n'est ecrit sur le tour que depuis le 31 aout, et une
+            # conversation garde soixante tours : sur tout tour anterieur, le
+            # plan repartait sans largeur ni hauteur et executer levait
+            # KeyError: 'largeur' — donc « ERREUR inattendue : 'largeur' », un
+            # plantage muet, sur ce qui etait alors le cas le plus frequent du
+            # bouton. Un tour ecrit depuis le 2 septembre 2026 porte son plan,
+            # qui porte sa largeur et sa hauteur : il ne passe jamais ici.
             #
             # ON NE REFUSE PAS, et on n'invente pas non plus une taille : on
             # rejoue le calcul que la demande d'origine a fait, caler_taille()
@@ -9663,6 +9797,10 @@ async def api_refaire(req):
             # puisse tomber juste, et quand il tombe faux on le DIT plus bas —
             # refuser rendrait le bouton inoperant sur tout l'historique, ce qui
             # est le defaut qu'on vient de corriger, pas un correctif.
+            #
+            # « puisse tomber juste » : POUR UNE IMAGE, et pour elle seule. Voir
+            # la garde d'intention plus bas — sur toute autre intention, ce
+            # calcul-la ne rejoue rien du tout.
             sans_taille = True
     else:
         # Une question, une lecture d'image, un tour qui n'a jamais eu de
@@ -9712,12 +9850,29 @@ async def api_refaire(req):
     # Le repli de taille, une fois le texte en main : caler_taille() commence par
     # y chercher une taille ecrite noir sur blanc (« en 1920x1080 »), ce qui est
     # exactement ce que la demande d'origine a fait.
-    # LA PLANCHE AUSSI. Elle ne leve pas de KeyError — cadrer() absorbe un None
-    # — mais elle rend une AUTRE taille : 960x1344 a l'origine, 832x1152
-    # refaite, parce que cadrer(None, ...) retombe sur sa borne basse. Un bouton
-    # qui promet « meme taille » ne peut pas changer le format en silence, et la
-    # garde du journal plus bas ne se declenchait meme pas.
-    if sans_taille and plan.get("intention") in ("image", "planche"):
+    #
+    # POUR UNE IMAGE, ET POUR ELLE SEULE. La planche y a ete ajoutee un temps,
+    # au motif qu'elle rendait « 960x1344 a l'origine, 832x1152 refaite ». Le
+    # motif etait faux, et le remede pire que le mal :
+    #   caler_taille() n'est JAMAIS appele pour une planche sur le chemin
+    #     normal — ses quatre sites d'appel sont tous gardes par
+    #     « intention == "image" ». Le rejouer ici ne rejoue donc AUCUN calcul
+    #     d'origine : il remplace une constante par une autre ;
+    #   la branche planche d'executer n'en lit pas le resultat. Elle impose son
+    #     format page — « w = cadrer(plan["largeur"], 704, 960, 832) », plafonne
+    #     donc a 960, et la hauteur vient d'un rapport A4, jamais du plan. Le
+    #     1216x832 pose ici ressortait en 960x1344, et le journal se contredisait
+    #     a deux lignes d'intervalle : « on reprend (1216x832) » puis « planche
+    #     960x1344 d'un seul tenant » ;
+    #   et ce 1216x832 mentait ENSUITE, deux fois. enregistrer_tour l'ecrit dans
+    #     tour["taille"] : la mediatheque affichait une resolution jamais rendue,
+    #     et _relever_durees rangeait la duree sous cette clef-la — que
+    #     debordement_acceptable(exact=True) relit pour trancher un debordement
+    #     de carte. Une mesure fausse qui decide d'un placement.
+    # Sans repli, la planche repart sur les bornes de cadrer(), c'est-a-dire
+    # exactement ce que fait une planche dont le plan n'a pas de largeur — le
+    # cas ordinaire. On ne sait pas mieux, et on ne fait donc pas semblant.
+    if sans_taille and plan.get("intention") == "image":
         plan = caler_taille(plan, texte)
     # L'IMAGE DU TOUR, pas l'image courante de la conversation : « agrandis-la »
     # refait devait agrandir la MEME image, pas celle qu'on a produite depuis.
@@ -9734,16 +9889,32 @@ async def api_refaire(req):
     # quand le tour ne la portait pas, on rejoue le calcul du studio et cela
     # peut donner autre chose. Un ecart annonce se lit ; un ecart muet fait
     # douter du reste.
-    # ANNONCE MEME QUAND ON N'A PAS SU. « plan.get("largeur") » taisait
-    # justement le cas ou le repli n'avait rien pu reprendre — celui ou l'ecart
-    # est le plus grand.
-    if sans_taille:
-        journal(tid, "la taille de ce tour n'avait pas ete conservee — on "
-                     + (f"reprend celle que la demande donnerait aujourd'hui "
-                        f"({plan['largeur']}x{plan['hauteur']})"
-                        if plan.get("largeur") and plan.get("hauteur")
-                        else "laisse le studio la choisir, elle peut differer "
-                             "de celle d'origine"))
+    #
+    # LA MEME GARDE QUE LE REPLI, ET C'EST LE POINT. « if sans_taille » tout
+    # court parlait de taille a qui n'en a pas : une chanson, une video, un
+    # objet 3D n'ont pas de resolution, « sans_taille » y est donc vrai par
+    # nature, et la PREMIERE ligne que voyait quelqu'un qui refait une chanson
+    # etait « la taille de ce tour n'avait pas ete conservee — on laisse le
+    # studio la choisir ». Rien n'avait ete conserve ni choisi : il n'y a pas de
+    # taille. « pas de taille du tout » et « une taille qu'on n'a pas su
+    # reprendre » ne sont pas la meme phrase, et la seconde n'existe plus :
+    # caler_taille() rend toujours une largeur et une hauteur.
+    #
+    # La garde d'avant, « plan.get("largeur") », se taisait pour la meme raison
+    # apparente et pour une mauvaise raison : elle taisait aussi le cas ou le
+    # repli n'avait rien pu reprendre. Celle-ci nomme l'intention, si bien
+    # qu'elargir le repli sans elargir l'annonce se verra.
+    #
+    # ET « .get » PLUTOT QUE L'INDEXATION, meme sous la garde qui la rend sure.
+    # « plan["largeur"] » ici, c'est un KeyError dans une f-string : il remonte
+    # au « except Exception » d'executer et s'affiche « ERREUR inattendue :
+    # 'largeur' » — le plantage muet exact pour lequel tout ce repli existe,
+    # revenu par la ligne qui l'ANNONCE. Aucun chemin ne doit lire cette clef
+    # sans l'avoir, garde ou pas : la garde peut bouger, l'indexation non.
+    if sans_taille and plan.get("intention") == "image":
+        journal(tid, f"la taille de ce tour n'avait pas ete conservee — on "
+                     f"reprend celle que la demande donnerait aujourd'hui "
+                     f"({plan.get('largeur')}x{plan.get('hauteur')})")
     if devant:
         journal(tid, f"en file d'attente — {devant} demande(s) devant")
     ATTENTE.append(tid)
