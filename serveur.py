@@ -7807,6 +7807,20 @@ PLAN_SUR_LE_TOUR = (
     "intention", "modele", "prompt", "negatif", "classement",
     "largeur", "hauteur", "parametres", "parametres_bruts",
     "paroles", "langue", "tonalite", "tags_audio", "cases", "raison",
+    # « priorite » Y REVIENT, et l'avoir exclue etait une regression. Le
+    # raisonnement disait « aucun rejeu n'en veut » : vrai pour au_propre, qui
+    # rappelle appliquer_parametres et la remet a vide — FAUX pour refaire, qui
+    # ne l'appelle jamais. Le plan porte deja « parametres: etapes 7 », donc les
+    # etapes reduites voyageaient ; seule l'ETIQUETTE disparaissait.
+    #
+    # Trois degats mesures : le refait d'un brouillon perdait sa pastille
+    # « brouillon » — « une esquisse rangee pour une image finie est une image
+    # qu'on ne refera jamais, croyant l'avoir faite », dit la page —, il perdait
+    # le bouton « refaire en soigne », le seul geste qui donne la version
+    # soignee, et sa duree A UN QUART DES ETAPES entrait dans la table que
+    # debordement_acceptable relit pour placer un rendu, alors que
+    # _relever_durees ecarte les esquisses precisement pour cette raison.
+    "priorite",
 )
 # Les deux dictionnaires de reglages sont bornes a ce que BORNES sait lire :
 # « parametres » est deja construit ainsi par appliquer_parametres, mais
@@ -7818,6 +7832,31 @@ _PARAMETRES_CONNUS = frozenset(n for b in BORNES.values() for n in b)
 # (« cases[:6] »). En garder davantage serait ecrire ce que la carte ne lira
 # jamais.
 _CASES_MAX = 6
+
+
+def cases_du_plan(plan):
+    """Les cases d'une planche, normalisees — et UNE SEULE ecriture.
+
+    Elles l'etaient a deux endroits, avec deux resultats :
+
+      - le plafond du tour ne mordait que sur une LISTE, alors que le modele
+        rend parfois une CHAINE — executer le dit et la decoupe, mais ne
+        reecrit jamais plan["cases"]. Mesure : quarante cases en chaine, 1 227
+        octets ecrits tels quels sur le disque de l'utilisateur, dans une liste
+        dont la raison d'etre est de BORNER ;
+      - et l'ordre differait. Le tour coupait a six AVANT d'ecarter les
+        descriptions trop courtes ; executer ecarte PUIS coupe. Mesure : huit
+        cases dont trois courtes, la planche d'origine en rend CINQ et son
+        rejeu TROIS. « Meme prompt, meme moteur, meme taille » ne tenait pas.
+    """
+    brutes = plan.get("cases")
+    if isinstance(brutes, str):
+        brutes = [m.strip() for m in re.split(r"[|;" + chr(92) + "n]+", brutes)
+                  if m.strip()]
+    if not isinstance(brutes, list):
+        brutes = []
+    return [c.strip() for c in brutes
+            if isinstance(c, str) and len(c.strip()) >= 12][:_CASES_MAX]
 
 
 def plan_du_tour(plan, cle=None):
@@ -7848,8 +7887,8 @@ def plan_du_tour(plan, cle=None):
         if isinstance(valeurs, dict):
             garde[quoi] = {n: v for n, v in valeurs.items()
                            if n in _PARAMETRES_CONNUS}
-    if isinstance(garde.get("cases"), list):
-        garde["cases"] = garde["cases"][:_CASES_MAX]
+    if "cases" in garde:
+        garde["cases"] = cases_du_plan(garde)
     return garde
 
 
@@ -7874,7 +7913,16 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         # durees (durees_par_modele) et ce que sert la mediatheque, deux
         # lecteurs qui n'ouvrent jamais le plan. « pourquoi celle-ci a mis
         # quatre minutes ? » se repond neuf fois sur dix par la resolution.
-        "taille": (f"{(plan or {}).get('largeur')}x{(plan or {}).get('hauteur')}"
+        # LA TAILLE RENDUE, ET NON CELLE DU PLAN. La tache la porte des que le
+        # rendu l'a calculee (journal(..., largeur=w, hauteur=h)) ; le plan ne
+        # porte que ce que le modele a propose, et plusieurs intentions ne s'en
+        # servent pas — la planche borne la sienne, l'edition n'en recoit
+        # aucune. On ecrivait donc une resolution qui n'a jamais existe, lue
+        # ensuite par la mediatheque ET par la table des durees.
+        "taille": (f"{TACHES[tid]['largeur']}x{TACHES[tid]['hauteur']}"
+                   if (TACHES.get(tid) or {}).get("largeur")
+                   and (TACHES.get(tid) or {}).get("hauteur")
+                   else f"{(plan or {}).get('largeur')}x{(plan or {}).get('hauteur')}"
                    if (plan or {}).get("largeur") and (plan or {}).get("hauteur")
                    else None),
         "fichiers": sorties or [], "description": TACHES.get(tid, {}).get("description"),
@@ -9142,15 +9190,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             else:
                 w = cadrer(plan.get("largeur"), 704, 960, 832)
                 h = cadrer(w * 1.4142, 960, 1408, 1176)
-            # Le LLM renvoie parfois "cases" en chaine au lieu d'une liste :
-            # iterer dessus donnerait une case par CARACTERE.
-            brutes = plan.get("cases")
-            if isinstance(brutes, str):
-                brutes = [m.strip() for m in re.split(r"[|;\n]+", brutes) if m.strip()]
-            if not isinstance(brutes, list):
-                brutes = []
-            cases = [c.strip() for c in brutes
-                     if isinstance(c, str) and len(c.strip()) >= 12][:6]
+            # UNE SEULE ECRITURE, partagee avec plan_du_tour : elles etaient
+            # normalisees a deux endroits, avec deux resultats. Voir
+            # cases_du_plan, qui porte les deux mesures.
+            cases = cases_du_plan(plan)
             if len(cases) >= 2:
                 journal(tid, f"{len(cases)} cases dessinees et assemblees en un seul passage…")
                 for i, c in enumerate(cases, 1):
@@ -9167,7 +9210,17 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                        "seamless, no borders, color, text, letters, words, signature")
                 g = g_planche(plan.get("prompt", texte), neg, w, h, seed,
                               prefixe_sortie(conv, intention, horod, "planche"), par)
-                journal(tid, f"planche {w}x{h} d'un seul tenant, bulles vides…")
+                # « largeur/hauteur » SUR LA TACHE, comme pour une image : sans
+                # elles, le tour gardait la taille du PLAN, que la planche
+                # n'utilise pas — sa largeur est bornee a 960 et sa hauteur
+                # vient d'un rapport A4. Mesure : plan 1024x1024, rendu
+                # 960x1344, et le tour ecrivait 1024x1024. La mediatheque
+                # affichait une resolution jamais rendue, et _relever_durees
+                # rangeait deux planches physiquement identiques sous deux
+                # clefs differentes selon l'humeur du modele — ce qui vide le
+                # seau « exact » dont debordement_acceptable a besoin.
+                journal(tid, f"planche {w}x{h} d'un seul tenant, bulles vides…",
+                        largeur=w, hauteur=h)
         elif intention == "objet3d":
             if not image:
                 # « generation d'image puis image vers 3D » : on fabrique

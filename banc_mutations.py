@@ -1888,7 +1888,7 @@ def source(banc):
 # Au-dela, on considere que le banc mute ne rendra jamais la main. Voir le
 # commentaire de lancer() : c'est une marge pour la CHARGE de la machine, pas
 # pour le banc lui-meme.
-DELAI_BANC = 30.0
+DELAI_BANC = 90.0
 
 
 def lancer(banc, fichiers, racine):
@@ -1914,10 +1914,18 @@ def lancer(banc, fichiers, racine):
     # aussi un code non nul, et se ferait passer pour une reussite ». Le
     # pendage est pire — il ne se declare pas du tout.
     #
-    # Trente secondes : le plus lent des bancs mute met 3,5 s (banc_variantes),
-    # 2,9 s (banc_cout). Dix fois la marge, et l'agent voisin a mesure qu'un
-    # lancement passe de 77 a plus de 300 s quand la machine est chargee — la
-    # marge est donc pour la CHARGE, pas pour le banc.
+    # QUATRE-VINGT-DIX SECONDES, et le premier chiffre etait faux. « Dix fois
+    # la marge » se fondait sur banc_variantes (3,5 s) et banc_cout (2,9 s) —
+    # mais banc_refaire MUTE met 5,07 s, parce que ses deux attentes de file
+    # tirent a vide des que la route refuse, ce que sa propre docstring
+    # annonce. Avec le facteur QUATRE que ce depot mesure sous charge, cela
+    # fait vingt secondes : la marge reelle etait de 1,5x, pas de dix, et le
+    # delai aurait rendu une CI ROUGE SANS DEFAUT — precisement ce qu'il
+    # cherche a eviter.
+    #
+    # Ce delai n'est pas une assertion de performance, c'est un GARDE-FOU
+    # contre un blocage infini. Le payer entier ne coute que sur une mutation
+    # qui pend pour de bon, c'est-a-dire jamais quand tout va bien.
     try:
         fini = subprocess.run([sys.executable, os.path.join(dossier, banc)],
                               cwd=dossier, env=env, stdout=subprocess.PIPE,

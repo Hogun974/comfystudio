@@ -976,13 +976,22 @@ async def main():
         "parametres_ajustes": ["cfg 12 -> 8"], "prompt_repli": True,
         "raccourci": True, "questions": ["que veux-tu voir ?"],
         "questions_forcees": True,
-        "cases": [f"case {i}" for i in range(9)]})
+        # DES DESCRIPTIONS QUI PASSENT LE FILTRE : « case 0 » fait six
+        # caracteres, et la normalisation ecarte tout ce qui en fait moins de
+        # douze. Avec l'ancienne liste, ce cas mesurait le FILTRE en croyant
+        # mesurer le plafond, et rendait zero.
+        "cases": [f"la case numero {i} de la planche" for i in range(9)]})
     sale["parametres_bruts"] = {"etapes": 28, "cfg": 6.0,
                                 "commentaire": "y" * 2000}
     trop = poser_tour_avec_plan(sale, demande=DEMANDE)
     porte = trop.get("plan") or {}
     indesirables = [c for c in ("explication", "confiance", "modele_impose",
-                                "refait", "variante", "priorite", "graine",
+                                # « priorite » N'EST PLUS indesirable, et
+                                # l'exclure etait une regression : le refait
+                                # d'un brouillon rendait toujours en brouillon
+                                # — les etapes reduites voyagent dans
+                                # « parametres » — mais ne le disait plus.
+                                "refait", "variante", "graine",
                                 "enrichissement_rate", "attente",
                                 "parametres_ajustes", "prompt_repli",
                                 "raccourci", "questions", "questions_forcees")
@@ -1019,9 +1028,19 @@ async def main():
     dit(refait_.get("etat") == "fini" and refait_.get("fichiers"),
         "il REND une image, au lieu de reposer la question de l'enrichissement",
         f"{refait_.get('etat')} {refait_.get('erreur') or ''}")
-    dit(not refait_.get("esquisse"),
-        "et il n'est pas marque « brouillon » : « refaire » ne change pas les "
-        "etapes", str(refait_.get("esquisse")))
+    # L'ASSERTION ETAIT RETOURNEE, et elle certifiait une regression. Le plan
+    # porte « parametres: etapes 7 » : le refait d'un brouillon rend BEL ET BIEN
+    # en brouillon, quoi qu'en dise son etiquette. Ne pas le marquer lui faisait
+    # perdre sa pastille, son bouton « refaire en soigne » — le seul geste qui
+    # donne la version soignee — et faisait entrer sa duree, mesuree a un quart
+    # des etapes, dans la table qui decide ou placer les rendus suivants.
+    #
+    # Le banc ne pouvait pas le voir : son plan d'essai portait « brouillon »
+    # AVEC « etapes: 28 », c'est-a-dire un plan qui n'est jamais sorti
+    # d'appliquer_parametres.
+    dit(refait_.get("esquisse"),
+        "un brouillon refait reste un brouillon, et le DIT",
+        str(refait_.get("esquisse")))
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

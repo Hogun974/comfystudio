@@ -1633,10 +1633,20 @@ let familleVue = "image", mediaCharge = null;
 async function ouvrirMediatheque() {
   document.querySelector("#mediatheque").hidden = false;
   if (!mediaCharge) {
+    // LE try/catch NE SUFFISAIT PAS, et c'est le chemin PRINCIPAL. Un 401
+    // « connexion requise » est un JSON parfaitement valide : rien ne leve, le
+    // cache prend cet objet, et la mediatheque entiere affiche « rien de ce
+    // type pour l'instant » — sans un mot et sans invite de connexion. J'avais
+    // corrige ce defaut sur le rafraichissement du clic et laisse l'original,
+    // en ecrivant dans le commit que celui-ci « l'a depuis toujours ».
     try {
-      mediaCharge = await (await fetch("/api/mediatheque",
-                                       { credentials: "same-origin" })).json();
-    } catch (e) { mediaCharge = { fichiers: [], compte: {} }; }
+      const r = await fetch("/api/mediatheque", { credentials: "same-origin" });
+      const d = await r.json();
+      mediaCharge = (r.ok && Array.isArray(d.fichiers))
+                  ? d : { fichiers: [], compte: {}, souci: d.erreur || r.status };
+    } catch (e) { mediaCharge = { fichiers: [], compte: {}, souci: e.message }; }
+    if (mediaCharge.souci) $("#alerte").textContent =
+      "mediatheque indisponible : " + mediaCharge.souci;
   }
   peindreFamilles();
   const tous = mediaCharge.fichiers || [];
@@ -1869,7 +1879,15 @@ function peindreGrille() {
                                   { credentials: "same-origin" });
             const d_ = await m.json();
             if (m.ok && Array.isArray(d_.fichiers)) mediaCharge = d_;
-          } catch (e) { /* la marque bougera au prochain chargement */ }
+          } catch (e) {
+            // ON LE DIT. Se taire echangeait un message trompeur contre un
+            // SILENCE trompeur : la grille se repeignait avec l'ancien cache,
+            // le bouton revenait neuf sur l'ancienne variante, et l'utilisateur
+            // recliquait — la boucle meme que « relire avant de repeindre »
+            // existe pour rompre.
+            $("#alerte").textContent =
+              "c'est fait, mais la grille n'a pas pu se rafraichir : " + e.message;
+          }
           peindreGrille();
           if (g_) g_.scrollTop = haut;
         } catch (err) {
