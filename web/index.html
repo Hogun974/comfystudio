@@ -97,7 +97,11 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
 .etat-tache{font:10.5px var(--mono);margin-top:3px}
 .etat-tache.attente{color:var(--encre-pale)}
 .etat-tache.cours{color:var(--braise)}
-.etat-tache.fini{color:var(--vert)}
+/* « termine » et non « fini » : « fini » est AUSSI la valeur de protocole que
+   le serveur ecrit sur la tache, et la table des etiquettes rangeait les deux
+   dans la meme ligne. Un nom de classe qui se confond avec une valeur de
+   protocole ne rougit nulle part le jour ou l'on traduit l'une des deux. */
+.etat-tache.termine{color:var(--vert)}
 .etat-tache.rate{color:var(--rouge)}
 @media (max-width:640px){
   /* Sur telephone la barre est etroite : le panneau prend toute la largeur et
@@ -578,50 +582,79 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <body>
 
 <header>
-  <button class="tiroir-bouton" id="tiroir" aria-label="Afficher les conversations">☰</button>
+  <!-- « data-t » : la cle du dictionnaire qui porte ce texte-la.
+       LE FRANCAIS RESTE ECRIT ICI, ET CE N'EST PAS UNE REDONDANCE. C'est la
+       valeur par defaut — un francophone ne voit pas une page vide le temps
+       d'un aller-retour vers /api/textes — ET c'est la moitie d'un contrat :
+       banc_page.py exige que ce texte-ci soit EXACTEMENT celui du
+       dictionnaire, comme banc_refaire.py exige que MARQUE_DEJA soit le meme
+       des deux cotes. Sans cela, une phrase reformulee d'un seul cote
+       laisserait un lecteur anglais devant une traduction devenue fausse, et
+       personne pour le voir.
+       « data-t-X » fait la meme chose pour l'attribut X : « data-t-title »,
+       « data-t-placeholder », « data-t-aria-label », « data-t-data-court ».
+       LES aria-label EN FONT PARTIE : un lecteur d'ecran anglophone a qui
+       l'on annonce « Afficher les conversations » n'est pas servi. -->
+  <button class="tiroir-bouton" id="tiroir"
+          data-t-aria-label="page.tiroir.aria"
+          aria-label="Afficher les conversations">☰</button>
   <span class="marque">Comfy<em>Studio</em></span>
   <div class="jauge">
     <span id="etatFile"></span>
-    <span id="jaugeModeles"><b>connexion…</b></span>
+    <span id="jaugeModeles"><b data-t="page.moteurs.connexion">connexion…</b></span>
     <span class="nuages" id="nuages"></span>
     <button type="button" class="lien-admin" id="ouvrirMedia"
+            data-t-title="page.media.ouvrir.title" data-t="page.media.nom"
             title="tout ce que tu as produit">médiathèque</button>
     <span class="compte" id="compte"></span>
     <a class="lien-admin" id="lienAdmin" href="/admin" style="display:none"
-       title="administration : machines, comptes, cles">admin</a>
+       data-t-title="page.admin.title" data-t="page.admin"
+       title="administration : machines, comptes, clés">admin</a>
+    <!-- L'infobulle tenait sur DEUX lignes de source, saut de ligne compris
+         dans l'attribut : le texte affiche portait donc un retour a la ligne
+         que le dictionnaire n'aurait pas su reproduire, et le releve des deux
+         moities aurait rougi sur une difference invisible a l'oeil. -->
     <a class="source" href="https://github.com/Hogun974/comfystudio"
-       target="_blank" rel="noopener"
-       title="ComfyStudio est sous licence AGPL-3.0 : le code source vous est
- dû, le voici">source</a>
+       target="_blank" rel="noopener" data-t-title="page.source.title"
+       data-t="page.source"
+       title="ComfyStudio est sous licence AGPL-3.0 : le code source vous est dû, le voici">source</a>
   </div>
 </header>
 
 <div id="panneauFile"></div>
 <div id="mediatheque" hidden>
   <header>
-    <b>médiathèque</b>
+    <b data-t="page.media.nom">médiathèque</b>
     <span class="onglets-media" id="famillesMedia"></span>
     <span id="toutLeStudio" class="vue-admin"></span>
-    <button type="button" id="fermerMedia" aria-label="fermer">✕</button>
+    <button type="button" id="fermerMedia" data-t-aria-label="page.fermer.aria"
+            aria-label="fermer">✕</button>
   </header>
   <div id="filtresMedia">
-    <input type="search" id="chercheMedia" placeholder="chercher dans la demande, le prompt, le nom du fichier">
-    <select id="triMedia" aria-label="Trier">
-      <option value="-quand">plus récent d'abord</option>
-      <option value="quand">plus ancien d'abord</option>
-      <option value="moteur">moteur</option>
-      <option value="a">propriétaire</option>
-      <option value="demande">demande (A→Z)</option>
-      <option value="-secondes">le plus long d'abord</option>
+    <input type="search" id="chercheMedia" data-t-placeholder="page.media.chercher"
+           placeholder="chercher dans la demande, le prompt, le nom du fichier">
+    <select id="triMedia" data-t-aria-label="page.media.tri.aria" aria-label="Trier">
+      <option value="-quand" data-t="page.media.tri.recent">plus récent d'abord</option>
+      <option value="quand" data-t="page.media.tri.ancien">plus ancien d'abord</option>
+      <option value="moteur" data-t="page.moteur">moteur</option>
+      <option value="a" data-t="page.media.qui">propriétaire</option>
+      <option value="demande" data-t="page.media.tri.demande">demande (A→Z)</option>
+      <option value="-secondes" data-t="page.media.tri.long">le plus long d'abord</option>
     </select>
-    <select id="soinMedia" aria-label="Brouillon ou fini">
-      <option value="">brouillons et finies</option>
-      <option value="finies">images finies</option>
-      <option value="brouillons">brouillons</option>
+    <!-- « brouillons » est une VALEUR DE PROTOCOLE et non un libelle : le
+         script la relit telle quelle (SOIN.brouillons), et une passe de
+         traduction naive aurait touche les deux moities du meme litteral.
+         banc_page.py exige que la valeur ecrite ici soit celle que le script
+         declare. -->
+    <select id="soinMedia" data-t-aria-label="page.media.soin.aria"
+            aria-label="Brouillon ou fini">
+      <option value="" data-t="page.media.soin.tout">brouillons et finies</option>
+      <option value="finies" data-t="page.media.soin.finies">images finies</option>
+      <option value="brouillons" data-t="page.media.soin.brouillons">brouillons</option>
     </select>
-    <select id="moteurMedia" aria-label="Moteur"></select>
-    <select id="machineMedia" aria-label="Machine"></select>
-    <select id="quiMedia" aria-label="Propriétaire" hidden></select>
+    <select id="moteurMedia" data-t-aria-label="page.media.moteur.aria" aria-label="Moteur"></select>
+    <select id="machineMedia" data-t-aria-label="page.media.machine.aria" aria-label="Machine"></select>
+    <select id="quiMedia" data-t-aria-label="page.media.qui.aria" aria-label="Propriétaire" hidden></select>
     <span id="combienMedia" class="detail-media"></span>
   </div>
   <div id="grilleMedia"></div>
@@ -629,15 +662,15 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <div class="voile" id="voile"></div>
 <div class="corps">
   <aside>
-    <button class="neuve" id="neuve">+ nouvelle conversation</button>
+    <button class="neuve" id="neuve" data-t="page.conv.neuve">+ nouvelle conversation</button>
     <div class="convs" id="convs"></div>
     <div class="moteur" id="moteur">
       <div class="ligne"><span class="pastille" id="pastille"></span>
-        <span id="etatMoteur">ComfyUI…</span></div>
+        <span id="etatMoteur" data-t="page.moteur.attente">ComfyUI…</span></div>
       <div class="detail" id="detailMoteur"></div>
       <div class="ligne" id="boutonsMoteur" style="display:none">
-        <button id="demarrerComfy">démarrer</button>
-        <button id="arreterComfy">arrêter</button>
+        <button id="demarrerComfy" data-t="page.comfy.demarrer">démarrer</button>
+        <button id="arreterComfy" data-t="page.comfy.arreter">arrêter</button>
       </div>
     </div>
   </aside>
@@ -650,28 +683,33 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <footer>
   <div class="saisie">
     <div class="champ">
-      <textarea id="txt" rows="1" aria-label="Décris ce que tu veux"
+      <textarea id="txt" rows="1" data-t-aria-label="page.saisie.aria"
+        aria-label="Décris ce que tu veux"
+        data-t-placeholder="page.saisie.exemple"
         placeholder="un renard dans les hautes herbes au coucher du soleil…"></textarea>
       <button type="button" class="envoyer esquisser" id="lancerBrouillon"
+        data-t-title="page.brouillon.title"
         title="Un rendu au quart des étapes : quelques secondes au lieu de quelques minutes. De quoi juger le prompt, le moteur et l'ambiance. Attention : la version soignée traitera le même sujet mais n'aura PAS le même cadrage — le nombre d'étapes change le calcul."
-        aria-label="Brouillon">≈</button>
-      <button class="envoyer" id="go" title="Générer (Ctrl+Entrée)" aria-label="Générer">↑</button>
+        data-t-aria-label="page.brouillon.aria" aria-label="Brouillon">≈</button>
+      <button class="envoyer" id="go" data-t-title="page.generer.title"
+              title="Générer (Ctrl+Entrée)"
+              data-t-aria-label="page.generer.aria" aria-label="Générer">↑</button>
     </div>
     <div class="barre">
-      <label class="joindre" for="img" style="border:1px solid var(--trait);
+      <label class="joindre" for="img" data-t="page.joindre" style="border:1px solid var(--trait);
         border-radius:8px;padding:4px 10px;font:11.5px var(--mono);
         color:var(--encre-douce);cursor:pointer">joindre un fichier</label>
       <input type="file" id="img"
              accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.webm,.mkv,.mov,.mp3,.wav,.flac,.ogg,.opus,.m4a">
-      <button type="button" id="plier" aria-expanded="false">réglages</button>
+      <button type="button" id="plier" aria-expanded="false" data-t="page.reglages">réglages</button>
       <span class="actifs" id="actifs"></span>
     </div>
     <div class="outils replie" id="outils">
-      <select id="forcer" aria-label="Forcer un moteur">
-        <option value="">moteur : automatique</option>
+      <select id="forcer" data-t-aria-label="page.forcer.aria" aria-label="Forcer un moteur">
+        <option value="" data-t="page.forcer.auto">moteur : automatique</option>
       </select>
-      <select id="machine" aria-label="Machine">
-        <option value="">machine : automatique</option>
+      <select id="machine" data-t-aria-label="page.machine.aria" aria-label="Machine">
+        <option value="" data-t="page.machine.auto">machine : automatique</option>
       </select>
       <!-- « data-court » : le mot que la pastille des reglages actifs
            affiche. Elle le DECOUPAIT du libelle visible, sur le tiret
@@ -682,21 +720,26 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
            visible est libre ; c'est cet attribut-ci qui est le contrat, et
            banc_page.py exige qu'aucune option porteuse d'une valeur n'en
            manque. -->
-      <select id="priorite" aria-label="Priorité">
-        <option value="">priorité : équilibre</option>
-        <option value="rapide" data-court="rapide">rapide — moins d'étapes</option>
-        <option value="soigne" data-court="soigné">soigné — plus d'étapes</option>
+      <select id="priorite" data-t-aria-label="page.priorite.aria" aria-label="Priorité">
+        <option value="" data-t="page.priorite.auto">priorité : équilibre</option>
+        <option value="rapide" data-t-data-court="page.priorite.rapide.court" data-court="rapide"
+                data-t="page.priorite.rapide">rapide — moins d'étapes</option>
+        <option value="soigne" data-t-data-court="page.priorite.soigne.court" data-court="soigné"
+                data-t="page.priorite.soigne">soigné — plus d'étapes</option>
       </select>
-      <select id="taille" aria-label="Résolution">
-        <option value="">taille : automatique</option>
-        <option value="1920x1080" data-court="1920 × 1080">1920 × 1080 — paysage</option>
-        <option value="1600x900" data-court="1600 × 900">1600 × 900 — paysage</option>
-        <option value="1280x720" data-court="1280 × 720">1280 × 720 — paysage</option>
-        <option value="1216x832" data-court="1216 × 832">1216 × 832 — défaut</option>
-        <option value="1024x1024" data-court="1024 × 1024">1024 × 1024 — carré</option>
-        <option value="832x1216" data-court="832 × 1216">832 × 1216 — portrait</option>
-        <option value="1080x1350" data-court="1080 × 1350">1080 × 1350 — portrait</option>
-        <option value="768x1344" data-court="768 × 1344">768 × 1344 — portrait haut</option>
+      <!-- Les libelles courts des tailles sont des CHIFFRES : ils ne
+           s'ecrivent pas autrement d'une langue a l'autre, et n'ont donc pas
+           de « data-t-data-court ». Le libelle visible, lui, porte un mot. -->
+      <select id="taille" data-t-aria-label="page.taille.aria" aria-label="Résolution">
+        <option value="" data-t="page.taille.auto">taille : automatique</option>
+        <option value="1920x1080" data-court="1920 × 1080" data-t="page.taille.1920x1080">1920 × 1080 — paysage</option>
+        <option value="1600x900" data-court="1600 × 900" data-t="page.taille.1600x900">1600 × 900 — paysage</option>
+        <option value="1280x720" data-court="1280 × 720" data-t="page.taille.1280x720">1280 × 720 — paysage</option>
+        <option value="1216x832" data-court="1216 × 832" data-t="page.taille.1216x832">1216 × 832 — défaut</option>
+        <option value="1024x1024" data-court="1024 × 1024" data-t="page.taille.1024x1024">1024 × 1024 — carré</option>
+        <option value="832x1216" data-court="832 × 1216" data-t="page.taille.832x1216">832 × 1216 — portrait</option>
+        <option value="1080x1350" data-court="1080 × 1350" data-t="page.taille.1080x1350">1080 × 1350 — portrait</option>
+        <option value="768x1344" data-court="768 × 1344" data-t="page.taille.768x1344">768 × 1344 — portrait haut</option>
       </select>
       <!-- CE N'EST PAS UN REGLAGE DE CONVERSATION, et c'est le serveur qui l'a
            tranche : « variantes » ne figure pas dans REGLAGES_CONV
@@ -710,17 +753,34 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
            Il reste donc HORS de MENU_REGLAGE et de CLE_REGLAGE.
            Quatre au plus : VARIANTES_MAX = 4, serveur.py. Au-dela, le studio
            repond 400 — le menu ne propose pas ce qu'on lui refuserait. -->
-      <select id="variantes" aria-label="Nombre de variantes">
-        <option value="">variantes : une seule</option>
-        <option value="2" data-court="2 variantes">2 variantes — même prompt, autre graine</option>
-        <option value="3" data-court="3 variantes">3 variantes</option>
-        <option value="4" data-court="4 variantes">4 variantes</option>
+      <select id="variantes" data-t-aria-label="page.variantes.aria" aria-label="Nombre de variantes">
+        <option value="" data-t="page.variantes.une">variantes : une seule</option>
+        <option value="2" data-t-data-court="page.variantes.2.court" data-court="2 variantes"
+                data-t="page.variantes.2">2 variantes — même prompt, autre graine</option>
+        <option value="3" data-t-data-court="page.variantes.3" data-court="3 variantes"
+                data-t="page.variantes.3">3 variantes</option>
+        <option value="4" data-t-data-court="page.variantes.4" data-court="4 variantes"
+                data-t="page.variantes.4">4 variantes</option>
       </select>
+      <!-- LE MENU DE LANGUE, ET IL N'EST PAS UN REGLAGE DE CONVERSATION.
+           REGLAGES_CONV est par conversation, alors que l'en-tete, la
+           mediatheque et le panneau de file ne le sont pas : la langue de
+           l'ombrelle serait celle de la derniere conversation ouverte. Et le
+           mot est deja pris — « plan["langue"] » est la langue des PAROLES
+           d'un morceau. Le choix vit donc dans le cookie « studio_langue »,
+           pose par POST /api/textes (docs/plusieurs-langues.md).
+           Il reste HORS de REGLAGES, MENU_REGLAGE et CLE_REGLAGE : y entrer
+           le ferait poster sur une route qui ne le lit pas, et promettrait un
+           murmure qui ne viendrait jamais.
+           Ses options sont ecrites en une fois par peindreMenuLangue(), comme
+           garnirChoix() le fait pour les quatre menus de la mediatheque : ce
+           n'est pas un menu de reglage, il n'a donc pas de libelle court. -->
+      <select id="langue" data-t-aria-label="page.langue.aria" aria-label="Langue"></select>
     </div>
     <div class="jointe" id="jointe" style="display:none">
       <span id="apercu-zone"></span>
       <span id="nomimg"></span>
-      <button id="retirer">retirer</button>
+      <button id="retirer" data-t="page.retirer">retirer</button>
     </div>
     <div class="alerte" id="alerte" role="alert"></div>
   </div>
@@ -728,6 +788,160 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 
 <script>
 const $ = s => document.querySelector(s);
+
+/* ══ CE QUE LA PAGE DIT, DANS LA LANGUE DE SON LECTEUR ═══════════════════
+   Le dictionnaire vient de /api/textes, qui sert AUSSI la langue retenue —
+   cookie « studio_langue » d'abord, en-tete « Accept-Language » ensuite
+   (serveur.py, langue_de). La page ne decide donc rien : elle affiche.
+
+   LE FRANCAIS EST DANS LE HTML, ET LES CLES SONT DES IDENTIFIANTS. Indexer
+   sur le francais paraissait plus simple et c'est un piege mesure : la page
+   ecrit « c’était » avec une apostrophe typographique et « l'esquisse » avec
+   une droite — deux cles pour un mot, et une reformulation cote francais
+   perdrait la traduction sans rien dire (docs/plusieurs-langues.md). */
+const LANGUE_SOURCE = "fr";
+let LANGUE = LANGUE_SOURCE;
+let LANGUES = [LANGUE_SOURCE];
+let TEXTES = {};
+
+/* SA PROPRE COPIE DE LA REGLE DU PLURIEL, et non celle du serveur : la page
+   compte des choses que le serveur ne voit jamais — les pieces jointes qu'on
+   vient de deposer, les conversations de la barre laterale, le nombre de
+   variantes d'un menu. La table est celle de traductions.PLURIELS, et
+   banc_page.py exige qu'elle en soit la copie exacte : le francais met 0 ET 1
+   au singulier, l'anglais met 0 au PLURIEL. La page ecrivait auparavant
+   « ${n} echange${n > 1 ? "s" : ""} » a chaque endroit qui compte quelque
+   chose — la regle FRANCAISE, recopiee, dans du code d'interface, et fausse
+   en anglais des zero. */
+const PLURIELS = {
+  fr: n => (n > 1 ? 1 : 0),
+  en: n => (n !== 1 ? 1 : 0),
+};
+
+/* La date et l'heure suivent la langue. « en-GB » et non « en-US » : tout le
+   studio ecrit des horloges de 24 heures — le journal, le panneau de file, la
+   ligne « 14:07 » de chaque demande —, et une bulle en AM/PM au milieu d'elles
+   se lit comme une autre heure. */
+const LOCALES = { fr: "fr-FR", en: "en-GB" };
+const locale = () => LOCALES[LANGUE] || LOCALES[LANGUE_SOURCE];
+
+/* « encore 40 min » ou « encore 11 h », ECRIT UNE FOIS. Les deux endroits qui
+   l'affichent — le panneau de file et la bulle d'une demande armee — se
+   recopiaient l'un l'autre, seuil et unites compris ; le second annonce meme
+   « meme formulation que dans le panneau de file », ce qui est le nom exact du
+   defaut. Le seuil de 1,5 h est celui d'origine : en dessous, les minutes
+   disent quelque chose ; au-dessus, elles font un nombre qu'on ne lit plus. */
+const dureeRestante = h =>
+  h < 1.5 ? T("page.duree.min", { n: Math.round(h * 60) })
+          : T("page.duree.h", { n: Math.round(h) });
+
+/* Les valeurs interpolees : « {titre} », « {n} ». Le meme releve que
+   banc_traductions.py fait sur le dictionnaire, pour que les deux moities
+   parlent du meme gabarit. */
+const _VALEUR = /\{([a-z_][a-z0-9_]*)\}/g;
+
+/* traductions.T(), en JavaScript. Les trois replis sont les siens, et pour la
+   meme raison : un studio qui repond en francais est genant, un studio qui
+   rend une page blanche est casse.
+     - une cle inconnue rend SA PROPRE CLE — laid, et ca se voit tout de suite ;
+     - une valeur manquante rend le gabarit BRUT, accolades comprises ;
+     - « nombre » choisit la forme selon la regle de la LANGUE, jamais celle
+       du site d'appel. */
+function T(cle, valeurs) {
+  let formes = TEXTES[cle];
+  if (formes === undefined || formes === null) return cle;
+  const v = Object.assign({}, valeurs || {});
+  if (Array.isArray(formes)) {
+    const regle = PLURIELS[LANGUE] || PLURIELS[LANGUE_SOURCE];
+    formes = formes[regle(Number(v.n) || 0)];
+  }
+  if (typeof formes !== "string") return cle;
+  let manque = false;
+  const rendu = formes.replace(_VALEUR, (tout, nom) => {
+    if (v[nom] === undefined || v[nom] === null) { manque = true; return tout; }
+    return String(v[nom]);
+  });
+  return manque ? formes : rendu;
+}
+
+/* traductions.rendre() : une MARQUE de panne mise en phrase.
+
+   UNE VALEUR PEUT ETRE UNE MARQUE, et c'est le seul cas d'imbrication —
+   « ERREUR : {quoi} » recoit au site d'appel de echouer() une PHRASE du
+   dictionnaire, pas une valeur calculee. Sans ce tour, l'anglophone lisait
+   « ERROR: la machine n'est pas revenue a temps » : une demi-phrase traduite,
+   qui se remarque moins qu'une phrase entierement francaise et trompe donc
+   plus longtemps. UN SEUL NIVEAU : aucun site d'appel n'en demande deux, et
+   une recursion sans borne sur des donnees servies par HTTP est une porte
+   qu'on n'ouvre pas sans raison (traductions.rendre, serveur.MARQUE_PANNE). */
+function rendrePanne(marque) {
+  if (!marque || typeof marque !== "object" || !marque.cle) return "";
+  const valeurs = {};
+  for (const [nom, v] of Object.entries(marque.valeurs || {}))
+    valeurs[nom] = (v && typeof v === "object" && v.cle)
+                 ? T(v.cle, v.valeurs || {}) : v;
+  return T(marque.cle, valeurs);
+}
+
+/* La passe d'ecriture. « data-t » pose le texte, « data-t-X » pose
+   l'attribut X — « data-t-aria-label », « data-t-data-court ». Un seul
+   parcours, au chargement : la page ne se repeint pas a chaud, elle se
+   RECHARGE quand on change de langue (voir le menu, plus bas). */
+function traduirePage() {
+  for (const el of document.querySelectorAll("[data-t]"))
+    el.textContent = T(el.getAttribute("data-t"));
+  for (const el of document.querySelectorAll("*"))
+    for (const nom of el.getAttributeNames()) {
+      if (!nom.startsWith("data-t-")) continue;
+      el.setAttribute(nom.slice(7), T(el.getAttribute(nom)));
+    }
+}
+
+function peindreMenuLangue() {
+  const sel = $("#langue");
+  if (!sel) return;
+  sel.innerHTML = LANGUES.map(
+    lg => `<option value="${ech(lg)}">${ech(T("page.langue." + lg))}</option>`)
+    .join("");
+  sel.value = LANGUE;
+  sel.onchange = async () => {
+    try {
+      await fetch("/api/textes", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ langue: sel.value }) });
+    } catch (e) { /* le cookie n'est pas pose : le rechargement le dira */ }
+    // RECHARGER, ET NON REPEINDRE. La page est ecrite a cent vingt-sept sites
+    // d'ecriture DOM repartis dans vingt-huit fonctions, et il n'existe aucun
+    // endroit unique ou elle se peint : repeindre a chaud demanderait de
+    // rejouer chacun d'eux, et le premier oubli laisserait une phrase
+    // francaise dans une page anglaise — exactement ce que ce travail existe
+    // pour empecher. Le rechargement refait TOUT depuis le serveur, comme
+    // apres une connexion ou une deconnexion, qui en usent deja pour la meme
+    // raison : l'identite change, donc tout le contexte.
+    location.reload();
+  };
+}
+
+/* TOUT ATTEND LE DICTIONNAIRE, et c'est une course qu'il faut fermer : sans
+   ce verrou, /api/modeles pouvait repondre avant /api/textes et le menu des
+   moteurs s'ecrivait « page.moteur.a_telecharger » a l'ecran. Le HTML, lui,
+   porte deja son francais : rien n'est vide pendant l'aller-retour. */
+const PRET = fetch("/api/textes", { credentials: "same-origin" })
+  .then(r => r.json())
+  .then(d => {
+    if (Array.isArray(d.langues) && d.langues.length) LANGUES = d.langues;
+    if (d.langue) LANGUE = d.langue;
+    TEXTES = d.textes || {};
+    document.documentElement.lang = LANGUE;
+    // Seulement hors du francais : le HTML le porte deja, et le reecrire
+    // n'aurait d'autre effet que de le remplacer par lui-meme — ou par une
+    // cle, le jour ou l'une manquerait.
+    if (LANGUE !== LANGUE_SOURCE) traduirePage();
+    peindreMenuLangue();
+  })
+  .catch(() => { peindreMenuLangue(); });
+
 let imageJointe = null, apercuURL = null, convActive = null;
 const suivis = new Map();           // tid -> {bloc, minuteur}
 /* Les demandes ARMEES, relevees au passage du compteur de file. /api/etat ne
@@ -744,6 +958,43 @@ const armees = new Map();           // tid -> heures restantes avant expiration
    venait justement de lancer — c'est-a-dire au seul moment ou l'on en a besoin.
    Le serveur reprend la main des qu'il sait : « t.esquisse » l'emporte. */
 const esquissesLancees = new Set();
+
+/* ══ LES VALEURS DE PROTOCOLE NE SONT PAS DES LIBELLES ═══════════════════
+   Elles se confondaient avec eux, et c'est le quatrieme des quatre chantiers
+   que docs/plusieurs-langues.md a mesures — le seul qui restait.
+
+   « en cours », « fini », « erreur », « question », « attente carte »,
+   « attente machine » sont l'etat de la TACHE tel que serveur.py l'ecrit.
+   Ils etaient testes a cinq endroits ET servaient de CLES a la table des
+   etiquettes, dont les VALEURS sont de l'interface : une passe de traduction
+   naive aurait touche les deux moities du meme litteral, et « fini » traduit
+   en « finished » aurait rendu muet le test « t.etat === "fini" » sans lever
+   la moindre erreur.
+
+   ON NE CHANGE PAS LE PROTOCOLE, ON LE SEPARE. Ces valeurs voyagent jusqu'au
+   serveur et sont ECRITES dans les conversations deja enregistrees : les
+   traduire relirait de travers tout l'historique. Elles sont donc ecrites
+   UNE fois, ici, sous un nom ; leurs etiquettes vivent au dictionnaire, sous
+   « page.etat. ». banc_page.py exige les deux moities — que ces six valeurs
+   soient exactement celles du serveur, et qu'aucune comparaison sur « .etat »
+   ne porte encore un litteral. */
+const ETAT = {
+  cours: "en cours", fini: "fini", erreur: "erreur", question: "question",
+  attente_carte: "attente carte", attente_machine: "attente machine",
+};
+
+/* La famille d'une piece, servie par /api/mediatheque. Meme affaire : la
+   grille comparait « f.famille === "image" » a six endroits, et
+   FAMILLES_MEDIA rangeait la valeur de protocole a cote de son libelle
+   francais dans le meme tableau. L'ordre est celui des onglets. */
+const FAMILLES = ["image", "video", "audio", "objet3d"];
+const FAMILLE = { image: "image", video: "video", audio: "audio",
+                  objet3d: "objet3d" };
+
+/* La valeur de l'<option> du filtre « brouillon ou fini », relue telle
+   quelle par trierEtFiltrer(). Elle est ECRITE DANS LE HTML : banc_page.py
+   releve les deux et exige qu'elles soient le meme mot. */
+const SOIN_BROUILLONS = "brouillons";
 
 const TITRES = {};
 /* Les guillemets et l'apostrophe en font partie, comme dans admin.html. Aucun
@@ -775,23 +1026,22 @@ function ajuster() {
 /* ── fil ─────────────────────────────────────────────────────────── */
 function messageVide() {
   $("#fil").innerHTML = `<div class="vide">
-    <h1>Dis ce que tu veux voir.</h1>
-    <p>Une image, une vidéo, une musique, une retouche. Le moteur est choisi pour
-       toi, et la conversation garde le fil : « la même mais en hiver » reprend
-       ce qui précède.</p></div>`;
+    <h1>${ech(T("page.vide.titre"))}</h1>
+    <p>${ech(T("page.vide.texte"))}</p></div>`;
 }
 function ajouterDemande(texte, heure) {
   $("#fil").querySelector(".vide")?.remove();
   const d = document.createElement("div");
   d.className = "demande";
   d.innerHTML = ech(texte) + `<span class="heure">${ech(heure || new Date()
-      .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }))}</span>`;
+      .toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }))}</span>`;
   $("#fil").appendChild(d);
 }
 function ajouterReponse() {
   const r = document.createElement("div");
   r.className = "reponse";
-  r.innerHTML = `<div class="bandeau-tech"><span class="puce cours">en cours</span></div>
+  r.innerHTML = `<div class="bandeau-tech"><span class="puce cours">${
+                   ech(T("page.etat.cours"))}</span></div>
                  <div class="sortie"></div>`;
   $("#fil").appendChild(r);
   return r;
@@ -813,7 +1063,7 @@ function actionsSortie(f) {
   const tele = document.createElement("a");
   tele.href = url(f);
   tele.download = f.filename;
-  tele.textContent = "télécharger";
+  tele.textContent = T("page.telecharger");
   // Un lien ordinaire, pas du script : le navigateur sait deja nommer le
   // fichier, reprendre un transfert coupe et le ranger ou il faut.
   zone.appendChild(tele);
@@ -821,7 +1071,7 @@ function actionsSortie(f) {
   if (EXT_IMG.test(f.filename) || EXT_VID.test(f.filename)) {
     const gros = document.createElement("button");
     gros.type = "button";
-    gros.textContent = "plein écran";
+    gros.textContent = T("page.plein_ecran");
     gros.onclick = () => plein(f);
     zone.appendChild(gros);
   }
@@ -839,7 +1089,7 @@ function plein(f) {
   else el.alt = f.filename;
   const fermer = document.createElement("button");
   fermer.type = "button"; fermer.className = "fermer";
-  fermer.setAttribute("aria-label", "fermer"); fermer.textContent = "✕";
+  fermer.setAttribute("aria-label", T("page.fermer.aria")); fermer.textContent = "✕";
   voile.append(el, fermer);
   document.body.appendChild(voile);
 
@@ -899,7 +1149,7 @@ function barreAuPropre(t, cid) {
   const fait = mot => { zone.innerHTML = ""; const s = document.createElement("span");
                         s.className = "fait"; s.textContent = "✓ " + mot;
                         zone.appendChild(s); };
-  if (t.au_propre) { fait("refait en soigné"); return zone; }
+  if (t.au_propre) { fait(T("page.au_propre.fait")); return zone; }
 
   const b = document.createElement("button");
   b.type = "button";
@@ -908,12 +1158,11 @@ function barreAuPropre(t, cid) {
   // debruitage, la graine n'en fixe que le depart. Mesure du 31 aout, meme
   // graine et meme prompt : deux images sans rapport. Le libelle doit dire ce
   // qu'on obtient, pas ce qu'on aurait aime obtenir.
-  b.textContent = "refaire en soigné";
-  b.title = "Reprend le même prompt, le même moteur et la même taille, avec toutes les étapes. "
-          + "Le sujet et le style seront les mêmes ; le cadrage, non.";
+  b.textContent = T("page.au_propre.bouton");
+  b.title = T("page.au_propre.title");
   const dit = document.createElement("span");
   b.onclick = async () => {
-    b.disabled = true; dit.className = ""; dit.textContent = "envoi…";
+    b.disabled = true; dit.className = ""; dit.textContent = T("page.envoi");
     try {
       const r = await fetch("/api/au_propre", {
         method: "POST", credentials: "same-origin",
@@ -938,10 +1187,10 @@ function barreAuPropre(t, cid) {
       // pas en silence. Il suffit que le serveur ait REFUSE et qu'il ait pose
       // sa marque.
       if (!r.ok && d[MARQUE_DEJA]) {
-        fait("déjà refait en soigné"); return;
+        fait(T("page.au_propre.deja")); return;
       }
-      if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la reprise");
-      fait("refait en soigné");
+      if (!r.ok || !d.id) throw new Error(d.erreur || T("page.refus.reprise"));
+      fait(T("page.au_propre.fait"));
       // La nouvelle demande prend le chemin de toutes les autres : une bulle en
       // bas du fil, et le suivi ordinaire. Elle est bien la plus recente, meme
       // si l'esquisse dont elle sort est loin au-dessus.
@@ -994,7 +1243,7 @@ function peindreVariante(zone) {
   zone.innerHTML = "";
   const rang = document.createElement("span");
   rang.className = "rang";
-  rang.textContent = `variante ${d.rang} sur ${d.sur}`;
+  rang.textContent = T("page.variante.rang", { rang: d.rang, sur: d.sur });
   zone.appendChild(rang);
   if (retenue) {
     const s = document.createElement("span");
@@ -1002,7 +1251,7 @@ function peindreVariante(zone) {
     // « c'est elle que « la » désigne » ne voulait rien dire pour qui n'a pas
     // lu la documentation — signalé par l'utilisateur. Ce qu'il faut savoir
     // tient en un mot : c'est de celle-ci qu'on repart.
-    s.textContent = "✓ on repart de celle-ci";
+    s.textContent = T("page.variante.retenue");
     zone.appendChild(s);
     return;
   }
@@ -1012,10 +1261,8 @@ function peindreVariante(zone) {
   if (d.designable !== "1") return;
   const b = document.createElement("button");
   b.type = "button";
-  b.textContent = "repartir de celle-ci";
-  b.title = "« agrandis-la », « rends-la fluide », « le même personnage » "
-          + "viseront cette image-là. Rien n'est supprimé : les autres "
-          + "variantes restent.";
+  b.textContent = T("page.variante.repartir");
+  b.title = T("page.variante.repartir.title");
   const dit = document.createElement("span");
   b.onclick = async () => {
     b.disabled = true; dit.className = ""; dit.textContent = "…";
@@ -1025,7 +1272,7 @@ function peindreVariante(zone) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation: d.conv, tour: d.tour }) });
       const rep = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(rep.erreur || "le serveur a refusé");
+      if (!r.ok) throw new Error(rep.erreur || T("page.refus.simple"));
       CHOISIES.set(d.groupe, d.tour);
       // TOUTES les rangees du groupe, pas seulement celle-ci : le serveur
       // decoche les soeurs, et deux images qui se diraient « la » en meme
@@ -1052,27 +1299,27 @@ function barreVariante(t, cid) {
   zone.className = "variante";
   Object.assign(zone.dataset, {
     groupe: g.groupe, tour: t.id, conv: cid, rang: g.rang, sur: g.sur,
-    designable: (t.etat !== "erreur" && (t.fichiers || []).length) ? "1" : "0",
+    designable: (t.etat !== ETAT.erreur && (t.fichiers || []).length) ? "1" : "0",
   });
   return zone;
 }
 
 function garnirReponse(bloc, t, cid) {
   // une conversation rechargee peut contenir une question restee en suspens
-  if (t.etat === "question" && (t.questions || []).length) {
+  if (t.etat === ETAT.question && (t.questions || []).length) {
     garnirQuestion(bloc, t, cid || convActive);
     return;
   }
   // Un rendu encore en route : on se rebranche dessus. Sans cela, revenir sur
   // la conversation montrait une reponse vide et definitivement figee.
-  if (t.etat === "en cours" && t.id) {
+  if (t.etat === ETAT.cours && t.id) {
     bloc.querySelector(".bandeau-tech").innerHTML =
-      '<span class="puce cours">en cours</span>';
+      `<span class="puce cours">${ech(T("page.etat.cours"))}</span>`;
     suivre(t.id, bloc, cid || convActive);
     return;
   }
   const p = t.plan || {};
-  const rate = t.etat === "erreur";
+  const rate = t.etat === ETAT.erreur;
   bloc.classList.toggle("rate", rate);
   const cle = p.modele || t.modele;
   const par = p.parametres || t.parametres;
@@ -1083,8 +1330,8 @@ function garnirReponse(bloc, t, cid) {
   // ne refera jamais, croyant l'avoir faite.
   const esquisse = t.esquisse === true || esquissesLancees.has(t.id);
   bloc.querySelector(".bandeau-tech").innerHTML =
-    (rate ? '<span class="puce rate">échec</span>' : "")
-    + (esquisse ? '<span class="puce esquisse">brouillon</span>' : "");
+    (rate ? `<span class="puce rate">${ech(T("page.etat.echec"))}</span>` : "")
+    + (esquisse ? `<span class="puce esquisse">${ech(T("page.brouillon"))}</span>` : "");
 
   const sortie = bloc.querySelector(".sortie");
   sortie.innerHTML = "";
@@ -1099,7 +1346,7 @@ function garnirReponse(bloc, t, cid) {
     else if (EXT_SON.test(f.filename)) { el = document.createElement("audio"); el.controls = true; }
     else if (EXT_IMG.test(f.filename)) { el = document.createElement("img"); el.alt = f.filename; }
     else { el = document.createElement("a"); el.href = u; el.download = f.filename;
-           el.textContent = "télécharger " + f.filename; }
+           el.textContent = T("page.telecharger.fichier", { nom: f.filename }); }
     if (el.tagName !== "A") el.src = u;
     // Le nom sert a retrouver le fichier, pas a lire l'image : infobulle.
     el.title = f.filename;
@@ -1109,13 +1356,13 @@ function garnirReponse(bloc, t, cid) {
   });
   if (rate) {
     const e = document.createElement("div");
-    e.className = "echec"; e.textContent = t.erreur || "la génération a échoué";
+    e.className = "echec"; e.textContent = t.erreur || T("page.echec.defaut");
     // Retaper dix lignes parce que le studio a redemarre est une punition
     // imméritée : le bouton reprend la demande, et le moteur imposé avec.
     if (t.demande) {
       const b = document.createElement("button");
-      b.type = "button"; b.textContent = "relancer";
-      b.title = "renvoyer exactement la même demande";
+      b.type = "button"; b.textContent = T("page.relancer");
+      b.title = T("page.relancer.title");
       b.onclick = () => {
         $("#txt").value = t.demande;
         if (t.modele && $("#forcer").querySelector(`option[value="${t.modele}"]`))
@@ -1159,25 +1406,33 @@ function garnirReponse(bloc, t, cid) {
   // qui le cherche, sans etre impose a qui regarde une image.
   const morceaux = [];
   if (par && Object.keys(par).length)
-    morceaux.push("réglages : " + Object.entries(par).map(([k, v]) => `${k}=${v}`).join(", "));
-  if (t.raison) morceaux.push("choix : " + t.raison);
+    morceaux.push(T("page.detail.reglages", { quoi:
+      Object.entries(par).map(([k, v]) => `${k}=${v}`).join(", ") }));
+  if (t.raison) morceaux.push(T("page.detail.choix", { quoi: t.raison }));
   // La machine et le temps : « pourquoi celle-ci a mis quatre minutes » est une
   // question qu'on se pose une semaine plus tard, quand le journal du studio a
   // depuis longtemps oublie.
   const machine = t.noeud
     || [...new Set((t.fichiers || []).map(f => f.noeud).filter(Boolean))].join(", ");
-  const combien = t.secondes ? `${Math.round(t.secondes)} s` : "";
+  const combien = t.secondes ? T("page.duree.s", { n: Math.round(t.secondes) }) : "";
   if (machine || combien)
-    morceaux.push("rendu : " + [machine, combien].filter(Boolean).join(" · "));
+    morceaux.push(T("page.detail.rendu",
+                    { quoi: [machine, combien].filter(Boolean).join(" · ") }));
   const prompt = p.prompt || t.prompt;
-  if (prompt) morceaux.push("prompt envoyé :\n" + prompt
-                          + (p.negatif ? "\n\nécarté : " + p.negatif : ""));
-  if (t.paroles) morceaux.push("paroles :\n" + t.paroles);
+  if (prompt) morceaux.push(T("page.detail.prompt", { quoi: prompt })
+                          + (p.negatif ? T("page.detail.negatif", { quoi: p.negatif }) : ""));
+  if (t.paroles) morceaux.push(T("page.detail.paroles", { quoi: t.paroles }));
   const fics = (t.fichiers || []).map(f => f.filename).join("\n");
-  if (fics) morceaux.push("fichiers :\n" + fics);
+  if (fics) morceaux.push(T("page.detail.fichiers", { quoi: fics }));
+  // LE DEROULE RESTE FRANCAIS, ET C'EST UNE DECISION : le journal est ECRIT,
+  // garde sur la tache, relu plus tard, parfois par quelqu'un d'autre que
+  // celui qui a lance la demande. Seul son TITRE se traduit
+  // (docs/plusieurs-langues.md, « on ne traduira pas le journal »).
   if (t.etapes && t.etapes.length)
-    morceaux.push("déroulé :\n" + t.etapes.map(e => `${e.t}  ${e.msg}`).join("\n"));
-  if (morceaux.length) bloc.appendChild(bloque("détails", morceaux.join("\n\n")));
+    morceaux.push(T("page.detail.deroule",
+                    { quoi: t.etapes.map(e => `${e.t}  ${e.msg}`).join("\n") }));
+  if (morceaux.length)
+    bloc.appendChild(bloque(T("page.detail.titre"), morceaux.join("\n\n")));
 
 /* Le pouce sert a corriger le code : sans mesure, on regle a l'aveugle.
    Il est donc pose sur l'echange, la ou le resultat est encore sous les yeux,
@@ -1187,9 +1442,9 @@ function barreAvis(t) {
   const barre = document.createElement("div");
   barre.className = "avis";
   const haut = document.createElement("button");
-  haut.type = "button"; haut.textContent = "👍"; haut.title = "bonne réponse";
+  haut.type = "button"; haut.textContent = "👍"; haut.title = T("page.avis.haut");
   const bas = document.createElement("button");
-  bas.type = "button"; bas.textContent = "👎"; bas.title = "à retravailler";
+  bas.type = "button"; bas.textContent = "👎"; bas.title = T("page.avis.bas");
   const dit = document.createElement("span");
   dit.className = "merci";
   barre.append(haut, bas, dit);
@@ -1210,11 +1465,8 @@ function barreAvis(t) {
      un echec, c'est relancer la meme panne. */
   const refaire = document.createElement("button");
   refaire.type = "button"; refaire.className = "refaire-grand";
-  refaire.textContent = "refaire sur la grosse carte";
-  refaire.title = "Meme prompt, meme moteur, meme taille, mais sur la carte la "
-                + "plus grande — en l'attendant s'il le faut. Une autre graine, "
-                + "donc un autre tirage : le studio ne sait pas ameliorer, il "
-                + "sait recommencer avec plus de carte.";
+  refaire.textContent = T("page.refaire.bouton");
+  refaire.title = T("page.refaire.title");
   refaire.onclick = async () => {
     refaire.disabled = true;
     const avant = refaire.textContent;
@@ -1225,22 +1477,22 @@ function barreAvis(t) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation: convActive, tour: t.id }) });
       const rep = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(rep.erreur || "le serveur a refusé");
-      dit.textContent = "c'est reparti sur la grosse carte";
+      if (!r.ok) throw new Error(rep.erreur || T("page.refus.simple"));
+      dit.textContent = T("page.refaire.fait");
       refaire.remove();
       listerConversations();
     } catch (e) {
       refaire.disabled = false; refaire.textContent = avant;
-      dit.textContent = "impossible de refaire : " + e.message;
+      dit.textContent = T("page.refaire.impossible", { quoi: e.message });
     }
   };
 
   const peindre = () => {
     haut.classList.toggle("pris", pose === 1);
     bas.classList.toggle("pris", pose === -1);
-    dit.textContent = pose === 1 ? "noté, merci"
-                    : pose === -1 ? "noté" : "";
-    const refaisable = pose === -1 && t.etat === "fini"
+    dit.textContent = pose === 1 ? T("page.avis.merci")
+                    : pose === -1 ? T("page.avis.note") : "";
+    const refaisable = pose === -1 && t.etat === ETAT.fini
                        && (t.fichiers || []).length && !t.refait;
     if (refaisable && !refaire.isConnected) barre.insertBefore(refaire, dit);
     else if (!refaisable && refaire.isConnected) refaire.remove();
@@ -1259,7 +1511,7 @@ function barreAvis(t) {
       if (!r.ok) throw new Error((await r.json()).erreur || r.status);
       pose = vise; peindre();
       if (vise !== -1) zone.querySelectorAll(".avis-note").forEach(x => x.remove());
-    } catch (e) { dit.textContent = "avis non enregistré : " + e.message; }
+    } catch (e) { dit.textContent = T("page.avis.rate", { quoi: e.message }); }
   };
 
   haut.onclick = () => { zone.querySelectorAll(".avis-note").forEach(x => x.remove());
@@ -1272,9 +1524,9 @@ function barreAvis(t) {
     f.className = "avis-note";
     const champ = document.createElement("input");
     champ.type = "text"; champ.maxLength = 2000;
-    champ.placeholder = "ce qui n'allait pas (facultatif)";
+    champ.placeholder = T("page.avis.champ");
     const ok = document.createElement("button");
-    ok.type = "button"; ok.textContent = "envoyer";
+    ok.type = "button"; ok.textContent = T("page.envoyer");
     ok.onclick = () => { if (champ.value.trim()) envoyer(-1, champ.value.trim()); f.remove(); };
     champ.onkeydown = ev => { if (ev.key === "Enter") ok.onclick(); };
     f.append(champ, ok);
@@ -1290,7 +1542,9 @@ function barreAvis(t) {
     if (!Array.isArray(INTENTIONS) || !INTENTIONS.length) return;
     const q = document.createElement("div");
     q.className = "avis-quoi";
-    q.innerHTML = "<span>c’était plutôt&nbsp;:</span>";
+    // L'espace insecable d'avant « : » est DANS LA DONNEE, et non recolle
+    // ici : le francais en met un, l'anglais aucun.
+    q.innerHTML = `<span>${ech(T("page.avis.plutot"))}</span>`;
     for (const i of INTENTIONS) {
       if (i.cle === t.type) continue;   // pas la peine de proposer ce qu'il a fait
       const b = document.createElement("button");
@@ -1298,7 +1552,9 @@ function barreAvis(t) {
       b.onclick = () => { corrige = i.cle; envoyer(-1, champ.value.trim());
                           q.replaceChildren(Object.assign(
                               document.createElement("span"),
-                              { className: "fait", textContent: "✓ noté — " + i.titre })); };
+                              { className: "fait",
+                                textContent: T("page.avis.note_intention",
+                                               { titre: i.titre }) })); };
       q.appendChild(b);
     }
     zone.appendChild(q);
@@ -1313,16 +1569,17 @@ function barreAvis(t) {
 function garnirQuestion(bloc, t, cid) {
   bloc.classList.remove("rate");
   bloc.querySelector(".bandeau-tech").innerHTML =
-    '<span class="puce cours">precision demandee</span>';
+    `<span class="puce cours">${ech(T("page.etat.question"))}</span>`;
   const sortie = bloc.querySelector(".sortie");
   sortie.innerHTML = "";
   const q = document.createElement("div");
   q.className = "question";
-  q.innerHTML = `<p>Avant de lancer, j'ai besoin de savoir&nbsp;:</p>
+  q.innerHTML = `<p>${ech(T("page.question.titre"))}</p>
     <ul>${(t.questions || []).map(x => `<li>${ech(x)}</li>`).join("")}</ul>
     <div class="repondre">
-      <input type="text" placeholder="ta réponse…" aria-label="Réponse à la précision demandée">
-      <button>répondre</button>
+      <input type="text" placeholder="${ech(T("page.question.champ"))}"
+             aria-label="${ech(T("page.question.aria"))}">
+      <button>${ech(T("page.question.bouton"))}</button>
     </div>`;
   sortie.appendChild(q);
   const champ = q.querySelector("input"), bouton = q.querySelector("button");
@@ -1330,6 +1587,13 @@ function garnirQuestion(bloc, t, cid) {
     const rep = champ.value.trim();
     if (!rep) return;
     bouton.disabled = true; champ.disabled = true;
+    // « Précisions » RESTE FRANCAIS, ET CE N'EST PAS UN OUBLI : cette
+    // chaine-ci n'est pas affichee, elle est ENVOYEE — c'est le texte de la
+    // demande, celui que l'aiguilleur classe et que le modele de langage
+    // enrichit. Le studio a un pivot, et c'est le francais
+    // (docs/plusieurs-langues.md, « ce qu'il envoie au moteur ») : traduire
+    // ce mot-la ferait entrer de l'anglais dans le corpus, exactement ce que
+    // la garde de couverture existe pour tenir dehors.
     const complet = `${t.demande}\n\nPrécisions : ${rep}`;
     ajouterDemande(rep);
     const nouveau = ajouterReponse();
@@ -1346,10 +1610,10 @@ function garnirQuestion(bloc, t, cid) {
                                ...reglagesDemandes() })
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la demande");
+      if (!r.ok || !d.id) throw new Error(d.erreur || T("page.refus.demande"));
       suivre(d.id, nouveau, cid);
     } catch (err) {
-      garnirReponse(nouveau, { etat: "erreur", erreur: err.message, fichiers: [] });
+      garnirReponse(nouveau, { etat: ETAT.erreur, erreur: err.message, fichiers: [] });
     }
   };
   bouton.onclick = envoyer;
@@ -1385,8 +1649,12 @@ async function listerConversations() {
     d.conversations.forEach(c => {
       const el = document.createElement("div");
       el.className = "conv" + (c.id === convActive ? " active" : "");
-      el.innerHTML = `${ech(c.titre)}<small>${c.tours} échange${c.tours > 1 ? "s" : ""}</small>
-                      <button class="jeter" title="Supprimer">×</button>`;
+      // « compte.echanges » et non « ${n} échange${n > 1 ? "s" : ""} » : la
+      // regle du pluriel appartient a la langue, pas au site d'appel — et
+      // celle-la etait la francaise, fausse en anglais des zero.
+      el.innerHTML = `${ech(c.titre)}<small>${
+                        ech(T("compte.echanges", { n: c.tours }))}</small>
+                      <button class="jeter" title="${ech(T("page.conv.jeter"))}">×</button>`;
       el.onclick = e => { if (!e.target.classList.contains("jeter")) ouvrir(c.id); };
       el.querySelector(".jeter").onclick = async e => {
         e.stopPropagation();
@@ -1405,7 +1673,7 @@ async function listerConversations() {
       };
       box.appendChild(el);
     });
-  } catch (e) { $("#convs").textContent = "liste indisponible"; }
+  } catch (e) { $("#convs").textContent = T("page.conv.indisponible"); }
 }
 
 /* Ce qui est tape et pas encore envoye appartient a la conversation, pas a la
@@ -1463,7 +1731,11 @@ $("#neuve").onclick = async () => {
 /* Le choix de machine est retenu dans le navigateur, et lui seul : « epargne ma
    carte, je joue » vaut pour la soiree, pas pour une demande. Retenu par
    identifiant et non par rang : les machines vont et viennent. */
-fetch("/api/machines").then(r => r.json()).then(ns => {
+/* « PRET.then » ET NON « fetch » TOUT DE SUITE : ce menu-ci ecrit du texte —
+   « (ne répond pas) » — et le dictionnaire doit etre la avant lui. Sans ce
+   verrou, la reponse la plus rapide gagnait, et l'ecran affichait tantot la
+   phrase, tantot sa cle. Les cinq amorces de la page passent donc par lui. */
+PRET.then(() => fetch("/api/machines")).then(r => r.json()).then(ns => {
   const sel = $("#machine");
   if (!Array.isArray(ns) || ns.length < 2) return;   // une seule machine : rien a choisir
   for (const x of ns) {
@@ -1476,8 +1748,12 @@ fetch("/api/machines").then(r => r.json()).then(ns => {
     o.dataset.court = x.titre;
     // La VRAM est ce sur quoi le repartiteur tranche : la montrer explique le
     // choix automatique au lieu de le laisser paraitre arbitraire.
-    o.textContent = x.titre + (x.vram ? ` — ${x.vram} Go` : "")
-                  + (x.repond ? "" : " (ne repond pas)");
+    // « Go » n'est pas une unite internationale, c'est un mot francais :
+    // l'anglais ecrit « GB ». Le titre de la machine, lui, est un nom propre
+    // servi par /api/machines — il se place, il ne se traduit pas.
+    o.textContent = x.titre
+                  + (x.vram ? " — " + T("page.machine.vram", { vram: x.vram }) : "")
+                  + (x.repond ? "" : " " + T("page.machine.muette"));
     sel.appendChild(o);
   }
   // La liste arrive apres coup : on repose ce que la conversation demandait,
@@ -1492,23 +1768,27 @@ fetch("/api/machines").then(r => r.json()).then(ns => {
 }).catch(() => {});
 
 /* ── amorçage ────────────────────────────────────────────────────── */
-fetch("/api/modeles").then(r => r.json()).then(ms => {
+PRET.then(() => fetch("/api/modeles")).then(r => r.json()).then(ms => {
   const sel = $("#forcer"); let prets = 0, locaux = ms.length;
   ms.forEach(m => {
     TITRES[m.cle] = m.titre;
     if (m.present && !m.distant) prets++;
     if (m.distant) locaux--;
     const o = document.createElement("option");
-    o.value = m.cle; o.textContent = m.titre + (m.present ? "" : " (à télécharger)");
+    o.value = m.cle;
+    o.textContent = m.titre + (m.present ? "" : " " + T("page.moteur.a_telecharger"));
     // Le titre SERVI par /api/modeles. « (à télécharger) » est un etat du
     // catalogue et non le reglage : le menu ouvert le dit, la pastille nomme
     // le moteur.
     o.dataset.court = m.titre;
     sel.appendChild(o);
   });
-  $("#jaugeModeles").innerHTML = `<b>${prets}/${locaux}</b> moteurs prêts`;
+  $("#jaugeModeles").innerHTML =
+    `<b>${prets}/${locaux}</b> ${ech(T("page.moteurs.prets"))}`;
   poserReglages(reglagesVoulus);   // meme raison que pour les machines
-}).catch(() => { $("#jaugeModeles").innerHTML = "<b>serveur injoignable</b>"; })
+}).catch(() => {
+  $("#jaugeModeles").innerHTML = `<b>${ech(T("page.serveur.injoignable"))}</b>`;
+})
   .finally(async () => {
     const d = await (await fetch("/api/conversations")).json();
 
@@ -1545,12 +1825,18 @@ async function peindreNuages() {
     b.textContent = m.signe;
     b.className = (m.actif ? "allume" : "eteint") + (plafonne ? " plafonne" : "");
     b.disabled = plafonne;
+    // « m.libelle » et « m.titre » sont servis par /api/nuage : le nom d'une
+    // modalite et celui d'un fournisseur. Ils se placent dans la phrase, ils
+    // ne s'y traduisent pas.
     b.title = plafonne
-      ? `${m.libelle} : plafond du mois atteint (${q.faits} appels distants sur `
-        + `${q.limite}). Le studio reste sur cette machine jusqu'au mois `
-        + `prochain ; le plafond se regle dans /admin.`
-      : `${m.libelle} : ${m.actif ? m.titre : "cette machine"}`
-        + `\n(cliquer pour ${m.actif ? "revenir en local" : "passer par " + m.titre})`;
+      ? T("page.nuage.plafond.title",
+          { libelle: m.libelle, faits: q.faits, limite: q.limite })
+      : T("page.nuage.title",
+          { libelle: m.libelle,
+            ou: m.actif ? m.titre : T("page.nuage.locale") })
+        + "\n" + T("page.nuage.basculer",
+                   { quoi: m.actif ? T("page.nuage.revenir")
+                                   : T("page.nuage.passer", { titre: m.titre }) });
     b.onclick = async () => {
       b.disabled = true;
       try {
@@ -1571,16 +1857,20 @@ async function peindreNuages() {
   if (q) {
     const mention = document.createElement("span");
     mention.className = "plafond" + (q.atteint ? " atteint" : "");
-    mention.textContent = q.atteint ? `plafond atteint · ${q.faits}/${q.limite}`
-                                    : `nuage ${q.faits}/${q.limite}`;
-    mention.title = `${q.faits} appel(s) distant(s) ce mois-ci (${q.mois}) sur `
-      + `${q.limite} pour le compte ${q.compte}.`
-      + (q.atteint ? " Les demandes restent sur cette machine jusqu'au mois "
-                   + "prochain." : "");
+    mention.textContent = q.atteint
+      ? T("page.nuage.atteint", { faits: q.faits, limite: q.limite })
+      : T("page.nuage.compte", { faits: q.faits, limite: q.limite });
+    // « appel(s) distant(s) » : la page ECRIVAIT les parentheses, faute de
+    // savoir accorder. C'est le contournement que la regle de la langue
+    // supprime — il ne se lit bien dans aucune langue.
+    mention.title = T("page.nuage.mention.title",
+                      { n: q.faits, faits: q.faits, mois: q.mois,
+                        limite: q.limite, compte: q.compte })
+      + (q.atteint ? " " + T("page.nuage.mention.suite") : "");
     zone.appendChild(mention);
   }
 }
-peindreNuages();
+PRET.then(peindreNuages);
 
 /* ── comptes ──────────────────────────────────────────────────────────
    Facultatifs : tant qu'aucun compte n'existe, rien ne s'affiche et le studio
@@ -1599,15 +1889,16 @@ async function peindreCompte() {
   if (d.obligatoire && !d.connecte) {
     document.querySelector("#txt").disabled = true;
     document.querySelector("#go").disabled = true;
-    document.querySelector("#txt").placeholder = "connecte-toi pour commencer…";
+    document.querySelector("#txt").placeholder = T("page.entree.invite");
     if (!document.querySelector(".voile-entree")) formulaireEntree();
   }
   document.querySelector("#lienAdmin").style.display = d.admin ? "" : "none";
   if (d.connecte) {
     const qui = document.createElement("span");
-    qui.innerHTML = `<b>${ech(d.nom)}</b>${d.admin ? " \u00b7 admin" : ""}`;
+    qui.innerHTML = `<b>${ech(d.nom)}</b>${
+                       d.admin ? " \u00b7 " + ech(T("page.admin")) : ""}`;
     const sortir = document.createElement("button");
-    sortir.type = "button"; sortir.textContent = "sortir";
+    sortir.type = "button"; sortir.textContent = T("page.compte.sortir");
     sortir.onclick = async () => {
       await fetch("/api/compte/sortir", { method: "POST", credentials: "same-origin" });
       location.reload();
@@ -1615,7 +1906,7 @@ async function peindreCompte() {
     zone.append(qui, sortir);
   } else {
     const b = document.createElement("button");
-    b.type = "button"; b.textContent = "se connecter";
+    b.type = "button"; b.textContent = T("page.compte.entrer");
     b.onclick = formulaireEntree;
     zone.appendChild(b);
   }
@@ -1625,12 +1916,16 @@ function formulaireEntree() {
   const voile = document.createElement("div");
   voile.className = "voile-entree";
   voile.innerHTML = `<form class="entree">
-      <h3>Se connecter</h3>
-      <input name="nom" placeholder="nom" autocomplete="username" autofocus>
-      <input name="mdp" type="password" placeholder="mot de passe" autocomplete="current-password">
+      <h3>${ech(T("page.entree.titre"))}</h3>
+      <input name="nom" placeholder="${ech(T("page.entree.nom"))}"
+             autocomplete="username" autofocus>
+      <input name="mdp" type="password" placeholder="${ech(T("page.entree.mdp"))}"
+             autocomplete="current-password">
       <div class="mal"></div>
-      <div class="rang"><button type="button" data-annuler>annuler</button>
-                        <button type="submit">entrer</button></div>
+      <div class="rang"><button type="button" data-annuler>${
+                          ech(T("page.annuler"))}</button>
+                        <button type="submit">${
+                          ech(T("page.entree.valider"))}</button></div>
     </form>`;
   document.body.appendChild(voile);
   const f = voile.querySelector("form");
@@ -1647,12 +1942,11 @@ function formulaireEntree() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nom: f.nom.value, mdp: f.mdp.value }) });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.erreur || "connexion refusée");
+      if (!r.ok) throw new Error(d.erreur || T("page.entree.refus"));
       fermer();
       // Rechargement plutot qu'une mise a jour partielle : l'identite change,
       // donc la liste des conversations, les fichiers, tout le contexte.
-      if (d.reprises) alert(`${d.reprises} conversation(s) de ce navigateur `
-                          + `ont été rattachées à ton compte.`);
+      if (d.reprises) alert(T("page.entree.reprises", { n: d.reprises }));
       location.reload();
     } catch (err) {
       mal.textContent = err.message;
@@ -1660,15 +1954,19 @@ function formulaireEntree() {
     }
   };
 }
-peindreCompte();
+PRET.then(peindreCompte);
 
 /* ── la mediatheque ───────────────────────────────────────────────────
    Une sortie ne se retrouvait qu'en remontant la conversation qui l'avait
    produite. Passe vingt echanges c'est fastidieux, passe trois semaines c'est
    perdu. */
-const FAMILLES_MEDIA = [["image", "images"], ["video", "vidéos"],
-                        ["audio", "musiques"], ["objet3d", "objets 3D"]];
-let familleVue = "image", mediaCharge = null;
+/* LA TABLE RANGEAIT LA VALEUR DE PROTOCOLE A COTE DE SON LIBELLE FRANCAIS —
+   [["image", "images"], ["video", "vidéos"], …] — et c'est le quatrieme
+   chantier de docs/plusieurs-langues.md dans sa forme la plus courte : une
+   passe naive aurait traduit les deux moities du meme tableau, et la grille
+   aurait compare « f.famille » a « images ». L'ordre des onglets est
+   FAMILLES ; le libelle vient du dictionnaire. */
+let familleVue = FAMILLE.image, mediaCharge = null;
 
 async function ouvrirMediatheque() {
   document.querySelector("#mediatheque").hidden = false;
@@ -1686,12 +1984,12 @@ async function ouvrirMediatheque() {
                   ? d : { fichiers: [], compte: {}, souci: d.erreur || r.status };
     } catch (e) { mediaCharge = { fichiers: [], compte: {}, souci: e.message }; }
     if (mediaCharge.souci) $("#alerte").textContent =
-      "mediatheque indisponible : " + mediaCharge.souci;
+      T("page.media.indisponible", { quoi: mediaCharge.souci });
   }
   peindreFamilles();
   const tous = mediaCharge.fichiers || [];
-  garnirChoix($("#moteurMedia"), tous.map(f => f.moteur), "tous les moteurs");
-  garnirChoix($("#machineMedia"), tous.map(f => f.noeud), "toutes les machines");
+  garnirChoix($("#moteurMedia"), tous.map(f => f.moteur), T("page.media.tous_moteurs"));
+  garnirChoix($("#machineMedia"), tous.map(f => f.noeud), T("page.media.toutes_machines"));
   const quiSel = $("#quiMedia");
   // Le proprietaire n'existe que pour un administrateur : le serveur ne le sert
   // a personne d'autre, et le selecteur reste donc cache.
@@ -1703,7 +2001,7 @@ async function ouvrirMediatheque() {
   if (!mediaCharge.tout && $("#triMedia").value === "a")
     $("#triMedia").value = "-quand";
   if (mediaCharge.tout)
-    garnirChoix(quiSel, tous.map(f => f.a), "tout le monde");
+    garnirChoix(quiSel, tous.map(f => f.a), T("page.media.tout_le_monde"));
   for (const id of ["#chercheMedia", "#triMedia", "#moteurMedia",
                     "#machineMedia", "#quiMedia", "#soinMedia"])
     $(id).oninput = peindreGrille;
@@ -1713,11 +2011,11 @@ async function ouvrirMediatheque() {
 function peindreFamilles() {
   const z = document.querySelector("#famillesMedia");
   z.innerHTML = "";
-  for (const [cle, nom] of FAMILLES_MEDIA) {
+  for (const cle of FAMILLES) {
     const combien = (mediaCharge.compte || {})[cle] || 0;
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = `${nom} (${combien})`;
+    b.textContent = `${T("page.media.famille." + cle)} (${combien})`;
     b.className = cle === familleVue ? "ouvert" : "";
     b.disabled = !combien;
     b.onclick = () => { familleVue = cle; peindreFamilles(); peindreGrille(); };
@@ -1751,7 +2049,7 @@ function trierEtFiltrer(liste) {
     (!moteur || f.moteur === moteur)
     && (!machine || f.noeud === machine)
     && (!qui || f.a === qui)
-    && (!soin || (soin === "brouillons" ? !!f.esquisse : !f.esquisse))
+    && (!soin || (soin === SOIN_BROUILLONS ? !!f.esquisse : !f.esquisse))
     // La recherche porte sur ce que l'utilisateur a ECRIT, sur ce qui a ete
     // ENVOYE au moteur, et sur le nom du fichier : les trois façons dont on se
     // souvient d'une image qu'on a produite il y a trois semaines.
@@ -1763,7 +2061,10 @@ function trierEtFiltrer(liste) {
   return gardees.sort((a, b) => {
     const x = a[cle] ?? "", y = b[cle] ?? "";
     const c = typeof x === "number" && typeof y === "number"
-      ? x - y : String(x).localeCompare(String(y), "fr");
+      // L'ordre alphabetique n'est pas le meme partout : « é » se range avec
+      // « e » en francais, et le tri figé sur « fr » aurait donne au lecteur
+      // anglais un ordre qui n'est pas le sien.
+      ? x - y : String(x).localeCompare(String(y), locale());
     // A egalite, du plus recent au plus ancien : c'est l'ordre qu'on attend
     // quand on trie par moteur ou par proprietaire.
     return (dec ? -c : c) || (b.quand || 0) - (a.quand || 0);
@@ -1777,27 +2078,26 @@ function peindreGrille() {
   // croit regarder sa propre production et tombe sur celle d'un autre.
   const banniere = document.querySelector("#toutLeStudio");
   if (banniere)
-    banniere.textContent = mediaCharge.tout
-      ? "vue administrateur — tout ce que ce studio a produit" : "";
+    banniere.textContent = mediaCharge.tout ? T("page.media.vue_admin") : "";
   const dansLaFamille = (mediaCharge.fichiers || [])
     .filter(f => f.famille === familleVue);
   const liste = trierEtFiltrer(dansLaFamille);
   const compteur = $("#combienMedia");
   if (compteur)
     compteur.textContent = liste.length === dansLaFamille.length
-      ? `${liste.length} pièce${liste.length > 1 ? "s" : ""}`
-      : `${liste.length} sur ${dansLaFamille.length}`;
+      ? T("compte.pieces", { n: liste.length })
+      : T("page.media.sur", { n: liste.length, total: dansLaFamille.length });
   if (!liste.length) {
-    g.innerHTML = '<p class="vide-media">rien de ce type pour l\'instant</p>';
+    g.innerHTML = `<p class="vide-media">${ech(T("page.media.vide"))}</p>`;
     return;
   }
   for (const f of liste) {
     const carte = document.createElement("figure");
     carte.className = "media";
     let el;
-    if (f.famille === "video") { el = document.createElement("video"); el.controls = true; }
-    else if (f.famille === "audio") { el = document.createElement("audio"); el.controls = true; }
-    else if (f.famille === "image") { el = document.createElement("img"); el.loading = "lazy"; el.alt = f.demande; }
+    if (f.famille === FAMILLE.video) { el = document.createElement("video"); el.controls = true; }
+    else if (f.famille === FAMILLE.audio) { el = document.createElement("audio"); el.controls = true; }
+    else if (f.famille === FAMILLE.image) { el = document.createElement("img"); el.loading = "lazy"; el.alt = f.demande; }
     else { el = document.createElement("div"); el.className = "cube"; el.textContent = "▣"; }
     if (el.tagName !== "DIV") el.src = url(f);
     if (el.tagName === "IMG") { el.style.cursor = "zoom-in"; el.onclick = () => plein(f); }
@@ -1809,10 +2109,10 @@ function peindreGrille() {
     // une esquisse peut etre la variante choisie, les deux marques doivent
     // tenir cote a cote sans se recouvrir.
     const marques = [];
-    if (f.esquisse) marques.push(["marque-esquisse", "brouillon"]);
-    if (f.choisie) marques.push(["marque-retenue", "✓ retenue"]);
+    if (f.esquisse) marques.push(["marque-esquisse", T("page.brouillon")]);
+    if (f.choisie) marques.push(["marque-retenue", T("page.media.retenue")]);
     const vignette = marques.length
-                  && (f.famille === "image" || f.famille === "video");
+                  && (f.famille === FAMILLE.image || f.famille === FAMILLE.video);
     if (vignette) {
       const cadre = document.createElement("div");
       cadre.className = "cadre-media";
@@ -1828,7 +2128,7 @@ function peindreGrille() {
 
     const legende = document.createElement("figcaption");
     const quand = f.quand
-      ? new Date(f.quand * 1000).toLocaleString("fr-FR",
+      ? new Date(f.quand * 1000).toLocaleString(locale(),
           { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
       : (f.heure || "");
     // « f.a » n'arrive qu'a un administrateur : le serveur ne le sert a
@@ -1836,8 +2136,10 @@ function peindreGrille() {
     // confonde jamais la piece de quelqu'un d'autre avec la sienne.
     legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
                       + `<small>${f.a ? "<b>" + ech(f.a) + "</b> · " : ""}`
-                      + `${f.esquisse && !vignette ? "brouillon · " : ""}`
-                      + `${f.choisie && !vignette ? "retenue · " : ""}`
+                      + `${f.esquisse && !vignette
+                             ? ech(T("page.brouillon")) + " · " : ""}`
+                      + `${f.choisie && !vignette
+                             ? ech(T("page.media.retenue.court")) + " · " : ""}`
                       // QUEL TIRAGE, SUR COMBIEN. Le serveur sert « variante »
                       // et « variantes » depuis le debut, et la legende les
                       // jetait : quatre variantes ont le meme prompt, le meme
@@ -1845,20 +2147,26 @@ function peindreGrille() {
                       // rang, la grille en montre quatre lignes rigoureusement
                       // indiscernables. « variante » n'arrive que si le groupe
                       // en compte plus d'une, c'est le serveur qui le filtre.
-                      + `${f.variante ? "variante " + ech(f.variante) + " sur "
-                                      + ech(f.variantes) + " · " : ""}`
+                      + `${f.variante ? ech(T("page.variante.rang",
+                                              { rang: f.variante,
+                                                sur: f.variantes })) + " · " : ""}`
                       + `${ech(f.moteur || "")}`
                       // La taille et le temps : « pourquoi celle-ci a mis
                       // quatre minutes » se repond neuf fois sur dix par la
                       // resolution, et rien ne la montrait nulle part.
+                      // « 1216x832 » -> « 1216 × 832 » : le signe de la
+                      // multiplication, pas une lettre, et il s'ecrit pareil
+                      // dans les deux langues. C'est une mise en forme du
+                      // chiffre, pas une traduction.
                       + `${f.taille ? " · " + ech(f.taille.replace("x", " × ")) : ""}`
-                      + `${f.secondes ? " · " + Math.round(f.secondes) + " s" : ""}`
+                      + `${f.secondes ? " · " + ech(T("page.duree.s",
+                             { n: Math.round(f.secondes) })) : ""}`
                       + ` · ${ech(quand)}</small>`;
     // Replie : le prompt envoye fait souvent dix lignes, et on ne le cherche
     // que lorsqu'un rendu surprend. Deplie, il repond a « pourquoi cette
     // image-la ».
     if (f.prompt && f.prompt !== f.demande)
-      legende.innerHTML += `<details><summary>prompt envoyé</summary>`
+      legende.innerHTML += `<details><summary>${ech(T("page.media.prompt"))}</summary>`
                          + `<span class="envoye">${ech(f.prompt)}</span></details>`;
     /* LE GESTE, LA OU L'ON COMPARE. Le serveur sert « tour » et « groupe »
        depuis ce matin, et la grille les jetait : elle affichait le rang et la
@@ -1881,10 +2189,11 @@ function peindreGrille() {
     if (f.tour && f.groupe && f.variantes > 1 && !f.choisie) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "repartir";
-      b.textContent = "repartir de celle-ci";
-      b.title = "« agrandis-la », « rends-la fluide », « le même personnage » "
-              + "viseront cette image-là. Rien n'est supprimé : les autres "
-              + "variantes restent.";
+      // LA MEME CLE QUE SOUS LA BULLE DU FIL, et son infobulle de trois
+      // lignes avec : les deux textes etaient ecrits deux fois, mot pour mot,
+      // a huit cents lignes d'ecart. Un geste, un mot.
+      b.textContent = T("page.variante.repartir");
+      b.title = T("page.variante.repartir.title");
       b.onclick = async e => {
         e.stopPropagation();          // la carte entiere ouvre la piece
         b.disabled = true; b.textContent = "…";
@@ -1894,7 +2203,7 @@ function peindreGrille() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ conversation: f.conversation, tour: f.tour }) });
           const rep = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(rep.erreur || "le serveur a refusé");
+          if (!r.ok) throw new Error(rep.erreur || T("page.refus.simple"));
           // RELIRE AVANT DE REPEINDRE. peindreGrille() ne lit que le cache
           // « mediaCharge », qui n'etait invalide que par le bouton de la
           // mediatheque : la grille se reconstruisait a l'identique, l'ancienne
@@ -1926,7 +2235,7 @@ function peindreGrille() {
             // recliquait — la boucle meme que « relire avant de repeindre »
             // existe pour rompre.
             $("#alerte").textContent =
-              "c'est fait, mais la grille n'a pas pu se rafraichir : " + e.message;
+              T("page.media.rafraichir", { quoi: e.message });
           }
           peindreGrille();
           if (g_) g_.scrollTop = haut;
@@ -1935,7 +2244,7 @@ function peindreGrille() {
           // Sur la legende elle-meme : la barre d'alerte est en haut de la
           // page, et la grille se parcourt en bas — un message qu'on ne voit
           // pas ne dit rien.
-          b.textContent = "impossible : " + err.message;
+          b.textContent = T("page.impossible", { quoi: err.message });
         }
       };
       legende.appendChild(b);
@@ -1945,18 +2254,19 @@ function peindreGrille() {
     const actions = document.createElement("div");
     actions.className = "actions-sortie";
     const tele = document.createElement("a");
-    tele.href = url(f); tele.download = f.filename; tele.textContent = "télécharger";
+    tele.href = url(f); tele.download = f.filename;
+    tele.textContent = T("page.telecharger");
     actions.appendChild(tele);
-    if (f.famille === "image" || f.famille === "video") {
+    if (f.famille === FAMILLE.image || f.famille === FAMILLE.video) {
       const gros = document.createElement("button");
-      gros.type = "button"; gros.textContent = "plein écran";
+      gros.type = "button"; gros.textContent = T("page.plein_ecran");
       gros.onclick = () => plein(f);
       actions.appendChild(gros);
     }
-    if (f.famille !== "objet3d") {
+    if (f.famille !== FAMILLE.objet3d) {
       const rep = document.createElement("button");
-      rep.type = "button"; rep.textContent = "reprendre";
-      rep.title = "joindre ce fichier pour le retravailler";
+      rep.type = "button"; rep.textContent = T("page.reprendre");
+      rep.title = T("page.reprendre.title");
       rep.onclick = async () => {
         rep.disabled = true;
         try {
@@ -1966,17 +2276,17 @@ function peindreGrille() {
             body: JSON.stringify({ filename: f.filename,
                                    subfolder: f.subfolder || "", noeud: f.noeud }) });
           const d = await r.json().catch(() => ({}));
-          if (!r.ok || !d.image) throw new Error(d.erreur || "reprise impossible");
+          if (!r.ok || !d.image) throw new Error(d.erreur || T("page.reprise.impossible"));
           imageJointe = d.image;
           $("#nomimg").textContent = f.filename;
           // La vignette avec : une piece jointe sans apercu ne dit pas laquelle
           // on vient de reprendre, et on en reprend souvent plusieurs de suite.
           const zone = $("#apercu-zone");
           zone.innerHTML = "";
-          if (f.famille === "image") {
+          if (f.famille === FAMILLE.image) {
             const i = document.createElement("img");
             i.src = url(f); i.alt = f.filename; zone.appendChild(i);
-          } else if (f.famille === "video") {
+          } else if (f.famille === FAMILLE.video) {
             const v = document.createElement("video");
             v.src = url(f); v.muted = true; zone.appendChild(v);
           } else {
@@ -2032,12 +2342,13 @@ async function peindreFile() {
   } catch (e) { return; }
   const lignes = d.lignes || [];
   if (!lignes.length) {
-    p.innerHTML = "<h4>file d'attente</h4>"
-                + '<div class="tache"><span class="quoi">rien en cours</span></div>';
+    p.innerHTML = `<h4>${ech(T("page.file.titre"))}</h4>`
+                + `<div class="tache"><span class="quoi">${
+                     ech(T("page.file.rien"))}</span></div>`;
     return;
   }
-  p.innerHTML = "<h4>file d'attente"
-    + (d.admin ? " — vue administrateur" : "") + "</h4>";
+  p.innerHTML = `<h4>${ech(T("page.file.titre"))}`
+    + (d.admin ? " — " + ech(T("page.file.vue_admin")) : "") + "</h4>";
   for (const t of lignes) {
     const el = document.createElement("div");
     el.className = "tache" + (t.a_moi ? "" : " autrui");
@@ -2045,37 +2356,49 @@ async function peindreFile() {
        attend son propriétaire. Le « 0 » que servait l'API laissait croire
        qu'elle était première, donc imminente. */
     const rang = t.en_cours ? "▶" : (t.armee ? "⏸" : t.rang);
-    const etats = { "en cours": ["cours", "en cours"], fini: ["fini", "terminé"],
-                    erreur: ["rate", "échec"], question: ["attente", "en attente de précision"],
-                    // Analysée, sa machine est choisie, et cette machine
-                    // travaille pour quelqu'un d'autre. Ni file, ni calcul.
-                    "attente carte": ["attente", "attend une carte"],
-                    // Armée : ni dans la file, ni sur une carte. Elle attend
-                    // qu'une machine en pause revienne, et repartira seule.
-                    // Sans cette entrée elle s'affichait « en attente », comme
-                    // celles qui partent dans deux minutes.
-                    "attente machine": ["attente", "attend une machine en pause"] };
+    /* LES CLES SONT DES VALEURS DE PROTOCOLE, LES VALEURS SONT DE L'IHM, et
+       la table les ecrivait cote a cote en clair : « fini: ["fini",
+       "terminé"] ». Une passe de traduction naive aurait touche les deux
+       moities du meme litteral — la cle avec l'etiquette — et « t.etat ===
+       "fini" » serait devenu muet sans lever la moindre erreur. Les cles
+       viennent donc de ETAT, les etiquettes du dictionnaire ; la classe CSS,
+       elle, est un nom de regle et reste ecrite ici. */
+    const etats = {
+      [ETAT.cours]: ["cours", "page.etat.cours"],
+      [ETAT.fini]: ["termine", "page.etat.fini"],
+      [ETAT.erreur]: ["rate", "page.etat.echec"],
+      [ETAT.question]: ["attente", "page.etat.question.file"],
+      // Analysée, sa machine est choisie, et cette machine travaille pour
+      // quelqu'un d'autre. Ni file, ni calcul.
+      [ETAT.attente_carte]: ["attente", "page.etat.attente_carte"],
+      // Armée : ni dans la file, ni sur une carte. Elle attend qu'une machine
+      // en pause revienne, et repartira seule. Sans cette entrée elle
+      // s'affichait « en attente », comme celles qui partent dans deux
+      // minutes.
+      [ETAT.attente_machine]: ["attente", "page.etat.attente_machine"],
+    };
     // Une demande porte l'etat « en cours » des sa creation : c'est l'etat de
     // la TACHE, pas sa place dans la file. Seule la ligne marquee en_cours
     // occupe vraiment la carte ; les autres attendaient en affichant
     // « en cours », ce qui rendait la file illisible.
-    const [classe, mot] = (!t.en_cours && t.etat === "en cours")
-      ? ["attente", "en attente"]
-      : (etats[t.etat] || ["attente", "en attente"]);
+    const attend = ["attente", "page.etat.attente"];
+    const [classe, cleMot] = (!t.en_cours && t.etat === ETAT.cours)
+      ? attend : (etats[t.etat] || attend);
+    const mot = T(cleMot);
     // Le pourcentage vient de ComfyUI ; sans lui on montre l'etat seul.
     const pct = t.avance && t.avance.total
       ? Math.round(t.avance.fait * 100 / t.avance.total) : null;
     el.innerHTML = `<span class="rang">${rang}</span>
       <span class="quoi">${ech(t.demande)}
         <small>${ech(t.type)}${t.qui ? " · " + ech(t.qui) : ""}</small>
-        <span class="etat-tache ${classe}">${mot}`
-      + (pct !== null ? ` — ${pct} %` : "")
+        <span class="etat-tache ${classe}">${ech(mot)}`
+      + (pct !== null ? " — " + ech(T("page.pourcent", { n: pct })) : "")
       /* Le temps qu'il reste à une demande armée. Sans lui, « attend une
          machine en pause » ne dit pas si l'on parle de dix minutes ou de douze
          heures — donc pas si l'on peut aller se coucher. */
       + (t.armee && t.reste_h > 0
-          ? ` — encore ${t.reste_h < 1.5 ? Math.round(t.reste_h * 60) + " min"
-                                         : Math.round(t.reste_h) + " h"}` : "")
+          ? " — " + ech(T("page.file.reste", { duree: dureeRestante(t.reste_h) }))
+          : "")
       + (t.ou ? " · " + ech(t.ou) : "") + `</span>`
       + (pct !== null
           ? `<span class="avance"><i style="width:${pct}%"></i></span>` : "")
@@ -2083,7 +2406,7 @@ async function peindreFile() {
     if (t.annulable) {
       const b = document.createElement("button");
       b.type = "button";
-      b.textContent = t.en_cours ? "interrompre" : "retirer";
+      b.textContent = t.en_cours ? T("page.interrompre") : T("page.retirer");
       b.onclick = async ev => {
         ev.stopPropagation();
         b.disabled = true;
@@ -2139,8 +2462,11 @@ document.querySelector("#panneauFile").addEventListener("mouseleave", e => {
    d'assembler. banc_page.py exige les deux moities : l'attribut sur toute
    option qui porte une valeur, et une lecture qui ne recoupe plus rien. */
 const REGLAGES = [
-  { sel: "#forcer", nom: "moteur" },
-  { sel: "#machine", nom: "machine" },
+  // « nom » est une CLE du dictionnaire, plus un mot francais : la pastille
+  // ecrivait « moteur FLUX.1 » avec le mot recopie ici, dans du code
+  // d'interface.
+  { sel: "#forcer", nom: "page.moteur" },
+  { sel: "#machine", nom: "page.machine" },
   { sel: "#priorite", nom: "" },
   { sel: "#taille", nom: "" },
   // « geste » : ce menu-ci ne s'ecrit PAS sur la conversation. Il n'a ni entree
@@ -2172,8 +2498,8 @@ function peindreActifs() {
     if (!el || !el.value) continue;
     const mot = document.createElement("span");
     mot.className = "oter";
-    mot.textContent = (r.nom ? r.nom + " " : "") + courtDe(el.selectedOptions[0]);
-    mot.title = "cliquer pour revenir à l'automatique";
+    mot.textContent = (r.nom ? T(r.nom) + " " : "") + courtDe(el.selectedOptions[0]);
+    mot.title = T("page.actifs.oter");
     mot.onclick = () => { el.value = ""; accorderTaille(); peindreActifs();
                           if (!r.geste) retenirReglages(CLE_REGLAGE[r.sel]); };
     zone.appendChild(mot);
@@ -2253,14 +2579,12 @@ function accorderTaille() {
   const m = $("#forcer").value;
   const inerte = SANS_TAILLE.includes(m);
   $("#taille").disabled = inerte;
-  $("#taille").title = inerte
-    ? "sans effet sur ce moteur : la taille vient de la source ou du format"
-    : "";
+  $("#taille").title = inerte ? T("page.taille.inerte") : "";
 }
 $("#forcer").addEventListener("change", accorderTaille);
-accorderTaille();
+PRET.then(accorderTaille);
 
-peindreActifs();
+PRET.then(peindreActifs);
 
 /* Le champ grandit en tapant. La fonction existait, mais plus rien ne
    l'appelait a la frappe : elle ne jouait qu'a l'ouverture d'une conversation,
@@ -2292,24 +2616,22 @@ async function releverFile() {
     // a la place de son rang dans le panneau, et l'en-tete tient sur une ligne
     // de telephone.
     const bouts = [];
-    if (n) bouts.push(`${n} en file`);
+    if (n) bouts.push(T("page.file.compteur", { n }));
     if (dort) bouts.push(`⏸ ${dort}`);
-    if (moi && moi < n + dort) bouts.push(`${moi} à toi`);
+    if (moi && moi < n + dort) bouts.push(T("page.file.a_moi", { n: moi }));
     const etat = $("#etatFile");
     etat.innerHTML = bouts.length
-      ? `<span class="file-vive">${bouts.join(" · ")}</span>` : "";
-    etat.title = dort
-      ? `${dort} demande(s) attendent le retour d'une machine en pause et `
-        + `repartiront toutes seules. Ouvrir la file pour les retirer.`
-      : "";
+      ? `<span class="file-vive">${ech(bouts.join(" · "))}</span>` : "";
+    // « demande(s) attendent » : la page ecrivait les parentheses. La regle
+    // du pluriel appartient a la langue.
+    etat.title = dort ? T("page.file.armees.title", { n: dort }) : "";
     // Releve au passage : la bulle de la conversation s'en sert pour ne pas
     // faire courir un chronometre sur une demande qui ne calcule pas.
     armees.clear();
     for (const l of f.lignes || []) if (l.armee) armees.set(l.tid, l.reste_h || 0);
   } catch (e) { /* sans effet */ }
 }
-releverFile();
-setInterval(releverFile, 2500);
+PRET.then(() => { releverFile(); setInterval(releverFile, 2500); });
 
 /* ── tiroir des conversations sur petit ecran ──────────────────────
    La barre laterale etait simplement masquee sous 820 px : sur telephone,
@@ -2329,7 +2651,7 @@ $("#img").onchange = async e => {
     const fd = new FormData(); fd.append("f", f);
     const r = await fetch("/api/televerser", { method: "POST", body: fd });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.image) throw new Error(d.erreur || "échec du téléversement");
+    if (!r.ok || !d.image) throw new Error(d.erreur || T("page.televerser.echec"));
     imageJointe = d.image;
     if (apercuURL) URL.revokeObjectURL(apercuURL);
     apercuURL = URL.createObjectURL(f);
@@ -2344,11 +2666,14 @@ $("#img").onchange = async e => {
       zone.innerHTML = '<span class="genre">\u266A</span>';
     } else {
       const i = document.createElement("img");
-      i.src = apercuURL; i.alt = "aperçu du fichier joint"; zone.appendChild(i);
+      i.src = apercuURL; i.alt = T("page.apercu.alt"); zone.appendChild(i);
     }
     $("#nomimg").textContent = f.name;
     $("#jointe").style.display = "flex";
-  } catch (err) { detacher(); $("#alerte").textContent = "Fichier non joint : " + err.message; }
+  } catch (err) {
+    detacher();
+    $("#alerte").textContent = T("page.joindre.echec", { quoi: err.message });
+  }
 };
 function detacher() {
   imageJointe = null;
@@ -2467,7 +2792,7 @@ async function lancerDemande(priorite) {
                              ...reglagesDemandes(), conversation: monConv })
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.id) throw new Error(d.erreur || "le serveur a refusé la demande");
+    if (!r.ok || !d.id) throw new Error(d.erreur || T("page.refus.demande"));
     if (priorite === "brouillon") esquissesLancees.add(d.id);
     detacher();
     // La conversation remonte tout de suite : le tour est deja enregistre cote
@@ -2476,7 +2801,7 @@ async function lancerDemande(priorite) {
     listerConversations();
     suivre(d.id, bloc, monConv);
   } catch (err) {
-    garnirReponse(bloc, { etat: "erreur", erreur: err.message, fichiers: [] });
+    garnirReponse(bloc, { etat: ETAT.erreur, erreur: err.message, fichiers: [] });
     $("#alerte").textContent = err.message;
     auBas();
   }
@@ -2531,9 +2856,8 @@ function boutonRetirerArmee(id) {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "retirer-armee";
-  b.textContent = "retirer";
-  b.title = "retirer cette demande de l'attente : elle ne repartira pas toute "
-          + "seule au retour de la machine";
+  b.textContent = T("page.retirer");
+  b.title = T("page.retirer_armee.title");
   b.onclick = async () => {
     b.disabled = true;
     try {
@@ -2563,6 +2887,24 @@ function boutonRetirerArmee(id) {
    MARQUE_DEJA. */
 const MARQUE_ARRET_DIFFERE = "arret_differe";
 
+/* LE CHAMP PAR LEQUEL LE STUDIO DIT CE QUI A ECHOUE, ET DANS QUELLE LANGUE LE
+   DIRE. La bulle affichait la DERNIERE LIGNE DE JOURNAL apres une panne —
+   « if (t.etat === "erreur" && derniere) t.erreur = derniere.msg » — c'est-a-
+   dire que ce que l'utilisateur lit apres un echec n'etait pas un message
+   d'API mais du journal, et le journal ne se traduit pas : il est ECRIT, garde
+   sur la tache, relu plus tard par quelqu'un d'autre (docs/plusieurs-langues.md).
+
+   Le serveur pose donc, A COTE de la ligne francaise, une MARQUE :
+   { "cle": "panne.…", "valeurs": { … } } — serveur.MARQUE_PANNE, et /api/etat
+   la sert telle quelle. rendrePanne() la met en phrase, et traductions.rendre()
+   est cette meme lecture ecrite en Python : c'est la specification, et
+   banc_traductions.py l'exerce sans navigateur.
+
+   Declare ici et nomme, comme MARQUE_DEJA, MARQUE_DEVIS et
+   MARQUE_ARRET_DIFFERE : le jour ou ce nom change d'un cote seulement, un banc
+   rougit au lieu de laisser la bulle se vider. */
+const MARQUE_PANNE = "panne";
+
 /* Le sondage est indexe par tache : plusieurs demandes peuvent courir
    en parallele, y compris dans des conversations differentes. */
 function suivre(id, bloc, cid) {
@@ -2577,12 +2919,12 @@ function suivre(id, bloc, cid) {
   const minuteur = setInterval(async () => {
     try {
       const r = await fetch("/api/etat/" + id);
-      if (!r.ok) throw new Error("tâche inconnue — le serveur a-t-il redémarré ?");
+      if (!r.ok) throw new Error(T("page.tache.inconnue"));
       const t = await r.json();
-      if (!Array.isArray(t.etapes)) throw new Error("réponse inattendue du serveur");
+      if (!Array.isArray(t.etapes)) throw new Error(T("page.reponse.inattendue"));
       const visible = cid === convActive && document.body.contains(bloc);
 
-      if (visible && t.etat === "en cours" && armees.has(id)) {
+      if (visible && t.etat === ETAT.cours && armees.has(id)) {
         // ARMEE : ni dans la file, ni sur une carte. Le chronometre et la
         // derniere ligne de journal n'ont plus rien a dire — ils diraient meme
         // le contraire de ce qui se passe. On repeint la pastille une seule
@@ -2592,7 +2934,7 @@ function suivre(id, bloc, cid) {
         let p = puces.querySelector(".puce.armee");
         if (!p) {
           puces.innerHTML = (esquissesLancees.has(id)
-              ? '<span class="puce esquisse">brouillon</span>' : "")
+              ? `<span class="puce esquisse">${ech(T("page.brouillon"))}</span>` : "")
             + '<span class="puce armee"></span>';
           p = puces.querySelector(".puce.armee");
           puces.appendChild(boutonRetirerArmee(id));
@@ -2600,11 +2942,11 @@ function suivre(id, bloc, cid) {
         const h = armees.get(id) || 0;
         // « encore 11 h » : sans cela, « attend une machine » ne dit pas si
         // l'on parle de dix minutes ou d'une nuit — donc pas si l'on peut
-        // aller se coucher. Meme formulation que dans le panneau de file.
-        p.textContent = "⏸ attend le retour d'une machine en pause"
-          + (h > 0 ? ` — repart toute seule, encore ${h < 1.5
-              ? Math.round(h * 60) + " min" : Math.round(h) + " h"}` : "");
-      } else if (visible && t.etat === "en cours") {
+        // aller se coucher. Meme formulation que dans le panneau de file, et
+        // desormais le meme calcul : dureeRestante() etait recopie ici.
+        p.textContent = T("page.armee.attend")
+          + (h > 0 ? " — " + T("page.armee.reste", { duree: dureeRestante(h) }) : "");
+      } else if (visible && t.etat === ETAT.cours) {
         const derniere = t.etapes[t.etapes.length - 1];
         const puces = bloc.querySelector(".bandeau-tech");
         // Le pourcentage existait deja — dans le panneau de file, qu'il faut
@@ -2637,33 +2979,55 @@ function suivre(id, bloc, cid) {
         const depasse = devis && ecoule_rendu > devis.secondes;
         // Deux rendus peuvent courir de front ; savoir lequel est l'esquisse dit
         // lequel va revenir dans une minute et lequel dans quatre.
+        // LA LIGNE DE JOURNAL RESTE FRANCAISE, ET C'EST LA DECISION DU DEPOT :
+        // elle est ECRITE, gardee sur la tache, relue plus tard, parfois par
+        // quelqu'un d'autre que celui qui a lance la demande. Ce qui se
+        // traduit, c'est la PANNE — la marque que le serveur pose a cote,
+        // plus bas.
+        // « devis.mot » vient du serveur (« 4 min ») : il se place, il ne se
+        // traduit pas.
         puces.innerHTML = (esquissesLancees.has(id)
-            ? '<span class="puce esquisse">brouillon</span>' : "")
+            ? `<span class="puce esquisse">${ech(T("page.brouillon"))}</span>` : "")
           + (t.position
-              ? `<span class="puce attente">en file — ${t.position} devant</span>`
+              ? `<span class="puce attente">${
+                   ech(T("page.file.position", { n: t.position }))}</span>`
               : `<span class="puce cours">${ech((derniere ? derniere.msg : "…").slice(0, 64))}`
-                + `${pct === null ? "" : ` · ${pct} %`} · ${secondes} s</span>`
+                + `${pct === null ? "" : " · " + ech(T("page.pourcent", { n: pct }))}`
+                + ` · ${ech(T("page.duree.s", { n: secondes }))}</span>`
                 + (devis
                    ? `<span class="puce devis${depasse ? " depasse" : ""}" title="${
-                        ech(devis.mesures ? `mediane de tes ${devis.mesures} rendus`
-                              + ` comparables : ${devis.mot}. Une indication, pas`
-                              + ` une promesse.`
-                            : `d'apres tes rendus precedents : ${devis.mot}`)
-                      }">${depasse ? "plus long que d’habitude"
-                                   : "≈ " + ech(devis.mot)}</span>` : "")
+                        ech(devis.mesures
+                            ? T("page.devis.title", { n: devis.mesures,
+                                                      mesures: devis.mesures,
+                                                      mot: devis.mot })
+                            : T("page.devis.title.court", { mot: devis.mot }))
+                      }">${depasse ? ech(T("page.devis.depasse"))
+                                   : ech(T("page.devis.estime", { mot: devis.mot }))}</span>`
+                   : "")
                 + (pct === null ? ""
                    : `<span class="avance"><i style="width:${pct}%"></i></span>`));
       }
-      if (t.etat === "question") {
+      if (t.etat === ETAT.question) {
         clearInterval(minuteur); suivis.delete(id);
         if (visible) { garnirQuestion(bloc, t, cid); auBas(); }
         listerConversations();
         return;
       }
-      if (t.etat === "fini" || t.etat === "erreur") {
+      if (t.etat === ETAT.fini || t.etat === ETAT.erreur) {
         clearInterval(minuteur); suivis.delete(id);
         const derniere = t.etapes[t.etapes.length - 1];
-        if (t.etat === "erreur" && derniere) t.erreur = derniere.msg;
+        // LA MARQUE D'ABORD, LA LIGNE DE JOURNAL ENSUITE, ET LE REPLI EST
+        // OBLIGATOIRE. Le serveur pose « panne » a cote de la ligne francaise
+        // (serveur.MARQUE_PANNE) et /api/etat la sert ; c'est elle qui se met
+        // en phrase dans la langue du lecteur. Mais une tache relue apres
+        // redemarrage n'a PAS de marque — et trois arguments de echouer() sur
+        // cinq n'en avaient pas le 2 septembre : une page qui n'aurait su lire
+        // que la marque aurait affiche du VIDE la ou il y avait une phrase.
+        // Un studio qui repond en francais est genant, un studio qui ne repond
+        // rien est casse.
+        if (t.etat === ETAT.erreur)
+          t.erreur = rendrePanne(t[MARQUE_PANNE])
+                  || (derniere && derniere.msg) || t.erreur;
         if (visible) { garnirReponse(bloc, t); auBas(); }
         listerConversations();
         // Le compte d'appels distants n'avance qu'ici : une demande finie est le
@@ -2684,15 +3048,21 @@ function suivre(id, bloc, cid) {
         // lignes plus haut, et le serveur leve lui-meme la marque quand il
         // ecrit le mot final — une machine deja silencieuse n'aura pas de suite
         // a nous donner, et on ne relit pas pour rien.
-        if (t.etat === "erreur" && t[MARQUE_ARRET_DIFFERE])
+        if (t.etat === ETAT.erreur && t[MARQUE_ARRET_DIFFERE])
           setTimeout(async () => {
             try {
               const r2 = await fetch("/api/etat/" + id);
               if (!r2.ok) return;
               const t2 = await r2.json();
               const suite = (t2.etapes || [])[(t2.etapes || []).length - 1];
-              if (!suite || suite.msg === t.erreur) return;
-              t2.erreur = suite.msg;
+              // LA MEME LECTURE QU'AU-DESSUS, et il le faut : compare a la
+              // seule ligne de journal, le mot final aurait paru different a
+              // chaque fois pour un lecteur anglais — sa bulle porte la panne
+              // MISE EN PHRASE, pas la ligne — et la relecture aurait
+              // repeint le francais par-dessus l'anglais.
+              const phrase = rendrePanne(t2[MARQUE_PANNE]) || (suite && suite.msg);
+              if (!phrase || phrase === t.erreur) return;
+              t2.erreur = phrase;
               if (cid === convActive && document.body.contains(bloc))
                 garnirReponse(bloc, t2, cid);
             } catch (e) { /* la bulle garde la promesse : elle etait vraie */ }
@@ -2701,7 +3071,7 @@ function suivre(id, bloc, cid) {
     } catch (err) {
       clearInterval(minuteur); suivis.delete(id);
       if (document.body.contains(bloc))
-        garnirReponse(bloc, { etat: "erreur", erreur: err.message, fichiers: [] });
+        garnirReponse(bloc, { etat: ETAT.erreur, erreur: err.message, fichiers: [] });
     }
   }, 1200);
   suivis.set(id, { bloc, minuteur });

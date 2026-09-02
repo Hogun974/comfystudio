@@ -376,6 +376,746 @@ TEXTES = {
     "compte.machines": {
         "fr": ["{n} machine", "{n} machines"],
         "en": ["{n} machine", "{n} machines"]},
+
+    # ══ LA PAGE ════════════════════════════════════════════════════════
+    # LES ACCENTS SONT ICI, ET C'EST LA REGLE DU DEPOT — pas une entorse.
+    # CONTRIBUTING.md interdit les accents dans les identifiants et les
+    # commentaires, et les EXIGE partout ou ils sont la donnee : « les textes
+    # affiches a l'utilisateur ». Les entrees « erreur. » et « panne. »
+    # ci-dessus recopient serveur.py, qui n'en porte pas ; celles-ci
+    # recopient web/index.html, qui en porte partout. Retirer un accent ici
+    # ferait rougir banc_page.py, et c'est exactement ce qu'on lui demande.
+    #
+    # L'ESPACE AVANT « : » EST DANS LE TEXTE, PAS DANS LE CODE. Le francais
+    # en met un, l'anglais pas. C'etait une des quatre choses que la page
+    # figeait sur le francais (docs/plusieurs-langues.md) : recoller
+    # « libelle » + « : » + valeur au site d'appel aurait mis l'espace
+    # francais dans la phrase anglaise, sans qu'aucune ligne n'ait l'air
+    # fausse. Chaque phrase est donc UNE entree, ponctuation comprise.
+    #
+    # CE QUI N'EST PAS ICI, ET NE PEUT PAS L'ETRE : ce que le serveur SERT a
+    # la page — le titre d'un moteur, le libelle d'une modalite de nuage, le
+    # nom d'une intention, le mot du devis (« 4 min »), la ligne de journal,
+    # le murmure deja ecrit dans la conversation. Ce sont des donnees, pas
+    # des etiquettes, et docs/plusieurs-langues.md tranche le journal
+    # separement. La page les pose telles quelles.
+
+    # ── l'entete ────────────────────────────────────────────────────
+    "page.tiroir.aria": {
+        "fr": "Afficher les conversations",
+        "en": "Show conversations"},
+    "page.moteurs.connexion": {
+        "fr": "connexion…",
+        "en": "connecting…"},
+    "page.moteurs.prets": {
+        "fr": "moteurs prêts",
+        "en": "engines ready"},
+    "page.serveur.injoignable": {
+        "fr": "serveur injoignable",
+        "en": "server unreachable"},
+    # UNE SEULE CLE POUR LE BOUTON ET POUR LE TITRE DU PANNEAU. Le mot etait
+    # ecrit deux fois dans la page — « médiathèque » en haut a droite, et
+    # « médiathèque » en tete du panneau qu'il ouvre. Deux textes pour une
+    # chose se reformulent separement a la premiere retouche.
+    "page.media.nom": {
+        "fr": "médiathèque",
+        "en": "library"},
+    "page.media.ouvrir.title": {
+        "fr": "tout ce que tu as produit",
+        "en": "everything you have made"},
+    "page.admin": {
+        "fr": "admin",
+        "en": "admin"},
+    "page.admin.title": {
+        "fr": "administration : machines, comptes, clés",
+        "en": "administration: machines, accounts, keys"},
+    "page.source": {
+        "fr": "source",
+        "en": "source"},
+    "page.source.title": {
+        "fr": "ComfyStudio est sous licence AGPL-3.0 : le code source vous "
+              "est dû, le voici",
+        "en": "ComfyStudio is licensed under AGPL-3.0: the source code is "
+              "owed to you, here it is"},
+
+    # ── la mediatheque ──────────────────────────────────────────────
+    "page.fermer.aria": {
+        "fr": "fermer",
+        "en": "close"},
+    "page.media.chercher": {
+        "fr": "chercher dans la demande, le prompt, le nom du fichier",
+        "en": "search the request, the prompt, the file name"},
+    "page.media.tri.aria": {
+        "fr": "Trier",
+        "en": "Sort"},
+    "page.media.tri.recent": {
+        "fr": "plus récent d'abord",
+        "en": "newest first"},
+    "page.media.tri.ancien": {
+        "fr": "plus ancien d'abord",
+        "en": "oldest first"},
+    "page.media.tri.demande": {
+        "fr": "demande (A→Z)",
+        "en": "request (A→Z)"},
+    "page.media.tri.long": {
+        "fr": "le plus long d'abord",
+        "en": "longest first"},
+    "page.media.soin.aria": {
+        "fr": "Brouillon ou fini",
+        "en": "Draft or finished"},
+    "page.media.soin.tout": {
+        "fr": "brouillons et finies",
+        "en": "drafts and finished"},
+    "page.media.soin.finies": {
+        "fr": "images finies",
+        "en": "finished images"},
+    "page.media.soin.brouillons": {
+        "fr": "brouillons",
+        "en": "drafts"},
+    "page.media.moteur.aria": {
+        "fr": "Moteur",
+        "en": "Engine"},
+    "page.media.machine.aria": {
+        "fr": "Machine",
+        "en": "Machine"},
+    "page.media.qui.aria": {
+        "fr": "Propriétaire",
+        "en": "Owner"},
+    "page.media.qui": {
+        "fr": "propriétaire",
+        "en": "owner"},
+    "page.media.famille.image": {
+        "fr": "images",
+        "en": "images"},
+    "page.media.famille.video": {
+        "fr": "vidéos",
+        "en": "videos"},
+    "page.media.famille.audio": {
+        "fr": "musiques",
+        "en": "music"},
+    "page.media.famille.objet3d": {
+        "fr": "objets 3D",
+        "en": "3D objects"},
+    "page.media.indisponible": {
+        "fr": "médiathèque indisponible : {quoi}",
+        "en": "library unavailable: {quoi}"},
+    "page.media.tous_moteurs": {
+        "fr": "tous les moteurs",
+        "en": "all engines"},
+    "page.media.toutes_machines": {
+        "fr": "toutes les machines",
+        "en": "all machines"},
+    "page.media.tout_le_monde": {
+        "fr": "tout le monde",
+        "en": "everyone"},
+    "page.media.vue_admin": {
+        "fr": "vue administrateur — tout ce que ce studio a produit",
+        "en": "administrator view — everything this studio has made"},
+    "page.media.sur": {
+        "fr": "{n} sur {total}",
+        "en": "{n} of {total}"},
+    "page.media.vide": {
+        "fr": "rien de ce type pour l'instant",
+        "en": "nothing of this kind yet"},
+    "page.media.retenue": {
+        "fr": "✓ retenue",
+        "en": "✓ chosen"},
+    "page.media.retenue.court": {
+        "fr": "retenue",
+        "en": "chosen"},
+    "page.media.prompt": {
+        "fr": "prompt envoyé",
+        "en": "prompt sent"},
+    "page.media.rafraichir": {
+        "fr": "c'est fait, mais la grille n'a pas pu se rafraîchir : {quoi}",
+        "en": "done, but the grid could not refresh: {quoi}"},
+    "page.reprendre": {
+        "fr": "reprendre",
+        "en": "reuse"},
+    "page.reprendre.title": {
+        "fr": "joindre ce fichier pour le retravailler",
+        "en": "attach this file to work on it again"},
+    "page.reprise.impossible": {
+        "fr": "reprise impossible",
+        "en": "cannot reuse this file"},
+
+    # ── la barre laterale ───────────────────────────────────────────
+    "page.conv.neuve": {
+        "fr": "+ nouvelle conversation",
+        "en": "+ new conversation"},
+    "page.conv.jeter": {
+        "fr": "Supprimer",
+        "en": "Delete"},
+    "page.conv.indisponible": {
+        "fr": "liste indisponible",
+        "en": "list unavailable"},
+    "page.moteur.attente": {
+        "fr": "ComfyUI…",
+        "en": "ComfyUI…"},
+    "page.comfy.demarrer": {
+        "fr": "démarrer",
+        "en": "start"},
+    "page.comfy.arreter": {
+        "fr": "arrêter",
+        "en": "stop"},
+
+    # ── la saisie ───────────────────────────────────────────────────
+    "page.saisie.aria": {
+        "fr": "Décris ce que tu veux",
+        "en": "Describe what you want"},
+    "page.saisie.exemple": {
+        "fr": "un renard dans les hautes herbes au coucher du soleil…",
+        "en": "a fox in the tall grass at sunset…"},
+    "page.brouillon.title": {
+        "fr": "Un rendu au quart des étapes : quelques secondes au lieu de "
+              "quelques minutes. De quoi juger le prompt, le moteur et "
+              "l'ambiance. Attention : la version soignée traitera le même "
+              "sujet mais n'aura PAS le même cadrage — le nombre d'étapes "
+              "change le calcul.",
+        "en": "A render at a quarter of the steps: seconds instead of "
+              "minutes. Enough to judge the prompt, the engine and the mood. "
+              "Careful: the clean version will treat the same subject but "
+              "will NOT have the same framing — the number of steps changes "
+              "the computation."},
+    "page.brouillon.aria": {
+        "fr": "Brouillon",
+        "en": "Draft"},
+    "page.generer.title": {
+        "fr": "Générer (Ctrl+Entrée)",
+        "en": "Generate (Ctrl+Enter)"},
+    "page.generer.aria": {
+        "fr": "Générer",
+        "en": "Generate"},
+    "page.joindre": {
+        "fr": "joindre un fichier",
+        "en": "attach a file"},
+    "page.joindre.echec": {
+        "fr": "Fichier non joint : {quoi}",
+        "en": "File not attached: {quoi}"},
+    "page.televerser.echec": {
+        "fr": "échec du téléversement",
+        "en": "upload failed"},
+    "page.apercu.alt": {
+        "fr": "aperçu du fichier joint",
+        "en": "preview of the attached file"},
+    "page.reglages": {
+        "fr": "réglages",
+        "en": "settings"},
+    # « retirer » ETAIT ECRIT TROIS FOIS : sous la piece jointe, dans le
+    # panneau de file, et sur la bulle d'une demande armee. Trois textes pour
+    # un geste divergent a la premiere retouche, et deux d'entre eux se
+    # seraient traduits sans le troisieme.
+    "page.retirer": {
+        "fr": "retirer",
+        "en": "remove"},
+    "page.interrompre": {
+        "fr": "interrompre",
+        "en": "interrupt"},
+    "page.annuler": {
+        "fr": "annuler",
+        "en": "cancel"},
+    "page.envoyer": {
+        "fr": "envoyer",
+        "en": "send"},
+    "page.envoi": {
+        "fr": "envoi…",
+        "en": "sending…"},
+
+    # ── les menus de reglage ────────────────────────────────────────
+    "page.moteur": {
+        "fr": "moteur",
+        "en": "engine"},
+    "page.machine": {
+        "fr": "machine",
+        "en": "machine"},
+    "page.forcer.aria": {
+        "fr": "Forcer un moteur",
+        "en": "Force an engine"},
+    "page.forcer.auto": {
+        "fr": "moteur : automatique",
+        "en": "engine: automatic"},
+    "page.machine.aria": {
+        "fr": "Machine",
+        "en": "Machine"},
+    "page.machine.auto": {
+        "fr": "machine : automatique",
+        "en": "machine: automatic"},
+    # « Go » N'EST PAS UNE UNITE INTERNATIONALE, c'est un mot francais :
+    # gigaoctet. L'anglais ecrit « GB ». Les trois autres unites de la page —
+    # min, h, s — s'ecrivent pareil dans les deux langues, et sont ici quand
+    # meme pour que la quatrieme ne soit pas seule a passer par le
+    # dictionnaire : une regle qui ne vaut qu'une fois se defait sans bruit.
+    "page.machine.vram": {
+        "fr": "{vram} Go",
+        "en": "{vram} GB"},
+    "page.machine.muette": {
+        "fr": "(ne répond pas)",
+        "en": "(not answering)"},
+    "page.moteur.a_telecharger": {
+        "fr": "(à télécharger)",
+        "en": "(to download)"},
+    "page.priorite.aria": {
+        "fr": "Priorité",
+        "en": "Priority"},
+    "page.priorite.auto": {
+        "fr": "priorité : équilibre",
+        "en": "priority: balanced"},
+    "page.priorite.rapide": {
+        "fr": "rapide — moins d'étapes",
+        "en": "fast — fewer steps"},
+    "page.priorite.rapide.court": {
+        "fr": "rapide",
+        "en": "fast"},
+    "page.priorite.soigne": {
+        "fr": "soigné — plus d'étapes",
+        "en": "clean — more steps"},
+    "page.priorite.soigne.court": {
+        "fr": "soigné",
+        "en": "clean"},
+    "page.taille.aria": {
+        "fr": "Résolution",
+        "en": "Resolution"},
+    "page.taille.auto": {
+        "fr": "taille : automatique",
+        "en": "size: automatic"},
+    # LE CHIFFRE EST DANS L'ENTREE, ET NON RECOLLE AU SITE D'APPEL. Une
+    # <option> ecrite dans le HTML n'a pas de place ou poser une valeur : lui
+    # en donner une demanderait un second mecanisme, pour huit lignes qui ne
+    # changent jamais. Le « × » est le meme signe dans les deux langues.
+    "page.taille.1920x1080": {
+        "fr": "1920 × 1080 — paysage", "en": "1920 × 1080 — landscape"},
+    "page.taille.1600x900": {
+        "fr": "1600 × 900 — paysage", "en": "1600 × 900 — landscape"},
+    "page.taille.1280x720": {
+        "fr": "1280 × 720 — paysage", "en": "1280 × 720 — landscape"},
+    "page.taille.1216x832": {
+        "fr": "1216 × 832 — défaut", "en": "1216 × 832 — default"},
+    "page.taille.1024x1024": {
+        "fr": "1024 × 1024 — carré", "en": "1024 × 1024 — square"},
+    "page.taille.832x1216": {
+        "fr": "832 × 1216 — portrait", "en": "832 × 1216 — portrait"},
+    "page.taille.1080x1350": {
+        "fr": "1080 × 1350 — portrait", "en": "1080 × 1350 — portrait"},
+    "page.taille.768x1344": {
+        "fr": "768 × 1344 — portrait haut", "en": "768 × 1344 — tall portrait"},
+    "page.taille.inerte": {
+        "fr": "sans effet sur ce moteur : la taille vient de la source ou du "
+              "format",
+        "en": "no effect on this engine: the size comes from the source or "
+              "the format"},
+    "page.variantes.aria": {
+        "fr": "Nombre de variantes",
+        "en": "Number of variants"},
+    "page.variantes.une": {
+        "fr": "variantes : une seule",
+        "en": "variants: just one"},
+    "page.variantes.2": {
+        "fr": "2 variantes — même prompt, autre graine",
+        "en": "2 variants — same prompt, different seed"},
+    "page.variantes.2.court": {
+        "fr": "2 variantes",
+        "en": "2 variants"},
+    "page.variantes.3": {
+        "fr": "3 variantes",
+        "en": "3 variants"},
+    "page.variantes.4": {
+        "fr": "4 variantes",
+        "en": "4 variants"},
+    "page.actifs.oter": {
+        "fr": "cliquer pour revenir à l'automatique",
+        "en": "click to go back to automatic"},
+
+    # ── le menu de langue ───────────────────────────────────────────
+    # LES NOMS DE LANGUE NE SE TRADUISENT PAS, ILS SE LISENT. « French » dans
+    # une interface anglaise est utile a l'anglophone ; « français » est utile
+    # a CELUI QUI CHERCHE LE FRANCAIS, et c'est lui qui ouvre ce menu-la —
+    # quelqu'un qui ne sait pas lire la page ou il se trouve. Chaque langue
+    # s'ecrit donc dans la sienne, et identiquement dans toutes les colonnes.
+    "page.langue.aria": {
+        "fr": "Langue",
+        "en": "Language"},
+    "page.langue.fr": {
+        "fr": "français",
+        "en": "français"},
+    "page.langue.en": {
+        "fr": "English",
+        "en": "English"},
+
+    # ── le fil ──────────────────────────────────────────────────────
+    "page.vide.titre": {
+        "fr": "Dis ce que tu veux voir.",
+        "en": "Say what you want to see."},
+    "page.vide.texte": {
+        "fr": "Une image, une vidéo, une musique, une retouche. Le moteur est "
+              "choisi pour toi, et la conversation garde le fil : « la même "
+              "mais en hiver » reprend ce qui précède.",
+        "en": "An image, a video, a piece of music, a retouch. The engine is "
+              "chosen for you, and the conversation keeps the thread: “the "
+              "same but in winter” picks up what came before."},
+    "page.telecharger": {
+        "fr": "télécharger",
+        "en": "download"},
+    "page.telecharger.fichier": {
+        "fr": "télécharger {nom}",
+        "en": "download {nom}"},
+    "page.plein_ecran": {
+        "fr": "plein écran",
+        "en": "full screen"},
+    "page.echec.defaut": {
+        "fr": "la génération a échoué",
+        "en": "the render failed"},
+    "page.relancer": {
+        "fr": "relancer",
+        "en": "send again"},
+    "page.relancer.title": {
+        "fr": "renvoyer exactement la même demande",
+        "en": "send exactly the same request again"},
+    "page.brouillon": {
+        "fr": "brouillon",
+        "en": "draft"},
+
+    # ── les etiquettes d'etat ───────────────────────────────────────
+    # CE SONT DES ETIQUETTES, ET LEURS CLES SONT DES VALEURS DE PROTOCOLE.
+    # « en cours », « fini », « erreur » voyagent jusqu'au serveur et sont
+    # ECRITES dans les conversations deja enregistrees : on ne les traduit
+    # pas, on les separe. La page tient les valeurs dans ETAT et les
+    # etiquettes ici, et banc_page.py exige que plus aucune comparaison
+    # « .etat === "…" » ne porte un litteral (docs/plusieurs-langues.md,
+    # quatrieme chantier).
+    "page.etat.cours": {
+        "fr": "en cours",
+        "en": "running"},
+    "page.etat.fini": {
+        "fr": "terminé",
+        "en": "finished"},
+    "page.etat.echec": {
+        "fr": "échec",
+        "en": "failed"},
+    "page.etat.question": {
+        "fr": "précision demandée",
+        "en": "question asked"},
+    "page.etat.question.file": {
+        "fr": "en attente de précision",
+        "en": "waiting for an answer"},
+    "page.etat.attente": {
+        "fr": "en attente",
+        "en": "waiting"},
+    "page.etat.attente_carte": {
+        "fr": "attend une carte",
+        "en": "waiting for a card"},
+    "page.etat.attente_machine": {
+        "fr": "attend une machine en pause",
+        "en": "waiting for a paused machine"},
+
+    # ── le depliant des details ─────────────────────────────────────
+    "page.detail.titre": {
+        "fr": "détails",
+        "en": "details"},
+    "page.detail.reglages": {
+        "fr": "réglages : {quoi}",
+        "en": "settings: {quoi}"},
+    "page.detail.choix": {
+        "fr": "choix : {quoi}",
+        "en": "choice: {quoi}"},
+    "page.detail.rendu": {
+        "fr": "rendu : {quoi}",
+        "en": "render: {quoi}"},
+    "page.detail.prompt": {
+        "fr": "prompt envoyé :\n{quoi}",
+        "en": "prompt sent:\n{quoi}"},
+    "page.detail.negatif": {
+        "fr": "\n\nécarté : {quoi}",
+        "en": "\n\nexcluded: {quoi}"},
+    "page.detail.paroles": {
+        "fr": "paroles :\n{quoi}",
+        "en": "lyrics:\n{quoi}"},
+    "page.detail.fichiers": {
+        "fr": "fichiers :\n{quoi}",
+        "en": "files:\n{quoi}"},
+    "page.detail.deroule": {
+        "fr": "déroulé :\n{quoi}",
+        "en": "steps:\n{quoi}"},
+
+    # ── passer au propre ────────────────────────────────────────────
+    "page.au_propre.bouton": {
+        "fr": "refaire en soigné",
+        "en": "redo cleanly"},
+    "page.au_propre.title": {
+        "fr": "Reprend le même prompt, le même moteur et la même taille, avec "
+              "toutes les étapes. Le sujet et le style seront les mêmes ; le "
+              "cadrage, non.",
+        "en": "Reuses the same prompt, the same engine and the same size, "
+              "with all the steps. The subject and the style will be the "
+              "same; the framing will not."},
+    "page.au_propre.fait": {
+        "fr": "refait en soigné",
+        "en": "redone cleanly"},
+    "page.au_propre.deja": {
+        "fr": "déjà refait en soigné",
+        "en": "already redone cleanly"},
+    "page.refus.reprise": {
+        "fr": "le serveur a refusé la reprise",
+        "en": "the server refused the redo"},
+    # « le serveur a refusé » ETAIT ECRIT TROIS FOIS — la variante du fil,
+    # celle de la mediatheque, et « refaire sur la grosse carte ».
+    "page.refus.simple": {
+        "fr": "le serveur a refusé",
+        "en": "the server refused"},
+    "page.refus.demande": {
+        "fr": "le serveur a refusé la demande",
+        "en": "the server refused the request"},
+    "page.impossible": {
+        "fr": "impossible : {quoi}",
+        "en": "not possible: {quoi}"},
+
+    # ── designer une variante ───────────────────────────────────────
+    "page.variante.rang": {
+        "fr": "variante {rang} sur {sur}",
+        "en": "variant {rang} of {sur}"},
+    "page.variante.retenue": {
+        "fr": "✓ on repart de celle-ci",
+        "en": "✓ we start again from this one"},
+    # ECRITE DEUX FOIS, ELLE ET SON INFOBULLE DE TROIS LIGNES : une fois sous
+    # la bulle du fil, une fois sous la vignette de la mediatheque. Le meme
+    # geste, le meme mot, et deux textes a maintenir.
+    "page.variante.repartir": {
+        "fr": "repartir de celle-ci",
+        "en": "start again from this one"},
+    "page.variante.repartir.title": {
+        "fr": "« agrandis-la », « rends-la fluide », « le même personnage » "
+              "viseront cette image-là. Rien n'est supprimé : les autres "
+              "variantes restent.",
+        "en": "“upscale it”, “make it smooth”, “the same character” will aim "
+              "at that image. Nothing is deleted: the other variants stay."},
+
+    # ── l'avis, et le second geste ──────────────────────────────────
+    "page.avis.haut": {
+        "fr": "bonne réponse",
+        "en": "good answer"},
+    "page.avis.bas": {
+        "fr": "à retravailler",
+        "en": "needs work"},
+    "page.avis.merci": {
+        "fr": "noté, merci",
+        "en": "noted, thanks"},
+    "page.avis.note": {
+        "fr": "noté",
+        "en": "noted"},
+    "page.avis.rate": {
+        "fr": "avis non enregistré : {quoi}",
+        "en": "rating not saved: {quoi}"},
+    "page.avis.champ": {
+        "fr": "ce qui n'allait pas (facultatif)",
+        "en": "what went wrong (optional)"},
+    # L'ESPACE INSECABLE AVANT « : » EST DANS LA DONNEE. Le francais en met
+    # un, l'anglais aucun — et la page l'ecrivait « &nbsp; » dans du HTML
+    # construit, c'est-a-dire au site d'appel, ou aucune langue ne peut
+    # l'enlever.
+    "page.avis.plutot": {
+        "fr": "c’était plutôt :",
+        "en": "it was rather:"},
+    "page.avis.note_intention": {
+        "fr": "✓ noté — {titre}",
+        "en": "✓ noted — {titre}"},
+    "page.refaire.bouton": {
+        "fr": "refaire sur la grosse carte",
+        "en": "redo on the big card"},
+    "page.refaire.title": {
+        "fr": "Même prompt, même moteur, même taille, mais sur la carte la "
+              "plus grande — en l'attendant s'il le faut. Une autre graine, "
+              "donc un autre tirage : le studio ne sait pas améliorer, il "
+              "sait recommencer avec plus de carte.",
+        "en": "Same prompt, same engine, same size, but on the largest card — "
+              "waiting for it if need be. A different seed, so a different "
+              "draw: the studio does not know how to improve, it knows how to "
+              "start over with more card."},
+    "page.refaire.fait": {
+        "fr": "c'est reparti sur la grosse carte",
+        "en": "off again on the big card"},
+    "page.refaire.impossible": {
+        "fr": "impossible de refaire : {quoi}",
+        "en": "cannot redo: {quoi}"},
+
+    # ── la precision demandee ───────────────────────────────────────
+    "page.question.titre": {
+        "fr": "Avant de lancer, j'ai besoin de savoir :",
+        "en": "Before starting, I need to know:"},
+    "page.question.champ": {
+        "fr": "ta réponse…",
+        "en": "your answer…"},
+    "page.question.aria": {
+        "fr": "Réponse à la précision demandée",
+        "en": "Answer to the question asked"},
+    "page.question.bouton": {
+        "fr": "répondre",
+        "en": "answer"},
+
+    # ── les comptes ─────────────────────────────────────────────────
+    "page.entree.invite": {
+        "fr": "connecte-toi pour commencer…",
+        "en": "sign in to start…"},
+    "page.compte.sortir": {
+        "fr": "sortir",
+        "en": "sign out"},
+    "page.compte.entrer": {
+        "fr": "se connecter",
+        "en": "sign in"},
+    "page.entree.titre": {
+        "fr": "Se connecter",
+        "en": "Sign in"},
+    "page.entree.nom": {
+        "fr": "nom",
+        "en": "name"},
+    "page.entree.mdp": {
+        "fr": "mot de passe",
+        "en": "password"},
+    "page.entree.valider": {
+        "fr": "entrer",
+        "en": "enter"},
+    "page.entree.refus": {
+        "fr": "connexion refusée",
+        "en": "sign-in refused"},
+    "page.entree.reprises": {
+        "fr": ["{n} conversation de ce navigateur a été rattachée à ton "
+               "compte.",
+               "{n} conversations de ce navigateur ont été rattachées à ton "
+               "compte."],
+        "en": ["{n} conversation from this browser was attached to your "
+               "account.",
+               "{n} conversations from this browser were attached to your "
+               "account."]},
+
+    # ── les interrupteurs de nuage ──────────────────────────────────
+    "page.nuage.plafond.title": {
+        "fr": "{libelle} : plafond du mois atteint ({faits} appels distants "
+              "sur {limite}). Le studio reste sur cette machine jusqu'au mois "
+              "prochain ; le plafond se règle dans /admin.",
+        "en": "{libelle}: monthly cap reached ({faits} remote calls out of "
+              "{limite}). The studio stays on this machine until next month; "
+              "the cap is set in /admin."},
+    "page.nuage.title": {
+        "fr": "{libelle} : {ou}",
+        "en": "{libelle}: {ou}"},
+    "page.nuage.locale": {
+        "fr": "cette machine",
+        "en": "this machine"},
+    "page.nuage.basculer": {
+        "fr": "(cliquer pour {quoi})",
+        "en": "(click to {quoi})"},
+    "page.nuage.revenir": {
+        "fr": "revenir en local",
+        "en": "go back to local"},
+    "page.nuage.passer": {
+        "fr": "passer par {titre}",
+        "en": "go through {titre}"},
+    "page.nuage.atteint": {
+        "fr": "plafond atteint · {faits}/{limite}",
+        "en": "cap reached · {faits}/{limite}"},
+    "page.nuage.compte": {
+        "fr": "nuage {faits}/{limite}",
+        "en": "cloud {faits}/{limite}"},
+    # « appel(s) distant(s) » : la page ECRIVAIT les parentheses, faute de
+    # savoir accorder. C'est le contournement que PLURIELS existe pour
+    # supprimer — il ne se lit bien dans aucune langue, et n'existe pas dans
+    # toutes.
+    "page.nuage.mention.title": {
+        "fr": ["{faits} appel distant ce mois-ci ({mois}) sur {limite} pour "
+               "le compte {compte}.",
+               "{faits} appels distants ce mois-ci ({mois}) sur {limite} pour "
+               "le compte {compte}."],
+        "en": ["{faits} remote call this month ({mois}) out of {limite} for "
+               "the account {compte}.",
+               "{faits} remote calls this month ({mois}) out of {limite} for "
+               "the account {compte}."]},
+    "page.nuage.mention.suite": {
+        "fr": "Les demandes restent sur cette machine jusqu'au mois prochain.",
+        "en": "Requests stay on this machine until next month."},
+
+    # ── la file d'attente ───────────────────────────────────────────
+    "page.file.titre": {
+        "fr": "file d'attente",
+        "en": "queue"},
+    "page.file.rien": {
+        "fr": "rien en cours",
+        "en": "nothing running"},
+    "page.file.vue_admin": {
+        "fr": "vue administrateur",
+        "en": "administrator view"},
+    "page.file.compteur": {
+        "fr": "{n} en file",
+        "en": "{n} queued"},
+    "page.file.a_moi": {
+        "fr": "{n} à toi",
+        "en": "{n} yours"},
+    "page.file.position": {
+        "fr": "en file — {n} devant",
+        "en": "queued — {n} ahead"},
+    "page.file.armees.title": {
+        "fr": ["{n} demande attend le retour d'une machine en pause et "
+               "repartira toute seule. Ouvrir la file pour la retirer.",
+               "{n} demandes attendent le retour d'une machine en pause et "
+               "repartiront toutes seules. Ouvrir la file pour les retirer."],
+        "en": ["{n} request is waiting for a paused machine to come back and "
+               "will start again on its own. Open the queue to remove it.",
+               "{n} requests are waiting for a paused machine to come back "
+               "and will start again on their own. Open the queue to remove "
+               "them."]},
+    "page.file.reste": {
+        "fr": "encore {duree}",
+        "en": "{duree} left"},
+    # L'ESPACE AVANT « % » SUIT LA MEME REGLE QUE CELUI D'AVANT « : » : le
+    # francais en met un, l'anglais colle le signe au chiffre. Recoller
+    # « {pct} » + « % » au site d'appel figeait la regle francaise dans du
+    # code d'interface, comme le faisait le pluriel avant PLURIELS.
+    "page.pourcent": {
+        "fr": "{n} %",
+        "en": "{n}%"},
+    "page.duree.min": {
+        "fr": "{n} min",
+        "en": "{n} min"},
+    "page.duree.h": {
+        "fr": "{n} h",
+        "en": "{n} h"},
+    "page.duree.s": {
+        "fr": "{n} s",
+        "en": "{n} s"},
+
+    # ── le suivi d'une demande ──────────────────────────────────────
+    "page.retirer_armee.title": {
+        "fr": "retirer cette demande de l'attente : elle ne repartira pas "
+              "toute seule au retour de la machine",
+        "en": "take this request out of the queue: it will not start again on "
+              "its own when the machine comes back"},
+    "page.tache.inconnue": {
+        "fr": "tâche inconnue — le serveur a-t-il redémarré ?",
+        "en": "unknown task — did the server restart?"},
+    "page.reponse.inattendue": {
+        "fr": "réponse inattendue du serveur",
+        "en": "unexpected answer from the server"},
+    "page.armee.attend": {
+        "fr": "⏸ attend le retour d'une machine en pause",
+        "en": "⏸ waiting for a paused machine to come back"},
+    "page.armee.reste": {
+        "fr": "repart toute seule, encore {duree}",
+        "en": "starts again on its own, {duree} left"},
+    "page.devis.title": {
+        "fr": ["médiane de ton {mesures} rendu comparable : {mot}. Une "
+               "indication, pas une promesse.",
+               "médiane de tes {mesures} rendus comparables : {mot}. Une "
+               "indication, pas une promesse."],
+        "en": ["median of your {mesures} comparable render: {mot}. An "
+               "indication, not a promise.",
+               "median of your {mesures} comparable renders: {mot}. An "
+               "indication, not a promise."]},
+    "page.devis.title.court": {
+        "fr": "d'après tes rendus précédents : {mot}",
+        "en": "based on your previous renders: {mot}"},
+    "page.devis.depasse": {
+        "fr": "plus long que d’habitude",
+        "en": "longer than usual"},
+    "page.devis.estime": {
+        "fr": "≈ {mot}",
+        "en": "≈ {mot}"},
 }
 
 

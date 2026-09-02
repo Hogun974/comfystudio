@@ -311,20 +311,47 @@ def fichiers_du_conteneur():
 
     « ^\\s* » comme lui, donc : les mutations qui deplacent un import en cours
     de fonction copieraient sinon un jeu de fichiers different du sien.
+
+    ON SUIT LES IMPORTS EN PROFONDEUR DEPUIS LE 2 SEPTEMBRE 2026 AU SOIR, et
+    c'est cette fonction-ci qui s'est fait prendre a ce qu'elle decrit. Elle ne
+    relevait que les imports DIRECTS de serveur.py, ce qui tenait tant qu'aucun
+    module du depot n'en importait un autre. comptes.py a importe mfa.py : le
+    dossier temporaire recevait comptes.py sans mfa.py, et QUATRE-VINGT-DEUX
+    mutations sur 144 se sont declarees rouges sur « ModuleNotFoundError: No
+    module named 'mfa' ». Rouges pour la mauvaise raison, c'est-a-dire vertes
+    pour de vrai : un filet qui rougit sur tout n'attrape rien, et l'on n'aurait
+    pas su lesquelles des 82 mesuraient encore quelque chose.
+
+    C'est mot pour mot ce que le paragraphe ci-dessus annonce — « la mutation
+    posee dedans tombait dans un dossier ou le module n'est pas, et le banc
+    rougirait sur un import manquant au lieu de la variable oubliee ». Le
+    raisonnement etait juste, sa mise en oeuvre s'arretait au premier niveau.
     """
     fichiers = ["banc_conteneur.py", "serveur.py",
                 "docker-compose.yml", "Dockerfile", ".env.exemple"]
-    for mod in re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)',
-                          lire("serveur.py")):
-        nom = mod + ".py"
-        if nom not in fichiers and os.path.exists(os.path.join(ICI, nom)):
-            fichiers.append(nom)
+    a_lire, vus = ["serveur.py"], {"serveur.py"}
+    while a_lire:
+        source = a_lire.pop()
+        for mod in re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)',
+                              lire(source)):
+            nom = mod + ".py"
+            if nom in vus or not os.path.exists(os.path.join(ICI, nom)):
+                continue
+            vus.add(nom)
+            a_lire.append(nom)
+            if nom not in fichiers:
+                fichiers.append(nom)
     return fichiers
 
 
 BESOINS = {
     "banc_conteneur.py": fichiers_du_conteneur(),
-    "banc_page.py": ["banc_page.py", "web/index.html"],
+    # traductions.py DEPUIS LE 2 SEPTEMBRE 2026 AU SOIR : banc_page.py releve
+    # le francais ecrit dans le HTML et exige qu'il soit exactement celui du
+    # dictionnaire — la meme moitie de contrat que MARQUE_DEJA, mais sur cent
+    # quatre-vingt-quinze chaines. Sans ce fichier, le banc meurt a l'import,
+    # ce qui ressemblerait a une mutation attrapee.
+    "banc_page.py": ["banc_page.py", "web/index.html", "traductions.py"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
@@ -789,9 +816,14 @@ PAGE = [
             # Posee pour de bon, sans quoi c'est « regle jamais posee » qui
             # rougirait — la mutation passerait pour attrapee alors que la
             # collision, elle, resterait invisible.
+            # L'ancre a suivi la traduction de la page : le libelle
+            # « brouillon » est passe par T(), et le litteral a disparu. La
+            # classe, elle, n'a pas bouge — c'est elle que la mutation pose.
             ("web/index.html", brut(
-                '(esquisse ? \'<span class="puce esquisse">brouillon</span>\'',
-                '(esquisse ? \'<span class="puce esquisse ligne">brouillon</span>\'')),
+                '(esquisse ? `<span class="puce esquisse">'
+                '${ech(T("page.brouillon"))}</span>` : "");',
+                '(esquisse ? `<span class="puce esquisse ligne">'
+                '${ech(T("page.brouillon"))}</span>` : "");')),
         ]),
     dict(
         nom="un identifiant de menu a trait d'union",
@@ -804,8 +836,10 @@ PAGE = [
         editions=[
             ("web/index.html", brut('modele: "#forcer"', 'modele: "#forcer-moteur"')),
             ("web/index.html", brut('"#forcer": "modele"', '"#forcer-moteur": "modele"')),
-            ("web/index.html", brut('{ sel: "#forcer", nom: "moteur"',
-                                    '{ sel: "#forcer-moteur", nom: "moteur"')),
+            # « nom » est une CLE du dictionnaire depuis la traduction de la
+            # page : le mot francais n'y est plus, le selecteur si.
+            ("web/index.html", brut('{ sel: "#forcer", nom: "page.moteur"',
+                                    '{ sel: "#forcer-moteur", nom: "page.moteur"')),
         ]),
     dict(
         nom="une regle de pastille dont le nom traine dans du texte francais",
@@ -2249,8 +2283,9 @@ PROSE = [
         rougit="aucune expression reguliere ne s'applique a un texte ecrit pour etre lu",
         editions=[
             ("web/index.html", brut(
-                'if (t.etat === "erreur" && t[MARQUE_ARRET_DIFFERE])',
-                'if (t.etat === "erreur" && /^arret demande a /.test(t.erreur || ""))')),
+                'if (t.etat === ETAT.erreur && t[MARQUE_ARRET_DIFFERE])',
+                'if (t.etat === ETAT.erreur '
+                '&& /^arret demande a /.test(t.erreur || ""))')),
         ]),
     dict(
         nom="le serveur ne pose plus la marque de l'arret differe",
@@ -2290,8 +2325,9 @@ PROSE = [
         rougit="chaque option d'un menu de reglage porte son libelle court",
         editions=[
             ("web/index.html", brut(
-                '<option value="1024x1024" data-court="1024 × 1024">',
-                '<option value="1024x1024">')),
+                '<option value="1024x1024" data-court="1024 × 1024" '
+                'data-t="page.taille.1024x1024">',
+                '<option value="1024x1024" data-t="page.taille.1024x1024">')),
         ]),
     dict(
         nom="la page relit le devis dans la phrase du journal",
@@ -2522,9 +2558,274 @@ LANGUES = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  banc_page.py — la page en deux langues, seize mutations
+# ──────────────────────────────────────────────────────────────────────
+# Le point 6 de docs/plusieurs-langues.md, cote NAVIGATEUR : ~195 chaines, un
+# T() avec sa propre copie de la regle du pluriel, le rendu des pannes, et le
+# quatrieme des quatre chantiers qui « ne sont pas de la traduction » — les
+# valeurs de protocole qui se confondaient avec les libelles.
+#
+# CE QUI PEUT CASSER SANS QUE RIEN NE LEVE, ET QUE CES QUINZE-LA IMITENT :
+#
+#   1. LE FRANCAIS QUI DERIVE D'UN SEUL COTE. C'est la plus importante, et
+#      c'est MARQUE_DEJA applique a cent quatre-vingt-quinze chaines : la page
+#      francaise reste juste, rien ne leve, et le lecteur anglais recoit une
+#      traduction de la phrase d'AVANT. Personne au studio ne l'apprend.
+#   2. UN ATTRIBUT QUI SE LIT ET QU'ON OUBLIE. Un aria-label ajoute sans cle
+#      ne se VOIT pas — il s'entend, et seulement chez quelqu'un d'autre.
+#   3. LA REGLE DU PLURIEL RECOPIEE. La page comptait « ${n} echange${n > 1 ?
+#      "s" : ""} » : la regle FRANCAISE, dans du code d'interface, fausse en
+#      anglais des zero.
+#   4. LES VALEURS DE PROTOCOLE PRISES POUR DES LIBELLES. « en cours »,
+#      « fini », « brouillons » voyagent jusqu'au serveur et sont ECRITES dans
+#      les conversations deja enregistrees. Les traduire relit tout
+#      l'historique de travers ; les laisser en clair a cote d'une etiquette
+#      laisse une passe naive toucher les deux moities du meme litteral.
+#   5. LA PANNE QUI NE SE LIT PLUS, OU QUI PERD SON REPLI. La bulle affiche la
+#      derniere ligne de journal apres un echec — c'est le message le plus lu
+#      du studio. Sans la marque, il reste francais ; sans le repli, une tache
+#      relue apres redemarrage n'affiche RIEN.
+#
+# LE SENS INVERSE : ces seize cas sont NES avec la correction — banc_page.py
+# ne relevait rien de tout cela avant, et lancer le banc NEUF sur la page
+# d'AVANT ne rougirait pas, il MOURRAIT (« const PLURIELS » n'y existe pas,
+# « <select id="langue"> » non plus : les releves rendent des listes vides et
+# le banc s'arrete sur un IndexError). C'est le cas que CONTRIBUTING.md prevoit
+# — « ecris-le quand tu ne peux ni l'un ni l'autre » — et l'on a mesure
+# l'ISOLEMENT a la place : chaque mutation, SEULE, allume la ligne qu'elle
+# nomme et elle seule, et le depot sain reste vert sur les trente-huit.
+PAGE_LANGUES = [
+    dict(
+        nom="le francais de la page derive de celui du dictionnaire",
+        banc="banc_page.py",
+        imite="la page francaise reste juste, rien ne leve, et le lecteur "
+              "anglais recoit la traduction de la phrase d'AVANT. C'est "
+              "MARQUE_DEJA applique au CONTENU, sur cent quatre-vingt-quinze "
+              "chaines : une reformulation d'un seul cote ne casse rien, elle "
+              "ment",
+        rougit="chaque texte francais du HTML est EXACTEMENT celui du dictionnaire",
+        editions=[
+            ("web/index.html", brut(
+                'data-t="page.reglages">réglages</button>',
+                'data-t="page.reglages">préférences</button>')),
+        ]),
+    dict(
+        nom="un aria-label ajoute sans sa cle",
+        banc="banc_page.py",
+        imite="le defaut le plus silencieux de tous : il ne se voit pas, il "
+              "s'entend — et pas par celui qui l'ecrit. Un lecteur d'ecran "
+              "anglophone s'entend annoncer « Nouvelle conversation » au "
+              "milieu d'une interface anglaise, et rien a l'ecran ne le montre",
+        rougit="chaque titre, invite et aria-label du HTML passe par une cle",
+        editions=[
+            ("web/index.html", brut(
+                '<button class="neuve" id="neuve" data-t="page.conv.neuve">',
+                '<button class="neuve" id="neuve" aria-label="Nouvelle conversation"'
+                ' data-t="page.conv.neuve">')),
+        ]),
+    dict(
+        nom="une cle citee par la page n'existe pas au dictionnaire",
+        banc="banc_page.py",
+        imite="T() rend la CLE quand elle est inconnue, et ne leve pas — un "
+              "studio qui rend une page blanche est pire. Mais le bouton "
+              "s'appelle alors « page.reprise.imposible », et seulement chez "
+              "celui qui a change de langue : le HTML, lui, garde son francais",
+        rougit="et toute cle citee par la page existe au dictionnaire",
+        editions=[
+            ("web/index.html", brut('T("page.reprise.impossible")',
+                                    'T("page.reprise.imposible")')),
+        ]),
+    dict(
+        nom="une cle de page qu'aucun ecran ne pose",
+        banc="banc_page.py",
+        imite="le sens inverse : une entree que rien ne lit se perime sans "
+              "bruit, et le dictionnaire donne l'impression de couvrir un "
+              "ecran qui n'existe plus. C'est ce que banc_traductions.py tient "
+              "deja pour les pannes du serveur",
+        rougit="et aucune cle « page. » ne dort au dictionnaire",
+        editions=[
+            ("traductions.py", brut(
+                '''    "page.source": {
+        "fr": "source",''',
+                '''    "page.ancien.bouton": {
+        "fr": "réessayer",
+        "en": "try again"},
+    "page.source": {
+        "fr": "source",''')),
+        ]),
+    dict(
+        nom="la page perd la regle de pluriel d'une langue servie",
+        banc="banc_page.py",
+        imite="PLURIELS[langue] rend undefined, T() retombe sur le francais, "
+              "et l'anglais ecrit « 0 exchange ». Un mot, sur un compte, une "
+              "fois sur trois — le genre de faute qu'on relit sans la voir",
+        rougit="la page porte une regle de pluriel par langue servie",
+        editions=[
+            ("web/index.html", brut("  en: n => (n !== 1 ? 1 : 0),\n", "")),
+        ]),
+    dict(
+        nom="la regle francaise recopiee dans la colonne anglaise",
+        banc="banc_page.py",
+        imite="la faute exacte que cette table existe pour empecher, et la "
+              "seule qui passe le cas precedent sans bruit : les deux langues "
+              "ont leur ligne, les deux lignes sont la meme. Le francais ecrit "
+              "« 0 echange », l'anglais « 0 exchanges » — et l'anglais dirait "
+              "« 0 exchange »",
+        rougit="et le francais met zero au singulier la ou l'anglais le met au pluriel",
+        editions=[
+            ("web/index.html", brut("  en: n => (n !== 1 ? 1 : 0),",
+                                    "  en: n => (n > 1 ? 1 : 0),")),
+        ]),
+    dict(
+        nom="le « s » recolle a la main revient dans la barre laterale",
+        banc="banc_page.py",
+        imite="l'etat d'avant, remis a sa place au fil d'une reecriture : "
+              "« ${c.tours} échange${c.tours > 1 ? \"s\" : \"\"} ». La regle "
+              "francaise, recopiee, dans du code d'interface — et il suffit "
+              "d'un endroit sur vingt pour que la langue cesse de decider",
+        rougit="et rien ne recolle plus un « s » ni n'ecrit « demande(s) »",
+        editions=[
+            ("web/index.html", brut(
+                'ech(T("compte.echanges", { n: c.tours }))}</small>',
+                '`${c.tours} échange${c.tours > 1 ? "s" : ""}`}</small>')),
+        ]),
+    dict(
+        nom="une valeur de protocole traduite dans la table des etats",
+        banc="banc_page.py",
+        imite="« fini » devient « termine » DANS LE PROTOCOLE : la page "
+              "n'attend plus l'etat que le serveur ecrit, le pouce en bas "
+              "cesse de proposer « refaire sur la grosse carte », et toutes "
+              "les conversations deja enregistrees se relisent de travers. "
+              "Rien ne leve : la comparaison est simplement fausse pour "
+              "toujours",
+        rougit="la page declare les six etats que le serveur ECRIT, et pas d'autres",
+        editions=[
+            ("web/index.html", brut('cours: "en cours", fini: "fini",',
+                                    'cours: "en cours", fini: "termine",')),
+        ]),
+    dict(
+        nom="une comparaison d'etat repart en litteral",
+        banc="banc_page.py",
+        imite="l'etat est ecrit DEUX fois : la table, et cette comparaison-ci. "
+              "Elle survit au jour ou la table bouge, et se tait. C'est la "
+              "moitie du defaut que la separation ferme — l'autre moitie etant "
+              "qu'une passe de traduction toucherait ce litteral-la en croyant "
+              "toucher un libelle",
+        rougit="et aucune comparaison d'etat ni de famille ne porte encore un litteral",
+        editions=[
+            ("web/index.html", brut("pose === -1 && t.etat === ETAT.fini",
+                                    'pose === -1 && t.etat === "fini"')),
+        ]),
+    dict(
+        nom="le filtre « brouillons » derive de la valeur du HTML",
+        banc="banc_page.py",
+        imite="la forme exacte du silence du 31 aout, sur une autre paire : la "
+              "valeur est ecrite dans l'<option> et comparee dans le script a "
+              "quinze cents lignes d'ecart. Le menu garde son libelle, le "
+              "filtre ne garde plus rien — et « brouillons » n'affiche jamais "
+              "que des images finies",
+        rougit="le filtre « brouillons » compare la valeur que le HTML porte vraiment",
+        editions=[
+            ("web/index.html", brut('const SOIN_BROUILLONS = "brouillons";',
+                                    'const SOIN_BROUILLONS = "esquisses";')),
+        ]),
+    dict(
+        nom="la page ne nomme plus le champ de la panne",
+        banc="banc_page.py",
+        imite="le couplage page/serveur cesse d'etre mesure des DEUX cotes, "
+              "comme pour MARQUE_DEJA : rien ne rougit, et le champ peut "
+              "changer de nom cote serveur sans que la bulle s'en apercoive",
+        rougit="la page NOMME le champ par lequel le serveur dit CE QUI a echoue",
+        editions=[
+            ("web/index.html", brut('const MARQUE_PANNE = "panne";',
+                                    'const MARQUE_PANNE = "";')),
+        ]),
+    dict(
+        nom="la bulle retombe sur la ligne de journal seule",
+        banc="banc_page.py",
+        imite="l'etat d'avant, exactement : « t.erreur = derniere.msg ». Le "
+              "message le plus lu du studio redevient du JOURNAL, qui ne se "
+              "traduit pas — le lecteur anglais lit « la machine n'est pas "
+              "revenue a temps » apres chaque panne, et rien ne le signale",
+        rougit="elle rend la marque en phrase, et retombe sur la ligne de journal",
+        editions=[
+            ("web/index.html", brut(
+                """          t.erreur = rendrePanne(t[MARQUE_PANNE])
+                  || (derniere && derniere.msg) || t.erreur;""",
+                """          t.erreur = (derniere && derniere.msg) || t.erreur;""")),
+        ]),
+    dict(
+        nom="le repli sur le journal disparait",
+        banc="banc_page.py",
+        imite="l'autre bout, et le plus grave des deux : une tache relue apres "
+              "redemarrage n'a PAS de marque, et trois arguments de echouer() "
+              "sur cinq n'en avaient pas le 2 septembre. La bulle affiche alors "
+              "du VIDE la ou il y avait une phrase. Un studio qui repond en "
+              "francais est genant, un studio qui ne repond rien est casse",
+        rougit="elle rend la marque en phrase, et retombe sur la ligne de journal",
+        editions=[
+            ("web/index.html", brut(
+                """          t.erreur = rendrePanne(t[MARQUE_PANNE])
+                  || (derniere && derniere.msg) || t.erreur;""",
+                """          t.erreur = rendrePanne(t[MARQUE_PANNE]);""")),
+        ]),
+    dict(
+        nom="une valeur qui est une marque n'est plus rendue d'abord",
+        banc="banc_page.py",
+        imite="le seul cas d'imbrication du depot : « ERREUR : {quoi} » recoit "
+              "une PHRASE du dictionnaire. Sans ce tour, l'anglophone lit "
+              "« ERROR: la machine n'est pas revenue a temps » — une "
+              "DEMI-phrase traduite, qui se remarque moins qu'une phrase "
+              "entierement francaise et trompe donc plus longtemps. Ici, il "
+              "lirait « ERROR: [object Object] »",
+        rougit="et une valeur qui est elle-meme une marque est rendue d'abord",
+        editions=[
+            ("web/index.html", brut(
+                """    valeurs[nom] = (v && typeof v === "object" && v.cle)
+                 ? T(v.cle, v.valeurs || {}) : v;""",
+                """    valeurs[nom] = v;""")),
+        ]),
+    dict(
+        nom="la langue devient un reglage de conversation",
+        banc="banc_page.py",
+        imite="ce que docs/plusieurs-langues.md avait annonce puis refuse "
+              "apres mesure : REGLAGES_CONV est PAR CONVERSATION, alors que "
+              "l'en-tete, la mediatheque et le panneau de file ne le sont pas "
+              "— la langue de l'ombrelle serait celle de la derniere "
+              "conversation ouverte. Et le serveur ne lit pas cette cle : le "
+              "menu poste dans le vide, et le murmure promis ne vient jamais",
+        rougit="et il reste hors des reglages : le serveur ne le retient pas la",
+        editions=[
+            ("web/index.html", brut(
+                'const MENU_REGLAGE = { modele: "#forcer", noeud: "#machine",',
+                'const MENU_REGLAGE = { langue: "#langue", modele: "#forcer",'
+                ' noeud: "#machine",')),
+            ("web/index.html", brut(
+                'const CLE_REGLAGE = { "#forcer": "modele", "#machine": "noeud",',
+                'const CLE_REGLAGE = { "#langue": "langue", "#forcer": "modele",'
+                ' "#machine": "noeud",')),
+        ]),
+    dict(
+        nom="le menu de langue disparait de la page",
+        banc="banc_page.py",
+        imite="le studio sert deux langues et n'offre aucun moyen d'en "
+              "changer : « Accept-Language » decide seul, et un francophone "
+              "sur un Windows anglais reste en anglais pour toujours. Le "
+              "serveur, lui, continue de poser le cookie que plus personne ne "
+              "lui demande — tout marche, sauf qu'on ne peut pas choisir",
+        rougit="la page offre le choix de la langue, et le poste au serveur",
+        editions=[
+            ("web/index.html", brut(
+                '      <select id="langue" data-t-aria-label="page.langue.aria"'
+                ' aria-label="Langue"></select>\n', "")),
+        ]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
-             + MULTILINGUE + PROSE + LANGUES)
+             + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

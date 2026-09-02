@@ -37,8 +37,34 @@ import io
 import os
 import re
 import sys
+from html.parser import HTMLParser
+
+# LA CONSOLE WINDOWS ECRIT EN cp1252, et ce banc n'importe pas serveur.py —
+# c'est serveur.py qui reconfigure la sortie pour tout le reste du depot
+# (voir sa tete de fichier). Sans ces quatre lignes, le banc MEURT sur son
+# propre affichage au premier titre de section : « UnicodeEncodeError:
+# 'charmap' codec can't encode characters », une pile d'appels a la place du
+# verdict. Mesure du 2 septembre 2026 : banc_page.py s'arretait ainsi a la
+# verification 30 sur 38, et le lanceur de banc_mutations.py ne le voyait pas
+# — il pose PYTHONIOENCODING pour ses fils, donc le defaut n'apparaissait
+# QUE lorsqu'on lancait le banc a la main, ce que fait tout contributeur.
+for _flux in (sys.stdout, sys.stderr):
+    try:
+        _flux.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 ICI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, ICI)
+
+# LE DICTIONNAIRE, ET C'EST LA SEULE CHOSE QUE CE BANC IMPORTE. traductions.py
+# n'importe rien lui-meme : le banc reste statique, sans reseau, sans studio,
+# sans aiohttp. Il en a besoin pour la moitie de contrat la plus importante
+# qu'il tienne — que le francais ecrit dans le HTML soit EXACTEMENT celui du
+# dictionnaire, faute de quoi une reformulation d'un seul cote laisse un
+# lecteur anglais devant une traduction devenue fausse.
+import traductions as TR  # noqa: E402
+
 PAGE = io.open(os.path.join(ICI, "web", "index.html"), encoding="utf-8").read()
 ok, rate = [], []
 
@@ -484,11 +510,14 @@ def condition_du_si(texte, ancre):
     return texte[ouvre + 1:ferme]
 
 
-# L'ancre est le LIBELLE AFFICHE, accents compris : c'est la donnee, et c'est
-# le seul point du script ou la coche du « deja » se pose. S'il est reformule,
-# ce cas rougit en disant qu'il ne mesure plus — ce qui est le bon sens de
-# l'erreur, et non un silence de plus.
-cond = condition_du_si(CORPS, 'fait("déjà refait en soigné")')
+# L'ancre est la CLE du libelle affiche, et non plus le libelle : depuis que
+# la page passe par T(), le texte francais vit au dictionnaire et la page ne
+# porte que son identifiant. C'est le seul point du script ou la coche du
+# « deja » se pose ; si l'appel est reecrit, ce cas rougit en disant qu'il ne
+# mesure plus — ce qui est le bon sens de l'erreur, et non un silence de plus.
+# Que la cle designe bien le bon texte francais est mesure a part, plus bas :
+# « la page et le dictionnaire disent le meme francais ».
+cond = condition_du_si(CORPS, 'fait(T("page.au_propre.deja"))')
 dit(cond is not None and "MARQUE_DEJA" in cond and "erreur" not in cond,
     "et la coche se decide sur ce champ, jamais sur le texte du message",
     "le libelle de la coche n'est plus sous un « if » : ce cas ne mesure plus "
@@ -544,8 +573,15 @@ dit(len(corps_devis) == 2 and "MARQUE_DEVIS" in corps_devis[1].split("\n}", 1)[0
 # expression reguliere reviendrait a decrire UNE facon de l'ecrire. L'ancre est
 # le corps du « if », c'est-a-dire le seul setTimeout du script.
 cond_arret = condition_du_si(CORPS, "setTimeout(async () => {")
+# « ETAT.erreur » EST RETIRE AVANT LE RELEVE, et c'est la separation que ce
+# banc mesure trois cas plus bas : « erreur » est A LA FOIS la valeur de
+# protocole que le serveur ecrit sur la tache et le nom du champ qui porte le
+# message. Le releve d'origine ne savait pas les distinguer — il aurait fait
+# rougir le depot sain sur « t.etat === ETAT.erreur », qui est justement la
+# lecture correcte. Ce qui est interdit ici, c'est de decider sur le MESSAGE.
+_sans_etat = re.sub(r'\bETAT\.[a-z_]+', " ", cond_arret or "")
 dit(cond_arret is not None and "MARQUE_ARRET_DIFFERE" in cond_arret
-    and not re.search(r'\.erreur\b|\[\s*["\']erreur["\']\s*\]', cond_arret),
+    and not re.search(r'\.erreur\b|\[\s*["\']erreur["\']\s*\]', _sans_etat),
     "et la relecture differee se decide sur ce champ, jamais sur le message",
     "la relecture differee n'est plus sous un « if » : ce cas ne mesure plus "
     "rien" if cond_arret is None else cond_arret.strip())
@@ -618,6 +654,321 @@ oublies = [c for c in ("f.variante", "f.variantes", "f.choisie")
            if not re.search(re.escape(c) + r'\b', grille)]
 dit(not oublies, "la mediatheque lit le rang et la marque que le serveur sert",
     ", ".join(oublies) or "les trois")
+
+
+# ══ LA PAGE ET LE DICTIONNAIRE DISENT-ILS LE MEME FRANCAIS ? ═══════════
+# C'EST LA MOITIE DE CONTRAT LA PLUS IMPORTANTE DE CE BANC, et elle a la meme
+# forme que MARQUE_DEJA et MARQUE_DEVIS : deux fichiers portent la meme chose,
+# et un banc releve les deux pour que le jour ou l'un bouge, il rougisse au
+# lieu de laisser le contrat mentir.
+#
+# traductions.py porte le francais AUSSI, alors que la page l'a deja en dur
+# dans son HTML. Ce n'est pas une redondance : le HTML est ce qu'un
+# francophone voit tout de suite, sans attendre /api/textes ; le dictionnaire
+# est ce qu'un anglophone recoit. Reformuler l'un sans l'autre ne casse RIEN —
+# la page francaise reste juste, le studio ne leve pas, et un lecteur anglais
+# se retrouve devant une traduction devenue fausse sans que personne au studio
+# ne l'apprenne jamais. Une traduction ne plante pas, elle ment
+# (banc_traductions.py).
+#
+# ZERO CLE RELEVEE VAUT NON. Le compte est le temoin : sans lui, ce cas serait
+# vert le jour ou plus aucun « data-t » ne serait pose — parce qu'on les aurait
+# retires, ou parce que le releve aurait cesse de mordre. C'est le defaut que
+# banc_refaire.py portait treize fois le 2 septembre, et banc_traductions.py
+# une : verte parce que rien ne s'est passe.
+print("\n  ── le francais de la page est celui du dictionnaire ──")
+
+
+class _Marques(HTMLParser):
+    """Les « data-t » et « data-t-X » du corps, avec ce qu'ils portent.
+
+    On lit le HTML par un ANALYSEUR et non par expression reguliere : un
+    attribut sur trois lignes, un ordre d'attributs different, une entite
+    (« &nbsp; ») — un motif de texte en voit un, l'analyseur les voit tous.
+    C'est la meme raison qui fait lire serveur.py par l'arbre de syntaxe dans
+    banc_traductions.py.
+
+    Les noeuds porteurs de « data-t » sont des feuilles : leur texte est celui
+    qui suit la balise ouvrante. Le jour ou l'un en portera un autre dedans,
+    ce releve rendra le texte des deux et le cas rougira — ce qui est le bon
+    sens de l'erreur : un texte a trous ne se traduit pas d'un bloc.
+    """
+
+    # Les attributs qui portent du TEXTE. Ce n'est pas une liste des attributs
+    # qu'on a pense a traduire, c'est celle des attributs qui se LISENT : si
+    # l'un d'eux est ecrit en clair sans cle, il restera francais.
+    PORTEURS = ("title", "placeholder", "aria-label")
+
+    def __init__(self):
+        HTMLParser.__init__(self, convert_charrefs=True)
+        self.textes, self.attributs, self.nus, self._pile = [], [], [], []
+
+    def handle_starttag(self, tag, attrs):
+        d = dict(attrs)
+        for nom, valeur in d.items():
+            if nom == "data-t":
+                self._pile.append([valeur, ""])
+            elif nom.startswith("data-t-"):
+                self.attributs.append((valeur, nom[7:], d.get(nom[7:])))
+        for nom in self.PORTEURS:
+            if nom in d and "data-t-" + nom not in d:
+                self.nus.append(f"<{tag} {nom}=\"{(d[nom] or '')[:40]}\">")
+
+    def handle_data(self, data):
+        if self._pile:
+            self._pile[-1][1] += data
+
+    def handle_endtag(self, tag):
+        if self._pile:
+            cle, texte = self._pile.pop()
+            self.textes.append((cle, texte))
+
+
+# Le corps SEUL : le script porte « <span class="…"> » dans des chaines, et
+# l'analyseur y verrait des balises. La borne est la meme que celle du CSS
+# plus haut, prise par l'autre bout.
+_CORPS_HTML = PAGE.split("<body>", 1)[1].split("<script>", 1)[0]
+_marques = _Marques()
+_marques.feed(_CORPS_HTML)
+
+# « _c » et non « cle » : « cle » est la table CLE_REGLAGE, relevee plus haut
+# et relue plus bas. Une boucle qui l'ecrase transformait la table en chaine,
+# et les deux cas qui la lisent se comptaient verts sur des lettres.
+ecarts_t = []
+for _c, _texte in _marques.textes:
+    attendu = (TR.TEXTES.get(_c) or {}).get("fr")
+    if _texte != attendu:
+        ecarts_t.append(f"{_c} : page « {_texte} » vs dictionnaire « {attendu} »")
+for _c, _attribut, _valeur in _marques.attributs:
+    attendu = (TR.TEXTES.get(_c) or {}).get("fr")
+    if _valeur != attendu:
+        ecarts_t.append(f"{_c} [{_attribut}] : page « {_valeur} » vs "
+                        f"dictionnaire « {attendu} »")
+_releves = len(_marques.textes) + len(_marques.attributs)
+dit(_releves > 0 and not ecarts_t,
+    "chaque texte francais du HTML est EXACTEMENT celui du dictionnaire",
+    " / ".join(ecarts_t[:2])
+    or f"{len(_marques.textes)} textes, {len(_marques.attributs)} attributs")
+
+# ET AUCUN ATTRIBUT QUI SE LIT N'EST OUBLIE. Le sol est pris par le haut :
+# non pas la liste de ce qu'on a pense a traduire — enumerer est la faute que
+# ce banc a deja faite cinq fois (voir LECTURES_DU_MENU) —, mais celle des
+# attributs qui portent du texte. Tout « title », « placeholder » ou
+# « aria-label » ecrit sans cle restera francais.
+#
+# LES aria-label COMPTENT DOUBLE : un lecteur d'ecran anglophone a qui l'on
+# annonce « Afficher les conversations » n'est pas servi, et rien a l'ecran ne
+# le montrerait. C'est le defaut le plus silencieux de tous, puisqu'il ne se
+# voit pas — il s'entend.
+_aria = [a for _c, a, _v in _marques.attributs if a == "aria-label"]
+dit(_aria and not _marques.nus,
+    "chaque titre, invite et aria-label du HTML passe par une cle",
+    ", ".join(_marques.nus[:3])
+    or f"{len(_marques.attributs)} attributs, dont {len(_aria)} aria-label")
+
+# LES CLES CITEES EXISTENT. Une faute de frappe ne leve pas : T() rend la cle
+# elle-meme, et « page.telecharge » s'affiche sur le bouton. Laid, mais
+# seulement pour qui regarde — et seulement en anglais, puisque le HTML garde
+# son francais.
+#
+# « page.langue. » et « page.media.famille. » sont COMPOSEES a l'execution
+# (« "page.langue." + lg ») : un litteral qui finit par un point est donc lu
+# comme un prefixe, et couvre les cles qui commencent par lui.
+citees = set(re.findall(r'["\'](page\.[a-z0-9_.]*)["\']', PAGE))
+prefixes = {c for c in citees if c.endswith(".")}
+citees -= prefixes
+
+
+def couvre(c):
+    return c in citees or any(c.startswith(p) for p in prefixes)
+
+
+inventees = sorted(c for c in citees if c not in TR.TEXTES)
+dit(citees and not inventees,
+    "et toute cle citee par la page existe au dictionnaire",
+    ", ".join(inventees[:3]) or f"{len(citees)} cles citees")
+
+# ET AUCUNE CLE « page. » NE DORT. Le sens inverse, celui que
+# banc_traductions.py tient deja pour les pannes du serveur : une entree
+# qu'aucun site ne pose ne sera jamais lue, sa traduction se perimerait sans
+# bruit, et le dictionnaire donnerait l'impression de couvrir un ecran qui
+# n'existe plus.
+dormantes_t = sorted(c for c in TR.TEXTES
+                     if c.startswith("page.") and not couvre(c))
+dit(not dormantes_t, "et aucune cle « page. » ne dort au dictionnaire",
+    ", ".join(dormantes_t[:3]) or
+    f"{sum(1 for c in TR.TEXTES if c.startswith('page.'))} cles de page")
+
+
+# ══ LA REGLE DU PLURIEL EST CELLE DE LA LANGUE ═════════════════════════
+# La page ecrivait « ${n} échange${n > 1 ? "s" : ""} » a chaque endroit qui
+# compte quelque chose : la regle FRANCAISE, recopiee a la main, dans du code
+# d'interface. Elle est fausse en anglais des zero — le francais ecrit
+# « 0 echange », l'anglais « 0 exchanges » — et la recopier vingt fois
+# garantit qu'une des vingt sera oubliee.
+#
+# La page a sa PROPRE copie de la table, et il le faut : elle compte des
+# choses que le serveur ne voit jamais. Ce banc-ci exige donc que cette copie
+# soit la meme regle, ecrite ici avec sa raison — comme banc_traductions.py
+# l'exige de la table Python.
+print("\n  ── la page compte comme la langue, pas comme le francais ──")
+_bloc_pl = CORPS.split("const PLURIELS = {", 1)
+_regles = dict(re.findall(r'([a-z]{2})\s*:\s*n\s*=>\s*([^,\n]+)',
+                          _bloc_pl[1].split("};", 1)[0])) if len(_bloc_pl) == 2 else {}
+dit(set(_regles) == set(TR.LANGUES),
+    "la page porte une regle de pluriel par langue servie",
+    f"{sorted(_regles)} pour {sorted(TR.LANGUES)}")
+# LES DEUX REGLES DIFFERENT. Recopier la ligne francaise dans la colonne
+# anglaise est la faute exacte que cette table existe pour empecher, et elle
+# passerait le cas ci-dessus sans bruit. On nomme donc ce qui les separe :
+# le francais met 0 ET 1 au singulier (« n > 1 »), l'anglais 1 seul
+# (« n !== 1 »).
+dit(bool(_regles) and ">" in _regles.get("fr", "")
+    and "!==" in _regles.get("en", ""),
+    "et le francais met zero au singulier la ou l'anglais le met au pluriel",
+    f"fr : {_regles.get('fr', '—').strip()} / en : {_regles.get('en', '—').strip()}")
+# ET PLUS AUCUN « s » RECOLLE A LA MAIN. Le sol est pris par le haut : ce
+# n'est pas une liste des endroits ou la regle etait recopiee — les enumerer
+# est la faute que ce banc a deja faite cinq fois (voir LECTURES_DU_MENU) —
+# mais la FORME meme du contournement.
+#
+# DEUX SOLS SUCCESSIFS ONT RATE, ET ILS SONT ECRITS ICI. « \(s\) » tout court
+# attrapait « catch (e) » ; y coller une lettre devant attrapait
+# « querySelector(s) » et « appendChild(s) » — du JavaScript parfaitement
+# ordinaire, sur lequel le depot sain rougissait. Ce qui separe le
+# contournement de l'appel, c'est ce qui SUIT la parenthese : « demande(s)
+# attendent » continue une phrase, « appendChild(s); » ferme une instruction.
+# Le jour ou un appel legitime s'ecrira « f(s) + 1 », ce cas rougira et
+# demandera qu'on l'inscrive ici — c'est le bon sens de l'erreur.
+recolles = re.findall(r'\?\s*"s"\s*:|[A-Za-zÀ-ÿ]\((?:e?s|e)\)(?![);.,\]}])', CODE)
+compte_n = len(re.findall(r'\bT\(\s*["\'][a-z0-9_.]+["\']\s*,\s*\{[^}]*\bn\s*:', CODE))
+dit(compte_n > 0 and not recolles,
+    "et rien ne recolle plus un « s » ni n'ecrit « demande(s) »",
+    ", ".join(recolles[:3]) or f"{compte_n} appels qui comptent")
+
+
+# ══ LES VALEURS DE PROTOCOLE NE SONT PLUS DES LIBELLES ═════════════════
+# Le quatrieme des quatre chantiers de docs/plusieurs-langues.md, et le seul
+# qui restait : « t.etat » vaut « en cours », « fini », « erreur » — teste a
+# cinq endroits ET servant de CLES a la table des etiquettes, dont les VALEURS
+# sont de l'IHM. Une passe de traduction naive touchait les deux moities du
+# meme litteral, et « t.etat === "fini" » devenait muet sans lever la moindre
+# erreur.
+#
+# ON NE CHANGE PAS LE PROTOCOLE, ON LE SEPARE : ces valeurs voyagent jusqu'au
+# serveur et sont ECRITES dans les conversations deja enregistrees. Les six
+# sont donc nommees ICI, dans le banc, avec ce qu'elles sont — le jour ou la
+# page en traduira une, ce cas rougira au lieu de laisser tout l'historique se
+# relire de travers.
+print("\n  ── le protocole n'est plus un libelle ──")
+ETATS_DU_SERVEUR = {"en cours", "fini", "erreur", "question",
+                    "attente carte", "attente machine"}
+_bloc_etat = CORPS.split("const ETAT = {", 1)
+_valeurs_etat = set(re.findall(r':\s*"([^"]+)"',
+                               _bloc_etat[1].split("};", 1)[0])) \
+    if len(_bloc_etat) == 2 else set()
+dit(_valeurs_etat == ETATS_DU_SERVEUR,
+    "la page declare les six etats que le serveur ECRIT, et pas d'autres",
+    f"{sorted(_valeurs_etat)}")
+
+# ET PLUS AUCUNE COMPARAISON NE PORTE LE LITTERAL. Ce qui fait le degat n'est
+# pas l'endroit ou l'etat est ecrit, c'est qu'il soit ecrit DEUX fois : une
+# comparaison restee en clair survit a la table, et se tait le jour ou la
+# table bouge.
+literaux = re.findall(r'\.(etat|famille)\s*(?:===|!==|==|!=)\s*["\']([^"\']*)["\']',
+                      CODE)
+literaux += [("etat", v) for v in
+             re.findall(r'\betat\s*:\s*["\']([^"\']*)["\']', CODE)]
+usages = len(re.findall(r'\b(?:ETAT|FAMILLE)\.[a-z0-9_]+', CODE))
+dit(usages > 0 and not literaux,
+    "et aucune comparaison d'etat ni de famille ne porte encore un litteral",
+    ", ".join(f".{q} === « {v} »" for q, v in literaux[:3])
+    or f"{usages} lectures nommees")
+
+# LA VALEUR DE L'<option> EST CELLE QUE LE SCRIPT RELIT. « brouillons » est
+# ecrit dans le HTML et compare dans le JS a deux cents lignes d'ecart : c'est
+# exactement la forme du defaut du 31 aout (MENU_REGLAGE / CLE_REGLAGE), et la
+# traduction du libelle passait a un caractere de toucher la valeur.
+_soins = re.findall(r'const\s+SOIN_BROUILLONS\s*=\s*"([^"]*)"\s*;', CORPS)
+_options_soin = re.findall(r'<option value="([^"]*)"', PAGE.split(
+    '<select id="soinMedia"', 1)[1].split("</select>", 1)[0])
+dit(len(_soins) == 1 and _soins[0] and _soins[0] in _options_soin,
+    "le filtre « brouillons » compare la valeur que le HTML porte vraiment",
+    f"{_soins} contre {_options_soin}")
+
+
+# ══ CE QUE L'UTILISATEUR LIT QUAND UN RENDU ECHOUE ═════════════════════
+# La bulle affichait la DERNIERE LIGNE DE JOURNAL — « t.erreur = derniere.msg »
+# —, c'est-a-dire que le message le plus lu de tout le studio n'etait pas un
+# message d'API mais du journal. Et le journal ne se traduit pas : il est
+# ECRIT, garde sur la tache, relu plus tard par quelqu'un d'autre.
+#
+# Le serveur pose donc a cote une MARQUE, { cle, valeurs }, que la page met en
+# phrase. Meme patron que MARQUE_DEJA : la page NOMME le champ, et zero
+# declaration compte comme un NON — plusieurs aussi, on ne saurait plus
+# laquelle elle applique.
+print("\n  ── la panne se lit sur la marque, et le journal reste le repli ──")
+pannes = re.findall(r'const\s+MARQUE_PANNE\s*=\s*"([^"]*)"\s*;', CORPS)
+dit(len(pannes) == 1 and bool(pannes[0]),
+    "la page NOMME le champ par lequel le serveur dit CE QUI a echoue",
+    f"{len(pannes)} declaration(s) de MARQUE_PANNE : ce banc NE MESURE PLUS le "
+    "couplage page/serveur" if len(pannes) != 1 else pannes[0])
+
+# LA MARQUE EST LUE, ET LE REPLI EST OBLIGATOIRE. Une tache relue apres
+# redemarrage n'a pas de marque, et trois arguments de echouer() sur cinq n'en
+# avaient pas le 2 septembre : une page qui n'aurait su lire que la marque
+# aurait affiche du VIDE la ou il y avait une phrase. On exige donc les deux
+# dans la MEME expression — separes, l'un des deux pourrait disparaitre sans
+# que l'autre s'en apercoive.
+#
+# LA DEFINITION N'EST PAS UN APPEL. « function rendrePanne(marque) » entre
+# sinon dans le releve, et son corps contient un « ; » bien avant la fin : le
+# cas rougissait sur le depot sain. On ecarte donc la declaration, et l'on
+# lit chaque APPEL jusqu'a son point-virgule.
+_sites = [m.start() for m in re.finditer(r'\brendrePanne\(', CODE)
+          if not CODE[:m.start()].rstrip().endswith("function")]
+_chaines = [CODE[i:CODE.find(";", i) + 1] for i in _sites]
+_lectures = [re.findall(r'rendrePanne\(([^)]*)\)', c + ")")[0] for c in _chaines]
+# LES DEUX SITES, et non un seul : la bulle du premier passage ET la relecture
+# differee huit secondes plus tard. Celle-la comparait la derniere ligne de
+# journal a « t.erreur » — qui porte desormais la panne MISE EN PHRASE : sans
+# la meme lecture des deux cotes, elle repeignait du francais par-dessus
+# l'anglais a chaque arret de carte.
+dit(len(_sites) >= 2 and all("MARQUE_PANNE" in a for a in _lectures)
+    and all(".msg" in c for c in _chaines),
+    "elle rend la marque en phrase, et retombe sur la ligne de journal",
+    f"{len(_sites)} appels : {' / '.join(_lectures[:2])}"
+    if _sites else "rendrePanne n'est appele nulle part")
+
+# UNE VALEUR PEUT ETRE UNE MARQUE, sur un seul niveau : c'est le gabarit
+# « ERREUR : {quoi} » de echouer(), dont le {quoi} est une phrase du
+# dictionnaire et non une valeur calculee. Sans ce tour, l'anglophone lisait
+# « ERROR: la machine n'est pas revenue a temps » — une demi-phrase traduite,
+# qui se remarque moins qu'une phrase entierement francaise et trompe donc
+# plus longtemps. traductions.rendre() est la specification ; on verifie ici
+# que la page l'a bien suivie jusque-la.
+_corps_rendre = CODE.split("function rendrePanne(", 1)
+_corps_rendre = _corps_rendre[1].split("\n}", 1)[0] if len(_corps_rendre) == 2 else ""
+dit(bool(_corps_rendre) and "v.cle" in _corps_rendre
+    and "valeurs" in _corps_rendre,
+    "et une valeur qui est elle-meme une marque est rendue d'abord",
+    "rendrePanne introuvable" if not _corps_rendre else "un seul niveau")
+
+
+# ══ LE MENU DE LANGUE ══════════════════════════════════════════════════
+# Il n'est PAS un reglage de conversation, et c'est mesure ailleurs :
+# REGLAGES_CONV est par conversation alors que l'en-tete, la mediatheque et le
+# panneau de file ne le sont pas — la langue de l'ombrelle serait celle de la
+# derniere conversation ouverte. Le choix vit dans le cookie, pose par POST
+# /api/textes, et le menu doit rester hors des trois tables de reglages : y
+# entrer le ferait poster sur une route qui ne le lit pas.
+print("\n  ── le menu de langue ──")
+dit('<select id="langue"' in PAGE and '/api/textes' in CORPS,
+    "la page offre le choix de la langue, et le poste au serveur")
+dit("langue" not in menu and "#langue" not in cle
+    and not any(s == "#langue" for s, _r in entrees),
+    "et il reste hors des reglages : le serveur ne le retient pas la",
+    f"{sorted(menu)} / {sorted(cle)}")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

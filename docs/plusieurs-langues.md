@@ -5,8 +5,8 @@ pour qu'on puisse s'en servir dans une autre langue, dans quel ordre, et à quel
 prix.
 
 Cette page tranche, et depuis le 2 septembre 2026 au soir elle décrit aussi ce
-qui existe : **les travaux 1, 2, 3 et 5 sont faits**, le 4 a été mesuré puis
-**refusé**, le 6 est **en cours**, le 7 reste. Le détail est en bas de page ; ce
+qui existe : **les travaux 1, 2, 3, 5 et 6 sont faits**, le 4 a été mesuré puis
+**refusé**, le 7 reste. Le détail est en bas de page ; ce
 qui change tout de suite, c'est que le studio n'exécute plus une demande
 étrangère de travers en silence — il la fait lire au modèle de langage, et il le
 dit.
@@ -426,13 +426,24 @@ traduction** :
 4. **Les valeurs de protocole sont en français et se confondent avec les
    libellés** : `t.etat` vaut `"en cours"`, `"fini"`, `"erreur"` ; une
    `<option>` a `value="brouillons"`. Une passe de traduction naïve toucherait
-   les deux moitiés du même littéral. *Reste à faire.*
+   les deux moitiés du même littéral. *Corrigé le 2 septembre au soir : on ne
+   change pas le protocole, on le sépare.* Les six états sont écrits une fois,
+   dans `ETAT`, et les étiquettes vivent au dictionnaire sous `page.etat.` ;
+   même chose pour `FAMILLE` et pour `SOIN_BROUILLONS`, dont `banc_page.py`
+   exige qu'il soit le mot que l'`<option>` porte vraiment. Ces valeurs voyagent
+   jusqu'au serveur et sont **écrites dans les conversations déjà
+   enregistrées** : les traduire relirait tout l'historique de travers.
 
-S'y ajoutent les formats figés sur le français — `toLocaleTimeString("fr-FR")`,
+S'y ajoutaient les formats figés sur le français — `toLocaleTimeString("fr-FR")`,
 `localeCompare(…, "fr")`, l'espace insécable avant `:` et avant `%`, `" min"`,
 `" Go"` — et **une dizaine de doublons littéraux** (« repartir de celle-ci »
 écrit deux fois, son infobulle de trois lignes deux fois) qui divergeront à la
-première retouche.
+première retouche. *Faits le 2 septembre au soir* : la locale suit la langue
+(`en-GB` et non `en-US` — tout le studio écrit des horloges de 24 heures, et
+une bulle en AM/PM au milieu d'elles se lit comme une autre heure) ; l'espace
+d'avant `:` et `%` est **dans la donnée**, présent en français, absent en
+anglais ; `" Go"` est un mot français, l'anglais écrit `" GB"` ; et chaque
+doublon est devenu une clé.
 
 Un cas ne se rattrapera jamais : `murmurer()` **écrit** le murmure de réglage
 dans le fichier de conversation. Les murmures déjà posés resteront français quoi
@@ -515,10 +526,32 @@ bougé.
 > et la tournure suivante repassera ; en admettre une étrangère coûte huit
 > exemplaires pondérés, et double les pannes silencieuses de cette langue.
 
-**6. Les messages d'erreur, et l'interface. ⟳ en cours**, et pas du tout au
-volume annoncé : **25 messages** affichés, **une dizaine** de pannes, **~195**
-chaînes de page — et quatre chantiers qui n'étaient pas de la traduction (voir
-plus haut ; trois sont faits). *Ferme la gêne. Pas une panne : la gêne.*
+**6. Les messages d'erreur, et l'interface. ✔ fait**, et pas du tout au volume
+annoncé : **25 messages** affichés, **13** pannes, **195** chaînes de page — et
+quatre chantiers qui n'étaient pas de la traduction (voir plus haut ; les quatre
+sont faits). *Ferme la gêne. Pas une panne : la gêne.*
+
+> **La page**, depuis le 2 septembre au soir. Un `T(clé, {n, …valeurs})` avec
+> **sa propre copie de `PLURIELS`** — elle compte des choses que le serveur ne
+> voit pas —, un `rendrePanne()` qui est `traductions.rendre()` porté en
+> JavaScript, `data-t` sur les nœuds du HTML, et un menu de langue dans
+> `#outils` dont la valeur de départ est ce que `/api/textes` répond. Changer
+> de langue **recharge** : la page s'écrit à 127 sites DOM répartis dans
+> 28 fonctions, il n'existe aucun endroit unique où elle se peint, et le
+> premier oubli laisserait une phrase française dans une page anglaise.
+>
+> **Le français reste écrit dans le HTML**, et c'est une moitié de contrat :
+> `banc_page.py` exige qu'il soit *exactement* celui du dictionnaire — 39 textes
+> et 28 attributs relevés, dont 16 `aria-label`. Sans cela, une phrase
+> reformulée d'un seul côté laisse un anglophone devant une traduction devenue
+> fausse, et personne pour le voir. Le banc passe de 23 à 38 vérifications, et
+> `banc_mutations.py` de 114 à 130.
+>
+> **Ce qui reste français malgré tout** : le journal (tranché plus bas), les
+> îlots servis par le serveur — titre d'un moteur, libellé d'une modalité de
+> nuage, nom d'une intention, mot du devis (« 4 min ») —, et le `Précisions : `
+> que la réponse à une question **envoie** au moteur : le studio a un pivot, et
+> c'est le français.
 
 > **Deux choix arrêtés en le faisant.**
 >

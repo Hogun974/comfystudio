@@ -41,6 +41,21 @@ import os
 import sys
 import time
 
+# LA CONSOLE WINDOWS ECRIT EN cp1252, et ce banc n'importe pas serveur.py —
+# c'est serveur.py qui reconfigure la sortie pour tout le reste du depot
+# (voir sa tete de fichier). Sans ces quatre lignes, le banc MEURT sur son
+# propre affichage au premier titre de section : « UnicodeEncodeError:
+# 'charmap' codec can't encode characters », une pile d'appels a la place du
+# verdict. Mesure du 2 septembre 2026 : banc_page.py s'arretait ainsi a la
+# verification 30 sur 38, et le lanceur de banc_mutations.py ne le voyait pas
+# — il pose PYTHONIOENCODING pour ses fils, donc le defaut n'apparaissait
+# QUE lorsqu'on lancait le banc a la main, ce que fait tout contributeur.
+for _flux in (sys.stdout, sys.stderr):
+    try:
+        _flux.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 
