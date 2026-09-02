@@ -215,6 +215,48 @@ La garder l'aurait rendue « MUTATION PERIMEE », c'est-a-dire un echec — une
 mutation qui ne mesure plus rien se retire en meme temps que sa garde, jamais
 apres. Le compte va de 99 a 105.
 
+LES NEUF DES LANGUES, 2 septembre 2026 au soir, et un TREIZIEME banc :
+banc_traductions.py. Le studio se traduit — les vingt-cinq refus que la page
+affiche, les treize pannes que la page lit dans le journal, la langue de celui
+qui lit. UNE TRADUCTION NE PLANTE PAS, ELLE MENT : chacune des neuf pannes
+imitees laisse le studio rendre 200, la page s'afficher, le rendu se faire.
+Elles ne se voient que depuis l'ecran d'un lecteur anglais.
+
+Le sens inverse a demande les deux manieres, comme la dixieme relecture :
+
+  - LES TROIS DE banc_traductions.py se prouvent contre le code d'AVANT. Les
+    editions de la correction ont ete defaites une a une dans un dossier
+    temporaire — les cles de panne retirees, les refus rendus a leur phrase
+    francaise, la langue et la route des textes supprimees — et le banc NEUF
+    lance dessus rougit 4 fois sur 31 : les TROIS lignes que ces mutations
+    nomment, plus « aucune cle de panne ne dort », qui est la meme regle prise
+    par l'autre bout.
+  - LES SIX DE banc_refaire.py N'ONT PAS DE CODE D'AVANT QU'ON PUISSE LEUR
+    OPPOSER, et c'est la troisieme fois que ce cas se presente. Ici la raison
+    est nouvelle et vaut d'etre ecrite : la correction AJOUTE DES NOMS —
+    MARQUE_PANNE, langue_de, COOKIE_LANGUE, api_textes — que le code d'avant
+    n'a pas. Le banc neuf lance dessus ne rougit pas, il MEURT sur un
+    AttributeError a la premiere ligne qui les cite, c'est-a-dire « le banc
+    s'est casse au lieu de rougir ». Ce qui a ete mesure a la place est leur
+    ISOLEMENT, mutation par mutation, et il est net : quatre des six n'allument
+    QUE leur propre ligne (102/103) ; « le refus repart en francais » n'allume
+    que la sienne ; « l'en-tete decide de la langue » en allume deux, et la
+    seconde est le refus servi en anglais — c'est-a-dire l'autre bout du meme
+    contrat, ce que la langue sert. Aucune ne touche a un cas d'un autre sujet.
+  - LES TROIS DE banc_traductions.py, prises isolement, allument chacune leur
+    ligne et « aucune cle de panne ne dort » : la meme regle vue de l'endroit
+    et de l'envers. C'est voulu — une cle posee nulle part et une cle qui dort
+    sont le meme fait.
+
+ET LE RELEVE A TROUVE UN CAS CAPRICIEUX, qui n'a rien a voir avec les langues.
+« le chrono est repose la carte EN MAIN » comparait « pose - depart » a 0,4 s
+tout rond, quand asyncio.sleep() rend la main un peu TOT sous Windows — la
+resolution du minuteur est de 15,6 ms. Sous la charge de ce fichier-ci, il a
+rendu 0,39 s pour 0,4 s demandees et le banc a rougi sur un cas parfaitement
+juste. Il compare desormais a l'instant OBSERVE de fin d'attente, et son voisin
+porte les deux arrondis au dixieme de /api/etat. Une CI qui rougit pour rien
+finit ignoree ; c'est le meme argument que TROUS_CONNUS, pris a l'envers.
+
 CE QUE LE PARALLELISME DES LANCEMENTS COUTERAIT, mesure le 2 septembre et
 refuse. Les huit bancs sans sommeil pourraient tourner ensemble, et l'ordre des
 resultats se garderait sans peine — il suffit de collecter les verdicts dans
@@ -331,6 +373,16 @@ BESOINS = {
                              "corpus_aiguillage.jsonl", "corpus_llm.jsonl",
                              "corpus_llm2.jsonl"]
                             + fichiers_du_conteneur()[1:]),
+    # LE SEUL BANC QUI LIT serveur.py SANS L'IMPORTER, avec banc_adulte.py.
+    # Il n'a besoin d'aucune dependance — traductions.py n'importe rien — et
+    # aiohttp lui serait meme nuisible : il tourne sur la machine de celui qui
+    # ecrit, ou pip n'a jamais servi. Ce qu'il regarde dans serveur.py, il le
+    # regarde par l'arbre de syntaxe : quels sites de panne portent une cle,
+    # quelles cles sont citees. Sans serveur.py, cette moitie-la du banc
+    # meurt a l'ouverture — un plantage qui ressemblerait a une mutation
+    # attrapee.
+    "banc_traductions.py": ["banc_traductions.py", "traductions.py",
+                            "serveur.py"],
     # Celui-la n'importe pas le studio : il preleve deux expressions
     # regulieres dans le TEXTE de serveur.py. Il lui faut donc serveur.py, et
     # rien d'autre — pas meme les modules qu'il importe.
@@ -351,7 +403,8 @@ BESOINS = {
 
 
 # ── Ou se lit la ligne rouge ──────────────────────────────────────────
-# Neuf bancs sur treize impriment « NON » ; banc_cout.py et banc_multilingue.py
+# Dix bancs sur quatorze impriment « NON » ; banc_cout.py, banc_multilingue.py
+# et banc_traductions.py
 # impriment « RATE », et
 # banc_adulte.py comme verifier_formulations.py n'ont pas de dit() du tout —
 # ils listent leurs fautes indentees sous leur compte. Sans cette table, TOUTE
@@ -362,6 +415,7 @@ BESOINS = {
 # L'exigence, elle, ne bouge pas — la ligne NOMMEE et pas un code de retour.
 MARQUE_ROUGE = {"banc_cout.py": "  RATE ", "banc_adulte.py": "    ",
                 "banc_multilingue.py": "  RATE ",
+                "banc_traductions.py": "  RATE ",
                 "verifier_formulations.py": "    "}
 
 
@@ -1725,10 +1779,14 @@ REFAIRE = [
               "ou rien n'a ete rendu. C'est le mensonge que d24980a avait "
               "ferme, et il tenait sur un mot",
         rougit="le second clic est refuse en 409 ET porte la marque",
+        # RE-ANCREE le 2 septembre 2026 au soir : la phrase francaise a
+        # laisse la place a une cle du dictionnaire. Le champ, lui, n'a pas
+        # bouge d'un caractere — c'est tout l'interet d'un champ, et la
+        # traduction vient de le montrer une seconde fois.
         editions=[("serveur.py", brut(
-            '            {"erreur": "cette esquisse a deja ete passee au propre",'
+            '            {"erreur": T("erreur.deja_au_propre", lg),'
             + chr(10) + '             "deja": True}, status=409)',
-            '            {"erreur": "cette esquisse a deja ete passee au propre"},'
+            '            {"erreur": T("erreur.deja_au_propre", lg)},'
             + chr(10) + "            status=409)"))]),
     dict(
         nom="la marque « deja » posee sur un second refus",
@@ -1740,8 +1798,8 @@ REFAIRE = [
               "jamais repropose",
         rougit="et aucun des cinq autres refus ne la porte",
         editions=[("serveur.py", brut(
-            '            {"erreur": "l\'esquisse n\'est pas terminee"}, status=409)',
-            '            {"erreur": "l\'esquisse n\'est pas terminee",'
+            '            {"erreur": T("erreur.esquisse_pas_finie", lg)}, status=409)',
+            '            {"erreur": T("erreur.esquisse_pas_finie", lg),'
             + chr(10) + '             "deja": True}, status=409)'))]),
     dict(
         nom="la coche « deja refait » redevient un test sur le TEXTE",
@@ -1768,10 +1826,10 @@ REFAIRE = [
               "avait, la coche verte ment par l'autre porte",
         rougit="les deux boutons refusent un rendu confie au loin avec le MEME code",
         editions=[("serveur.py", brut(
-            '                       f"maison. Relance la demande pour repartir '
-            'chez lui."},' + chr(10) + "            status=400)",
-            '                       f"maison. Relance la demande pour repartir '
-            'chez lui."},' + chr(10) + "            status=409)"))]),
+            '                         titre=MOTEURS_DISTANTS[moteur_]["titre"])},'
+            + chr(10) + "            status=400)",
+            '                         titre=MOTEURS_DISTANTS[moteur_]["titre"])},'
+            + chr(10) + "            status=409)"))]),
     dict(
         nom="et un moteur sorti du catalogue, avec deux codes aussi",
         banc="banc_refaire.py",
@@ -1781,14 +1839,10 @@ REFAIRE = [
               "change, et il ne rechangera pas au second clic",
         rougit="et un moteur sorti du catalogue, de meme : 400, pas un conflit",
         editions=[("serveur.py", brut(
-            '            {"erreur": f"le moteur de ce tour ({moteur_}) n\'est plus au "'
-            + chr(10)
-            + '                       f"catalogue : relance la demande pour en '
-            'choisir un autre"},' + chr(10) + "            status=400)",
-            '            {"erreur": f"le moteur de ce tour ({moteur_}) n\'est plus au "'
-            + chr(10)
-            + '                       f"catalogue : relance la demande pour en '
-            'choisir un autre"},' + chr(10) + "            status=409)"))]),
+            '            {"erreur": T("erreur.moteur_hors_catalogue", lg, moteur=moteur_)},'
+            + chr(10) + "            status=400)",
+            '            {"erreur": T("erreur.moteur_hors_catalogue", lg, moteur=moteur_)},'
+            + chr(10) + "            status=409)"))]),
     dict(
         nom="le repli de taille REFUSE au lieu de reprendre",
         banc="banc_refaire.py",
@@ -2205,11 +2259,13 @@ PROSE = [
               "PROMESSE : elle ne relit pas huit secondes plus tard, et la "
               "bulle reste sur la promesse pendant que la carte s'arrete",
         rougit="et /api/etat dit que ce mot-la n'est encore qu'une promesse",
+        # RE-ANCREE le 2 septembre 2026 au soir : la ligne porte desormais
+        # une cle de panne a cote de sa marque, et l'ancre d'avant s'arretait
+        # sur la parenthese fermante. On ne retire QUE « arret_differe » —
+        # retirer les deux ferait rougir deux contrats a la fois, et une
+        # mutation qui en allume deux ne dit plus lequel elle mesure.
         editions=[
-            ("serveur.py", brut(
-                """ — sa carte s'arrete des qu'elle nous rappelle",
-                    arret_differe=True)""",
-                """ — sa carte s'arrete des qu'elle nous rappelle")""")),
+            ("serveur.py", brut("                    arret_differe=True,\n", "")),
         ]),
     dict(
         nom="la pastille redecoupe le libelle visible d'une option",
@@ -2292,9 +2348,183 @@ PROSE = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  Les langues — neuf mutations, 2 septembre 2026 au soir
+# ──────────────────────────────────────────────────────────────────────
+# UNE TRADUCTION NE PLANTE PAS, ELLE MENT — et c'est ce qui rend ce filet-ci
+# different des autres. Toutes les pannes imitees ci-dessous laissent le studio
+# rendre 200, la page s'afficher entiere, et le rendu se faire. Aucune ne leve,
+# aucune ne se voit depuis une console : elles se voient depuis l'ecran d'un
+# lecteur anglais, que personne au studio ne regarde.
+#
+# QUATRE FAMILLES, et les deux premieres coutent le plus cher :
+#
+#   1. UN SITE DE PANNE SANS CLE. Le journal ne se traduit pas, mais la page
+#      affiche sa DERNIERE ligne quand un rendu echoue : ce que l'utilisateur
+#      lit apres une panne n'est pas un refus d'API, c'est du journal. Le
+#      remede est une cle POSEE A COTE du texte francais — et un site oublie
+#      renvoie simplement la phrase francaise a l'ecran, ce qui a exactement
+#      l'air de ce que le studio faisait avant.
+#   2. LA CLE ET LA LIGNE QUI DERIVENT. Les deux moities existent, chacune est
+#      juste, et elles ne disent plus la meme chose. C'est MARQUE_DEJA applique
+#      au CONTENU et non au nom du champ : reformuler la phrase de serveur.py
+#      ne casse rien, et le lecteur anglais recoit un message que plus personne
+#      n'ecrit.
+#   3. LA LANGUE QUI NE SE CHOISIT PLUS. « Accept-Language » dit la langue du
+#      NAVIGATEUR, pas celle de la personne. Le cookie retire, un francophone
+#      sur un Windows anglais est servi en anglais pour toujours, sans jamais
+#      comprendre pourquoi — et le menu paraitra ne rien retenir.
+#   4. LA ROUTE DES TEXTES. La page est servie en FileResponse : elle DEMANDE
+#      ses textes, et si la route se ferme derriere exiger_compte, l'ecran de
+#      connexion — le seul qu'un visiteur non connecte voie — reste francais
+#      pour toujours.
+#
+# LE SENS INVERSE : ces cas sont NES avec la correction, il n'existe pas de
+# filet d'avant a leur opposer. serveur.py, traductions.py et les deux bancs
+# ont donc ete remis dans leur etat d'AVANT, edition par edition, dans un
+# dossier temporaire — jamais dans le depot — et les bancs NEUFS lances dessus.
+LANGUES = [
+    dict(
+        nom="un site de panne oublie sa cle",
+        banc="banc_traductions.py",
+        imite="« retiree de la file » repart a l'ecran en francais quel que "
+              "soit le lecteur. Rien ne leve, la bulle se garnit, le bouton "
+              "« relancer » est la : c'est exactement ce que le studio faisait "
+              "avant qu'on traduise, et c'est pour cela que personne ne le "
+              "verrait",
+        rougit="chaque journal(..., etat=erreur) pose une cle a cote de sa phrase",
+        editions=[
+            ("serveur.py", brut(
+                '''        journal(tid, "retiree de la file", etat="erreur",
+                **marque_panne("panne.retiree_de_la_file"))''',
+                '''        journal(tid, "retiree de la file", etat="erreur")''')),
+        ]),
+    dict(
+        nom="echouer() appele sans la cle de sa phrase",
+        banc="banc_traductions.py",
+        imite="l'autre moitie de la meme famille, et la plus sournoise : le "
+              "gabarit « ERREUR : {quoi} » est traduit, son contenu non. Le "
+              "lecteur anglais recoit « ERROR: la machine n'est pas revenue a "
+              "temps » — une DEMI-phrase traduite, qui se remarque moins "
+              "qu'une phrase entierement francaise et trompe donc plus "
+              "longtemps. Trois des cinq sites d'appel etaient dans cet etat",
+        rougit="et chaque appel a echouer() nomme la phrase qu'il lui passe",
+        editions=[
+            ("serveur.py", brut(
+                '''        echouer(tid, "la machine n'est pas revenue a temps",
+                panne_de("panne.machine_pas_revenue"))''',
+                '''        echouer(tid, "la machine n'est pas revenue a temps")''')),
+        ]),
+    dict(
+        nom="une cle mal orthographiee au site d'appel",
+        banc="banc_traductions.py",
+        imite="T() rend la CLE quand elle est inconnue, et ne leve pas — c'est "
+              "voulu, un studio qui rend 500 est pire. Mais alors la bulle "
+              "affiche « panne.interompue » a la place du message, dans "
+              "TOUTES les langues, francais compris. Une lettre",
+        rougit="et toute cle citee par le serveur existe au dictionnaire",
+        editions=[
+            ("serveur.py", brut('**marque_panne("panne.interrompue")',
+                                '**marque_panne("panne.interompue")')),
+        ]),
+    dict(
+        nom="la cle et la ligne de journal derivent",
+        banc="banc_refaire.py",
+        imite="les deux moities existent, chacune est juste, et elles ne "
+              "disent plus la meme chose. Le studio ecrit « ERREUR : … » dans "
+              "son journal, le dictionnaire rend « ECHEC : … » : le francais "
+              "de la page cesse d'etre celui du studio, et un rapport de bogue "
+              "cite une phrase qu'aucun fichier ne contient",
+        rougit="et cette cle, rendue en francais, EST la ligne du journal",
+        editions=[
+            ("traductions.py", brut(
+                '''    "panne.echec": {
+        "fr": "ERREUR : {quoi}",''',
+                '''    "panne.echec": {
+        "fr": "ECHEC : {quoi}",''')),
+        ]),
+    dict(
+        nom="l'en-tete du navigateur decide de la langue",
+        banc="banc_refaire.py",
+        imite="le cookie n'est plus lu : « Accept-Language » ne sert plus de "
+              "premiere valeur, il DECIDE. Un francophone sur un Windows "
+              "anglais est servi en anglais pour toujours ; il ouvre le menu, "
+              "choisit « francais », et la page revient en anglais sans qu'un "
+              "mot le lui dise. C'est la panne que docs/plusieurs-langues.md "
+              "refuse en toutes lettres",
+        rougit="un francophone sur un Windows anglais revient au francais, et y reste",
+        editions=[
+            ("serveur.py", brut(
+                '''    return traductions.langue_choisie(req.cookies.get(COOKIE_LANGUE) or "",
+                                      req.headers.get("Accept-Language") or "")''',
+                '''    return traductions.langue_choisie("",
+                                      req.headers.get("Accept-Language") or "")''')),
+        ]),
+    dict(
+        nom="un refus repart en francais, ecrit en dur",
+        banc="banc_refaire.py",
+        imite="la phrase d'avant, remise a sa place au fil d'une reecriture — "
+              "le geste le plus banal du monde. Le refus est juste, le code de "
+              "retour est juste, le francais est parfait : seul l'anglophone "
+              "voit du francais, et il est seul a le voir",
+        rougit="et l'anglais est de l'anglais, pas la meme phrase servie deux fois",
+        editions=[
+            ("serveur.py", brut(
+                '''        return web.json_response(
+            {"erreur": T("erreur.moteur_hors_catalogue", lg, moteur=moteur_)},
+            status=400)''',
+                '''        return web.json_response(
+            {"erreur": f"le moteur de ce tour ({moteur_}) n'est plus au "
+                       f"catalogue : relance la demande pour en choisir un autre"},
+            status=400)''')),
+        ]),
+    dict(
+        nom="la route des textes n'en sert qu'une partie",
+        banc="banc_refaire.py",
+        imite="les refus d'API sont servis, l'interface non : la page recoit "
+              "un sous-ensemble et rend la CLE partout ou elle manque. Les "
+              "boutons s'appellent « compte.echanges », et seulement chez "
+              "celui qui a change de langue",
+        rougit="GET /api/textes sert TOUTES les cles, jamais un sous-ensemble",
+        editions=[
+            ("serveur.py", brut(
+                '''    rep_ = web.json_response({"langue": lg, "langues": list(traductions.LANGUES),
+                              "textes": traductions.textes_de(lg)})''',
+                '''    rep_ = web.json_response({"langue": lg, "langues": list(traductions.LANGUES),
+                              "textes": {c: v for c, v
+                                         in traductions.textes_de(lg).items()
+                                         if c.startswith("erreur.")}})''')),
+        ]),
+    dict(
+        nom="le choix de langue n'est plus pose en cookie",
+        banc="banc_refaire.py",
+        imite="la route repond dans la bonne langue, une fois. Au rechargement "
+              "suivant, langue_choisie() retombe sur l'en-tete : le menu "
+              "paraît ne rien retenir, et l'utilisateur rechoisit sa langue a "
+              "chaque visite sans jamais comprendre pourquoi",
+        rougit="et le choix est POSE en cookie : il survit au rechargement",
+        editions=[
+            ("serveur.py", motif(r'    if pose:\n.*?path="/"\)\n    return rep_\n',
+                                 "    return rep_\n")),
+        ]),
+    dict(
+        nom="la route des textes se ferme derriere la connexion",
+        banc="banc_refaire.py",
+        imite="en STUDIO_AUTH=obligatoire, le seul ecran qu'un visiteur non "
+              "connecte voie est le formulaire de connexion — et c'est le seul "
+              "qui reste francais. On traduit tout SAUF ce que lit celui a qui "
+              "le studio n'a encore rien montre d'autre, y compris le refus "
+              "« connexion requise » lui-meme",
+        rougit="connexion obligatoire : tout est ferme, sauf les textes",
+        editions=[
+            ("serveur.py", brut('             or chemin == "/api/textes"\n', "")),
+        ]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
-             + MULTILINGUE + PROSE)
+             + MULTILINGUE + PROSE + LANGUES)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

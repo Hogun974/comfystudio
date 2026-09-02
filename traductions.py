@@ -81,12 +81,24 @@ TEXTES = {
     "erreur.corps_illisible": {
         "fr": "corps illisible",
         "en": "unreadable request body"},
-    "erreur.conversation_inconnue": {
+    # UNE SEULE CLE POUR LA CONVERSATION ET POUR LE TOUR, et c'est une
+    # correction du 2 septembre 2026 au soir. Le dictionnaire en portait deux —
+    # « unknown conversation » et « unknown turn » — la ou le serveur ecrit le
+    # meme mot, « inconnue », aux deux endroits ET DELIBEREMENT : « 404 et non
+    # 400 : un tour qui n'a rien produit n'est rien a designer, et distinguer
+    # pas a toi de pas fini renseignerait un curieux » (api_variante_choisir,
+    # serveur.py). La traduction anglaise reintroduisait donc exactement la
+    # distinction que le francais cache : elle disait au curieux si la
+    # conversation existe. Une cle, un mot, aucun aveu.
+    "erreur.introuvable": {
         "fr": "inconnue",
-        "en": "unknown conversation"},
-    "erreur.tour_inconnu": {
+        "en": "not found"},
+    # Le masculin du meme refus, et sa seule autre occurrence : la sortie qu'on
+    # redemande a /api/reprendre. Separee parce que le francais accorde, pas
+    # parce qu'elle avoue quelque chose de plus.
+    "erreur.fichier_introuvable": {
         "fr": "inconnu",
-        "en": "unknown turn"},
+        "en": "not found"},
     "erreur.demande_vide": {
         "fr": "demande vide",
         "en": "empty request"},
@@ -139,11 +151,19 @@ TEXTES = {
     # pas, il se place. L'anglais le met ailleurs dans la phrase, et c'est
     # exactement pour cela que la phrase entiere est ici et non recollee en
     # morceaux au site d'appel.
+    # RELEVEE SUR LE CODE le 2 septembre 2026 au soir : le dictionnaire portait
+    # « il n'a ni graine ni etapes. Relance la demande. » et le serveur ecrit
+    # « il n'a ni graine ni etapes a reprendre. Relance la demande pour repartir
+    # chez lui. » Le francais de la page n'aurait pas bouge — T() rend le
+    # dictionnaire —, mais la phrase servie n'aurait plus ete celle que le code
+    # dit servir, et c'est le contrat que banc_traductions.py existe pour tenir.
     "erreur.au_propre_distant": {
         "fr": "cette esquisse a ete rendue par {titre} : « en soigne » n'y "
-              "veut rien dire, il n'a ni graine ni etapes. Relance la demande.",
+              "veut rien dire, il n'a ni graine ni etapes a reprendre. "
+              "Relance la demande pour repartir chez lui.",
         "en": "this sketch was rendered by {titre}: “cleanly” means nothing "
-              "there — it has neither seed nor steps. Send the request again."},
+              "there — it has neither seed nor steps to reuse. Send the "
+              "request again to go back there."},
     "erreur.refaire_distant": {
         "fr": "ce rendu a ete confie a {titre} : « refaire sur la grosse "
               "carte » demande une carte de la maison. Relance la demande pour "
@@ -210,26 +230,63 @@ TEXTES = {
     # le meme message qui n'apprend rien a personne que ce depot chasse
     # partout ailleurs. Le detail technique va au journal du studio, ou il sert
     # a quelqu'un.
+    #
+    # RELEVEE SUR LE CODE le 2 septembre 2026 au soir, et elle etait perimee :
+    # le dictionnaire decrivait le remede tel qu'il avait ete IMAGINE — « le
+    # journal du studio dit laquelle » — quand serveur.py, lui, NOMME deja la
+    # machine dans la phrase. C'est la seule chose sur laquelle l'utilisateur
+    # puisse agir, banc_refaire.py l'exige (« le titre de la machine est dans
+    # le message »), et la traduction la lui aurait retiree. « {titre} » est
+    # donc obligatoire ici, et le banc le mesure des deux cotes.
     "erreur.reprise_impossible": {
-        "fr": "impossible de reprendre ce fichier depuis la machine qui l'a "
-              "calcule — il a peut-etre ete efface. Le journal du studio dit "
-              "laquelle et pourquoi.",
-        "en": "this file could not be fetched back from the machine that "
-              "computed it — it may have been deleted. The studio log says "
-              "which machine, and why."},
+        "fr": "{titre} n'a pas rendu ce fichier : il a peut-etre ete efface, "
+              "ou la machine ne repond plus. Reprends une autre sortie, ou "
+              "reessaie plus tard.",
+        "en": "{titre} did not hand this file back: it may have been deleted, "
+              "or the machine no longer answers. Pick another output, or try "
+              "again later."},
+    # « sans extension » se pose DANS « {extension} » quand le fichier n'en a
+    # pas. Deux mots francais au milieu d'une phrase anglaise, sinon — le meme
+    # defaut que famille.* ferme deux entrees plus haut.
+    "erreur.sans_extension": {
+        "fr": "sans extension",
+        "en": "no extension"},
 
     # ══ Les pannes ═════════════════════════════════════════════════════
     # CE QUE L'UTILISATEUR LIT QUAND UN RENDU ECHOUE. La page prend la DERNIERE
     # ligne du journal et la met dans le champ « erreur » du tour : ce ne sont
     # donc pas les refus ci-dessus qu'il voit apres une panne, ce sont
-    # celles-ci. Neuf phrases — les journal(..., etat="erreur") — et c'est
-    # tout ce qui separe une page anglaise d'une page anglaise qui ment.
+    # celles-ci — et c'est tout ce qui separe une page anglaise d'une page
+    # anglaise qui ment.
+    #
+    # LE JOURNAL, LUI, RESTE FRANCAIS : il est ECRIT, garde sur la tache, relu
+    # plus tard, parfois par quelqu'un d'autre que celui qui a lance la
+    # demande. Ce que le serveur pose a cote de la ligne francaise, c'est une
+    # CLE — serveur.MARQUE_PANNE — que /api/etat sert avec ses valeurs et que
+    # la page met en phrase. Les deux moities du contrat : la ligne pour le
+    # studio, la cle pour le lecteur.
+    #
+    # Treize phrases : les dix journal(..., etat="erreur") et les cinq
+    # arguments de echouer(), moins les recoupements. Le compte est mesure —
+    # banc_traductions.py releve les sites dans le TEXTE de serveur.py et
+    # refuse qu'un seul soit sans cle.
     "panne.machine_pas_revenue": {
         "fr": "la machine n'est pas revenue a temps",
         "en": "the machine did not come back in time"},
     "panne.conversation_fermee": {
         "fr": "conversation fermee pendant l'attente",
         "en": "conversation closed while waiting"},
+    # LA LIGNE DE JOURNAL QUI PRECEDE LA PRECEDENTE, et le dictionnaire ne
+    # l'avait pas. Elle porte « etat="erreur" » elle aussi : elle n'est
+    # aujourd'hui jamais la DERNIERE — echouer() en ecrit une apres —, mais
+    # c'est un fait de l'ordre de deux appels, pas une regle. Le jour ou
+    # quelqu'un deplace le echouer(), une phrase francaise revient a l'ecran
+    # d'un lecteur anglais sans qu'une ligne n'ait l'air fausse.
+    "panne.conversation_disparue": {
+        "fr": "la conversation de cette demande a disparu pendant l'attente — "
+              "elle est abandonnee",
+        "en": "the conversation this request belonged to disappeared while "
+              "waiting — it is abandoned"},
     "panne.abandon_delai": {
         "fr": "{machines} n'est pas revenue dans le delai prevu — la demande "
               "est abandonnee",
@@ -260,6 +317,35 @@ TEXTES = {
     "panne.echec_inattendu": {
         "fr": "ERREUR inattendue : {quoi}",
         "en": "unexpected ERROR: {quoi}"},
+
+    # LES TROIS AUTRES ARGUMENTS DE echouer(), releves sur le code le
+    # 2 septembre 2026 au soir. Le dictionnaire n'en portait que DEUX sur cinq,
+    # et rien ne le disait : les trois manquantes seraient parties a l'ecran en
+    # francais, sous « ERREUR : » traduit — une demi-phrase anglaise, ce qui se
+    # remarque encore moins qu'une phrase entierement francaise. Le compte des
+    # sites d'appel est desormais mesure dans banc_traductions.py, pour que la
+    # sixieme ne s'ajoute pas en silence.
+    "panne.machine_en_pause": {
+        "fr": "{machines} pourrait faire ce travail, mais elle est en pause "
+              "depuis plus de {minutes} minutes. Reactive-la dans /admin, ou "
+              "demande quelque chose qu'une autre machine sait faire.",
+        "en": "{machines} could do this work, but it has been paused for more "
+              "than {minutes} minutes. Wake it up in /admin, or ask for "
+              "something another machine can do."},
+    "panne.delai_raccourci": {
+        "fr": "le delai d'attente a ete raccourci dans /admin : ta demande a "
+              "ete retiree de l'attente. Relance-la quand la machine sera la.",
+        "en": "the waiting delay was shortened in /admin: your request was "
+              "taken out of the queue. Send it again once the machine is back."},
+    # « {heures} » est un entier deja arrondi au site d'appel : le studio compte
+    # en heures des qu'il s'agit d'une demande armee, et c'est la seule unite ou
+    # « 1 h » et « 20 h » se lisent pareil dans les deux langues.
+    "panne.attente_expiree": {
+        "fr": "{machines} n'est pas revenue en {heures} h : ta demande a ete "
+              "retiree de l'attente. Relance-la quand la machine sera la.",
+        "en": "{machines} did not come back within {heures} h: your request "
+              "was taken out of the queue. Send it again once the machine is "
+              "back."},
 
     # ══ Ce qui COMPTE quelque chose ════════════════════════════════════
     # LA PAGE ECRIVAIT LA REGLE FRANCAISE A CHAQUE ENDROIT : « ${c.tours}
@@ -331,6 +417,32 @@ def T(cle, langue="fr", nombre=None, **valeurs):
         # chose — et dit lequel. Une exception ici ferait disparaitre le
         # message entier.
         return formes
+
+
+def rendre(marque, langue="fr"):
+    """Une MARQUE de panne — {"cle": ..., "valeurs": {...}} — mise en phrase.
+
+    C'EST LA SPECIFICATION DE CE QUE LA PAGE DEVRA FAIRE, et elle est ici pour
+    que le banc puisse l'exercer sans navigateur. Le serveur pose la marque sur
+    la tache (serveur.MARQUE_PANNE) et /api/etat la sert ; la page rend la meme
+    chose, dans la langue de son lecteur, a partir des memes donnees.
+
+    UNE VALEUR PEUT ETRE UNE MARQUE, et c'est le seul cas d'imbrication : le
+    gabarit « ERREUR : {quoi} » de echouer() recoit au site d'appel une PHRASE
+    du dictionnaire, pas une valeur calculee. Sans ce tour, l'anglophone
+    lisait « ERROR: la machine n'est pas revenue a temps » — une demi-phrase
+    traduite, qui se remarque moins qu'une phrase entierement francaise et
+    trompe donc plus longtemps. Une seule profondeur suffit : aucun site
+    d'appel n'en demande deux, et une recursion sans borne sur des donnees
+    servies par HTTP est une porte qu'on n'ouvre pas sans raison.
+    """
+    if not isinstance(marque, dict) or not marque.get("cle"):
+        return ""
+    valeurs = {}
+    for nom, v in (marque.get("valeurs") or {}).items():
+        valeurs[nom] = (T(v["cle"], langue, **(v.get("valeurs") or {}))
+                        if isinstance(v, dict) and v.get("cle") else v)
+    return T(marque["cle"], langue, **valeurs)
 
 
 def textes_de(langue):

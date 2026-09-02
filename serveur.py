@@ -108,6 +108,10 @@ from catalogue import CATALOGUE, POIDS
 import fournisseurs
 import comptes as _comptes
 import aiguilleur as _aiguilleur
+import traductions
+# T() est appele a soixante endroits dans ce fichier : le nom court est ici
+# pour que la ligne de refus tienne sur une ligne et se relise comme avant.
+from traductions import T
 
 # Classifieur d'intention, entraine hors ligne (voir entrainer_aiguilleur.py).
 # None s'il n'a jamais ete construit : le studio fonctionne alors comme avant.
@@ -1250,6 +1254,63 @@ def conv_de(cid, pid):
     COURANTE[pid] = conv["id"]
     return conv
 
+# ══ CE QUE L'UTILISATEUR LIT QUAND UN RENDU ECHOUE ═════════════════════
+# CE N'EST PAS UN MESSAGE D'API, C'EST DU JOURNAL. La page prend la DERNIERE
+# ligne du fil et la met dans la bulle : « if (t.etat === "erreur" && derniere)
+# t.erreur = derniere.msg », web/index.html. Une panne ne parle donc jamais par
+# les refus de routes, elle parle par ici.
+#
+# ET LE JOURNAL NE SE TRADUIT PAS — docs/plusieurs-langues.md le tranche en
+# trois points. Il est ECRIT, garde sur la tache, relu plus tard, souvent par
+# quelqu'un d'autre que celui qui a lance la demande : le traduire pour le
+# lecteur du moment ferait d'un rapport de bogue une piece a re-traduire.
+#
+# LA SORTIE EST DONC UNE CLE A COTE DU TEXTE, ET NON A SA PLACE. La ligne reste
+# francaise pour le studio ; la tache porte en plus « panne », que /api/etat
+# sert telle quelle et que la page met en phrase dans la langue de son lecteur.
+#
+# ══ CE QUE LA PAGE DEVRA LIRE, ET SOUS QUEL NOM ════════════════════════
+# Le patron du depot est MARQUE_DEJA / MARQUE_DEVIS : le serveur pose un champ
+# NOMME, la page lit ce nom, et un banc releve le nom des DEUX cotes pour que
+# le jour ou l'un bouge, il rougisse au lieu de laisser le contrat mentir. La
+# page vient apres ce travail-ci ; voici donc ce qu'elle devra declarer :
+#
+#     const MARQUE_PANNE = "panne";
+#     if (t.etat === "erreur")
+#       t.erreur = rendrePanne(t[MARQUE_PANNE]) || (derniere && derniere.msg);
+#
+# Le champ vaut { "cle": "panne.…", "valeurs": { … } }. Une VALEUR peut etre
+# elle-meme une { cle, valeurs } — un seul gabarit s'en sert, « ERREUR :
+# {quoi} », dont le {quoi} est une phrase du dictionnaire et non une valeur
+# calculee. traductions.rendre() est cette lecture, ecrite en Python : c'est la
+# specification que la page doit suivre, et le banc l'exerce.
+#
+# LE REPLI EST LA LIGNE DE JOURNAL, et il est obligatoire : trois arguments de
+# echouer() sur cinq n'avaient pas de cle le 2 septembre, et une page qui
+# n'aurait su lire que la marque aurait affiche du VIDE la ou il y avait une
+# phrase. Un studio qui repond en francais est genant, un studio qui ne repond
+# rien est casse.
+MARQUE_PANNE = "panne"
+
+
+def panne_de(cle, **valeurs):
+    """Le CONTENU du champ : la cle du dictionnaire, et ses valeurs.
+
+    Sert seul quand la marque en imbrique une autre — echouer() pose ici la
+    phrase que « ERREUR : {quoi} » attend.
+    """
+    return {"cle": cle, "valeurs": valeurs}
+
+
+def marque_panne(cle, **valeurs):
+    """Le champ tout fait, a verser dans journal() : « **marque_panne(…) ».
+
+    Un dictionnaire et non un mot-clef nomme en dur : c'est MARQUE_PANNE qui
+    porte le nom, une seule fois, la ou le banc va le chercher.
+    """
+    return {MARQUE_PANNE: panne_de(cle, **valeurs)}
+
+
 def journal(tid, msg, **extra):
     """Une ligne dans le fil d'une demande, et dans le journal du studio.
 
@@ -1663,6 +1724,19 @@ class MachineEnPause(Exception):
                 f"/admin, ou demande quelque chose qu'une autre machine sait "
                 f"faire.")
 
+    @property
+    def marque(self):
+        """La meme phrase, en cle et valeurs, pour la page.
+
+        A COTE DE « refus » ET NON A SA PLACE : la phrase francaise part au
+        journal du studio et sur le tour ecrit, la cle part a l'ecran. Les deux
+        se lisent ensemble et doivent dire la meme chose — banc_traductions.py
+        rend le dictionnaire en francais et le compare a la phrase.
+        """
+        return panne_de("panne.machine_en_pause",
+                        machines=" et ".join(self.titres),
+                        minutes=PREFERENCES["pause_propose"])
+
 
 async def patienter_pause(cle, tid):
     """Attend qu'une machine en pause revienne, si l'attente a un sens.
@@ -1710,20 +1784,34 @@ async def patienter_pause(cle, tid):
             raise MachineEnPause(cle, restantes)
 
 
-def echouer(tid, quoi):
+def echouer(tid, quoi, panne=None):
     """Termine une demande en erreur, le tour de la conversation compris.
 
     Le « except Exception » d'executer() le fait deja pour ce qui casse pendant
     le travail. Une demande armee, elle, n'est plus dans aucun executer quand
     son attente expire : sans cette fonction elle serait restee « en cours »
     pour toujours dans la conversation, ce qui est la pire des trois fins.
+
+    « panne » EST LA CLE DE « quoi », pas celle de la ligne entiere. C'est
+    cette fonction-ci qui ecrit la DERNIERE ligne du journal des cinq chemins
+    qui l'appellent — donc celle que la page affiche —, et sa phrase se compose
+    de deux morceaux qui ne se traduisent pas pareil : « ERREUR : » est un
+    gabarit, « quoi » est ce que le site d'appel a ecrit. Passer les deux
+    ensemble ferait « ERROR: la machine n'est pas revenue a temps ».
+
+    Sans « panne », « quoi » part tel quel dans la marque : c'est le cas des
+    exceptions Python, dont le texte est technique et n'a pas de traduction.
+    Le tour ecrit sur le disque, lui, garde la phrase FRANCAISE dans les deux
+    cas — il est relu par le studio, pas par la page.
     """
     t = TACHES.get(tid) or {}
     conv = CONVERSATIONS.get(t.get("conversation"))
     if conv:
         enregistrer_tour(conv, tid, t.get("demande", ""), {}, None, None, [],
                          "erreur", quoi)
-    journal(tid, f"ERREUR : {quoi}", etat="erreur")
+    journal(tid, f"ERREUR : {quoi}", etat="erreur",
+            **marque_panne("panne.echec",
+                           quoi=panne if panne is not None else quoi))
 
 
 def armer(tid, e):
@@ -1754,8 +1842,11 @@ def armer(tid, e):
     if reste <= 0:
         ARMEES.pop(tid, None)
         journal(tid, f"{' et '.join(e.titres)} n'est pas revenue dans le delai "
-                     f"prevu — la demande est abandonnee", etat="erreur")
-        echouer(tid, "la machine n'est pas revenue a temps")
+                     f"prevu — la demande est abandonnee", etat="erreur",
+                **marque_panne("panne.abandon_delai",
+                               machines=" et ".join(e.titres)))
+        echouer(tid, "la machine n'est pas revenue a temps",
+                panne_de("panne.machine_pas_revenue"))
         EN_FILE.pop(tid, None)
         sauver_file()
         return
@@ -1795,8 +1886,10 @@ async def _relancer_armee(tid, msg):
         # au demarrage suivant reprendre_file() la comptait perdue puis
         # deplaçait TOUT le fichier en .perdu.
         journal(tid, "la conversation de cette demande a disparu pendant "
-                     "l'attente — elle est abandonnee", etat="erreur")
-        echouer(tid, "conversation fermee pendant l'attente")
+                     "l'attente — elle est abandonnee", etat="erreur",
+                **marque_panne("panne.conversation_disparue"))
+        echouer(tid, "conversation fermee pendant l'attente",
+                panne_de("panne.conversation_fermee"))
         EN_FILE.pop(tid, None)
         sauver_file()
         return False
@@ -1906,12 +1999,16 @@ async def expirer_armees():
         if a.get("raccourcie"):
             echouer(tid, "le delai d'attente a ete raccourci dans /admin : ta "
                          "demande a ete retiree de l'attente. Relance-la quand "
-                         "la machine sera la.")
+                         "la machine sera la.",
+                    panne_de("panne.delai_raccourci"))
             continue
         heures = max(1, round((a.get("jusqua", 0) - a.get("depuis", 0)) / 3600))
-        echouer(tid, f"{' et '.join(a.get('titres') or ['la machine'])} n'est "
-                     f"pas revenue en {heures} h : ta demande a ete retiree de "
-                     f"l'attente. Relance-la quand la machine sera la.")
+        machines_ = " et ".join(a.get("titres") or ["la machine"])
+        echouer(tid, f"{machines_} n'est pas revenue en {heures} h : ta "
+                     f"demande a ete retiree de l'attente. Relance-la quand la "
+                     f"machine sera la.",
+                panne_de("panne.attente_expiree", machines=machines_,
+                         heures=heures))
 
 
 # Ce qu'on a mesure, par (machine, moteur, taille). Reconstruit depuis les
@@ -7311,24 +7408,33 @@ async def api_intentions(_):
 async def api_avis(req):
     """Pouce en l'air, pouce en bas, et un mot si l'on veut."""
     pid = qui(req)
+    # LU PAR UN HUMAIN, DONC TRADUIT. « corps illisible » sert dix-huit routes
+    # et trois publics — celui-ci, l'administrateur, et les agents des machines
+    # a carte. Seul le premier lit une interface : les deux autres lisent des
+    # journaux, et une phrase traduite selon l'en-tete du navigateur d'un agent
+    # n'aiderait personne a rien.
+    lg = langue_de(req)
     try:
         d = await req.json()
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
     tid = str(d.get("tid") or "")
     try:
         avis = int(d.get("avis", 0))
     except (TypeError, ValueError):
         avis = 0
     if avis not in (-1, 0, 1):
-        return web.json_response({"erreur": "avis attendu : -1, 0 ou 1"}, status=400)
+        return web.json_response({"erreur": T("erreur.avis_attendu", lg)},
+                                 status=400)
     note = str(d.get("note") or "")[:2000]
     # « C'etait plutot quoi ? » — la reponse a la seule question qui rende un
     # pouce en bas utile. Refusee si l'aiguilleur ne connait pas cette classe :
     # on n'ecrit pas sur un tour une etiquette qu'il ne saura jamais apprendre.
     voulue = str(d.get("intention") or "")
     if voulue and voulue not in INTENTIONS_LISIBLES:
-        return web.json_response({"erreur": "intention inconnue"}, status=400)
+        return web.json_response({"erreur": T("erreur.intention_inconnue", lg)},
+                                 status=400)
     for conv in mes_conversations(pid):
         for tour in conv.get("tours", []):
             if tour.get("id") == tid:
@@ -7352,7 +7458,8 @@ async def api_avis(req):
                 if avis:
                     noter_avis(pid, conv, tour, avis, note)
                 return web.json_response({"ok": True, "avis": avis})
-    return web.json_response({"erreur": "echange inconnu"}, status=404)
+    return web.json_response({"erreur": T("erreur.echange_inconnu", lg)},
+                             status=404)
 
 
 def raison_du_local(texte, image_b64=None, pid=None):
@@ -7523,18 +7630,26 @@ def _freinage(cle):
 
 async def api_entrer(req):
     """Ouvre une session. Le mot de passe ne transite qu'ici, et n'est pas garde."""
+    # LA SEULE ROUTE OU LA LANGUE VIENT FORCEMENT DE L'EN-TETE au premier
+    # essai : celui qui se trompe de mot de passe n'a encore rien choisi dans
+    # aucun menu, et c'est precisement l'ecran ou une phrase incomprise coute
+    # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.
+    lg = langue_de(req)
     try:
         d = await req.json()
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
     if not origine_sure(req):
-        return web.json_response({"erreur": "origine refusee"}, status=403)
+        return web.json_response({"erreur": T("erreur.origine_refusee", lg)},
+                                 status=403)
     hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
     cle_freinage = (str(d.get("nom") or "").lower(), hote)
     reste = _freinage(cle_freinage)
     if reste > 0:
         return web.json_response(
-            {"erreur": f"trop d'essais — reessaie dans {reste:.0f} s"}, status=429)
+            {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},
+            status=429)
 
     c = COMPTES.authentifier(d.get("nom"), d.get("mdp"))
     if not c:
@@ -7547,8 +7662,8 @@ async def api_entrer(req):
                   f"depuis {hote or 'origine inconnue'}", flush=True)
         # Un seul message pour « compte inconnu » et « mauvais mot de passe » :
         # les distinguer publierait la liste des comptes.
-        return web.json_response({"erreur": "nom ou mot de passe incorrect"},
-                                 status=403)
+        return web.json_response(
+            {"erreur": T("erreur.identifiants_faux", lg)}, status=403)
 
     _ECHECS.pop(cle_freinage, None)
 
@@ -9408,7 +9523,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         enregistrer_tour(conv, tid, texte, locals().get("plan") or {},
                          (locals().get("plan") or {}).get("intention"),
                          (locals().get("plan") or {}).get("modele"), [], "erreur", str(e))
-        journal(tid, f"ERREUR : {e}", etat="erreur")
+        # str(e) TEL QUEL DANS LA MARQUE, et c'est voulu : le gabarit
+        # « ERREUR : {quoi} » se traduit, le texte de l'exception non. Une
+        # KeyError s'ecrit pareil dans toutes les langues, et la reecrire
+        # serait inventer un diagnostic.
+        journal(tid, f"ERREUR : {e}", etat="erreur",
+                **marque_panne("panne.echec", quoi=str(e)))
 
 # ══════════════════════════════ routes ═════════════════════════════════
 @web.middleware
@@ -9449,6 +9569,36 @@ def qui(req):
     return req["pid"]
 
 
+# Le cookie du CHOIX de langue. La meme forme que les trois autres du depot —
+# « studio », « studio_compte », « studio_admin » — pour qu'il se lise, se
+# purge et se documente avec eux.
+COOKIE_LANGUE = "studio_langue"
+
+# Dix ans, comme « studio » : un choix de langue ne se perime pas. Le cookie de
+# session, lui, expire — c'est une autorisation, pas une preference.
+DUREE_LANGUE = 10 * 365 * 24 * 3600
+
+
+def langue_de(req):
+    """La langue a servir a CETTE requete.
+
+    L'EN-TETE NE SERT QUE DE PREMIERE VALEUR, jamais de decision, et c'est la
+    seule chose que cette fonction ajoute a traductions.langue_choisie() : elle
+    lui donne le cookie EN PREMIER. « Accept-Language » dit la langue du
+    NAVIGATEUR, pas celle de la personne — un francophone sur un Windows
+    anglais serait servi en anglais pour toujours, sans jamais comprendre
+    pourquoi ni pouvoir en sortir. Des qu'il choisit dans le menu, le cookie
+    porte le choix et l'en-tete n'est plus lu.
+
+    docs/plusieurs-langues.md tranche le meme point une seconde fois pour
+    l'AIGUILLAGE, et dans l'autre sens : la langue des menus et la langue de la
+    demande sont deux questions, et l'en-tete ne repond ni a l'une ni a
+    l'autre. Ici il repond a moitie, et seulement au premier chargement.
+    """
+    return traductions.langue_choisie(req.cookies.get(COOKIE_LANGUE) or "",
+                                      req.headers.get("Accept-Language") or "")
+
+
 def local(req):
     hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
     return hote in ADRESSES_MACHINE
@@ -9463,6 +9613,58 @@ async def page(req):
     if local(req) and _PID.fullmatch(req.cookies.get("studio") or ""):
         adopter(qui(req))
     return web.FileResponse(os.path.join(ICI, "web", "index.html"))
+
+
+async def api_textes(req):
+    """Les textes de l'interface, dans la langue du lecteur. Et son choix.
+
+    POURQUOI UNE ROUTE, ET NON UN GABARIT. La page est servie en FileResponse
+    juste au-dessus : c'est un fichier statique, personne ne le rend, et il n'y
+    a donc aucun endroit ou glisser un dictionnaire au moment du service. La
+    page demande ses textes. C'est un aller-retour de plus au chargement, et
+    c'est le prix de garder web/index.html ouvrable a la main dans un
+    navigateur, ce que tout le depot suppose — banc_page.py le lit comme un
+    fichier, recette_chemin_page.py ouvre l'adresse.
+
+    ELLE EST OUVERTE MEME SANS COMPTE, et c'est le point delicat : en
+    STUDIO_AUTH=obligatoire, exiger_compte ferme tout sauf « / » et les routes
+    de session, parce que sans elles on ne pourrait jamais se connecter. Le
+    formulaire de connexion est du texte d'interface comme le reste ; fermer
+    cette route-ci laisserait l'ecran de connexion — et le refus « connexion
+    requise » lui-meme — en francais pour toujours, c'est-a-dire exactement
+    pour le seul visiteur a qui le studio n'a encore rien montre d'autre.
+
+    GET rend les textes. POST rend les MEMES textes et pose le cookie : deux
+    methodes sur un seul gestionnaire, comme /api/admin/reglages et /api/nuage.
+    Le choix passe par POST et non par GET parce que c'est une ecriture — le
+    garde-fou d'origine (origine_sure) ne s'applique qu'aux methodes qui
+    ecrivent, et un GET qui pose un cookie passerait a cote.
+    """
+    voulue = ""
+    if req.method == "POST":
+        try:
+            voulue = str((await req.json()).get("langue") or "")
+        except Exception:
+            # PAS DE 400 ICI. Un corps illisible sur cette route-ci ne demande
+            # rien d'autre que les textes, et refuser laisserait la page sans
+            # un mot pour dire pourquoi — y compris sans le mot « refus ». On
+            # sert la langue d'avant, ce qui est la reponse la moins fausse.
+            voulue = ""
+    # LE COOKIE N'EST POSE QUE POUR UNE LANGUE SERVIE. « studio_langue=xx »
+    # fabrique a la main ferait sinon retomber langue_choisie() sur l'en-tete a
+    # chaque requete, et le menu paraitrait ne rien retenir.
+    pose = voulue if voulue in traductions.LANGUES else ""
+    lg = pose or langue_de(req)
+    rep_ = web.json_response({"langue": lg, "langues": list(traductions.LANGUES),
+                              "textes": traductions.textes_de(lg)})
+    if pose:
+        # httponly : la page ne lit jamais ce cookie, elle lit « langue »
+        # ci-dessus. Un cookie que le script n'a pas besoin de voir n'a aucune
+        # raison de lui etre montre — c'est la regle des trois autres.
+        rep_.set_cookie(COOKIE_LANGUE, pose, max_age=DUREE_LANGUE,
+                        httponly=True, samesite="Lax", path="/")
+    return rep_
+
 
 async def api_modeles(_):
     """Les moteurs locaux, puis ceux qu'une cle rend joignables.
@@ -9501,17 +9703,26 @@ def famille_du_fichier(nom):
     return ""
 
 async def api_televerser(req):
+    lg = langue_de(req)
     lecteur = await req.multipart()
     champ = await lecteur.next()
     if champ is None or not getattr(champ, "filename", None):
-        return web.json_response({"erreur": "aucun fichier recu"}, status=400)
+        return web.json_response({"erreur": T("erreur.aucun_fichier", lg)},
+                                 status=400)
     ext = os.path.splitext(champ.filename)[1].lower()
     famille = famille_du_fichier(champ.filename)
     if not famille:
         acceptes = ", ".join(sorted(e for x, _ in FAMILLES.values() for e in x))
+        # « sans extension » EST DU TEXTE, PAS UNE VALEUR. Il se pose dans
+        # « {extension} » quand le fichier n'en a pas, et le laisser en dur
+        # ferait « unsupported format (sans extension) » — deux mots francais
+        # au milieu d'une phrase anglaise, ce qui a l'air d'une faute de
+        # frappe et non d'une traduction oubliee. Meme raison que famille.*
+        # deux lignes plus bas.
         return web.json_response(
-            {"erreur": f"format non pris en charge ({ext or 'sans extension'}). "
-                       f"Acceptes : {acceptes}"}, status=400)
+            {"erreur": T("erreur.format_refuse", lg, acceptes=acceptes,
+                         extension=ext or T("erreur.sans_extension", lg))},
+            status=400)
     plafond = FAMILLES[famille][1]
     os.makedirs(DOSSIER_ENTREE, exist_ok=True)
     nom = f"studio_{uuid.uuid4().hex[:10]}{ext}"
@@ -9527,13 +9738,20 @@ async def api_televerser(req):
             if taille > plafond:
                 f.close()
                 os.remove(chemin)
+                # « famille » EST UN IDENTIFIANT INTERNE — image, video,
+                # audio — et il traversait la phrase tel quel. Traduit par
+                # famille.*, sinon l'anglais lisait « file too heavy: video
+                # limited to 512 MB » avec un mot francais au hasard le jour
+                # ou l'un d'eux changera de nom.
                 return web.json_response(
-                    {"erreur": f"fichier trop lourd : {famille} limite a "
-                               f"{plafond // 1024 ** 2} Mo"}, status=413)
+                    {"erreur": T("erreur.fichier_trop_lourd", lg,
+                                 famille=T("famille." + famille, lg),
+                                 mega=plafond // 1024 ** 2)}, status=413)
             f.write(bloc)
     if taille == 0:
         os.remove(chemin)
-        return web.json_response({"erreur": "fichier vide"}, status=400)
+        return web.json_response({"erreur": T("erreur.fichier_vide", lg)},
+                                 status=400)
     ENTREES[nom] = qui(req)
     purger_entrees(pid=qui(req))
     sauver_entrees()
@@ -9640,7 +9858,9 @@ async def travailleur():
                 # « interrompue » et la page relirait pour rien : un champ qui
                 # survit a ce qu'il annonce est exactement le defaut que la
                 # marque remplace.
-                journal(tid, "interrompue", etat="erreur", arret_differe=False)
+                journal(tid, "interrompue", etat="erreur",
+                        arret_differe=False,
+                        **marque_panne("panne.interrompue"))
             if ARRET:
                 # On relaie : sans ce « raise », le travailleur avalait son
                 # propre arret et repartait attendre a la porte. Le « finally »
@@ -9658,9 +9878,10 @@ async def travailleur():
             if fini_pour_de_bon:
                 # Reglage a zero, ou demande deja retiree pendant l'analyse : le
                 # refus d'avant reste le bon message dans ces deux cas-la.
-                echouer(tid, e.refus)
+                echouer(tid, e.refus, e.marque)
         except Exception as e:                       # filet : la file ne doit jamais mourir
-            journal(tid, f"ERREUR inattendue : {e}", etat="erreur")
+            journal(tid, f"ERREUR inattendue : {e}", etat="erreur",
+                    **marque_panne("panne.echec_inattendu", quoi=str(e)))
             fini_pour_de_bon = True
         finally:
             EN_VOL.pop(tid, None)
@@ -9683,16 +9904,19 @@ async def api_reprendre(req):
     de propriete — fonctionne sans rien savoir de son passe.
     """
     pid = qui(req)
+    lg = langue_de(req)
     try:
         d = await req.json()
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
     nom = d.get("filename") or ""
     sous = d.get("subfolder") or ""
     ident = d.get("noeud") or noeud_local()["id"]
     # La meme autorisation que pour l'affichage : ni plus, ni moins.
     if noeud(ident) is None or (ident, sous, nom) not in mes_fichiers(pid):
-        return web.json_response({"erreur": "inconnu"}, status=404)
+        return web.json_response({"erreur": T("erreur.fichier_introuvable", lg)},
+                                 status=404)
     try:
         copie = await recuperer_sortie({"filename": nom, "subfolder": sous,
                                         "noeud": ident}, pid)
@@ -9714,11 +9938,14 @@ async def api_reprendre(req):
         # plus tard, « PC (RTX 2080 Ti) » si.
         journal(None, f"reprise impossible ({ident}/{sous}/{nom}) : "
                       f"{type(e).__name__}: {e}")
+        # LE TITRE RESTE DANS LA PHRASE, dans les deux langues : c'est la
+        # seule chose sur laquelle l'utilisateur puisse agir — rallumer le NAS,
+        # reprendre une autre sortie. Un nom propre ne se traduit pas, il se
+        # PLACE, et l'anglais ne le met pas au meme endroit : c'est pour cela
+        # que la phrase entiere est au dictionnaire et non recollee ici.
         return web.json_response(
-            {"erreur": f"{(noeud(ident) or {}).get('titre', ident)} n'a pas "
-                       "rendu ce fichier : il a peut-etre ete efface, ou la "
-                       "machine ne repond plus. Reprends une autre sortie, ou "
-                       "reessaie plus tard."},
+            {"erreur": T("erreur.reprise_impossible", lg,
+                         titre=(noeud(ident) or {}).get("titre", ident))},
             status=502)
     return web.json_response({"image": copie})
 
@@ -9740,22 +9967,31 @@ async def api_au_propre(req):
     l'inverse a ete ecrit ici pendant une heure.
     """
     pid = qui(req)
+    lg = langue_de(req)
     try:
         d = await req.json()
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
     # ouvrable() et non une formule recopiee : « a moi ET pas fermee ». La
     # version d'avant acceptait une conversation FERMEE — un second onglet reste
     # dessus relançait un rendu de plusieurs minutes vers une image que
     # purger_fermees() effacerait le lendemain — et une conversation orpheline,
     # que api_conversation refuse pourtant de laisser lire.
+    # UNE SEULE CLE POUR LES DEUX REFUS, comme c'est un seul mot en francais.
+    # « Distinguer pas a toi de pas fini renseignerait un curieux » : le
+    # dictionnaire portait pourtant deux traductions, « unknown conversation »
+    # et « unknown turn », qui rendaient a l'anglais l'aveu que le francais
+    # refuse. Voir erreur.introuvable, traductions.py.
     conv = CONVERSATIONS.get(d.get("conversation") or "")
     if not ouvrable(conv, pid):
-        return web.json_response({"erreur": "inconnue"}, status=404)
+        return web.json_response({"erreur": T("erreur.introuvable", lg)},
+                                 status=404)
     tour = next((t for t in conv.get("tours", [])
                  if t.get("id") == d.get("tour")), None)
     if not tour:
-        return web.json_response({"erreur": "inconnue"}, status=404)
+        return web.json_response({"erreur": T("erreur.introuvable", lg)},
+                                 status=404)
     if tour.get("au_propre"):
         # LA MARQUE, ET NON LA PHRASE. La page retire le bouton et pose une
         # coche verte « deja refait en soigne » sur CE refus-ci et sur aucun
@@ -9771,8 +10007,14 @@ async def api_au_propre(req):
         # Un champ ne se reformule pas et ne s'accentue pas. banc_refaire.py
         # releve son nom DANS LA PAGE et exige les deux moities du contrat : que
         # ce refus-ci le porte, et qu'aucun autre refus de la route ne le porte.
+        # LE CHAMP RESTE HORS DE LA TRADUCTION, et c'est tout l'interet
+        # d'avoir un champ : « deja » est un nom que la page compare, pas une
+        # phrase qu'elle lit. Traduire la phrase ne le touche pas — et si le
+        # contrat avait ete laisse sur le TEXTE, comme il l'etait le matin
+        # meme, cette traduction-ci l'aurait casse en silence pour tout
+        # lecteur anglais.
         return web.json_response(
-            {"erreur": "cette esquisse a deja ete passee au propre",
+            {"erreur": T("erreur.deja_au_propre", lg),
              "deja": True}, status=409)
     # UNE ESQUISSE RENDUE AU LOIN N'A PAS DE VERSION SOIGNEE, et c'est le
     # premier controle : la vraie raison du refus prime sur les deux qui
@@ -9818,10 +10060,8 @@ async def api_au_propre(req):
     rendu_par = tour.get("modele")
     if rendu_par in MOTEURS_DISTANTS:
         return web.json_response(
-            {"erreur": f"cette esquisse a ete rendue par "
-                       f"{MOTEURS_DISTANTS[rendu_par]['titre']} : « en soigne » "
-                       f"n'y veut rien dire, il n'a ni graine ni etapes a "
-                       f"reprendre. Relance la demande pour repartir chez lui."},
+            {"erreur": T("erreur.au_propre_distant", lg,
+                         titre=MOTEURS_DISTANTS[rendu_par]["titre"])},
             status=400)
     # LE PLAN DU TOUR, comme api_refaire — et sans repli, lui : ce bouton n'a
     # jamais existe que pour les esquisses, et une esquisse rendue a la maison a
@@ -9832,13 +10072,12 @@ async def api_au_propre(req):
     plan_ = tour.get("plan")
     if not tour.get("esquisse") or not isinstance(plan_, dict):
         return web.json_response(
-            {"erreur": "ce tour n'est pas une esquisse qu'on sache refaire"},
-            status=400)
+            {"erreur": T("erreur.pas_une_esquisse", lg)}, status=400)
     # 409 ET IL LE RESTE : celui-la se leve tout seul des que l'esquisse finit,
     # c'est-a-dire en une minute. « Rejoue-le » est vrai (regle des deux boutons).
     if tour.get("etat") != "fini":
         return web.json_response(
-            {"erreur": "l'esquisse n'est pas terminee"}, status=409)
+            {"erreur": T("erreur.esquisse_pas_finie", lg)}, status=409)
     # LE MEME CONTROLE QU'AU-DESSOUS DANS api_refaire, et pour la meme raison :
     # ce plan a ete ecrit avant, le catalogue a pu changer depuis, et sans cette
     # garde le KeyError remonte jusqu'au « except Exception » d'executer —
@@ -9851,9 +10090,8 @@ async def api_au_propre(req):
     moteur_ = plan_.get("modele")
     if moteur_ not in CATALOGUE and moteur_ not in MOTEURS_DISTANTS:
         return web.json_response(
-            {"erreur": f"le moteur de cette esquisse ({moteur_}) n'est plus au "
-                       f"catalogue : relance la demande pour en choisir un autre"},
-            status=400)
+            {"erreur": T("erreur.moteur_esquisse_hors_catalogue", lg,
+                         moteur=moteur_)}, status=400)
     plan = dict(plan_)
     # Les etapes se recalculent depuis la proposition BRUTE du modele : c'est
     # exactement ce que la demande aurait donne sans le cran « brouillon ».
@@ -9922,17 +10160,23 @@ async def api_refaire(req):
     plus de carte.
     """
     pid = qui(req)
+    lg = langue_de(req)
     try:
         d = await req.json()
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
+    # Les deux memes refus qu'api_au_propre, sous la meme cle et pour la meme
+    # raison : ils disent le meme mot exprès.
     conv = CONVERSATIONS.get(d.get("conversation") or "")
     if not ouvrable(conv, pid):
-        return web.json_response({"erreur": "inconnue"}, status=404)
+        return web.json_response({"erreur": T("erreur.introuvable", lg)},
+                                 status=404)
     tour = next((t for t in conv.get("tours", [])
                  if t.get("id") == d.get("tour")), None)
     if not tour:
-        return web.json_response({"erreur": "inconnue"}, status=404)
+        return web.json_response({"erreur": T("erreur.introuvable", lg)},
+                                 status=404)
     if tour.get("refait"):
         # MEME GARDE QUE au_propre, ET MEME 409 : c'est un vrai conflit de
         # concurrence, l'onglet voisin est passe avant nous. Sans elle, deux
@@ -9946,11 +10190,11 @@ async def api_refaire(req):
         # particulier. Poser le champ quand meme, ce serait une regle qui dort
         # — et une regle qui dort finit par etre lue de travers.
         return web.json_response(
-            {"erreur": "ce tour a deja ete refait"}, status=409)
+            {"erreur": T("erreur.deja_refait", lg)}, status=409)
     # 409 lui aussi, et pour la meme raison qu'au propre : il se leve tout seul
     # quand le rendu finit.
     if tour.get("etat") != "fini":
-        return web.json_response({"erreur": "ce tour n'est pas termine"},
+        return web.json_response({"erreur": T("erreur.tour_pas_termine", lg)},
                                  status=409)
     # LE PLAN DU TOUR, ET RIEN D'AUTRE — c'est le chemin normal depuis le
     # 2 septembre 2026. enregistrer_tour ecrit le plan sur TOUS les tours ; il
@@ -10042,8 +10286,7 @@ async def api_refaire(req):
         # prompt : il n'y a rien a refaire sans repasser par l'analyse, et
         # repasser par l'analyse, c'est une autre demande.
         return web.json_response(
-            {"erreur": "ce tour n'a pas de prompt qu'on sache reprendre"},
-            status=400)
+            {"erreur": T("erreur.pas_de_prompt", lg)}, status=400)
     # LE MEME CONTROLE QUE api_generer ET api_conv_reglages. Le plan vient d'un
     # tour ecrit il y a peut-etre des semaines, et le catalogue, lui, bouge : un
     # moteur retire n'existe plus quand on reclique. Sans cette garde, le
@@ -10064,14 +10307,12 @@ async def api_refaire(req):
     moteur_ = plan.get("modele")
     if moteur_ in MOTEURS_DISTANTS:
         return web.json_response(
-            {"erreur": f"ce rendu a ete confie a {MOTEURS_DISTANTS[moteur_]['titre']} : "
-                       f"« refaire sur la grosse carte » demande une carte de la "
-                       f"maison. Relance la demande pour repartir chez lui."},
+            {"erreur": T("erreur.refaire_distant", lg,
+                         titre=MOTEURS_DISTANTS[moteur_]["titre"])},
             status=400)
     if moteur_ not in CATALOGUE:
         return web.json_response(
-            {"erreur": f"le moteur de ce tour ({moteur_}) n'est plus au "
-                       f"catalogue : relance la demande pour en choisir un autre"},
+            {"erreur": T("erreur.moteur_hors_catalogue", lg, moteur=moteur_)},
             status=400)
     plan.pop("graine", None)
     # CE GESTE NE PART PAS AU LOIN, et c'est ce que son libelle dit deja :
@@ -10196,21 +10437,28 @@ async def api_variante_choisir(req):
     jamais eu besoin de cette route — il vise le tour sur lequel on clique.
     """
     pid = qui(req)
+    lg = langue_de(req)
     try:
         d = await req.json()
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
     # ouvrable() et non une formule recopiee, comme api_au_propre : « a moi ET
     # pas fermee ». Une conversation fermee ou orpheline ne se modifie pas.
     conv = CONVERSATIONS.get(d.get("conversation") or "")
     if not ouvrable(conv, pid):
-        return web.json_response({"erreur": "inconnue"}, status=404)
+        return web.json_response({"erreur": T("erreur.introuvable", lg)},
+                                 status=404)
     tour = next((t for t in conv.get("tours", [])
                  if t.get("id") == d.get("tour")), None)
     if not tour or tour.get("etat") != "fini" or not tour.get("fichiers"):
         # 404 et non 400 : un tour qui n'a rien produit n'est rien a designer,
         # et distinguer « pas a toi » de « pas fini » renseignerait un curieux.
-        return web.json_response({"erreur": "inconnue"}, status=404)
+        # C'EST CE COMMENTAIRE-CI qui a fait fondre les deux cles du
+        # dictionnaire en une : la meme cle aux deux endroits, sans quoi la
+        # traduction rendrait la distinction que ce 404 refuse de faire.
+        return web.json_response({"erreur": T("erreur.introuvable", lg)},
+                                 status=404)
     f = tour["fichiers"][0]
     conv["derniere_sortie"] = {"noeud": f.get("noeud"), "filename": f["filename"],
                                "subfolder": f.get("subfolder", "")}
@@ -10234,14 +10482,17 @@ async def api_variante_choisir(req):
 
 
 async def api_generer(req):
+    lg = langue_de(req)
     try:
         d = await req.json()
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
     texte = (d.get("texte") or "").strip()
     image = d.get("image")
     if not texte and not image:
-        return web.json_response({"erreur": "demande vide"}, status=400)
+        return web.json_response({"erreur": T("erreur.demande_vide", lg)},
+                                 status=400)
     pid = qui(req)
     # La conversation d'abord : c'est elle qui porte les reglages, et une
     # demande qui n'en parle pas herite des siens. Mais on FUSIONNE sans ecrire
@@ -10271,17 +10522,19 @@ async def api_generer(req):
     reglages = poser_reglages(conv, d, ecrire=False)
     taille = reglages.get("taille") or None
     if taille and taille not in TAILLES:
-        return web.json_response({"erreur": "taille non prise en charge"}, status=400)
+        return web.json_response({"erreur": T("erreur.taille_non_prise", lg)},
+                                 status=400)
     modele = reglages.get("modele") or None
     if modele and modele not in CATALOGUE and modele not in MOTEURS_DISTANTS:
-        return web.json_response({"erreur": "moteur inconnu"}, status=400)
+        return web.json_response({"erreur": T("erreur.moteur_inconnu", lg)},
+                                 status=400)
     if modele in MOTEURS_DISTANTS and not moteur_distant_pret(modele):
         return web.json_response(
-            {"erreur": "ce moteur demande une cle d API, a poser dans /admin"},
-            status=400)
+            {"erreur": T("erreur.moteur_sans_cle", lg)}, status=400)
     priorite = reglages.get("priorite") or ""
     if priorite not in PRIORITES:
-        return web.json_response({"erreur": "priorite inconnue"}, status=400)
+        return web.json_response({"erreur": T("erreur.priorite_inconnue", lg)},
+                                 status=400)
     # « variantes » NE PASSE PAS PAR poser_reglages, et c'est delibere : comme le
     # brouillon, c'est un geste et non un reglage. Le retenir sur la conversation
     # ferait partir en quatre exemplaires les cinq demandes suivantes — quatre
@@ -10291,20 +10544,23 @@ async def api_generer(req):
     try:
         variantes = int(d.get("variantes") or 1)
     except (TypeError, ValueError):
-        return web.json_response({"erreur": "nombre de variantes illisible"},
+        return web.json_response({"erreur": T("erreur.variantes_illisible", lg)},
                                  status=400)
     if not 1 <= variantes <= VARIANTES_MAX:
         return web.json_response(
-            {"erreur": f"de 1 a {VARIANTES_MAX} variantes"}, status=400)
+            {"erreur": T("erreur.variantes_bornes", lg, plafond=VARIANTES_MAX)},
+            status=400)
     machine = reglages.get("noeud") or None
     if machine and noeud(machine) is None:
-        return web.json_response({"erreur": "machine inconnue"}, status=400)
+        return web.json_response({"erreur": T("erreur.machine_inconnue", lg)},
+                                 status=400)
     # Une image appartient a celui qui l'a televersee. Deux pieges ici :
     # « != pid » et non « not in (None, pid) » — un nom absent du registre valait
     # laissez-passer ; et le nom doit rester un NOM, pas un chemin : « ../output/
     # studio/…png » sortait de ComfyUI/input et faisait decrire l'image d'un autre.
     if image and (os.path.basename(image) != image or ENTREES.get(image) != pid):
-        return web.json_response({"erreur": "image inconnue"}, status=404)
+        return web.json_response({"erreur": T("erreur.image_inconnue", lg)},
+                                 status=404)
     # Tout est valide : maintenant seulement, la conversation retient.
     poser_reglages(conv, d)
     tid = uuid.uuid4().hex
@@ -10511,7 +10767,8 @@ async def api_file_annuler(req):
         if conv:
             enregistrer_tour(conv, tid, t.get("demande", ""), {}, None, None, [],
                              "erreur", "retiree de la file")
-        journal(tid, "retiree de la file", etat="erreur")
+        journal(tid, "retiree de la file", etat="erreur",
+                **marque_panne("panne.retiree_de_la_file"))
         return web.json_response({"ok": True, "quoi": "retiree"})
 
     if tid in EN_VOL:
@@ -10545,9 +10802,20 @@ async def api_file_annuler(req):
             # exiger les deux moities. Il dit « ce que tu lis est une promesse,
             # une ligne viendra la confirmer », et rien d'autre : c'est tout ce
             # qu'on sait a cette seconde.
-            journal(tid, f"arret demande a {(noeud(ident) or {}).get('titre', ident)}"
+            #
+            # ET LA CLE DE PANNE, bien que cette ligne-ci ne porte pas
+            # « etat="erreur" » : c'est la branche du dessus qui pose l'etat
+            # (« TACHES…update(etat="erreur") », travailleur), sans ecrire de
+            # ligne. Celle-ci est donc la DERNIERE du fil, c'est-a-dire celle
+            # que la page affiche. Chercher les cles sur le seul motif
+            # « etat="erreur" » aurait laisse ce cas-la en francais — et c'est
+            # le cas le plus lu des dix, puisqu'il suit chaque clic sur
+            # « retirer ».
+            titre_ = (noeud(ident) or {}).get("titre", ident)
+            journal(tid, f"arret demande a {titre_}"
                          f" — sa carte s'arrete des qu'elle nous rappelle",
-                    arret_differe=True)
+                    arret_differe=True,
+                    **marque_panne("panne.arret_demande", machine=titre_))
         else:
             # Une carte joignable s'arrete tout de suite : sans cela un rendu
             # dont plus personne ne veut occuperait le GPU jusqu'au bout.
@@ -11506,14 +11774,26 @@ async def exiger_compte(req, handler):
     # Les routes d'administration verifient elles-memes le jeton (admin_ok) :
     # les fermer ici condamnerait le seul moyen d'entrer quand aucun compte
     # n'existe encore — c'est-a-dire l'amorçage d'une installation neuve.
+    # « /api/textes » EST LIBRE, et c'est la seule route ajoutee a cette
+    # liste depuis qu'elle existe. Sans elle, l'ecran de connexion — le seul
+    # que voie un visiteur non connecte — resterait francais, et le refus
+    # ci-dessous aussi : on traduirait tout SAUF ce que lit celui qui n'est
+    # encore rien. Elle ne rend que le dictionnaire du depot, le meme pour
+    # tout le monde, et ne dit rien de l'installation ni de personne.
     libre = (chemin == "/" or chemin.startswith("/api/compte")
+             or chemin == "/api/textes"
              or chemin == "/admin" or chemin.startswith("/api/admin/")
              or chemin.startswith("/api/noeud/")
              or chemin == "/api/fournisseurs")
     if libre or req.get("compte"):
         return await handler(req)
+    # LE SEUL REFUS DE MIDDLEWARE TRADUIT, et le plus lu de tous : c'est ce
+    # que recoit chaque appel de la page tant que personne n'est connecte.
+    # « connexion » reste un CHAMP et non un mot de la phrase — c'est lui que
+    # la page teste pour ouvrir son formulaire, et un champ ne se traduit pas.
     return web.json_response(
-        {"erreur": "connexion requise", "connexion": True}, status=401)
+        {"erreur": T("erreur.connexion_requise", langue_de(req)),
+         "connexion": True}, status=401)
 
 
 def compte_de(req):
@@ -11998,9 +12278,16 @@ async def api_noeud_resultat(req):
     # au passe. Elle arrive quelques secondes apres le clic, quand plus personne
     # n'attend le futur : rattacher_tardif n'a rien a en faire, on sort ici.
     if tid and d.get("etat") == "annule":
-        journal(tid, f"{x.get('titre') or x['id']} a coupe son rendu — "
-                     f"{float(d.get('secondes') or 0):.0f} s de calcul jetees",
-                etat="erreur")
+        titre_ = x.get("titre") or x["id"]
+        # « secondes » DEJA ARRONDI, et pose en chaine : la valeur traverse
+        # /api/etat en JSON puis un gabarit de la page, et « .0f » n'existe
+        # que du cote Python. Arrondir ici, c'est arrondir une fois.
+        jetees_ = f"{float(d.get('secondes') or 0):.0f}"
+        journal(tid, f"{titre_} a coupe son rendu — "
+                     f"{jetees_} s de calcul jetees",
+                etat="erreur",
+                **marque_panne("panne.rendu_coupe", machine=titre_,
+                               secondes=jetees_))
         if attente is not None and not attente.done():
             attente.set_result({"etat": "erreur", "erreur": "interrompue",
                                 "secondes": d.get("secondes") or 0,
@@ -12531,6 +12818,8 @@ def app():
     a = web.Application(client_max_size=128 * 1024 ** 2,
                         middlewares=[identite, origine_verifiee, exiger_compte])
     a.router.add_get("/", page)
+    a.router.add_get("/api/textes", api_textes)
+    a.router.add_post("/api/textes", api_textes)
     a.router.add_get("/api/modeles", api_modeles)
     a.router.add_get("/api/comfy", api_comfy)
     # l'agent d'un noeud : il appelle, on ne l'appelle jamais

@@ -25,12 +25,27 @@ CE BANC MESURE DONC CE QUI NE SE VOIT PAS :
   - LE CHOIX DE LA LANGUE se fait sur le cookie, et l'en-tete du navigateur ne
     sert que de premiere valeur. Un francophone sur un Windows anglais doit
     pouvoir revenir au francais et y rester.
+  - AUCUN SITE DE PANNE N'EST SANS CLE. C'est la verification ajoutee le
+    2 septembre 2026 au soir avec le branchement du serveur, et la seule qui
+    regarde ailleurs que dans le dictionnaire : le dictionnaire portait NEUF
+    cles de panne pour treize sites, et les quatre manquantes n'auraient
+    rougi nulle part — la ligne de journal francaise serait simplement partie
+    a l'ecran d'un lecteur anglais. Un dictionnaire complet ne dit rien de sa
+    COUVERTURE.
 
 Aucun studio, aucun reseau, aucune carte : ce banc n'importe que
-traductions.py, qui n'importe rien.
+traductions.py, qui n'importe rien. serveur.py, lui, n'est pas IMPORTE mais
+LU — il tirerait aiohttp derriere lui, que la machine du releve n'a pas — et
+il est lu par l'arbre de syntaxe et non par expression reguliere : « une
+expression reguliere decrit UNE facon d'ecrire la panne, jamais la panne »
+(banc_mutations.py, les quatre trous de banc_page.py). Un appel a journal()
+etale sur quatre lignes, un argument reordonne, un commentaire au milieu : ast
+les voit tous, un motif de texte en voit un.
 
     python banc_traductions.py
 """
+import ast
+import io
 import os
 import re
 import sys
@@ -39,6 +54,9 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 
 import traductions as TR  # noqa: E402
+
+SERVEUR = io.open(os.path.join(ICI, "serveur.py"), encoding="utf-8",
+                  newline=None).read()
 
 ok, rate = [], []
 
@@ -221,6 +239,124 @@ dit(set(plat) == set(TR.TEXTES),
 dit(plat["erreur.corps_illisible"] == TR.TEXTES["erreur.corps_illisible"]["en"],
     "et elle les recoit dans la langue demandee",
     plat["erreur.corps_illisible"])
+
+print("\n  ── une marque de panne mise en phrase ──")
+# CE QUE LA PAGE DEVRA FAIRE, exerce ici sans navigateur. Le serveur pose sur
+# la tache { "cle", "valeurs" } ; traductions.rendre() est la specification de
+# la lecture, et web/index.html devra la refaire a l'identique.
+dit(TR.rendre({"cle": "panne.retiree_de_la_file", "valeurs": {}}, "en")
+    == "removed from the queue",
+    "une marque simple rend la phrase de sa langue",
+    TR.rendre({"cle": "panne.retiree_de_la_file", "valeurs": {}}, "en"))
+# L'IMBRICATION, ET C'EST ELLE QUI COMPTE. « ERREUR : {quoi} » recoit au site
+# d'appel de echouer() une PHRASE du dictionnaire, pas une valeur calculee :
+# sans ce tour, l'anglophone lisait « ERROR: la machine n'est pas revenue a
+# temps » — une demi-phrase traduite, qui se remarque moins qu'une phrase
+# entierement francaise et trompe donc plus longtemps.
+_gigogne = {"cle": "panne.echec",
+            "valeurs": {"quoi": {"cle": "panne.machine_pas_revenue",
+                                 "valeurs": {}}}}
+dit(TR.rendre(_gigogne, "en") == "ERROR: the machine did not come back in time",
+    "et une valeur qui est elle-meme une marque est rendue d'abord",
+    TR.rendre(_gigogne, "en"))
+dit(TR.rendre(_gigogne, "fr") == "ERREUR : la machine n'est pas revenue a temps",
+    "des deux cotes : le francais du dictionnaire est celui du journal",
+    TR.rendre(_gigogne, "fr"))
+# UNE VALEUR TECHNIQUE RESTE TECHNIQUE. C'est le second usage du meme gabarit :
+# executer() y verse « str(e) », qu'aucune langue ne traduit.
+dit(TR.rendre({"cle": "panne.echec", "valeurs": {"quoi": "KeyError('sdxl')"}},
+              "en") == "ERROR: KeyError('sdxl')",
+    "et une valeur qui n'est PAS une marque traverse telle quelle",
+    TR.rendre({"cle": "panne.echec",
+               "valeurs": {"quoi": "KeyError('sdxl')"}}, "en"))
+dit(TR.rendre(None, "en") == "" and TR.rendre({"valeurs": {}}, "en") == "",
+    "et rien du tout ne rend rien du tout, sans lever",
+    f"« {TR.rendre(None, 'en')} »")
+
+
+# ── ce que le SERVEUR nomme, et ce qu'il oublie de nommer ───────────────
+# LE DICTIONNAIRE COMPLET NE DIT RIEN DE SA COUVERTURE. Toutes les
+# verifications ci-dessus sont vraies d'un dictionnaire qui traduit neuf
+# pannes sur treize : elles regardent les entrees, jamais les sites. C'est
+# exactement ce qui s'est passe — le dictionnaire du 2 septembre au matin
+# portait neuf cles de panne, echouer() avait cinq sites d'appel dont trois
+# sans cle, et rien nulle part n'aurait rougi.
+print("\n  ── chaque site de panne du serveur porte sa cle ──")
+_arbre = ast.parse(SERVEUR)
+
+
+def _appels(nom):
+    """Les appels a cette fonction dans serveur.py, sa definition exclue."""
+    return [n for n in ast.walk(_arbre)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            and n.func.id == nom]
+
+
+def _mots_clefs(appel):
+    return {k.arg for k in appel.keywords if k.arg}
+
+
+def _double_etoile(appel, nom):
+    """Vrai si l'appel porte « **nom(...) » — le « ** » a un arg a None."""
+    return any(k.arg is None and isinstance(k.value, ast.Call)
+               and isinstance(k.value.func, ast.Name) and k.value.func.id == nom
+               for k in appel.keywords)
+
+
+def _etat_erreur(appel):
+    return any(k.arg == "etat" and isinstance(k.value, ast.Constant)
+               and k.value.value == "erreur" for k in appel.keywords)
+
+
+# LES LIGNES DE JOURNAL QUI TERMINENT UNE DEMANDE. La page prend la derniere
+# du fil et la met dans la bulle : ce sont elles que l'utilisateur lit apres
+# une panne, et pas les refus de routes.
+pannes = [a for a in _appels("journal") if _etat_erreur(a)]
+sans = [ast.unparse(a).splitlines()[0][:60] for a in pannes
+        if not _double_etoile(a, "marque_panne")]
+# « pannes » EN PLUS DE « pas de site sans cle » : sans ce compte, le cas
+# serait vert le jour ou plus aucun appel ne porte « etat="erreur" » — parce
+# qu'on l'a ecrit autrement, ou parce que le releve a cesse de mordre. Vrai de
+# rien : le defaut que ce banc porte deja sur les pluriels.
+dit(len(pannes) >= 8 and not sans,
+    "chaque journal(..., etat=erreur) pose une cle a cote de sa phrase",
+    "; ".join(sans[:3]) or f"{len(pannes)} sites")
+
+# echouer() ECRIT LA DERNIERE LIGNE de cinq chemins, et sa cle ne dit pas la
+# phrase entiere mais son morceau variable : « ERREUR : {quoi} », dont le
+# {quoi} est ce que le site d'appel a ecrit. Trois des cinq sites n'en avaient
+# pas le 2 septembre au matin.
+echecs = _appels("echouer")
+muets = [ast.unparse(a).splitlines()[0][:60] for a in echecs
+         if len(a.args) < 3 and "panne" not in _mots_clefs(a)]
+dit(len(echecs) >= 4 and not muets,
+    "et chaque appel a echouer() nomme la phrase qu'il lui passe",
+    "; ".join(muets[:3]) or f"{len(echecs)} sites")
+
+# LES CLES CITEES EXISTENT. Une faute de frappe ne leve pas : T() rend la cle
+# elle-meme, et « panne.retire_de_la_file » s'affiche dans la bulle. Laid,
+# mais seulement pour qui regarde.
+citees = {n.value for n in ast.walk(_arbre)
+          if isinstance(n, ast.Constant) and isinstance(n.value, str)
+          and re.fullmatch(r"(erreur|panne)\.[a-z0-9_]+", n.value)}
+inventees = sorted(citees - set(TR.TEXTES))
+dit(citees and not inventees,
+    "et toute cle citee par le serveur existe au dictionnaire",
+    ", ".join(inventees[:3]) or f"{len(citees)} cles citees")
+
+# ET AUCUNE CLE DE PANNE NE DORT. Le sens inverse : une entree qu'aucun site
+# ne pose ne sera jamais lue, et sa traduction se perimerait sans bruit — le
+# dictionnaire donnerait l'impression de couvrir un chemin qui n'existe plus.
+# « panne. » SEULEMENT : ce sont les seules cles dont le serveur soit le seul
+# lecteur. Les « famille. » sont composees a l'execution (« famille. » + le
+# nom de la famille) et les « compte. » ne servent qu'a la page ; les chercher
+# ici les declarerait mortes a tort.
+dormantes = sorted(c for c in TR.TEXTES
+                   if c.startswith("panne.") and c not in citees)
+dit(not dormantes,
+    "et aucune cle de panne ne dort : le serveur les pose toutes",
+    ", ".join(dormantes[:3]) or
+    f"{sum(1 for c in TR.TEXTES if c.startswith('panne.'))} cles de panne")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

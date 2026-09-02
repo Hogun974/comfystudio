@@ -53,6 +53,20 @@ Ce que ce banc mesure, dans l'ordre de gravite :
     a l'ecran, le detail au journal du studio : le meme « ERREUR :
     'sdxl_vieux' » que ci-dessus, sur la seule des trois ou personne n'avait
     regarde.
+  - LA LANGUE DE CELUI QUI LIT, depuis le 2 septembre 2026 au soir. Ce banc
+    monte deja un studio entier hors ligne et exerce /api/etat : c'est le seul
+    endroit du depot ou une panne se joue POUR DE VRAI, et donc le seul ou l'on
+    puisse mesurer ce que l'utilisateur lit apres elle. Trois contrats :
+      · une panne pose une CLE a cote de la ligne de journal, et cette cle
+        RENDUE EN FRANCAIS est exactement cette ligne-la. Sans cette derniere
+        moitie, les deux derivent sans rien casser — on reformule la phrase de
+        serveur.py, la cle continue de rendre l'ancienne, et le lecteur anglais
+        recoit un message que plus personne n'ecrit ;
+      · un refus de route se lit dans la langue du lecteur, et le nom propre
+        qu'il porte — un moteur, une machine — traverse sans bouger ;
+      · le cookie passe AVANT « Accept-Language », toujours. C'est toute la
+        regle : un francophone sur un Windows anglais doit pouvoir revenir au
+        francais et Y RESTER.
 
 TREIZE ASSERTIONS DE CE BANC NE POUVAIENT PAS DISTINGUER « la garde marche » de
 « rien ne s'est passe », et elles portent desormais leur temoin. Le motif est
@@ -87,6 +101,9 @@ os.environ["STUDIO_DONNEES"] = tempfile.mkdtemp(prefix="banc_refaire_")
 os.environ["STUDIO_AUTH"] = "libre"
 sys.path.insert(0, ICI)
 import serveur as S  # noqa: E402
+# Le dictionnaire, pour rendre les cles que le serveur pose et les
+# comparer a ce qu'il ecrit. Il n'importe rien, pas meme aiohttp.
+import traductions as TR  # noqa: E402
 
 # LA PAGE, ET POUR UNE SEULE CHOSE : le nom du champ par lequel /api/au_propre
 # dit « c'est deja fait ». Ce banc-la mesure des reponses HTTP, pas du HTML —
@@ -222,12 +239,23 @@ def nuage(actif):
 
 
 class Req(dict):
-    """Le minimum qu'attendent qui() et les gestionnaires."""
+    """Le minimum qu'attendent qui() et les gestionnaires.
 
-    def __init__(self, pid=PID, match=None, corps=None):
+    « cookies », « headers » et « methode » sont arrives le 2 septembre 2026 au
+    soir avec la langue : langue_de() lit le cookie PUIS l'en-tete, et
+    /api/textes distingue le GET du POST. Les trois etaient deja la, vides et
+    figes — un banc qui ne peut pas poser un cookie ne peut pas mesurer qu'il
+    passe avant l'en-tete, c'est-a-dire la seule chose que cette regle promet.
+    """
+
+    def __init__(self, pid=PID, match=None, corps=None, cookies=None,
+                 headers=None, methode="POST", chemin="/"):
         super().__init__(pid=pid, compte="")
+        self.path = chemin
         self.match_info = match or {}
-        self.headers, self.cookies = {}, {}
+        self.headers = headers or {}
+        self.cookies = cookies or {}
+        self.method = methode
         self._corps = corps
 
     async def json(self):
@@ -993,6 +1021,16 @@ async def main():
         # que le banc reste sous la seconde.
         ATTENTE_CARTE = 0.4
         await asyncio.sleep(ATTENTE_CARTE)
+        # L'INSTANT REEL DE LA FIN DE L'ATTENTE, ET NON « depart + 0,4 ».
+        # asyncio.sleep() rend la main un peu TOT sous Windows — la resolution
+        # du minuteur est de 15,6 ms — et l'assertion d'en dessous comparait
+        # « pose - depart » a 0,4 s tout rond : releve le 2 septembre 2026 sous
+        # la charge de banc_mutations, 0,39 s pour 0,4 s demandees, et le banc
+        # rougissait sur un cas parfaitement juste. Une CI qui rougit pour rien
+        # finit ignoree. Compare a l'instant OBSERVE, la mesure ne depend plus
+        # d'aucun minuteur : elle dit exactement ce qu'elle nomme — le chrono a
+        # ete pose APRES l'attente.
+        apres_attente = time.time()
         dit((S.TACHES.get(tid) or {}).get("attend_carte") is True,
             "la demande attend la carte, et le dit",
             str((S.TACHES.get(tid) or {}).get("attend_carte")))
@@ -1017,12 +1055,24 @@ async def main():
                 g.cancel()
             await asyncio.gather(*gens, return_exceptions=True)
         pose = (S.TACHES.get(tid) or {}).get("debut_rendu") or 0
-        dit(pose - depart >= ATTENTE_CARTE,
+        # « pose >= apres_attente » et non « pose - depart >= 0,4 » : voir
+        # au-dessus. Le temoin reste entier — « pose » vaut 0 si la tache
+        # n'existe pas, et zero n'est jamais posterieur a l'attente.
+        dit(pose >= apres_attente,
             "le chrono est repose la carte EN MAIN, apres l'attente",
             f"{pose - depart:.2f} s apres le depart, pour "
-            f"{ATTENTE_CARTE} s d'attente")
+            f"{apres_attente - depart:.2f} s d'attente observee")
         st_, etat = lire(await S.api_etat(Req(match={"tid": tid})))
-        dit(etat.get("ecoule", 0) - etat.get("ecoule_rendu", 0) >= ATTENTE_CARTE,
+        # ET LE MEME PIEGE, D'UNE AUTRE FACON : les deux champs sont ARRONDIS
+        # au dixieme par /api/etat, chacun de son cote, si bien que leur
+        # difference porte jusqu'a 0,2 s d'erreur de pure arithmetique. Compare
+        # a 0,4 s tout rond, ce cas-ci pouvait rougir sur une attente
+        # parfaitement mesuree ; il ne l'a jamais fait, ce qui ne veut pas dire
+        # qu'il ne l'aurait pas fait. Le seuil porte donc les deux arrondis, et
+        # la mutation qui remet le chrono avant le verrou le laisse a ZERO —
+        # elle rougit toujours, de trois dixiemes.
+        dit(etat.get("ecoule", 0) - etat.get("ecoule_rendu", 0)
+            >= (apres_attente - depart) - 0.2,
             "et « ecoule » et « ecoule_rendu » ne comptent plus la meme chose",
             f"ecoule={etat.get('ecoule')} s, "
             f"ecoule_rendu={etat.get('ecoule_rendu')} s")
@@ -1320,6 +1370,172 @@ async def main():
         "et le detail technique part au journal du studio, pas a l'ecran",
         au_studio.strip()[-110:] or "rien n'a ete journalise")
     S.lire_sortie = _vraie_lecture
+
+    # ══ 13. LA PANNE PORTE UNE CLE, ET LE JOURNAL RESTE FRANCAIS ════════
+    # Ce que l'utilisateur lit quand un rendu ECHOUE n'est pas un refus d'API :
+    # la page prend la DERNIERE ligne du journal et la met dans la bulle. Or le
+    # journal ne se traduit pas — il est ecrit, garde, relu plus tard, souvent
+    # par quelqu'un d'autre. La sortie est donc une CLE A COTE du texte : la
+    # ligne reste francaise pour le studio, /api/etat sert en plus la cle et
+    # ses valeurs, et la page rend dans la langue de son lecteur.
+    print("\n  ── ce que la page lit quand un rendu echoue ──")
+    conv = poser()
+    tombe = poser_tour()
+    st, corps = await refaire(tombe)
+    tid = corps.get("id")
+    ECHEC["soumettre"] = True
+    await tourner()
+    ECHEC["soumettre"] = False
+    st_, etat = lire(await S.api_etat(Req(match={"tid": tid})))
+    # LE TEMOIN D'ABORD, ET IL EN FAUT DEUX. « pas de cle » serait vrai d'une
+    # route qui refuse (404, corps sans « panne ») ET d'une demande qui n'a
+    # jamais echoue (etat « fini ») : les deux se compteraient verts sur rien.
+    # C'est le defaut que treize assertions de ce banc portaient.
+    dit(st_ == 200 and etat.get("etat") == "erreur",
+        "le rendu a echoue, et /api/etat le sert",
+        f"{st_} {etat.get('etat')}")
+    marque = etat.get(S.MARQUE_PANNE) or {}
+    dit(marque.get("cle") == "panne.echec",
+        "et il pose une CLE a cote de la ligne de journal",
+        str(marque) or "aucune marque")
+    # LES DEUX MOITIES DU MEME CONTRAT, et c'est la verification qui rapporte
+    # le plus de cette section : la cle rendue EN FRANCAIS doit etre exactement
+    # la ligne de journal que le studio a ecrite. Sans elle, les deux derivent
+    # sans rien casser — on reformule la phrase de serveur.py, la cle continue
+    # de rendre l'ancienne, et l'utilisateur anglais lit un message que plus
+    # personne n'ecrit. C'est la meme doctrine que MARQUE_DEJA, appliquee au
+    # CONTENU et non au nom du champ.
+    derniere = (etat.get("etapes") or [{}])[-1].get("msg", "")
+    dit(bool(derniere) and TR.rendre(marque, "fr") == derniere,
+        "et cette cle, rendue en francais, EST la ligne du journal",
+        f"« {TR.rendre(marque, 'fr')} » contre « {derniere} »")
+    # ET ELLE SE TRADUIT VRAIMENT. Une marque dont les deux langues rendent le
+    # meme texte ne mesure rien : c'est exactement ce qu'on obtiendrait en
+    # posant la phrase francaise dans « valeurs » au lieu d'une cle.
+    dit(TR.rendre(marque, "en") != TR.rendre(marque, "fr")
+        and TR.rendre(marque, "en").startswith("ERROR"),
+        "et en anglais, elle rend l'anglais",
+        f"« {TR.rendre(marque, 'en')} »")
+    # LA VALEUR TECHNIQUE TRAVERSE TELLE QUELLE. « la carte a lache » est le
+    # texte de l'exception : le gabarit se traduit, pas ce qu'il porte.
+    dit(marque.get("valeurs", {}).get("quoi") == "la carte a lache",
+        "le gabarit est traduisible, la valeur reste ce que Python a dit",
+        str(marque.get("valeurs")))
+
+    # ══ 14. LA LANGUE DE CELUI QUI LIT ══════════════════════════════════
+    print("\n  ── la langue vient du choix, pas du systeme ──")
+    ANGLAIS = {"Accept-Language": "en-US,en;q=0.9,fr;q=0.8"}
+    dit(S.langue_de(Req(cookies={S.COOKIE_LANGUE: "fr"}, headers=ANGLAIS)) == "fr",
+        "un francophone sur un Windows anglais revient au francais, et y reste",
+        S.langue_de(Req(cookies={S.COOKIE_LANGUE: "fr"}, headers=ANGLAIS)))
+    dit(S.langue_de(Req(headers=ANGLAIS)) == "en",
+        "sans choix, l'en-tete du navigateur sert de PREMIERE valeur",
+        S.langue_de(Req(headers=ANGLAIS)))
+    dit(S.langue_de(Req()) == "fr",
+        "et sans rien du tout, le francais", S.langue_de(Req()))
+
+    # ══ 15. LES REFUS QUE LA PAGE AFFICHE ═══════════════════════════════
+    # Vingt-cinq chaines sur les cinquante-deux du serveur. Les autres parlent
+    # a l'administrateur ou aux agents des machines, qui lisent des journaux.
+    print("\n  ── un refus se lit dans la langue du lecteur ──")
+    conv = poser()
+    perdu = poser_tour(plan={"intention": "image", "modele": "sdxl_vieux",
+                             "prompt": "a test bench", "largeur": 512,
+                             "hauteur": 512, "parametres": {}},
+                       modele="sdxl_vieux")
+
+    async def refus(langue):
+        return lire(await S.api_refaire(Req(
+            corps={"conversation": "c1", "tour": perdu["id"]},
+            cookies={S.COOKIE_LANGUE: langue})))
+
+    st_fr, fr_ = await refus("fr")
+    st_en, en_ = await refus("en")
+    # LE TEMOIN : un 400 des deux cotes. Sans lui, « les deux textes different »
+    # serait vrai de deux 404 vides, et « le francais n'a pas bouge » vrai de
+    # deux fois rien.
+    dit(st_fr == 400 and st_en == 400,
+        "le moteur disparu du catalogue est refuse dans les deux langues",
+        f"{st_fr} / {st_en}")
+    dit(fr_.get("erreur") == TR.T("erreur.moteur_hors_catalogue", "fr",
+                                  moteur="sdxl_vieux"),
+        "et le francais servi est celui du dictionnaire, mot pour mot",
+        str(fr_.get("erreur")))
+    dit(en_.get("erreur") == TR.T("erreur.moteur_hors_catalogue", "en",
+                                  moteur="sdxl_vieux")
+        and en_.get("erreur") != fr_.get("erreur"),
+        "et l'anglais est de l'anglais, pas la meme phrase servie deux fois",
+        str(en_.get("erreur")))
+    # « sdxl_vieux » N'EST PAS TRADUIT, et c'est le point : un nom de moteur est
+    # un identifiant, il se PLACE dans la phrase et ne s'y remplace pas.
+    dit("sdxl_vieux" in (en_.get("erreur") or ""),
+        "le nom du moteur traverse la traduction sans bouger",
+        str(en_.get("erreur")))
+
+    # ══ 16. LA ROUTE QUI SERT LE DICTIONNAIRE A LA PAGE ═════════════════
+    # web/index.html est servi en FileResponse : un fichier statique, que
+    # personne ne rend. Il n'y a donc aucun endroit ou glisser les textes au
+    # moment du service, et la page doit les demander.
+    print("\n  ── la page demande ses textes ──")
+    st_, textes = lire(await S.api_textes(Req(methode="GET")))
+    dit(st_ == 200 and textes.get("langue") == "fr"
+        and set(textes.get("textes") or {}) == set(TR.TEXTES),
+        "GET /api/textes sert TOUTES les cles, jamais un sous-ensemble",
+        f"{st_} {len(textes.get('textes') or {})} sur {len(TR.TEXTES)}")
+    rep_ = await S.api_textes(Req(methode="POST", corps={"langue": "en"}))
+    st_, choisi = lire(rep_)
+    dit(st_ == 200 and choisi.get("langue") == "en"
+        and choisi["textes"]["erreur.corps_illisible"]
+        == TR.TEXTES["erreur.corps_illisible"]["en"],
+        "POST rend les memes textes dans la langue choisie",
+        f"{st_} {choisi.get('langue')}")
+    # LE COOKIE, ET SON NOM. C'est lui qui fait que le choix SURVIT : sans
+    # cette moitie-la, le menu retomberait sur l'en-tete du navigateur au
+    # rechargement suivant, et un francophone sur un Windows anglais ne
+    # pourrait pas rester en francais — la panne que la regle existe pour
+    # fermer.
+    pose = rep_.cookies.get(S.COOKIE_LANGUE)
+    dit(pose is not None and pose.value == "en",
+        "et le choix est POSE en cookie : il survit au rechargement",
+        f"{S.COOKIE_LANGUE}={pose.value if pose else 'absent'}")
+    # ET PAS N'IMPORTE QUEL COOKIE. Une langue qu'on ne sert pas, posee quand
+    # meme, ferait retomber langue_choisie() sur l'en-tete a chaque requete :
+    # le menu paraitrait ne rien retenir, sans qu'une ligne soit fausse.
+    rep_kl = await S.api_textes(Req(methode="POST", corps={"langue": "kl"}))
+    st_kl, corps_kl = lire(rep_kl)
+    dit(st_kl == 200 and S.COOKIE_LANGUE not in rep_kl.cookies
+        and corps_kl.get("langue") == "fr",
+        "une langue qu'on ne sert pas ne se pose pas en cookie",
+        f"{st_kl} {corps_kl.get('langue')} "
+        f"{sorted(rep_kl.cookies)}")
+
+    # ELLE EST OUVERTE SANS COMPTE, et c'est le point delicat : en
+    # STUDIO_AUTH=obligatoire, le seul ecran qu'un visiteur non connecte voie
+    # est le formulaire de connexion. Fermer cette route-ci laisserait cet
+    # ecran-la — et le refus « connexion requise » lui-meme — en francais pour
+    # toujours, c'est-a-dire pour le seul a qui le studio n'a rien montre
+    # d'autre.
+    async def _passe(_r):
+        return S.web.json_response({"ok": True})
+
+    _auth = S.AUTH
+    S.AUTH = "obligatoire"
+    try:
+        st_ferme, ferme = lire(await S.exiger_compte(
+            Req(chemin="/api/generer"), _passe))
+        st_ouvert, _ = lire(await S.exiger_compte(
+            Req(chemin="/api/textes", methode="GET"), _passe))
+    finally:
+        S.AUTH = _auth
+    # Le temoin : la porte est bien fermee pour les autres. Sans lui,
+    # « /api/textes passe » serait vrai d'un middleware qui laisse tout passer.
+    dit(st_ferme == 401 and st_ouvert == 200,
+        "connexion obligatoire : tout est ferme, sauf les textes",
+        f"/api/generer {st_ferme}, /api/textes {st_ouvert}")
+    dit(ferme.get("erreur") == TR.T("erreur.connexion_requise", "fr")
+        and ferme.get("connexion") is True,
+        "et le refus lui-meme se traduit, sans toucher au champ que la page lit",
+        f"{ferme.get('erreur')} / connexion={ferme.get('connexion')}")
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

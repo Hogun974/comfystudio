@@ -96,12 +96,18 @@ for mod in re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)', SRV):
 CODE = "\n".join(lire(f) for f in FICHIERS)
 
 # Le COMPTE, et pas seulement le contenu. Le releve de variables ne protege pas
-# le suivi : aucun des quatre modules importes ne lit d'environnement, les 25
+# le suivi : aucun des cinq modules importes ne lit d'environnement, les 25
 # variables sont toutes dans serveur.py. Passer « import comptes as _comptes »
 # en try/except, ou le remplacer par un import_module — deux nettoyages banals
 # — faisait tomber le suivi a quatre fichiers, puis a un, sans changer un seul
 # chiffre de la ligne qui les compte.
-FICHIERS_SUIVIS = 5
+#
+# CINQ, PUIS SIX le 2 septembre 2026 au soir : serveur.py importe desormais
+# traductions.py. Ce chiffre se monte a chaque module ajoute, et il DOIT se
+# monter — laisse a cinq, il rendait vraie la mutation « un module suivi
+# charge par importlib » : le suivi tombait a cinq fichiers, le seuil etait
+# atteint, et le filet ecrit exactement pour ce nettoyage-la passait au vert.
+FICHIERS_SUIVIS = 6
 dit(len(FICHIERS) >= FICHIERS_SUIVIS,
     f"les {len(FICHIERS)} fichiers du conteneur sont suivis",
     ", ".join(FICHIERS[1:]) or "aucun module importe")
