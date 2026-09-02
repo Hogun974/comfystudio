@@ -222,18 +222,29 @@ Concrètement, dans ta pull request :
 4. **Une seule idée par PR.** Un correctif et un refactor mêlés ne peuvent plus
    être annulés séparément.
 5. **Fais tourner la vérification avant de proposer** :
-   `python -m compileall -q .` et `python entrainer_aiguilleur.py`. Les dix
+   `python -m compileall -q .` et `python entrainer_aiguilleur.py`. Les douze
    bancs tournent aussi tout seuls, sans réseau ni studio — `banc_adulte`,
    `banc_cerveaux`, `banc_durees`, `banc_attente`, `banc_cout`,
    `banc_variantes`, `banc_conteneur`, `banc_page`, `banc_catalogue`,
-   `verifier_formulations` — et la CI les lance tous.
+   `banc_repartition`, `banc_refaire`, `verifier_formulations` — et la CI les
+   lance tous.
 
-   **Un onzième les éprouve.** `banc_mutations.py` mute le code et exige que le
+   **Un treizième les éprouve.** `banc_mutations.py` mute le code et exige que le
    banc visé rougisse, sur la ligne nommée et pas une autre. Il existe parce
    que trois fois en une semaine un banc vert a couvert une fonctionnalité
    morte — dont un banc écrit exprès pour le défaut qu'il ne voyait pas. Si tu
    ajoutes un banc, ajoute-lui sa mutation : un filet qu'on n'a jamais vu
    rougir ne mesure rien.
+
+   Et **éprouve-la dans les deux sens** : elle doit rougir sur le dépôt
+   d'aujourd'hui, et passer au vert quand on défait la correction qu'elle
+   garde. Une mutation qui reste rouge dans les deux cas mesure autre chose que
+   ce qu'elle nomme — c'est arrivé trois fois, dont une où elle était datée du
+   mauvais commit et se serait déclarée prouvée contre un filet qui la voyait
+   déjà. Quand le banc est né avec la correction, il n'y a pas de filet
+   d'avant : lance le banc NEUF sur le code d'AVANT et vérifie que les lignes
+   que ta mutation nomme y rougissent. Écris-le quand tu ne peux ni l'un ni
+   l'autre.
 6. **Si tu touches à l'interface, lance la recette.** `recette_chemin_page.py`
    a besoin d'un studio qui tourne, et c'est pour cela qu'elle n'est pas dans
    la CI : elle refait les gestes de la page dans l'ordre réel, appel par
