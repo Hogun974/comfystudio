@@ -6,9 +6,18 @@ prix.
 
 Cette page tranche, et depuis le 2 septembre 2026 au soir elle décrit aussi ce
 qui existe : **les travaux 1, 2, 3 et 5 sont faits**, le 4 a été mesuré puis
-**refusé**, les 6 et 7 restent. Le détail est en bas de page ; ce qui change
-tout de suite, c'est que le studio n'exécute plus une demande étrangère de
-travers en silence — il la fait lire au modèle de langage, et il le dit.
+**refusé**, le 6 est **en cours**, le 7 reste. Le détail est en bas de page ; ce
+qui change tout de suite, c'est que le studio n'exécute plus une demande
+étrangère de travers en silence — il la fait lire au modèle de langage, et il le
+dit.
+
+> **Trois chiffres de cette page étaient faux, et ils le sont restés jusqu'à ce
+> qu'on essaie de s'en servir.** « 119 chaînes constantes » comptait des
+> occurrences, pas des chaînes ; « mécanique, du travail de recopie » décrivait
+> un travail qui ne l'est pas ; et le chemin par lequel un utilisateur voit le
+> plus d'erreurs — la dernière ligne de journal, affichée après une panne — n'y
+> figurait pas du tout. Les corrections sont en place, marquées comme telles.
+> Une page de décision qu'on n'a pas encore appliquée est une hypothèse.
 
 > Ce qui suit a été mesuré une seconde fois **par le vrai chemin**, une fois la
 > garde en place : `banc_multilingue.py` appelle `aiguiller()` et compte les
@@ -319,7 +328,35 @@ mesure les sépare nettement :
 
 **Les erreurs d'API sont des étiquettes.** 119 sur 133 sont des chaînes
 constantes. Elles se balaient mécaniquement vers un fichier de traductions, sans
-rien perdre. C'est du travail de recopie, et c'est tout.
+rien perdre.
+
+> **Ce paragraphe comptait faux, et il comptait la mauvaise chose.** Mesure du
+> 2 septembre 2026 au soir : **119 est un nombre d'occurrences ; il y a 52
+> chaînes distinctes.** Et sur ces 52, **25 seulement sont lues par un humain
+> qui n'est pas administrateur**. Les autres parlent à l'administrateur
+> (« accès refusé », « jeton invalide » : 34 occurrences) ou aux agents des
+> machines à carte (« jeton inconnu » : 20) — deux publics qui lisent des
+> journaux, pas une interface. Et 27 occurrences ne sont **jamais affichées** :
+> la page les avale (`.catch(() => {})` sur les réglages), les remplace par son
+> propre texte, ou appelle des routes que personne n'appelle. Traduire les 119
+> aurait été aux trois quarts du travail perdu.
+
+**Et il manquait le chemin par lequel un utilisateur voit le plus d'erreurs.**
+Quand un rendu **échoue**, ce qu'il lit n'est pas un message d'API :
+
+```js
+if (t.etat === "erreur" && derniere) t.erreur = derniere.msg;
+```
+
+C'est **la dernière ligne du journal** — la famille que cette page décide
+justement de ne pas traduire. Traduire les 25 aurait couvert les **refus**, qui
+arrivent avant que rien ne commence, et laissé **toutes les pannes en
+français**. Ces lignes-là sont peu nombreuses : celles qui portent
+`etat="erreur"`, une dizaine. Elles ne se traduisent pas pour autant — elles
+sont **écrites**, stockées dans la tâche, relues plus tard et peut-être par
+quelqu'un d'autre. Elles portent donc une **clé** en plus de leur texte, et
+c'est la page qui rend, dans la langue du lecteur. Le journal du studio reste
+français.
 
 **Les messages de journal ne le sont pas.** Deux sur trois interpolent une
 valeur calculée à l'exécution :
@@ -354,10 +391,52 @@ Ce qui se traduit, donc, par ordre de rapport :
 
 | Quoi | Volume | Nature |
 |---|---|---|
-| messages d'erreur d'API | 119 chaînes constantes | mécanique |
-| interface — textes, `placeholder`, `title` | ~103 lignes accentuées de `web/index.html` | mécanique |
+| messages d'erreur d'API affichés | **25 chaînes** (sur 52 distinctes, 119 occurrences) | mécanique |
+| les pannes — dernière ligne de journal sur un échec | **une dizaine**, celles qui portent `etat="erreur"` | une clé, pas une traduction |
+| interface — textes, attributs, texte construit en JS | **~195 chaînes distinctes** | **pas mécanique** — voir ci-dessous |
 | journal | 163 messages, dont 110 formatés | **non** |
 | documentation | 38 625 mots | **non** — voir ci-dessous |
+
+#### L'interface n'est pas de la recopie, et c'est mesuré
+
+`web/index.html` n'a **aucune amorce d'internationalisation** : pas de
+dictionnaire, pas de `t()`, pas de `data-i18n`. Le texte est déposé sur **127
+sites d'écriture DOM** répartis dans ~28 fonctions, et il n'existe **aucun
+endroit unique où la page se peint**. Quatre chantiers ne se réduisent pas à un
+fichier clé → traduction, et **trois d'entre eux étaient des défauts avant toute
+traduction** :
+
+1. **Le libellé visible servait de donnée.** La pastille des réglages actifs
+   reconstruisait son texte en découpant l'`<option>` sur le tiret cadratin —
+   `o.textContent.split(" — ")[0]`. Traduire `rapide — moins d'étapes` en
+   `fast - fewer steps` (tiret simple) n'aurait rien levé : la pastille aurait
+   affiché la phrase entière, en silence. *Corrigé le 2 septembre : chaque
+   option porte `data-court`.*
+2. **Deux expressions régulières lisaient du français produit par le serveur** —
+   le devis extrait d'une phrase de journal (avec `parseFloat(…replace(",", "."))`
+   pour la virgule décimale), et `/^arret demande a /` sur une erreur. Une
+   traduction les cassait sans un mot. *Corrigées le 2 septembre : la page lit
+   deux champs.*
+3. **La règle du pluriel était recopiée à la main, en français**, à chaque
+   endroit qui compte quelque chose : `${n} échange${n > 1 ? "s" : ""}`. Elle
+   est fausse en anglais **dès zéro** — le français écrit « 0 échange »,
+   l'anglais « 0 exchanges ». Ailleurs la page l'esquivait avec « appel(s) »,
+   qui ne se lit bien dans aucune langue. *La règle est désormais une donnée de
+   la langue, dans `traductions.py`.*
+4. **Les valeurs de protocole sont en français et se confondent avec les
+   libellés** : `t.etat` vaut `"en cours"`, `"fini"`, `"erreur"` ; une
+   `<option>` a `value="brouillons"`. Une passe de traduction naïve toucherait
+   les deux moitiés du même littéral. *Reste à faire.*
+
+S'y ajoutent les formats figés sur le français — `toLocaleTimeString("fr-FR")`,
+`localeCompare(…, "fr")`, l'espace insécable avant `:` et avant `%`, `" min"`,
+`" Go"` — et **une dizaine de doublons littéraux** (« repartir de celle-ci »
+écrit deux fois, son infobulle de trois lignes deux fois) qui divergeront à la
+première retouche.
+
+Un cas ne se rattrapera jamais : `murmurer()` **écrit** le murmure de réglage
+dans le fichier de conversation. Les murmures déjà posés resteront français quoi
+qu'on fasse ensuite.
 
 ### Ce qu'il envoie au moteur : rien à faire
 
@@ -436,10 +515,26 @@ bougé.
 > et la tournure suivante repassera ; en admettre une étrangère coûte huit
 > exemplaires pondérés, et double les pannes silencieuses de cette langue.
 
-**6. Les 119 messages d'erreur constants, et l'interface.** Un fichier de
-traductions, une langue choisie par conversation (cinquième entrée de
-`REGLAGES_CONV`), l'en-tête `Accept-Language` comme seule valeur de départ.
-*Ferme la gêne. Pas une panne : la gêne.*
+**6. Les messages d'erreur, et l'interface. ⟳ en cours**, et pas du tout au
+volume annoncé : **25 messages** affichés, **une dizaine** de pannes, **~195**
+chaînes de page — et quatre chantiers qui n'étaient pas de la traduction (voir
+plus haut ; trois sont faits). *Ferme la gêne. Pas une panne : la gêne.*
+
+> **Deux choix arrêtés en le faisant.**
+>
+> **La langue n'est pas un réglage de conversation.** Cette page l'annonçait —
+> « une cinquième entrée `langue` s'y pose sans rien inventer » — et c'est
+> faux pour deux raisons. `REGLAGES_CONV` est **par conversation**, alors que
+> l'en-tête, la médiathèque et le panneau de file ne le sont pas : la langue de
+> l'ombrelle serait celle de la dernière conversation ouverte. Et le mot est
+> déjà pris : `plan["langue"]` est la langue des **paroles** d'un morceau, un
+> code ISO écrit sur le tour. La langue d'affichage vit dans un cookie
+> `studio_langue`, comme les trois cookies que le studio pose déjà.
+>
+> **Les clés sont des identifiants, jamais le texte source.** Indexer sur le
+> français paraissait plus simple : la page écrit « c’était » avec une
+> apostrophe typographique et « l'esquisse » avec une droite — deux clés pour
+> un mot, et une reformulation perd la traduction sans rien dire.
 
 **7. Un corpus d'aiguillage dans une seconde langue, si le besoin est réel.**
 ~167 chaînes à traduire, plus un banc écrit par un tiers. L'espagnol d'abord :
