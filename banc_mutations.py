@@ -31,11 +31,19 @@ dernier sans mutation, ferme le 2 septembre. Ce qui l'en tenait ecarte — il
 nomme ses fautes par le NUMERO DE LIGNE de banc_formulations.jsonl — se regle
 en ancrant sur la FORMULATION, qu'il imprime a cote du numero et qui ne bouge
 pas quand un cas s'insere au milieu du fichier. Quatre mutations, et TROIS
-TROUS dont le premier est le plus grave de ce fichier : le banc ne voit pas la
-panne pour laquelle il a ete ecrit. Il recopie dans aiguillage_ecrit() la
-sequence de serveur.py au lieu de l'emprunter, alors que sa docstring promet
-que « toute permutation la-bas doit se voir ici » — c'est « priorite, » une
+TROUS dont le premier etait le plus grave de ce fichier : le banc ne voyait pas
+la panne pour laquelle il a ete ecrit. Il recopiait dans aiguillage_ecrit() la
+sequence de serveur.py au lieu de l'emprunter, alors que sa docstring promettait
+que « toute permutation la-bas doit se voir ici » — c'etait « priorite, » une
 seconde fois, sur le banc qui gardait « enleve le fond ».
+
+LES TROIS SONT FERMES le 2 septembre au soir, et par une seule reparation :
+la sequence est sortie d'aiguiller() dans serveur.raccourci_ecrit(), que le
+studio ET le banc empruntent desormais. Tant qu'il y avait deux ecritures du
+meme ordre, elles divergeaient ; il n'y en a plus qu'une. Les deux petits trous
+tenaient a des cas qui n'atteignaient pas le motif qu'ils gardaient — deux ont
+recu la piece jointe qui leur manquait, le troisieme une formulation que la
+SECONDE garde ne voit pas. Sept mutations sur ce banc, plus aucun trou.
 
 Trois facons d'echouer, et la premiere est la plus precieuse :
 
@@ -58,13 +66,23 @@ mais ne font pas echouer : les compter en echec rendrait la CI rouge en
 permanence, et une CI qui rougit pour rien finit ignoree. Les basculer dans
 MUTATIONS est le geste qui clot la reparation du filet.
 
-Ils etaient cinq ; les quatre qui visaient banc_page.py sont fermes et ont
-rejoint PAGE. Ils disaient tous la meme chose : un releve par expression
-reguliere decrit UNE facon d'ecrire la panne, jamais la panne. Fermer le
-premier a d'ailleurs revele qu'il n'imitait pas encore le vrai defaut — la
-mutation posait un « const », la page de 21c443c^ recevait le cran en argument
-d'appel — et la mutation qui manquait est desormais dans PAGE elle aussi. C'est
-le meme service que ce fichier rend aux bancs : une mutation aussi s'eprouve.
+Ils etaient cinq, puis huit ; il en reste UN. Les quatre qui visaient
+banc_page.py sont fermes et ont rejoint PAGE, les trois de
+verifier_formulations.py sont fermes et ont rejoint FORMULATIONS.
+
+Les quatre de banc_page.py disaient tous la meme chose : un releve par
+expression reguliere decrit UNE facon d'ecrire la panne, jamais la panne.
+Fermer le premier a d'ailleurs revele qu'il n'imitait pas encore le vrai
+defaut — la mutation posait un « const », la page de 21c443c^ recevait le cran
+en argument d'appel — et la mutation qui manquait est desormais dans PAGE elle
+aussi. C'est le meme service que ce fichier rend aux bancs : une mutation aussi
+s'eprouve.
+
+Les trois de verifier_formulations.py en disaient une autre, et c'est la plus
+chere : un banc qui RECOPIE la sequence qu'il verifie ne verifie rien de cette
+sequence. Les fermer n'a pas demande trois corrections mais une seule — sortir
+l'ordre dans une fonction que les deux empruntent — parce que tant qu'il y a
+deux ecritures du meme enchainement, elles divergent.
 
 LA DIAGONALE, ou la preuve inverse, menee le 1er septembre sur les dix-neuf
 mutations de VARIANTES, CERVEAUX, COUT, CATALOGUE, ATTENTE, DUREES et ADULTE.
@@ -687,9 +705,10 @@ PAGE = [
 # Quand le banc saura la voir, elle rougira : il le dira, et il suffira de la
 # deplacer dans PAGE ou CONTENEUR ci-dessus. Les quatre qui visaient
 # banc_page.py y sont passees ; celle-ci demande d'EVALUER un defaut calcule et
-# non de generaliser un releve. TROUS_FORMULATIONS, plus bas, en ajoute trois
-# qui tiennent a la meme cause et se lisent la-bas : verifier_formulations.py
-# recopie la sequence de serveur.py au lieu de l'emprunter.
+# non de generaliser un releve. Les trois de verifier_formulations.py sont
+# parties dans FORMULATIONS le 2 septembre : elles tenaient toutes a la meme
+# cause — le banc recopiait la sequence de serveur.py au lieu de l'emprunter —
+# et il l'emprunte desormais.
 TROUS_CONNUS = [
     dict(
         nom="un defaut du compose qui repete un defaut CALCULE par le code",
@@ -1639,10 +1658,10 @@ ADULTE = [
 # LA FORMULATION elle-meme — le banc l'imprime entre guillemets a cote du
 # numero — et l'ancre survit alors a toute insertion.
 #
-# Les quatre ci-dessous ne sont pas des manipulations plausibles : ce sont
-# quatre fautes qui ONT EU LIEU, reprises dans le code d'avant leur correction.
-# Les trois autres que l'histoire donne sont plus bas, dans TROUS_FORMULATIONS :
-# le banc ne les voit pas, et la premiere est celle qu'il existe pour empecher.
+# Les sept ci-dessous ne sont pas des manipulations plausibles : ce sont sept
+# fautes qui ONT EU LIEU, reprises dans le code d'avant leur correction. Les
+# trois dernieres etaient dans TROUS_FORMULATIONS jusqu'au 2 septembre : le
+# banc ne les voyait pas, et la premiere est celle qu'il existe pour empecher.
 #
 # LEUR SENS INVERSE, pris le 2 septembre :
 #   - « detaille » et les verbes de _PAS_LIRE sont VERTES sur le banc de
@@ -1663,6 +1682,27 @@ ADULTE = [
 #     d'aujourd'hui s'arrete dessus sur AttributeError. C'est le cas de
 #     banc_durees et banc_adulte, une troisieme fois : une mutation rouge dont
 #     on ne sait pas ce qu'elle mesure d'autre.
+#
+# LES TROIS ANCIENS TROUS, sens inverse pris le 2 septembre. Meme filet
+# d'avant pour les trois, parce qu'elles tenaient toutes a la meme cause : le
+# banc de a0a078c — celui qui RECOPIAIT la sequence, 64 cas — lance sur le
+# serveur.py d'aujourd'hui MUTE. Il rend 64/64 sur les trois mutations, donc le
+# trou etait bien la ; le banc d'aujourd'hui rougit sur les trois. Preuve
+# inverse pleine, et c'est l'emprunt de raccourci_ecrit() plus les deux cas
+# munis de leur piece jointe qui la donnent.
+#   - La premiere rougit sur LE SYMPTOME D'ORIGINE de 25ce7d2, mot pour mot :
+#     « attendu detourer, obtenu retoucher_sujet » — le sujet efface a la place
+#     du fond, ce que le commit decrit.
+#   - La troisieme est ISOLEE, et c'etait tout l'enjeu : sur sa mutation le
+#     banc ne rougit QUE sur « vire le fond ». « supprime le fond », la
+#     formulation d'origine, reste verte — _PAS_LIRE l'arrete avant. La ligne
+#     nommee mesure donc la garde d'ambiguite, et elle seule.
+#   - CE QU'ON NE PEUT PLUS FAIRE, et il faut le dire : lancer le banc NEUF sur
+#     un serveur.py d'AVANT. Il appelle serveur.raccourci_ecrit(), qui
+#     n'existe dans aucune version anterieure au 2 septembre, et s'y arreterait
+#     sur AttributeError — comme sur le bb7ab72 de « la cible NOMMEE ». C'est
+#     le prix de l'emprunt ; il est paye par le filet d'avant ci-dessus, qui
+#     lui est une mesure pleine.
 FORMULATIONS = [
     dict(
         nom="le detourage reattend « l arriere-plan » avec une espace",
@@ -1720,31 +1760,27 @@ FORMULATIONS = [
             + '        r"^(le|la|l.|les)?'
             + r'\s*(sujet|personnage|personne|fond|arriere)", apres, re.I)',
             "    return bool(apres)"))]),
-]
 
-
-# ── Les trois que ce banc-la ne voit pas ──────────────────────────────
-# Elles ont ete jouees, et verifier_formulations.py est reste vert sur les
-# trois. La premiere est la pire de tout ce fichier : c'est LA PANNE QUE CE
-# BANC EXISTE POUR EMPECHER, citee dans son propre en-tete, et il ne la voit
-# pas. Le motif est le meme que celui de « priorite, » : le banc RECOPIE dans
-# aiguillage_ecrit() la sequence de serveur.py au lieu de l'emprunter, et sa
-# docstring affirme pourtant que « toute permutation la-bas doit se voir ici ».
-# Il eprouve les predicats veut_*, jamais leur ORDRE ni les gardes qui les
-# entourent — c'est-a-dire tout ce que 25ce7d2 et 83e334d ont corrige.
-#
-# Les fermer ne se fait pas ici : la premiere demande que le banc appelle
-# aiguiller() plutot que de reecrire son enchainement, les deux autres qu'un
-# cas du jsonl bouge. Elles restent donc signalees a chaque lancement.
-TROUS_FORMULATIONS = [
+    # ── Les trois qui etaient des TROUS, et qui mordent depuis le 2 septembre ──
+    # Elles ont ete jouees et le banc est reste vert sur les trois. La premiere
+    # est la pire de tout ce fichier : c'etait LA PANNE QUE CE BANC EXISTE POUR
+    # EMPECHER, citee dans son propre en-tete. Le motif etait celui de
+    # « priorite, » : aiguillage_ecrit() RECOPIAIT la sequence de serveur.py au
+    # lieu de l'emprunter, tout en promettant « toute permutation la-bas doit
+    # se voir ici ». Il eprouvait les predicats veut_*, jamais leur ORDRE ni
+    # les gardes qui les entourent — tout ce que 25ce7d2 et 83e334d corrigent.
+    #
+    # Ce qui les a fermees : la sequence est sortie d'aiguiller() dans
+    # serveur.raccourci_ecrit(), que les DEUX empruntent maintenant ; deux cas
+    # du jsonl ont recu la piece jointe qui leur manquait ; et le troisieme a
+    # recu une formulation que la SECONDE garde ne voit pas.
     dict(
         nom="le detourage cesse de passer AVANT la retouche localisee",
         banc="verifier_formulations.py",
         imite="la panne d'origine, mot pour mot : « enleve le fond », « retire "
               "l'arriere-plan », « mets-la sur fond transparent » contiennent "
               "les memes verbes que la retouche, et sans cette garde ils "
-              "remplacent le SUJET. Le banc ne peut pas la voir : il recopie "
-              "l'ordre au lieu de l'emprunter",
+              "remplacent le SUJET",
         rougit="« enleve le fond »",
         editions=[("serveur.py", brut(
             '    if a_une_image == "image" and not modele_choisi'
@@ -1755,9 +1791,10 @@ TROUS_FORMULATIONS = [
         banc="verifier_formulations.py",
         imite="« je voudrais QUE tu changes le style » et « est-ce QUE tu peux "
               "refaire cette image » partaient en retouche localisee. Le banc "
-              "porte les deux formulations — mais SANS piece jointe, et la "
-              "retouche localisee ne s'ouvre qu'avec une image : elles "
-              "n'atteignent jamais le motif qu'elles devaient garder",
+              "portait les deux formulations SANS piece jointe, et la retouche "
+              "localisee ne s'ouvre qu'avec une image : elles n'atteignaient "
+              "jamais le motif qu'elles devaient garder. Les deux cas la "
+              "portent desormais",
         rougit="« je voudrais que tu changes le style »",
         editions=[("serveur.py", brut(
             r'_SEULEMENT = re.compile(r"\b(seulement|uniquement|juste)\b", re.I)',
@@ -1768,11 +1805,13 @@ TROUS_FORMULATIONS = [
         imite="« decris cette image puis supprime le fond » declenchait la "
               "lecture ET le detourage, et la lecture etant placee avant, "
               "l'utilisateur recevait un paragraphe au lieu de son image "
-              "detouree. Le cas est au banc — mais « supprime » figure aussi "
-              "dans _PAS_LIRE, ajoute par le MEME commit : la seconde garde le "
-              "voit deja. Le piege des gardes qui se recouvrent, pour la "
-              "quatrieme fois",
-        rougit="« decris cette image puis supprime le fond »",
+              "detouree. Ce cas-la ne pouvait pas servir d'ancre : « supprime » "
+              "figure aussi dans _PAS_LIRE, ajoute par le MEME commit, et la "
+              "seconde garde le voit deja — le piege des gardes qui se "
+              "recouvrent, pour la quatrieme fois. « vire » n'est dans aucune "
+              "des deux listes de _PAS_LIRE : la phrase ne franchit alors QUE "
+              "la garde d'ambiguite, et c'est elle seule qu'on mesure ici",
+        rougit="« decris cette image puis vire le fond »",
         editions=[("serveur.py", brut(
             "    if not _LIRE.search(nu):" + chr(10)
             + "        return False" + chr(10)
@@ -1783,8 +1822,6 @@ TROUS_FORMULATIONS = [
             + "                or veut_retoucher_sujet(texte))" + chr(10),
             "    return bool(_LIRE.search(nu))" + chr(10)))]),
 ]
-
-TROUS_CONNUS += TROUS_FORMULATIONS
 
 
 # ── Ce que la couverture coute, et ou part le temps ───────────────────
@@ -1815,6 +1852,11 @@ TROUS_CONNUS += TROUS_FORMULATIONS
 # reseau et ne temporise pas — et banc_repartition.py autant. Dix lancements de
 # plus au total : les quatre mutations, les trois trous, le sien sur le depot
 # sain, et les deux moities de C2. 7,3 s mesurees, sur les bancs bon marche.
+#
+# Les trois trous devenus mutations le 2 septembre au soir ne coutent RIEN de
+# plus : ils etaient deja lances, seule la liste qui les porte a change. Mesure
+# apres bascule : 95,2 s pour 90 mutations et 1 trou connu, contre 103 s pour
+# 87 et 4 — le meme travail, au bruit de la machine pres.
 #
 # On ne les lance pas en parallele, et ce n'est pas un oubli : banc_variantes
 # ordonne ses tirages par des sommeils de 0,02 a 0,6 s pour eprouver « le

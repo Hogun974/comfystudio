@@ -28,8 +28,8 @@
 {"texte": "une musique de piano melancolique", "attendu": "aucun"}
 {"texte": "decris cette image", "attendu": "aucun"}
 {"texte": "la meme mais en hiver", "attendu": "aucun"}
-{"texte": "je voudrais que tu changes le style", "attendu": "aucun"}
-{"texte": "est-ce que tu peux refaire cette image", "attendu": "aucun"}
+{"texte": "je voudrais que tu changes le style", "attendu": "aucun", "image": "image"}
+{"texte": "est-ce que tu peux refaire cette image", "attendu": "aucun", "image": "image"}
 {"texte": "ajoute des aurores boreales", "attendu": "aucun"}
 {"texte": "la meme mais plus sombre", "attendu": "aucun"}
 {"texte": "decris cette image", "attendu": "lecture", "image": "image"}
@@ -55,6 +55,7 @@
 {"texte": "un renard dans les hautes herbes au coucher du soleil", "attendu": "aucun", "image": "image"}
 {"texte": "analyse cette photo et corrige les couleurs", "image": "image", "attendu": "aucun"}
 {"texte": "decris cette image puis supprime le fond", "image": "image", "attendu": "detourer"}
+{"texte": "decris cette image puis vire le fond", "image": "image", "attendu": "detourer"}
 {"texte": "analyse la lumiere et eclaircis un peu", "image": "image", "attendu": "aucun"}
 {"texte": "commente et recadre en carre", "image": "image", "attendu": "aucun"}
 {"texte": "analyse cette image et applique un flou", "image": "image", "attendu": "aucun"}

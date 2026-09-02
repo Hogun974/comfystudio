@@ -35,34 +35,40 @@ BANC = os.path.join(ICI, "banc_formulations.jsonl")
 def aiguillage_ecrit(texte, a_une_image=False):
     """Ce que le studio decide sur la seule formulation, dans SON ordre.
 
-    L'ordre est ce qu'on verifie : le recopier ici serait sans valeur. On appelle
-    donc les memes fonctions, dans la sequence du fichier serveur.py — toute
-    permutation la-bas doit se voir ici.
+    ON EMPRUNTE LA SEQUENCE, ON NE LA RECOPIE PLUS. Ce banc la reecrivait, tout
+    en promettant ici meme que « toute permutation la-bas doit se voir ici » :
+    il eprouvait les predicats veut_* un par un, jamais leur ordre ni les
+    gardes qui les entourent. Il est donc reste vert sur LA PANNE QU'IL EXISTE
+    POUR EMPECHER, celle de son propre en-tete — le detourage remis APRES la
+    retouche localisee (25ce7d2), « enleve le fond » qui efface le SUJET.
+    Mesure : cette mutation-la etait signalee comme trou ouvert par
+    banc_mutations.py, et le banc rendait 64/64 malgre elle. Depuis qu'il
+    appelle serveur.raccourci_ecrit(), elle rougit sur « enleve le fond ».
+
+    Les deux ecritures avaient d'ailleurs deja diverge sur deux points que
+    personne n'avait vus, faute de les lire cote a cote : la copie ignorait
+    « modele_choisi », qui desarme TOUS ces raccourcis quand l'utilisateur a
+    impose un moteur pour cette demande, et elle appelait en plus
+    veut_ralenti() la ou le studio ne consulte que veut_fluidifier(). Aucun des
+    deux ne changeait un verdict — _FLUIDE contient deja le ralenti — mais
+    c'est exactement ainsi qu'une copie s'ecarte : sans que rien ne rougisse.
+
+    Rien n'oblige a monter un studio pour cela, et c'est la raison d'etre des
+    raccourcis ecrits : ils tranchent AVANT tout appel a un modele de langage.
+    La fonction empruntee ne rend qu'un nom d'intention — le journal, le tid et
+    les phrases montrees a l'utilisateur restent dans aiguiller(), qui, lui, ne
+    se teste pas sans studio.
 
     « a_une_image » porte la FAMILLE de la piece jointe, comme dans le studio —
     « image », « video », « audio » ou False. Le banc passait un booleen, donc
     il ne pouvait pas montrer qu'une video declenchait une lecture.
 
-    L'ORDRE EST CELUI DE serveur.py, et il ne l'etait pas : les trois retouches
-    localisees s'executent AVANT tous les raccourcis testes ici, et la lecture
-    APRES la fluidification. Un banc qui recopie un ordre faux ne prouve rien —
-    55/55 en vert ne disait alors rien de la sequence reelle.
+    « zone_servie » est laisse par defaut : la disponibilite de SAM 3.1 est un
+    etat de machine, et la calculer ferait passer ou echouer les six cas
+    « retoucher_zone » selon les modeles telecharges sur la machine qui lance
+    le banc. Voir la docstring de raccourci_ecrit().
     """
-    if a_une_image == "image" and not serveur.veut_detourer(texte):
-        for reconnait, quoi in ((serveur.veut_zone_nommee, "retoucher_zone"),
-                                (serveur.veut_retoucher_fond, "retoucher_fond"),
-                                (serveur.veut_retoucher_sujet, "retoucher_sujet")):
-            if reconnait(texte):
-                return quoi
-    if serveur.veut_fluidifier(texte) or serveur.veut_ralenti(texte):
-        return "fluidifier"
-    if a_une_image == "image" and serveur.veut_lire(texte):
-        return "lecture"
-    if serveur.veut_detourer(texte):
-        return "detourer"
-    if serveur.veut_agrandir(texte):
-        return "agrandir"
-    return "aucun"
+    return serveur.raccourci_ecrit(texte, a_une_image) or "aucun"
 
 
 def main():

@@ -3865,6 +3865,74 @@ def _decouper_couplets(brut):
     return [c for c in tous if len(c) >= 3 and not _boucle(c)]
 
 
+def raccourci_ecrit(texte, a_une_image=False, modele_choisi=False,
+                    zone_servie=None):
+    """Ce que le studio tranche sur la SEULE formulation, et dans quel ordre.
+
+    Rend le nom de l'intention, ou None si aucun raccourci ne repond.
+
+    Cette sequence etait ecrite DEUX FOIS : ici et dans
+    verifier_formulations.py, dont aiguillage_ecrit() la recopiait tout en
+    promettant l'inverse — « toute permutation la-bas doit se voir ici ». Les
+    deux ecritures ont diverge, et le banc est reste vert sur la panne meme
+    qu'il existe pour empecher : remettre le detourage APRES la retouche
+    localisee (la panne de 25ce7d2, « enleve le fond » qui efface le SUJET) ne
+    lui arrachait rien, parce qu'il eprouvait les predicats veut_* un par un,
+    jamais leur ordre ni les gardes qui les entourent. Un ordre ecrit deux fois
+    n'est garde nulle part.
+
+    Ce qui reste dans aiguiller() est ce qu'on ne peut pas eprouver sans
+    studio : le journal, le tid, les phrases montrees a l'utilisateur. Le banc
+    n'a besoin d'aucun des trois — ni d'un modele de langage : ces raccourcis
+    tranchent AVANT tout appel, c'est leur seule raison d'etre.
+
+    « zone_servie » est un APPELABLE fourni par l'appelant (None vaut « servie »)
+    et non un calcul fait ici, pour deux raisons. D'abord la disponibilite de
+    SAM 3.1 est un etat de MACHINE — manquants_partout() lit le disque et
+    interroge les noeuds — et non une regle d'ordre : le calculer ici ferait
+    passer ou echouer les six cas « retoucher_zone » du banc selon les modeles
+    telecharges sur la machine qui le lance, ce qui n'est plus une mesure.
+    Ensuite l'appel etait DANS le bloc : evalue a l'entree, il couterait une
+    lecture de disque a chaque demande, y compris a toutes celles qui n'ont
+    aucune image jointe.
+    """
+    # Le detourage passe AVANT : « enleve le fond », « mets-la sur fond
+    # transparent », « retire l'arriere-plan » sont ses formulations depuis le
+    # premier jour, et elles contiennent les memes verbes que la retouche. Sans
+    # cette garde, « enleve le fond » remplacait le SUJET — l'inverse exact de
+    # ce qu'on demande.
+    if a_une_image == "image" and not modele_choisi and not veut_detourer(texte):
+        # La zone nommee passe devant : « enleve le chien » vise le chien, pas
+        # « le sujet » que BiRefNet aurait devine. On ne la propose que si une
+        # machine peut la servir — le modele de selection est un telechargement
+        # optionnel.
+        ordre = []
+        if zone_servie is None or zone_servie():
+            ordre.append((veut_zone_nommee, "retoucher_zone"))
+        ordre += [(veut_retoucher_fond, "retoucher_fond"),
+                  (veut_retoucher_sujet, "retoucher_sujet")]
+        for reconnait, quoi in ordre:
+            if reconnait(texte):
+                return quoi
+
+    if veut_fluidifier(texte) and not modele_choisi:
+        return "fluidifier"
+
+    # AVANT les autres : « decris-la » est sans ambiguite des lors qu'une image
+    # est jointe, et deux des raccourcis suivants mordent sur des formulations
+    # courtes du meme genre.
+    if a_une_image == "image" and veut_lire(texte) and not modele_choisi:
+        return "lecture"
+
+    if veut_detourer(texte) and not modele_choisi:
+        return "detourer"
+
+    if veut_agrandir(texte) and not modele_choisi:
+        return "agrandir"
+
+    return None
+
+
 async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                     modele_force=None, taille=None, priorite="",
                     modele_choisi=False):
@@ -3923,53 +3991,42 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
 
     # Reconnues a l'ecrit, avant tout appel : ces tournures ne laissent aucun
     # doute, et le catalogue suffit ensuite a choisir le cote du masque.
-    # Le detourage passe AVANT : « enleve le fond », « mets-la sur fond
-    # transparent », « retire l'arriere-plan » sont ses formulations depuis le
-    # premier jour, et elles contiennent les memes verbes que la retouche. Sans
-    # cette garde, « enleve le fond » remplaçait le SUJET — l'inverse exact de
-    # ce qu'on demande.
-    if a_une_image == "image" and not modele_choisi and not veut_detourer(texte):
-        # La zone nommee passe devant : « enleve le chien » vise le chien, pas
-        # « le sujet » que BiRefNet aurait devine. On ne la propose que si une
-        # machine peut la servir — le modele de selection est un telechargement
-        # optionnel.
-        ordre = []
-        if not manquants_partout("retoucher_zone"):
-            ordre.append((veut_zone_nommee, "retoucher_zone"))
-        ordre += [(veut_retoucher_fond, "retoucher_fond"),
-                  (veut_retoucher_sujet, "retoucher_sujet")]
-        for reconnait, quoi in ordre:
-            if reconnait(texte):
-                journal(tid, f"« {quoi.replace('_', ' ')} » reconnu a la "
-                             f"formulation — la zone hors masque sera intacte")
-                return {"intention": quoi, "modele": quoi, "prompt": texte,
-                        "parametres": {}, "parametres_bruts": {},
-                        "raison": "retouche localisee : le reste de l'image ne "
-                                  "sera pas touche"}
+    # LA SEQUENCE N'EST PLUS ICI : elle est dans raccourci_ecrit(), en un seul
+    # exemplaire, et c'est celui-la que verifier_formulations.py emprunte.
+    # Les branches ci-dessous ne la rejouent pas — elles trient une valeur DEJA
+    # tranchee, donc elles sont exclusives et les permuter ne changerait rien.
+    # C'est tout l'interet du decoupage : il ne reste ici que ce qui ne se
+    # mesure pas sans studio, le journal et les phrases montrees.
+    quoi = raccourci_ecrit(texte, a_une_image, modele_choisi,
+                           lambda: not manquants_partout("retoucher_zone"))
+    if quoi in ("retoucher_zone", "retoucher_fond", "retoucher_sujet"):
+        journal(tid, f"« {quoi.replace('_', ' ')} » reconnu a la "
+                     f"formulation — la zone hors masque sera intacte")
+        return {"intention": quoi, "modele": quoi, "prompt": texte,
+                "parametres": {}, "parametres_bruts": {},
+                "raison": "retouche localisee : le reste de l'image ne "
+                          "sera pas touche"}
 
-    if veut_fluidifier(texte) and not modele_choisi:
+    if quoi == "fluidifier":
         journal(tid, "fluidite video reconnue — aucune analyse necessaire")
         return {"intention": "fluidifier", "modele": "fluidifier", "raccourci": True,
                 "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "images intercalees dans la video precedente"}
 
-    # AVANT les autres : « decris-la » est sans ambiguite des lors qu'une image
-    # est jointe, et deux des raccourcis suivants mordent sur des formulations
-    # courtes du meme genre.
-    if a_une_image == "image" and veut_lire(texte) and not modele_choisi:
+    if quoi == "lecture":
         journal(tid, "lecture d'image reconnue — aucune analyse necessaire")
         return {"intention": "lecture", "modele": None, "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "lecture : on decrit ce que l'image montre", "raccourci": True}
 
-    if veut_detourer(texte) and not modele_choisi:
+    if quoi == "detourer":
         journal(tid, "detourage reconnu — aucune analyse necessaire")
         return {"intention": "detourer", "modele": "detourer", "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "detourage : le sujet est isole, le fond devient transparent", "raccourci": True}
 
-    if veut_agrandir(texte) and not modele_choisi:
+    if quoi == "agrandir":
         journal(tid, "agrandissement reconnu — aucune analyse necessaire")
         return {"intention": "agrandir", "modele": "agrandir", "prompt": texte,
                 "parametres": {}, "parametres_bruts": {},
