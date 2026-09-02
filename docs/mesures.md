@@ -18,7 +18,7 @@ source qui dérivera.
 |---|---|
 | **pc** | RTX 2080 Ti, 11 Go de VRAM, 64 Go de RAM — la machine de référence, celle de l'auteur |
 | **zima** | NAS ZimaOS, GTX 1060, 5,9 Go de VRAM — la petite carte |
-| **le studio** | `172.20.1.191`, en conteneur, **sans carte** : il aiguille, met en file et répartit |
+| **le studio** | en conteneur sur une machine du réseau, **sans carte** : il aiguille, met en file et répartit |
 
 Une mesure prise sur **pc** ne dit rien de **zima**, et l'écart n'est pas un
 facteur constant qu'on pourrait appliquer d'une ligne à l'autre : un détourage
