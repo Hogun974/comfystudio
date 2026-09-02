@@ -222,14 +222,14 @@ Concrètement, dans ta pull request :
 4. **Une seule idée par PR.** Un correctif et un refactor mêlés ne peuvent plus
    être annulés séparément.
 5. **Fais tourner la vérification avant de proposer** :
-   `python -m compileall -q .` et `python entrainer_aiguilleur.py`. Les douze
+   `python -m compileall -q .` et `python entrainer_aiguilleur.py`. Les treize
    bancs tournent aussi tout seuls, sans réseau ni studio — `banc_adulte`,
    `banc_cerveaux`, `banc_durees`, `banc_attente`, `banc_cout`,
    `banc_variantes`, `banc_conteneur`, `banc_page`, `banc_catalogue`,
-   `banc_repartition`, `banc_refaire`, `verifier_formulations` — et la CI les
-   lance tous.
+   `banc_repartition`, `banc_refaire`, `banc_multilingue`,
+   `verifier_formulations` — et la CI les lance tous.
 
-   **Un treizième les éprouve.** `banc_mutations.py` mute le code et exige que le
+   **Un quatorzième les éprouve.** `banc_mutations.py` mute le code et exige que le
    banc visé rougisse, sur la ligne nommée et pas une autre. Il existe parce
    que trois fois en une semaine un banc vert a couvert une fonctionnalité
    morte — dont un banc écrit exprès pour le défaut qu'il ne voyait pas. Si tu

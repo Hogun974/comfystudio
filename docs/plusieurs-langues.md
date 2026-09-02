@@ -4,8 +4,17 @@ Le studio est en français de bout en bout. La question posée est : que faut-il
 pour qu'on puisse s'en servir dans une autre langue, dans quel ordre, et à quel
 prix.
 
-Cette page tranche. Elle ne décrit rien qui existe : **rien de ce qui suit n'est
-implémenté au 2 septembre 2026.**
+Cette page tranche, et depuis le 2 septembre 2026 au soir elle décrit aussi ce
+qui existe : **les travaux 1, 2, 3 et 5 sont faits**, le 4 a été mesuré puis
+**refusé**, les 6 et 7 restent. Le détail est en bas de page ; ce qui change
+tout de suite, c'est que le studio n'exécute plus une demande étrangère de
+travers en silence — il la fait lire au modèle de langage, et il le dit.
+
+> Ce qui suit a été mesuré une seconde fois **par le vrai chemin**, une fois la
+> garde en place : `banc_multilingue.py` appelle `aiguiller()` et compte les
+> appels au modèle. Il retrouve exactement les chiffres pris à la main —
+> **26 pannes silencieuses sur 345 demandes étrangères, 1 avec la garde**, et
+> le français décidé à l'identique des deux côtés.
 
 ## Quatre langues, et une seule qui presse
 
@@ -47,9 +56,21 @@ traduits **à la main** en anglais, allemand et espagnol, dans le même registre
 115 cas par langue, 460 en tout. Le classifieur publié (`aiguilleur.json`,
 2 899 exemples) a été chargé tel quel, sans réentraînement.
 
-**Ces chiffres ne se revérifient pas depuis le dépôt : le banc traduit n'y est
-pas encore.** C'est le premier travail de la liste, et cette page ne vaut pas
-plus que ça tant qu'il n'est pas fait.
+**Ces chiffres se revérifient depuis le dépôt** : les 460 cas sont dans
+`mesures_langues/banc_langues.py`, et `banc_multilingue.py` les rejoue à chaque
+CI. Ils ne l'étaient pas quand cette page a été écrite — c'était le premier
+travail de la liste, et il est fait.
+
+> **Une découverte en le faisant.** Le banc a d'abord mesuré le modèle de
+> *cette installation-ci* — `charger()` prend `aiguilleur.local.json` s'il
+> existe, et `aiguilleur.json` seulement sinon : l'un **ou** l'autre. Le
+> premier est réentraîné sur les demandes réelles de la machine et `.gitignore`
+> l'écarte ; il a donc vu des tournures que le modèle versionné n'a pas, et
+> leur couverture y est plus haute. « De quoi ça
+> parle » vaut 0,56 avec le modèle publié et 0,67 avec le modèle local de la
+> machine de développement. Le même commit aurait donc rendu des verdicts
+> différents sur deux machines. Le banc épingle désormais le modèle versionné,
+> et c'est avec lui que tous les chiffres de cette page ont été repris.
 
 ### Le classifieur, langue par langue
 
@@ -367,27 +388,53 @@ chemin ordinaire. Aucun travail n'est nécessaire ici.
 
 Chacun avec ce qu'il coûte et ce qu'il ferme.
 
-**1. Verser le banc traduit au dépôt.** 115 cas × 3 langues, déjà écrits. Sans
-lui, tout ce qui précède est une opinion datée. *Ferme : la possibilité que ces
-chiffres vieillissent sans que personne le voie.*
+**1. Verser le banc traduit au dépôt. ✔ fait.** Les 460 cas sont dans
+`mesures_langues/banc_langues.py` et `banc_multilingue.py` les rejoue :
+12 vérifications, 2,3 s, aucune carte, aucun réseau. Il emprunte `aiguiller()`
+au lieu de rejouer la séquence à la main — la seule façon de mesurer un
+court-circuit, qui est par définition ce qui n'est *pas* appelé.
 
-**2. La garde de couverture sur le court-circuit du classifieur.** Une fonction
-d'une dizaine de lignes, aucune dépendance, aucune donnée nouvelle, 0,0095 ms.
-Le seuil 0,58 va au commentaire, avec la mesure qui l'a décidé. *Ferme : 25 des
-26 pannes silencieuses. C'est le travail qui rapporte le plus, et c'est le
-moins cher.*
+**2. La garde de couverture sur le court-circuit du classifieur. ✔ faite.**
+`Aiguilleur.couverture()` et `connu()` dans `aiguilleur.py`, `SEUIL_LANGUE =
+0.58` avec la mesure qui l'a décidé, une condition de plus dans `aiguiller()`.
+Mesuré par le vrai chemin : **26 pannes silencieuses → 1**, et le français
+décidé exactement à l'identique — les mêmes 28 demandes tranchées sans appel,
+les mêmes 3 erreurs. 0,0083 ms par demande, un cinquième de `classer()`.
 
-**3. Sa mutation dans `banc_mutations.py`.** Un filet qu'on n'a jamais vu rougir
-ne mesure rien, et celui-ci garde une règle dont l'effet est invisible en
-français : les bancs du dépôt ne bougent pas d'un cas quand on l'enlève.
-*Ferme : le retrait « pour simplifier » du seuil, dans six mois.*
+**3. Ses mutations dans `banc_mutations.py`. ✔ faites**, et il en a fallu
+**trois**, pas une : la garde retirée, la garde muette, et la moisson qui
+réapprend l'étranger. Preuve inverse prise sur le code de `2f46396` — le banc
+neuf y rougit sur ces trois lignes-là, et sur elles seulement.
 
-**4. Sauter les raccourcis écrits sous le seuil.** Cinq lignes. *Ferme : la
-dernière panne. Faible rapport, mais le travail est déjà fait au point 2.*
+**4. Sauter les raccourcis écrits sous le seuil. ✘ refusé, après mesure.**
+C'était le seul travail dont le prix n'avait pas été mesuré sur le bon jeu :
+l'étude l'avait éprouvé sur les 460 cas d'aiguillage, jamais sur les 65
+formulations de `banc_formulations.jsonl`. Avec le modèle publié — celui de la
+CI, celui d'une installation neuve — **« de quoi ça parle » est à 0,556**, sous
+le seuil, et `raccourci_ecrit()` le reconnaît aujourd'hui comme une lecture.
+Le sauter coûterait donc **une formulation française** (`verifier_formulations`
+passerait de 65/65 à 64/65) pour éviter **une panne étrangère sur 26**. La
+phrase de l'étude, « sur le français les trois politiques donnent exactement le
+même résultat », était vraie du jeu sur lequel elle a été mesurée et fausse
+partout ailleurs. *Ce qui reste ouvert : la dernière panne. Elle est connue,
+écrite, et moins chère que son remède.*
 
-**5. Barrer la moisson aux demandes non françaises.** Une ligne dans
-`moissonner()`, la même garde de couverture. *Ferme la régression mesurée
-plus haut, qu'aucun banc du dépôt ne verrait.*
+**5. Barrer la moisson aux demandes non françaises. ✔ faite**, dans `corpus()`
+et non dans `moissonner()` : le filtre doit se faire contre le vocabulaire des
+**gabarits**, pas contre le modèle en service. Le prendre sur le modèle ferait
+une boucle — trois demandes allemandes admises relèvent la couverture de
+l'allemand, ce qui en admet d'autres, et la garde s'érode sans qu'une ligne ait
+bougé.
+
+> **Elle a un prix en français, et il est écrit dans le code.** Sur les 295
+> phrases françaises des bancs, **5 sont écartées (1,7 %)** — « ajoute des
+> aurores boréales », « commente et recadre en carré », « de quoi ça parle ».
+> Ce sont de vraies demandes, et la moisson existe précisément pour apprendre
+> les tournures que le corpus n'a pas : la garde écarte donc une part de ce
+> qu'elle devrait garder. On l'accepte parce que les deux erreurs ne coûtent
+> pas pareil — écarter une demande française coûte un exemple sur des milliers,
+> et la tournure suivante repassera ; en admettre une étrangère coûte huit
+> exemplaires pondérés, et double les pannes silencieuses de cette langue.
 
 **6. Les 119 messages d'erreur constants, et l'interface.** Un fichier de
 traductions, une langue choisie par conversation (cinquième entrée de

@@ -289,6 +289,24 @@ jobs:
       - name: « Refaire » refait la meme demande, et rien d'autre
         run: python banc_refaire.py
 
+      # UNE DEMANDE ETRANGERE SUR QUATRE ETAIT EXECUTEE DE TRAVERS SANS QU'UN
+      # MOT LE DISE. Bayes naif ne sait pas dire « je ne connais pas ces
+      # mots » : quand presque aucun trait de la phrase n'est au corpus, le
+      # lissage de Laplace departage les classes tout seul, et la marge — le
+      # seul chiffre que le studio consultait pour trancher sans appeler le
+      # modele — peut etre grande pour de mauvais motifs. Le court-circuit
+      # tirait PLUS souvent sur de l'etranger que sur du francais et se
+      # trompait la moitie du temps : 26 pannes silencieuses sur 345 demandes,
+      # une par-dessus lesquelles aucun autre banc du depot ne passe.
+      #
+      # CE BANC EST LE SEUL QUI VOIE LA GARDE. Les onze autres ne bougent pas
+      # d'un cas quand on la retire — c'est ce qui la rendrait facile a enlever
+      # « pour simplifier ». Il rejoue les 460 cas (les deux bancs du depot
+      # traduits a la main) par le VRAI chemin, aiguiller(), et compare deux
+      # politiques : avec la garde et sans. Aucune carte, aucun reseau, 2,3 s.
+      - name: Une demande etrangere n'est pas executee de travers en silence
+        run: python banc_multilingue.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

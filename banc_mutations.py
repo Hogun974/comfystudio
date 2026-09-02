@@ -276,6 +276,28 @@ BESOINS = {
     # reponses HTTP.
     "banc_refaire.py": (["banc_refaire.py", "web/index.html"]
                         + fichiers_du_conteneur()[1:]),
+    # banc_multilingue.py monte le studio hors ligne, remplace le modele de
+    # langage par un compteur, et fait passer 460 demandes — les deux bancs du
+    # depot traduits a la main. Il lui faut donc le conteneur entier, ses 460
+    # cas (mesures_langues/banc_langues.py), ET entrainer_aiguilleur.py avec le
+    # corpus : sa derniere section eprouve la garde de la MOISSON, qui vit
+    # la-bas. Sans l'un d'eux il meurt a l'import, ce qui ressemblerait a une
+    # mutation attrapee.
+    # ET aiguilleur.json, LE MODELE PUBLIE. Il n'est dans la liste d'aucun
+    # autre banc, et pour une raison qui vaut d'etre sue : quand le fichier
+    # manque, charger() rend None — c'est ecrit dans sa docstring, « le studio
+    # doit fonctionner sans lui » — et aiguiller() saute alors le court-circuit
+    # entier, « if (AIGUILLEUR and ... ) ». Les onze autres bancs passent donc
+    # au vert sans classifieur, sans rien remarquer. Celui-ci ouvre le fichier
+    # en toutes lettres, pour epingler le modele VERSIONNE plutot que celui de
+    # la machine : sans lui, il mourait sur un FileNotFoundError, « le banc
+    # s'est casse au lieu de rougir ».
+    "banc_multilingue.py": (["banc_multilingue.py", "aiguilleur.json",
+                             "mesures_langues/banc_langues.py",
+                             "entrainer_aiguilleur.py", "corpus_aiguillage.py",
+                             "corpus_aiguillage.jsonl", "corpus_llm.jsonl",
+                             "corpus_llm2.jsonl"]
+                            + fichiers_du_conteneur()[1:]),
     # Celui-la n'importe pas le studio : il preleve deux expressions
     # regulieres dans le TEXTE de serveur.py. Il lui faut donc serveur.py, et
     # rien d'autre — pas meme les modules qu'il importe.
@@ -296,7 +318,8 @@ BESOINS = {
 
 
 # ── Ou se lit la ligne rouge ──────────────────────────────────────────
-# Huit bancs sur onze impriment « NON » ; banc_cout.py imprime « RATE », et
+# Neuf bancs sur treize impriment « NON » ; banc_cout.py et banc_multilingue.py
+# impriment « RATE », et
 # banc_adulte.py comme verifier_formulations.py n'ont pas de dit() du tout —
 # ils listent leurs fautes indentees sous leur compte. Sans cette table, TOUTE
 # mutation qui les vise serait rendue « le banc s'est casse au lieu de
@@ -305,6 +328,7 @@ BESOINS = {
 #
 # L'exigence, elle, ne bouge pas — la ligne NOMMEE et pas un code de retour.
 MARQUE_ROUGE = {"banc_cout.py": "  RATE ", "banc_adulte.py": "    ",
+                "banc_multilingue.py": "  RATE ",
                 "verifier_formulations.py": "    "}
 
 
@@ -2000,6 +2024,13 @@ FORMULATIONS = [
 # image. On reste loin des 3,5 s de banc_variantes, et c'est le prix de la seule
 # route du depot dont la page traduit une reponse.
 #
+# Les TROIS de la garde de couverture coutent 3,4 s de plus : 117,1 s pour 99
+# mutations, contre 113,7 s pour 96. Trois lancements de banc_multilingue, plus
+# le quatorzieme lancement du sens direct — chacun fait passer 460 demandes
+# deux fois, sous deux politiques, et cela tient en 1,1 s. Le classifieur coute
+# 0,04 ms par demande et la garde 0,008 ms : c'est le prix d'un banc qui
+# n'appelle rien.
+#
 # On ne les lance pas en parallele, et ce n'est pas un oubli : banc_variantes
 # ordonne ses tirages par des sommeils de 0,02 a 0,6 s pour eprouver « le
 # premier fini n'est pas celui qui tient le rang ». Huit processus qui se
@@ -2013,8 +2044,76 @@ FORMULATIONS = [
 # machine. Un facteur quatre par la seule charge, sur des bancs qui temporisent,
 # dit exactement ce que huit processus simultanes leur feraient. Le gain
 # attendu — environ 38 s — s'achete au prix d'un banc capricieux.
+# ── La garde de couverture, et ce qui la retirerait « pour simplifier » ──
+# ELLE GARDE UNE REGLE DONT L'EFFET EST INVISIBLE EN FRANCAIS. Les douze autres
+# bancs du depot ne bougent pas d'un seul cas quand on l'enleve — verifie : les
+# treize sont verts avec la garde comme sans. C'est tout l'interet de ces trois
+# mutations-ci, et c'est aussi ce qui la rendrait facile a retirer dans six
+# mois, au motif qu'elle ne sert a rien.
+#
+# LE SENS INVERSE, pris sur le depot de 2f46396 — le commit d'avant la garde,
+# avec le seul aiguilleur.py neuf pour que SEUIL_LANGUE existe : banc_multilingue
+# neuf y rougit sur QUATRE lignes, dont les trois que ces mutations nomment.
+#
+# ET LA QUATRIEME EST UNE LEÇON DEJA APPRISE LE MEME JOUR. « chaque demande
+# etrangere retenue par la garde le dit dans le journal » se lisait d'abord
+# « dits >= etr_avant - etr_apres », et cette ligne-la etait VERTE sur le code
+# d'avant : « 0 lignes de journal pour au moins 0 pannes evitees ». Zero est
+# bien superieur ou egal a zero. Elle ne distinguait pas « la garde le dit » de
+# « il n'y a pas de garde » — le defaut exact que treize assertions de
+# banc_refaire.py portaient ce matin-la. « dits > 0 » l'a fermee, et c'est le
+# sens inverse qui l'a trouvee : une mutation verte n'est pas la seule facon
+# qu'un filet a d'avoir un trou.
+MULTILINGUE = [
+    dict(
+        nom="la garde de couverture est retiree du court-circuit",
+        banc="banc_multilingue.py",
+        imite="l'etat d'avant le 2 septembre 2026. Bayes naif ne sait pas dire "
+              "« je ne connais pas ces mots » : sur une demande dont presque "
+              "aucun trait n'est au corpus, le lissage de Laplace et les "
+              "probabilites a priori departagent les classes tout seuls, et la "
+              "marge peut etre grande pour de mauvais motifs. 25 des 26 pannes "
+              "SILENCIEUSES de l'etranger passaient par ces trois lignes — une "
+              "demande executee de travers, et pas un mot pour le dire",
+        rougit="avec elle, les pannes silencieuses sont divisees par cinq au moins",
+        editions=[("serveur.py", brut(
+            "        connu = AIGUILLEUR.connu(texte)",
+            "        connu = True"))]),
+    dict(
+        nom="la garde mord, mais sans le dire",
+        banc="banc_multilingue.py",
+        imite="une demande qui part au modele de langage PARCE QU'ON NE LA "
+              "COMPREND PAS est le seul cas du studio ou cela arrive. Sans "
+              "cette ligne de journal, l'utilisateur voit un appel de plus, "
+              "0,32 s en moyenne, et personne — lui, l'auteur, un rapport de "
+              "bogue — ne saura jamais dire pourquoi. La garde marcherait, et "
+              "serait indefendable",
+        rougit="chaque demande etrangere retenue par la garde le dit dans le journal",
+        editions=[("serveur.py", brut(
+            "        if (propose in SANS_ECRITURE and marge >= _aiguilleur.MARGE_SURE",
+            "        if (False and propose in SANS_ECRITURE "
+            "and marge >= _aiguilleur.MARGE_SURE"))]),
+    dict(
+        nom="la moisson reapprend les demandes etrangeres",
+        banc="banc_multilingue.py",
+        imite="POIDS_REEL a ete regle sur des demandes francaises entrant dans "
+              "un corpus francais. Sur une demande etrangere il s'inverse : "
+              "onze demandes allemandes confirmees font passer les pannes "
+              "allemandes de 17 a 44 %, et la justesse ne bouge presque pas — "
+              "c'est la CONFIANCE qui monte, donc le court-circuit qui tire "
+              "plus souvent. Sur le banc francais, l'ajout ne change rien du "
+              "tout : la degradation est invisible depuis tous les autres "
+              "bancs du depot",
+        rougit="et aucune des deux allemandes",
+        editions=[("entrainer_aiguilleur.py", brut(
+            '        garde = [x for x in reels if connu.connu(x["texte"])]',
+            "        garde = list(reels)"))]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
-             + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS)
+             + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
+             + MULTILINGUE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

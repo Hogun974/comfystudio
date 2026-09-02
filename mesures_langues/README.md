@@ -19,8 +19,24 @@ python mesurer_apprentissage.py  # ce que la moisson fait d'une demande étrang�
 Aucun réseau, aucune carte, aucun studio : le classifieur tourne hors ligne.
 
 **Ce ne sont pas des bancs.** Ils ne gardent rien et n'entrent pas dans la CI :
-ils mesurent un état de fait, à une date. Le banc qui gardera le multilingue
-reste à écrire — c'est le premier des sept travaux de la page.
+ils mesurent un état de fait, à une date. Le banc, lui, existe depuis le
+2 septembre 2026 au soir : [`banc_multilingue.py`](../banc_multilingue.py), à
+la racine, qui rejoue ces mêmes 460 cas **par le vrai chemin** — il appelle
+`aiguiller()` et compte les appels au modèle, au lieu de rejouer la séquence à
+la main comme le font les scripts d'ici. C'est lui que la CI lance, et trois
+mutations de `banc_mutations.py` l'éprouvent.
+
+Ces scripts restent parce qu'ils répondent à des questions que le banc ne pose
+pas : quel seuil, quel moyen de détection, quelle pondération. Ils ont servi à
+**décider**, il sert à **garder**.
+
+> Une différence de chiffres entre les deux est normale et attendue : ces
+> scripts rejouent la séquence à la main, le banc emprunte `aiguiller()` en
+> entier. Le banc trouve 26 pannes sans la garde et 1 avec — les mêmes que
+> `mesurer_garde.py`, parce que tous deux épinglent le modèle **publié**.
+> `mesurer_detection.py` charge `aiguilleur.json` directement, ce qui revient
+> au même ; si vous le modifiez pour passer par `charger()`, vous mesurerez le
+> modèle local de votre machine et les chiffres bougeront.
 
 **Et leur limite est écrite dans la page :** les 460 cas ont été traduits par
 une seule personne, ce que `CONTRIBUTING.md` dénonce précisément (100 % de

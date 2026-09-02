@@ -85,6 +85,24 @@ Les expressions écrites à la main restent en première ligne ; le classifieur
 les complète. C'est lui qui rattrape « il me faudrait la sortir de son décor »,
 qu'aucune expression ne prévoyait.
 
+### Et il se tait quand il ne connaît pas les mots
+
+Trancher sans appeler le modèle demande une marge d'au moins `MARGE_SURE = 1.2`
+entre les deux meilleures hypothèses — **et que le corpus reconnaisse la
+phrase**, au moins `SEUIL_LANGUE = 0.58` de ses traits.
+
+La seconde condition est là parce que la première ne dit pas ce qu'on croit.
+Bayes naïf ne sait pas répondre « je ne connais pas ces mots » : quand presque
+aucun trait n'est au corpus, le lissage de Laplace et les probabilités a priori
+départagent les classes tout seuls, et **la marge peut être grande pour de
+mauvais motifs**. Une demande de vidéo en allemand partait en `fluidifier` avec
+une marge de 3,9.
+
+La couverture coûte **0,0083 ms**, un cinquième du classement lui-même, et ne
+demande aucune donnée nouvelle : c'est le vocabulaire déjà présent dans
+`aiguilleur.json`. Voir [Plusieurs langues](plusieurs-langues.md) pour ce
+qu'elle a fermé et ce qu'elle coûte.
+
 ## « Décris cette image » ne passe plus par un modèle
 
 C'est la formulation la plus courante quand on joint une image, et de loin la

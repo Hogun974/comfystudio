@@ -115,6 +115,28 @@ la mutation voit quelque chose, cela dit que le banc voit le vrai défaut.
 Quand ni l'un ni l'autre n'est possible, **écris-le**. La règle complète est
 dans [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
+### Et le sens inverse trouve des trous que les mutations ne trouvent pas
+
+`banc_multilingue` est né le même soir avec sa correction, donc par le second
+chemin : le dépôt restauré à `2f46396`, le banc neuf lancé dessus. Il y rougit
+sur **quatre** lignes — les trois que ses mutations nomment, **et une
+quatrième**.
+
+Cette quatrième est la leçon. « Chaque demande étrangère retenue par la garde le
+dit dans le journal » se lisait d'abord `dits >= etr_avant - etr_apres`, et
+c'était **vert** sur le code d'avant : *0 ligne de journal pour au moins
+0 panne évitée*. Zéro est bien supérieur ou égal à zéro. L'assertion ne
+distinguait pas « la garde le dit » de « il n'y a pas de garde » — le défaut
+exact que [treize assertions de `banc_refaire`](ce-que-le-tour-garde.md)
+portaient le matin même.
+
+Sa mutation, elle, était **rouge** : en retirant la ligne de journal sur un code
+qui garde, `dits` tombe à 0 pendant que `etr_avant - etr_apres` reste à 25. La
+mutation ne pouvait donc pas voir le trou ; le sens inverse l'a vu tout de
+suite. **Une mutation verte n'est pas la seule façon qu'un filet a d'avoir un
+trou** — et c'est une raison de plus de prendre le sens inverse même quand les
+mutations sont toutes rouges.
+
 ## Les trous qu'on connaît et qu'on n'a pas encore bouchés
 
 `TROUS_CONNUS` rassemble les mutations qu'une relecture adverse a trouvées et que

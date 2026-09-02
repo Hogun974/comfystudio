@@ -3980,7 +3980,41 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     if (AIGUILLEUR and not modele_choisi and not a_une_image
             and source_dispo and court):
         propose, marge = AIGUILLEUR.classer(texte)
+        # ET LE CORPUS DOIT RECONNAITRE LA PHRASE. La marge dit « les deux
+        # meilleures hypotheses sont loin l'une de l'autre » ; elle ne dit pas
+        # « j'ai compris ». Sur une demande dont presque aucun trait n'est au
+        # corpus — une demande dans une autre langue —, le lissage de Laplace
+        # et les probabilites a priori departagent les classes tout seuls, et
+        # la marge peut etre grande pour de mauvais motifs : « brauche ein
+        # Video von null mit einem fliegenden Drachen » — une video a creer de
+        # zero — part en « fluidifier » avec une marge de 3,9.
+        #
+        # MESURE DU 2 SEPTEMBRE 2026, sur les deux bancs du depot traduits a la
+        # main en anglais, allemand et espagnol (460 cas, mesures_langues/) :
+        # ce court-circuit-ci tirait PLUS souvent sur de l'etranger que sur du
+        # francais — 22, 20 et 28 fois contre 16 — et se trompait la moitie du
+        # temps. 25 des 26 pannes silencieuses de l'etranger passaient par ces
+        # trois lignes-ci. Avec la garde : 1. Et sur le francais, RIEN NE
+        # BOUGE — 34 demandes tranchees sans appel, 5 fausses, a l'identique.
+        #
+        # Le prix est un appel de plus, 0,32 s en moyenne par demande
+        # etrangere. Une demande lente se voit ; une demande mal aiguillee ne
+        # se voit pas. Le seuil, et les deux moyens ecartes, sont dans
+        # aiguilleur.py ; la mesure entiere dans docs/plusieurs-langues.md.
+        connu = AIGUILLEUR.connu(texte)
+        # ON LE DIT, et on ne se contente pas de passer la main : sans cette
+        # ligne, la garde est invisible — l'utilisateur voit un appel au modele
+        # la ou il n'en attendait pas, et personne ne saura jamais dire
+        # pourquoi. C'est le seul endroit du studio ou une demande part au
+        # modele PARCE QU'ON NE LA COMPREND PAS.
+        if (propose in SANS_ECRITURE and marge >= _aiguilleur.MARGE_SURE
+                and not connu):
+            journal(tid, f"« {propose} » aurait ete reconnu sans appel "
+                         f"(marge {marge:.0f}), mais le corpus ne connait que "
+                         f"{AIGUILLEUR.couverture(texte):.0%} des mots de "
+                         f"cette demande : on la fait lire au modele")
         if propose in SANS_ECRITURE and marge >= _aiguilleur.MARGE_SURE \
+                and connu \
                 and not (veut_fluidifier(texte) or veut_detourer(texte)
                          or veut_agrandir(texte)):
             journal(tid, f"« {propose} » reconnu sans appeler de modele "

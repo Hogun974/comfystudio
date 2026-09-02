@@ -55,6 +55,35 @@ MODELE_LOCAL = os.path.join(ICI_DATA, "aiguilleur.local.json")
 # video generee quand on demandait une image.
 MARGE_SURE = 1.2
 
+# ── « je ne connais pas ces mots » ──────────────────────────────────────
+# EN DESSOUS DE CETTE PART DE VOCABULAIRE CONNU, LA MARGE NE VEUT RIEN DIRE.
+# Bayes naif ne sait pas dire qu'il ignore une phrase : quand presque aucun
+# trait n'est reconnu, le lissage de Laplace et les probabilites a priori
+# departagent les classes tout seuls, et l'ecart entre les deux meilleures
+# peut etre grand pour de mauvais motifs. « brauche ein Video von null mit
+# einem fliegenden Drachen » — une video a creer de zero — part en
+# « fluidifier » avec une marge de 3,9.
+#
+# CE QUE CELA A COUTE, mesure le 2 septembre 2026 sur 460 demandes (les deux
+# bancs du depot traduits a la main en anglais, allemand et espagnol,
+# mesures_langues/) : sur 345 demandes etrangeres, le court-circuit du
+# classifieur tirait 70 fois et se trompait 25 fois, sans qu'un mot le dise.
+# Une demande etrangere sur quatre etait executee de travers, en silence.
+#
+# LE SEUIL A ETE CHOISI PAR MESURE, seuil par seuil : a 0,58, le francais est
+# garde a 114/115 et l'etranger reconnu a 338/345. Deux autres moyens ont ete
+# eprouves et ecartes — une liste de mots grammaticaux francais (l'espagnol en
+# partage trop : la, le, un, no, para) et l'en-tete « Accept-Language » (il dit
+# la langue du NAVIGATEUR : un francophone sur un Windows anglais serait classe
+# anglais). Celui-ci ne demande aucune donnee nouvelle : le vocabulaire est
+# deja dans aiguilleur.json, et il coute 0,0095 ms, un cinquieme de classer().
+#
+# IL NE DIT PAS QUELLE LANGUE C'EST, et c'est voulu : il dit « je ne connais
+# pas ces mots », ce qui est exactement la condition sous laquelle la marge ne
+# se lit plus. N'importe quelle langue passe donc au modele de langage, qui est
+# multilingue — sans un seul exemple nouveau. Voir docs/plusieurs-langues.md.
+SEUIL_LANGUE = 0.58
+
 
 def _sans_accents(t):
     return "".join(c for c in unicodedata.normalize("NFD", t or "")
@@ -88,6 +117,7 @@ class Aiguilleur:
         self.classes = classes or {}      # classe -> nombre d'exemples
         self.total = total or {}          # classe -> total d'occurrences
         self.vocabulaire = vocabulaire
+        self._connus = None               # le vocabulaire en SET, bati au besoin
 
     # ── entrainement ────────────────────────────────────────────────────
     def apprendre(self, exemples):
@@ -101,9 +131,47 @@ class Aiguilleur:
                 self.total[c] = self.total.get(c, 0) + 1
                 vus.add(t)
         self.vocabulaire = len(vus)
+        self._connus = None
         return self
 
     # ── usage ───────────────────────────────────────────────────────────
+    def couverture(self, texte):
+        """La part des traits de cette phrase que le corpus connait deja.
+
+        « self.vocabulaire » est un NOMBRE, employe par le lissage de Laplace :
+        il ne dit pas QUELS traits sont connus. On prend donc l'union des sacs,
+        une fois, et on la garde — 7 734 traits pour le modele publie, bati en
+        0,6 ms. Le cache est vide par apprendre(), le seul endroit qui ajoute des
+        traits.
+
+        Une phrase vide rend 0,0 : « je ne connais pas ces mots » est vrai de
+        rien, et c'est le bon sens ici — la garde renvoie au modele de langage,
+        qui verra bien qu'il n'y a rien a lire.
+        """
+        if self._connus is None:
+            connus = set()
+            for sac in self.poids.values():
+                connus |= set(sac)
+            self._connus = connus
+        ts = traits(texte)
+        if not ts:
+            return 0.0
+        return sum(1 for t in ts if t in self._connus) / len(ts)
+
+    def connu(self, texte, seuil=None):
+        """Le corpus reconnait-il assez cette phrase pour qu'on s'y fie ?
+
+        Le seuil est relu A CHAQUE APPEL et non fige en valeur par defaut :
+        banc_multilingue.py le descend a 0 pour rejouer la politique d'AVANT
+        la garde sur les memes 460 demandes, et c'est cette comparaison-la —
+        le francais decide exactement pareil des deux cotes — qui est la moitie
+        importante de ce que le banc mesure. Avec « seuil=SEUIL_LANGUE » en
+        valeur par defaut, la liaison se ferait a la definition et le banc
+        aurait compare deux fois la meme politique, sans rien dire.
+        """
+        return self.couverture(texte) >= (SEUIL_LANGUE if seuil is None
+                                          else seuil)
+
     def scores(self, texte):
         """Log-vraisemblance de chaque classe. Lissage de Laplace : un trait
         jamais vu ne doit pas annuler une classe entiere."""

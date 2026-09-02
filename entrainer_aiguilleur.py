@@ -149,6 +149,57 @@ def corpus():
         fabriques[x["intention"]] = fabriques.get(x["intention"], 0) + 1
 
     reels, ajoutes = ([] if SANS_REEL else moissonner()), {}
+    # ── ET RIEN QUI NE SOIT PAS DANS LA LANGUE DU CORPUS ──────────────
+    # LA MOISSON INVERSE LE REMEDE SUR UNE DEMANDE ETRANGERE. Mesure du
+    # 2 septembre 2026 (mesures_langues/mesurer_apprentissage.py, corpus
+    # francais plus K exemples par classe dans la langue visee, ponderation
+    # reelle, trois tirages) : ONZE demandes allemandes confirmees font passer
+    # les pannes silencieuses allemandes de 17 % a 44 %. La justesse, elle, ne
+    # bouge presque pas — 45 % a 51 %. Ce n'est donc pas la justesse qui monte,
+    # c'est la CONFIANCE, et le court-circuit tire plus souvent.
+    #
+    # La cause est POIDS_REEL. Il a ete regle sur des demandes francaises
+    # entrant dans un corpus francais, ce que le commentaire de sa constante dit
+    # deja. Huit exemplaires d'une phrase allemande creent des traits a fort
+    # poids — les fragments de ses mots grammaticaux — que TOUTES les autres
+    # phrases allemandes partagent, et qui les tirent avec assurance vers la
+    # classe de ces huit exemplaires. En faisant varier la seule ponderation a
+    # K=3, les pannes allemandes suivent : 27 % a x1, 31 % a x2, 39 % a x4,
+    # 43 % a x8. Monotone.
+    #
+    # ET LES BANCS DU DEPOT N'EN VERRAIENT RIEN : sur le banc francais, l'ajout
+    # ne change rien du tout (91 %, 90 %, 96 % pour K=0, 3, 5). C'est le profil
+    # exact d'une panne qu'on ne voit pas.
+    #
+    # LE VOCABULAIRE DE REFERENCE EST CELUI DES GABARITS, jamais celui du modele
+    # en service. Le prendre sur le modele ferait une boucle : trois demandes
+    # allemandes admises relevent la couverture de l'allemand, ce qui en admet
+    # d'autres, et la garde s'erode d'elle-meme sans qu'une ligne ait bouge.
+    # « tout » ne contient a cet instant que les exemples FABRIQUES.
+    #
+    # CE QU'ELLE COUTE EN FRANCAIS, MESURE SUR LES 295 PHRASES FRANCAISES DES
+    # BANCS : 5 ecartees, 1,7 % — « ajoute des aurores boreales », « commente
+    # et recadre en carre », « de quoi ca parle ». Ce sont de vraies demandes
+    # francaises, et les perdre est un vrai cout : la moisson existe justement
+    # pour apprendre les formulations que le corpus n'a PAS. La garde ecarte
+    # donc, par construction, une part de ce qu'elle devrait garder.
+    #
+    # ON L'ACCEPTE PARCE QUE LES DEUX ERREURS NE COUTENT PAS PAREIL. Ecarter
+    # une demande francaise coute UN exemple sur des milliers, et la suivante
+    # dans la meme tournure repassera. Admettre une demande etrangere coute
+    # huit exemplaires ponderes, et la mesure ci-dessus dit ou cela mene. Sur
+    # les 345 phrases etrangeres du meme banc, 338 sont ecartees : le meme
+    # seuil, la meme ligne.
+    if reels:
+        connu = _aiguilleur.Aiguilleur().apprendre(tout)
+        garde = [x for x in reels if connu.connu(x["texte"])]
+        if len(garde) != len(reels):
+            print(f"  {len(reels) - len(garde)} demande(s) ecartee(s) : leurs "
+                  f"mots ne sont pas ceux du corpus (moins de "
+                  f"{_aiguilleur.SEUIL_LANGUE:.0%} de couverture). Une demande "
+                  f"etrangere apprise ici ne rend pas le studio meilleur dans "
+                  f"cette langue, elle le rend plus SUR de ses erreurs")
+        reels = garde
     # LES CORRECTIONS D'ABORD. Le plafond par classe est vite atteint, et une
     # confirmation apprend une formulation que le classifieur trouvait deja ;
     # une correction en apprend une qu'il a ratee. Si l'une des deux doit sauter,
