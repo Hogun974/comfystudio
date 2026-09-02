@@ -296,6 +296,9 @@ Quelques portes d'entrée :
   ce logiciel ne les suit pas.
 - [Réglages](docs/reglages.md) — toutes les variables d'environnement, ce
   qu'elles valent par défaut et ce qu'elles changent.
+- [Plusieurs langues](docs/plusieurs-langues.md) — **le studio est en français,
+  et une décision est posée** : ce qu'il faudrait pour s'en servir dans une
+  autre langue, dans quel ordre, et ce qu'on ne fera pas.
 
 ## Contribuer, signaler
 

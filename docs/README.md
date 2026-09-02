@@ -17,6 +17,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Le modèle qui écrit n'est pas celui qui aiguille](modele-qui-ecrit.md) — pourquoi le studio choisit tout seul un gros modèle pour les paroles.
 - [Plusieurs Ollama, et lequel le studio choisit](plusieurs-ollama.md) — `OLLAMA_URL` en liste, l'ordre appliqué, et pourquoi une image ne part jamais sur une machine qui ne voit pas.
 - [Ce que le tour garde du plan](ce-que-le-tour-garde.md) — **un changement de format sur disque, le 2 septembre 2026** : ce que chaque tour emporte désormais, ce qu'il laisse et pourquoi, ce que cela pèse, et le repli daté pour les tours d'avant.
+- [Plusieurs langues](plusieurs-langues.md) — **une décision, rien n'est implémenté** : ce qu'il faut pour se servir du studio dans une autre langue, pourquoi l'entrée passe avant la sortie, et pourquoi 11 demandes étrangères confirmées suffisent à faire doubler les pannes silencieuses.
 - [Mesures](mesures.md) — les durées relevées, chacune avec **sa date et sa machine** : une durée ne se revérifie pas depuis le code, elle vieillit en silence.
 - [Combien de temps ça va prendre](combien-de-temps.md) — le devis annoncé avant le rendu, la médiane, le silence en dessous de trois mesures, et le temps écoulé servi par le serveur.
 - [Éprouver les bancs](eprouver-les-bancs.md) — `banc_mutations.py`, qui casse le code exprès pour vérifier que les bancs le voient : trois fois en une semaine, un banc vert a couvert une fonctionnalité morte.
