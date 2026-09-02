@@ -11650,9 +11650,22 @@ def charger_registre():
                     json.dump({"jeton": ADMIN_JETON}, f)
             except OSError:
                 pass
+            # LE CHEMIN REEL, ET NON UN CHEMIN ECRIT A LA MAIN. Celui-ci
+            # annonçait « conversations/_admin.json » alors que FICHIER_ADMIN
+            # suit STUDIO_DONNEES : en conteneur, le fichier est
+            # /donnees/_admin.json, dans un volume nomme. Le seul message du
+            # studio qui dise ou retrouver ce jeton etait donc faux dans le
+            # seul montage ou quelqu'un a besoin de le chercher — et il est
+            # affiche UNE fois, a la creation.
+            #
+            # ET LA PORTE D'A COTE EST DITE AUSSI : admin_ok() accepte le jeton
+            # OU un compte administrateur connecte (voir sa docstring). Quelqu'un
+            # qui a note le mot de passe d'« admin » n'a jamais besoin de ce
+            # jeton ; ne pas le dire ici faisait chercher un fichier pour rien.
             print(f"  Administration : jeton {ADMIN_JETON}", flush=True)
-            print("  (a coller dans /admin ; conserve dans conversations/_admin.json)",
-                  flush=True)
+            print(f"  (conserve dans {FICHIER_ADMIN})", flush=True)
+            print("  Inutile si tu ouvres /admin avec un compte administrateur "
+                  "deja connecte.", flush=True)
 
 
 FICHIER_SESSION = os.path.join(DOSSIER_CONV, "_session.json")

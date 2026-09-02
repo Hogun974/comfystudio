@@ -35,6 +35,11 @@ import re
 import secrets
 import time
 
+# Le second facteur. mfa.py n'importe que la bibliotheque standard : ce module
+# reste donc aussi leger qu'avant, et un studio qui n'arme le MFA sur aucun
+# compte ne paie rien.
+import mfa
+
 NOM_VALIDE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{1,23}")
 DUREE_SESSION = 30 * 24 * 3600      # un mois : on n'ouvre pas un studio familial
                                     # tous les matins
@@ -48,6 +53,34 @@ _N, _R, _P = 2 ** 14, 8, 1
 
 class ErreurCompte(ValueError):
     """Refus explicable a l'utilisateur : nom pris, mot de passe trop court…"""
+
+
+class _BesoinMFA:
+    """« Le mot de passe est bon, il manque le second facteur » — ET C'EST FAUX.
+
+    __bool__ rend False, et ce n'est pas une coquetterie : c'est ce qui fait
+    qu'un appelant qui ne sait rien du second facteur ECHOUE FERME. Le code
+    d'avant s'ecrit « if not c: refuser » ; avec un sentinelle vrai, chaque
+    site d'appel oublie aurait ouvert une session sur le seul mot de passe. Et
+    un site oublie ne se voit pas : tout continue de marcher pour les comptes
+    qui n'ont pas arme le facteur, c'est-a-dire pour tout le monde le jour ou
+    l'on branche la fonctionnalite.
+
+    Un objet et non None : « c is BESOIN_MFA » distingue les deux cas pour qui
+    veut afficher le champ du code, sans qu'aucun test de verite ne le confonde
+    avec une reussite.
+    """
+
+    __slots__ = ()
+
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return "BESOIN_MFA"
+
+
+BESOIN_MFA = _BesoinMFA()
 
 
 def empreinte(mdp, sel=None):
@@ -180,15 +213,160 @@ class Comptes:
         """
         return any(identifiant(c["nom"]) == pid for c in self.gens.values())
 
-    def authentifier(self, nom, mdp):
+    def authentifier(self, nom, mdp, code=None):
+        """Le compte, None, ou BESOIN_MFA — et ce troisieme cas est FAUX.
+
+        LE SENTINELLE EST FALSY, ET C'EST TOUTE LA PROTECTION. Un appelant qui
+        ne connait pas le second facteur ecrit « if not c: refuser », et il
+        refuse : le code d'avant echoue FERME. S'il avait fallu comparer a une
+        valeur particuliere, chaque site d'appel oublie aurait ouvert une
+        session sur le seul mot de passe — et un site d'appel oublie ne se voit
+        pas, puisque tout continue de marcher pour les comptes sans MFA.
+        C'est la meme raison qui fait rendre a mfa.verifie() le PAS accepte
+        plutot qu'un booleen : on ne demande pas a l'appelant de penser a
+        quelque chose, on lui rend impossible de l'ignorer.
+        """
         c = self.gens.get((nom or "").strip().lower())
         if not c or not verifier(mdp or "", c.get("sel"), c.get("empreinte")):
             # Un seul message pour les deux cas : dire « ce compte n'existe pas »
             # revient a publier la liste des comptes a qui veut la deviner.
             return None
+        if (c.get("mfa") or {}).get("secret"):
+            if not code:
+                # LE MOT DE PASSE ETAIT BON, et on ne le dit pas autrement que
+                # par cette demande de code. C'est inevitable — il faut bien
+                # afficher le champ — mais rien d'autre ne fuit : le compte
+                # n'est pas marque « vu », et l'echec du code rend le meme None
+                # qu'un mot de passe faux.
+                return BESOIN_MFA
+            if not self.mfa_verifier(c["nom"], code):
+                return None
         c["vu"] = time.strftime("%Y-%m-%d %H:%M")
         self.sauver()
         return c
+
+    # ── le second facteur ────────────────────────────────────────────────
+    # LE SECRET N'EST PAS UN MOT DE PASSE : il ne peut pas etre garde en
+    # empreinte, puisqu'il faut le relire pour calculer le code attendu. Il est
+    # donc en clair dans _comptes.json, comme il l'est dans toutes les
+    # implementations de TOTP — et c'est pourquoi ce fichier est ecrit en 0600
+    # et ne sort jamais par liste(). Les codes de SECOURS, eux, se comparent :
+    # ils sont empreints comme des mots de passe.
+    #
+    # L'ENROLEMENT SE FAIT EN DEUX TEMPS, et le second n'est pas une politesse.
+    # Armer le facteur au moment ou l'on tire le secret enferme dehors quiconque
+    # a mal scanne le QR code, ferme l'onglet trop tot, ou dont l'horloge de
+    # telephone est fausse : il ne pourra plus jamais entrer, et l'administrateur
+    # non plus — c'est justement ce qu'on vient d'empecher. Le secret attend donc
+    # dans « mfa_attente » tant qu'un code juste n'a pas ete presente.
+
+    def mfa_arme(self, nom):
+        """Ce compte exige-t-il un second facteur, ici et maintenant ?"""
+        c = self.gens.get((nom or "").lower()) or {}
+        return bool((c.get("mfa") or {}).get("secret"))
+
+    def mfa_preparer(self, nom):
+        """Tire un secret et le met EN ATTENTE. Rend (secret, uri).
+
+        Rappele deux fois, il tire un secret neuf : quelqu'un qui reprend un
+        enrolement abandonne a scanne un QR code qu'il ne retrouve plus, et lui
+        rendre l'ancien secret l'obligerait a chercher lequel de ses deux
+        comptes d'application est le bon.
+        """
+        c = self.gens.get((nom or "").lower())
+        if not c:
+            raise ErreurCompte("compte inconnu")
+        if self.mfa_arme(c["nom"]):
+            raise ErreurCompte("le second facteur est deja arme sur ce compte")
+        secret = mfa.secret_neuf()
+        c["mfa_attente"] = {"secret": secret,
+                            "depuis": time.strftime("%Y-%m-%d %H:%M")}
+        self.sauver()
+        return secret, mfa.uri(c["nom"], secret)
+
+    def mfa_confirmer(self, nom, code):
+        """Arme le facteur si le code tombe juste. Rend les codes de secours.
+
+        EN CLAIR UNE SEULE FOIS, et jamais relisibles : ce qui est garde est
+        leur empreinte scrypt. C'est le seul moment ou ils existent en clair,
+        et l'interface doit le dire — un utilisateur qui ferme l'onglet en
+        pensant les retrouver dans ses reglages ne les retrouvera pas.
+        """
+        c = self.gens.get((nom or "").lower())
+        if not c:
+            raise ErreurCompte("compte inconnu")
+        attente = c.get("mfa_attente") or {}
+        if not attente.get("secret"):
+            raise ErreurCompte("aucun enrolement en cours")
+        pas = mfa.verifie(attente["secret"], code)
+        if pas is None:
+            raise ErreurCompte("ce code ne correspond pas")
+        secours = mfa.codes_de_secours()
+        c["mfa"] = {"secret": attente["secret"],
+                    "depuis": time.strftime("%Y-%m-%d %H:%M"),
+                    # LE PAS QUI VIENT DE SERVIR EST DEJA CONSOMME. Sans cette
+                    # ligne, le code tape pour CONFIRMER l'enrolement ouvrirait
+                    # encore une session dans la minute — le rejeu, par la
+                    # porte de l'enrolement.
+                    "dernier_pas": pas,
+                    "secours": [dict(zip(("sel", "empreinte"),
+                                         empreinte(mfa.normalise_secours(s))))
+                                for s in secours]}
+        c.pop("mfa_attente", None)
+        self.sauver()
+        return secours
+
+    def mfa_verifier(self, nom, code):
+        """Un code TOTP, ou un code de secours. Vrai une seule fois chacun.
+
+        L'ORDRE COMPTE PEU MAIS LE COUT, SI : on essaie TOTP d'abord parce
+        qu'il est le cas courant et qu'il ne coute qu'un HMAC, la ou chaque
+        code de secours coute un scrypt — dix scrypt a chaque saisie donneraient
+        a qui essaie des codes au hasard un levier pour occuper le studio.
+        """
+        c = self.gens.get((nom or "").lower())
+        m = (c or {}).get("mfa") or {}
+        if not m.get("secret"):
+            return False
+        pas = mfa.verifie(m["secret"], code, dernier_pas=m.get("dernier_pas"))
+        if pas is not None:
+            # SUR LE DISQUE, ET TOUT DE SUITE. Garder le dernier pas en memoire
+            # seulement rouvrirait le rejeu a chaque redemarrage du studio — et
+            # il redemarre souvent, c'est ecrit en tete de ce fichier a propos
+            # des sessions.
+            m["dernier_pas"] = pas
+            self.sauver()
+            return True
+        propre = mfa.normalise_secours(code)
+        if not propre:
+            return False
+        for i, s in enumerate(m.get("secours") or []):
+            if verifier(propre, s.get("sel"), s.get("empreinte")):
+                # A USAGE UNIQUE : on le retire avant de rendre vrai. Un code de
+                # secours rejouable est un second mot de passe permanent, note
+                # sur un papier.
+                m["secours"].pop(i)
+                self.sauver()
+                return True
+        return False
+
+    def mfa_secours_restants(self, nom):
+        c = self.gens.get((nom or "").lower()) or {}
+        return len((c.get("mfa") or {}).get("secours") or [])
+
+    def mfa_retirer(self, nom):
+        """Desarme le facteur, et efface le secret avec.
+
+        Le garder « au cas ou » ferait qu'un compte desarme puis rearme
+        reprendrait l'ancien secret : le telephone qu'on venait justement de
+        perdre ouvrirait de nouveau le studio.
+        """
+        c = self.gens.get((nom or "").lower())
+        if not c:
+            raise ErreurCompte("compte inconnu")
+        c.pop("mfa", None)
+        c.pop("mfa_attente", None)
+        self.sauver()
 
     # ── sessions ─────────────────────────────────────────────────────────
     def jeton(self, nom, duree=DUREE_SESSION):
