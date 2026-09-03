@@ -222,6 +222,46 @@ cp .env.exemple .env       # y mettre au moins STUDIO_ADMIN_MDP
 docker compose up -d --build
 ```
 
+`.env` n'est créé par personne : sans lui, tout prend ses valeurs par défaut et
+le mot de passe `admin` est tiré au sort — voir plus bas où le lire.
+
+#### Trois montages, et c'est le compose qui les porte
+
+La commande ci-dessus lance **le studio seul** : ComfyUI et Ollama vivent
+ailleurs, sur l'hôte ou sur une autre machine. C'est le montage le plus
+fréquent, parce que la carte graphique est déjà prise par un ComfyUI qu'on ne
+veut pas déranger. Les deux autres sont dans le même fichier :
+
+```bash
+docker compose --profile complet up -d --build   # studio + ComfyUI + Ollama
+docker compose --profile moteur  up -d --build   # studio + ComfyUI, sans Ollama
+```
+
+`moteur` est celui de qui pilote le studio avec une clé d'API plutôt qu'un
+modèle local : on économise plusieurs gigaoctets.
+
+> **Les deux profils avec ComfyUI livrent des conteneurs VIDES.** L'image de
+> ComfyUI ne télécharge aucun modèle, et `ollama/ollama` est l'image officielle
+> nue. Le studio démarrera, l'interface répondra, et la première demande
+> n'aura rien pour la servir. Il faut ensuite `docker exec ollama ollama pull
+> <modèle>` et poser les modèles de ComfyUI — voir
+> [Télécharger les modèles](docs/telecharger-les-modeles.md).
+
+> **Et le studio ne partage aucun volume de modèles avec ce ComfyUI-là.** Il
+> continue de croire qu'il peut écrire sur son disque, parce que ComfyUI
+> répond à la même adresse locale ; le dossier qu'il viserait, `/comfy/models`,
+> n'existe pas dans son image. *Ce point est une lecture du `docker-compose.yml`
+> et du `Dockerfile`, pas une mesure* : le partage manque, c'est certain ; ce
+> que fait exactement le téléchargement dans ce cas ne l'est pas. Si tu montes
+> ce profil, pose les modèles côté ComfyUI et n'attends pas que le studio le
+> fasse.
+
+**Sur une carte antérieure aux RTX**, ajoute `ROUE=cu126` dans `.env` avant de
+construire. La roue par défaut, `cu128`, ne contient que `sm_75` et au-delà :
+une GTX 10xx démarre, est bien vue, et **échoue à la première génération** avec
+« no kernel image is available for execution on the device ». Mesuré le
+29 août 2026.
+
 `.env.exemple` est un fichier caché : un `ls` ne le montre pas, `ls -a` si.
 `docker compose version` doit répondre `v2` ou plus récent — c'est bien
 `docker compose` en deux mots, `docker-compose` en un mot étant la v1, qui n'est
@@ -267,7 +307,43 @@ Mieux vaut le poser d'avance. Un mot de passe tiré au sort et manqué au vol ne
 se relit pas : il n'est pas conservé en clair, seule une empreinte scrypt l'est.
 
 Où le lire selon le chemin de démarrage :
-[Installation](docs/installation.md#démarrer).
+[Installation](docs/installation.md#démarrer). En conteneur :
+
+```bash
+docker compose logs comfystudio | grep -A3 "Compte administrateur"
+```
+
+## Et ensuite : `/admin`
+
+Une fois connecté, le lien **`admin`** apparaît dans l'en-tête si ton compte est
+administrateur. C'est là que se règle tout ce qui ne tient pas dans une variable
+d'environnement : les **machines à carte**, les **clés d'API** et le choix
+local/distant par modalité, les **comptes**, le plafond du nuage, et le
+réentraînement de l'aiguilleur.
+
+**Tu n'as pas besoin du jeton d'administration si tu es connecté comme
+administrateur** — la page l'accepte, mais elle ne le demande que si la première
+requête est refusée. Ce jeton est tiré au sort au tout premier démarrage,
+affiché **une seule fois**, et conservé dans le dossier des données
+(`/donnees/_admin.json` en conteneur, dans un volume nommé). Il existe pour
+entrer la toute première fois, quand aucun compte n'existe encore.
+
+### Les machines à carte s'enrôlent depuis `/admin`
+
+**Le studio n'appelle jamais une machine à carte : ce sont elles qui
+l'appellent.** Dans l'onglet « machines », un identifiant et un titre suffisent
+à délivrer un jeton — et la page te donne **les deux commandes toutes faites**,
+à coller sur la machine concernée. Le studio sert lui-même le script d'agent ;
+il n'y a rien à télécharger ailleurs.
+
+Détail complet, y compris pour une machine sous ZimaOS ou sans écran :
+[Machines à agent](docs/machines-a-agent.md).
+
+> **Le studio produit même sans modèle de langage.** Si Ollama est injoignable,
+> l'aiguillage se fait par mots-clés et l'image sort quand même — moins bien
+> choisie, mais elle sort. Ce qui est réellement indispensable, c'est **une
+> carte qui répond** : sans elle, et sans clé d'API, il n'y a rien pour
+> calculer.
 
 ## La documentation détaillée
 

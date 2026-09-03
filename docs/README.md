@@ -9,6 +9,8 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [En conteneur](en-conteneur.md) — Docker et Compose, ComfyUI conteneurisé, volumes, et le tableau complet des variables d'environnement.
 - [Deux studios sur la même machine](deux-studios-sur-la-meme-machine.md) — **à lire avant de lancer un second studio** : par défaut il écrit dans le volume du premier et un `down -v` efface les données de l'autre.
 - [Réglages](reglages.md) — les variables d'environnement à poser avant de lancer, hors conteneur.
+- [Des machines qui viennent d'elles-mêmes](machines-a-agent.md) — **une installation neuve n'est pas finie sans ça** si la carte est sur une autre machine : le studio ne l'appelle jamais, c'est elle qui l'appelle. Rangée aussi sous « Plusieurs machines », parce qu'elle sert deux fois.
+- [Télécharger les modèles](telecharger-les-modeles.md) — un studio qui répond mais n'a aucun modèle ne produit rien ; c'est la dernière étape d'une première mise en service.
 
 ## Comprendre ce qui se passe
 
