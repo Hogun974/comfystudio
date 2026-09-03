@@ -66,6 +66,15 @@ sys.path.insert(0, ICI)
 import traductions as TR  # noqa: E402
 
 PAGE = io.open(os.path.join(ICI, "web", "index.html"), encoding="utf-8").read()
+
+# SERVEUR.PY EST LU, PAS IMPORTE — il tirerait aiohttp derriere lui, que la
+# machine du releve n'a pas. Une seule chose y est cherchee : le NOM du champ
+# par lequel il dit « il manque le second facteur ». C'est la moitie de contrat
+# qui manquait a MARQUE_DEJA et a MARQUE_DEVIS, et qu'il fallait aller chercher
+# dans un banc a studio ; ici le champ est une constante, donc les deux moities
+# se relevent au meme endroit.
+SERVEUR = io.open(os.path.join(ICI, "serveur.py"), encoding="utf-8",
+                  newline=None).read()
 ok, rate = [], []
 
 
@@ -585,6 +594,82 @@ dit(cond_arret is not None and "MARQUE_ARRET_DIFFERE" in cond_arret
     "et la relecture differee se decide sur ce champ, jamais sur le message",
     "la relecture differee n'est plus sous un « if » : ce cas ne mesure plus "
     "rien" if cond_arret is None else cond_arret.strip())
+
+# ── LE SECOND FACTEUR : LE CHAMP SE NOMME DES DEUX COTES ──────────────
+# Troisieme contrat de la meme famille, et le premier dont les DEUX moities se
+# mesurent ici. MARQUE_DEJA et MARQUE_DEVIS demandent un studio qui tourne pour
+# dire quel refus pose le champ, et ce sont banc_refaire.py et banc_variantes.py
+# qui s'en chargent. Celui-ci n'en demande pas : le champ est une CONSTANTE
+# nommee dans serveur.py, et il suffit de relever les deux declarations pour
+# exiger qu'elles disent le meme mot.
+#
+# CE QUE LA DERIVE COUTERAIT, si l'une bougeait seule : le champ du code ne
+# s'afficherait plus jamais. L'utilisateur d'un compte arme taperait son mot de
+# passe juste et lirait « nom, mot de passe ou code incorrect » sans qu'aucune
+# case ne lui soit offerte — un studio qui refuse un mot de passe juste, sans
+# qu'une ligne de la page ni du serveur n'ait l'air fautive.
+#
+# Zero declaration compte comme un NON, et plusieurs aussi : on ne saurait plus
+# laquelle s'applique. Meme doctrine que MARQUE_DEJA.
+_mfa_page = re.findall(r'const\s+MARQUE_MFA\s*=\s*"([^"]*)"\s*;', CORPS)
+_mfa_serveur = re.findall(r'(?m)^MARQUE_MFA\s*=\s*"([^"]*)"\s*$', SERVEUR)
+dit(len(_mfa_page) == 1 and len(_mfa_serveur) == 1 and bool(_mfa_page[0])
+    and _mfa_page == _mfa_serveur,
+    "le champ « il manque le second facteur » porte le MEME nom dans la page "
+    "et dans le serveur",
+    f"page {_mfa_page} / serveur {_mfa_serveur}")
+
+# ET LA CASE S'OUVRE SUR CE CHAMP, JAMAIS SUR LE MESSAGE NI SUR LE CODE DE
+# RETOUR. Les deux ecrans qui la demandent sont releves : la porte d'entree et
+# le panneau du second facteur. « condition_du_si » plutot qu'un motif — nommer
+# la condition par une expression reguliere reviendrait a decrire UNE facon de
+# l'ecrire, la faute que ce banc a deja faite cinq fois.
+for _ancre, _quoi in (
+        ("demanderCode(f, mal); return; }",
+         "et l'ecran de connexion ouvre la case du code sur ce champ, jamais "
+         "sur le texte du refus"),
+        ("demanderCode(f, mal); return null; }",
+         "le panneau du second facteur l'ouvre de la meme facon")):
+    _cond = condition_du_si(CORPS, _ancre)
+    dit(_cond is not None and "MARQUE_MFA" in _cond and "erreur" not in _cond,
+        _quoi,
+        "la case du code n'est plus sous un « if » : ce cas ne mesure plus rien"
+        if _cond is None else _cond.strip())
+
+# ── LES DEUX PHRASES QUE L'ENROLEMENT NE PEUT PAS TAIRE ───────────────
+# Aucune des deux ne se devine, et les deux coutent un compte a qui l'ignore :
+#
+#   - LES CODES DE SECOURS NE S'AFFICHENT QU'UNE FOIS. Ce qui est garde est
+#     leur empreinte scrypt ; qui ferme l'onglet en pensant les retrouver dans
+#     ses reglages ne les retrouvera pas, et personne ne peut les redonner —
+#     pas meme l'administrateur, puisque c'est exactement ce qu'on vient
+#     d'empecher.
+#   - LE CODE QUI A CONFIRME L'ENROLEMENT EST DEJA CONSOMME
+#     (comptes.mfa_confirmer garde son pas, et banc_comptes.py le mesure).
+#     Celui qui vient de le taper le lit encore sur son telephone, le retape
+#     aussitot, se voit refuse, et croit que son enrolement a rate. Trente
+#     secondes au plus, le pas de la RFC 6238.
+#
+# L'ancre est la FONCTION qui peint cet ecran-la : les chercher dans la page
+# entiere les trouverait dans un commentaire, ou sur un ecran ou personne ne
+# les lit. Fonction introuvable vaut NON — le cas dit alors qu'il ne mesure
+# plus rien, ce qui est le bon sens de l'erreur.
+_bloc_secours = CORPS.split("const peindreSecours =", 1)
+_dedans = _bloc_secours[1].split("\n  };", 1)[0] if len(_bloc_secours) == 2 else ""
+# LE RELEVE NOMME CELLE QUI MANQUE, et ce n'est pas un ornement : la premiere
+# version de ce cas imprimait « les deux phrases y sont » a cote de sa propre
+# ligne ROUGE, parce que le detail ne distinguait que « fonction introuvable »
+# du reste. Un banc qui rougit en disant le contraire de ce qu'il a vu envoie
+# chercher la panne ailleurs.
+_sans_phrase = [c for c in ("page.mfa.secours.unique", "page.mfa.attente")
+                if c not in _dedans]
+dit(len(_bloc_secours) == 2 and not _sans_phrase,
+    "l'ecran des codes de secours dit qu'ils ne s'affichent QU'UNE fois, et "
+    "annonce l'attente d'au plus trente secondes",
+    "peindreSecours introuvable : ce cas ne mesure plus rien"
+    if len(_bloc_secours) != 2
+    else (", ".join(_sans_phrase) + " : absente de cet ecran") if _sans_phrase
+    else "les deux phrases y sont")
 
 # ── ET LE MEME PIEGE NULLE PART AILLEURS ──────────────────────────────
 # Les trois defauts fermes se ressemblaient trop pour n'etre nommes qu'un par

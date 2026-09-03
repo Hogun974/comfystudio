@@ -178,8 +178,25 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
 .entree input{background:var(--creux);border:1px solid var(--trait);border-radius:7px;
   padding:8px 10px;color:var(--encre);font:13px var(--sans)}
 .entree input:focus{outline:none;border-color:var(--braise)}
-.entree .rang{display:flex;gap:8px;justify-content:flex-end}
+.entree .rang{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 .entree .mal{color:var(--rouge);font:11px var(--mono);min-height:14px}
+/* ── le second facteur ─────────────────────────────────────────────
+   LE SECRET SE RECOPIE A LA MAIN, chiffre par chiffre, et il n'y a pas de QR
+   code pour l'eviter : le dessiner demanderait une bibliotheque, et la page
+   n'a aucune dependance. « user-select:all » fait qu'un seul clic prend les
+   trente-deux caracteres au lieu du groupe de quatre sous le curseur, et
+   « word-break » evite qu'ils sortent de la boite sur un telephone. */
+.entree .secret{font:600 14px var(--mono);letter-spacing:.06em;user-select:all;
+  background:var(--creux);border:1px solid var(--trait);border-radius:7px;
+  padding:8px 10px;word-break:break-all}
+/* Deux colonnes : dix codes en une seule font une liste qu'on recopie de
+   travers, et la grille les aligne pour qu'on voie tout de suite qu'il y en a
+   dix. */
+.entree .secours{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;
+  margin:0;padding:0;list-style:none;font:13px var(--mono);user-select:all}
+.entree .avertit{color:var(--braise);font:11px var(--sans);line-height:1.45}
+.entree .dit{color:var(--encre-douce);font:11px var(--sans);line-height:1.45}
+.entree .otp{color:var(--braise);font:11px var(--mono);word-break:break-all}
 .file-vive{color:var(--braise);border:1px solid var(--braise);border-radius:20px;
   padding:3px 10px}
 
@@ -1897,19 +1914,56 @@ async function peindreCompte() {
     const qui = document.createElement("span");
     qui.innerHTML = `<b>${ech(d.nom)}</b>${
                        d.admin ? " \u00b7 " + ech(T("page.admin")) : ""}`;
+    // Le second facteur se regle depuis son propre compte et de nulle part
+    // ailleurs : /admin peut imposer un mot de passe, il ne peut pas armer un
+    // facteur pour quelqu'un d'autre — il faudrait son telephone.
+    const facteur = document.createElement("button");
+    facteur.type = "button"; facteur.textContent = T("page.mfa.bouton");
+    facteur.onclick = formulaireFacteur;
     const sortir = document.createElement("button");
     sortir.type = "button"; sortir.textContent = T("page.compte.sortir");
     sortir.onclick = async () => {
       await fetch("/api/compte/sortir", { method: "POST", credentials: "same-origin" });
       location.reload();
     };
-    zone.append(qui, sortir);
+    zone.append(qui, facteur, sortir);
   } else {
     const b = document.createElement("button");
     b.type = "button"; b.textContent = T("page.compte.entrer");
     b.onclick = formulaireEntree;
     zone.appendChild(b);
   }
+}
+
+/* Le champ par lequel le serveur dit « le mot de passe etait bon, il manque le
+   code », et le SEUL contrat de ce refus-la.
+
+   Meme patron que MARQUE_DEJA, MARQUE_DEVIS et MARQUE_PANNE, et pour la meme
+   raison : le contrat de « deja refait » a tenu sur une PHRASE FRANCAISE, puis
+   sur un CODE DE RETOUR, et il a fallu le defaire deux fois. Une demande de
+   second facteur qui se reconnaitrait au texte du message se romprait a la
+   premiere reformulation cote serveur — et le champ du code ne s'afficherait
+   plus, sans qu'une ligne de cette page ne bouge. Personne n'entrerait plus,
+   et le studio aurait l'air de refuser un mot de passe juste.
+
+   Declare ici et nomme : banc_page.py releve CE nom et celui que serveur.py
+   declare, et exige qu'ils soient le meme. Le jour ou l'un des deux change
+   seul, le banc rougit au lieu de laisser le contrat mentir. */
+const MARQUE_MFA = "mfa";
+
+/* Le champ du code, revele parce que LE SERVEUR L'A DEMANDE.
+
+   LE MOT DE PASSE RESTE A L'ECRAN, et ce n'est pas un detail de confort : la
+   porte du studio ne connait pas de session a moitie ouverte — il n'y a pas
+   d'etat cote serveur entre les deux temps, et il ne faut pas qu'il y en ait
+   un. Le navigateur repose donc les trois champs ensemble, sur la meme route
+   et sous le meme compteur d'essais. Vider le mot de passe obligerait a le
+   retaper pour ajouter six chiffres. */
+function demanderCode(f, mal) {
+  const zone = f.querySelector(".code-mfa");
+  if (zone) zone.hidden = false;
+  if (mal) mal.textContent = "";
+  if (f.code) { f.code.value = ""; f.code.focus(); }
 }
 
 function formulaireEntree() {
@@ -1921,6 +1975,11 @@ function formulaireEntree() {
              autocomplete="username" autofocus>
       <input name="mdp" type="password" placeholder="${ech(T("page.entree.mdp"))}"
              autocomplete="current-password">
+      <div class="code-mfa" hidden>
+        <input name="code" placeholder="${ech(T("page.mfa.code"))}"
+               autocomplete="one-time-code" inputmode="numeric">
+        <div class="dit">${ech(T("page.mfa.secours.aussi"))}</div>
+      </div>
       <div class="mal"></div>
       <div class="rang"><button type="button" data-annuler>${
                           ech(T("page.annuler"))}</button>
@@ -1940,8 +1999,14 @@ function formulaireEntree() {
       const r = await fetch("/api/compte/entrer", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nom: f.nom.value, mdp: f.mdp.value }) });
+        body: JSON.stringify({ nom: f.nom.value, mdp: f.mdp.value,
+                               code: f.code.value }) });
       const d = await r.json();
+      // LA MARQUE DU SERVEUR, ET RIEN D'AUTRE — ni le code de retour, ni le
+      // message. Le refus vaut 403 comme les deux autres de cette route, et
+      // c'est voulu : le jour ou il passera a 401 ou a 428, le champ du code
+      // continuera de s'afficher.
+      if (!r.ok && d[MARQUE_MFA]) { demanderCode(f, mal); return; }
       if (!r.ok) throw new Error(d.erreur || T("page.entree.refus"));
       fermer();
       // Rechargement plutot qu'une mise a jour partielle : l'identite change,
@@ -1953,6 +2018,196 @@ function formulaireEntree() {
       // Le formulaire ne se referme pas sur un echec : c'est la seule porte.
     }
   };
+}
+
+/* ── l'enrolement du second facteur ───────────────────────────────────
+   PAS DE QR CODE, ET C'EST UNE DECISION. Le dessiner demanderait une
+   bibliotheque ; la page n'a aucune dependance, et le studio doit demarrer sur
+   un NAS ou pip n'a jamais servi. Restent les deux formes qu'une application
+   d'authentification sait lire sans appareil photo : le secret recopie a la
+   main, et le lien « otpauth:// » que le telephone ouvre directement.
+
+   L'ENROLEMENT EST EN DEUX TEMPS, et le second n'est pas une politesse : armer
+   au moment ou l'on tire le secret enferme dehors quiconque a mal recopie,
+   ferme l'onglet trop tot, ou dont l'horloge de telephone est fausse — et
+   l'administrateur ne peut rien pour lui, c'est justement ce qu'on vient
+   d'empecher. Tant que ce n'est pas confirme, le compte entre avec son seul
+   mot de passe. */
+
+/* Trente-deux caracteres d'affilee se recopient de travers des le deuxieme
+   groupe. On les espace par quatre pour l'oeil, et cela ne coute rien :
+   mfa._octets_du_secret() retire les espaces, la casse et les tirets avant de
+   decoder, et banc_mfa.py le mesure. Ce qui s'affiche est donc exactement ce
+   qui se colle. */
+const groupeQuatre = s => String(s || "").replace(/(.{4})(?=.)/g, "$1 ");
+
+function formulaireFacteur() {
+  const voile = document.createElement("div");
+  voile.className = "voile-entree";
+  voile.innerHTML = `<form class="entree">
+      <h3>${ech(T("page.mfa.titre"))}</h3>
+      <div class="corps-mfa"></div>
+      <div class="code-mfa" hidden>
+        <input name="code" placeholder="${ech(T("page.mfa.code"))}"
+               autocomplete="one-time-code" inputmode="numeric">
+      </div>
+      <div class="mal"></div>
+      <div class="rang"></div>
+    </form>`;
+  document.body.appendChild(voile);
+  const f = voile.querySelector("form");
+  const corps = f.querySelector(".corps-mfa");
+  const mal = f.querySelector(".mal");
+  const rang = f.querySelector(".rang");
+  const fermer = () => voile.remove();
+  voile.onclick = e => { if (e.target === voile) fermer(); };
+
+  const dire = (cle, classe, valeurs) => {
+    const p = document.createElement("div");
+    p.className = classe || "dit";
+    p.textContent = T(cle, valeurs);
+    return p;
+  };
+
+  // TROIS DES CINQ ROUTES EXIGENT LE MOT DE PASSE COURANT — preparer,
+  // desarmer, regenerer —, et ce n'est pas de la symetrie : un onglet laisse
+  // ouvert sur une machine partagee suffirait sinon a retirer le second
+  // facteur, ou a en armer un au nom de quelqu'un d'autre. Le champ est donc
+  // construit la ou il sert, et nulle part ailleurs.
+  const champMdp = () => {
+    const i = document.createElement("input");
+    i.type = "password"; i.name = "mdp";
+    i.placeholder = T("page.entree.mdp");
+    i.autocomplete = "current-password";
+    return i;
+  };
+
+  const bouton = (cle, action) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = T(cle);
+    b.onclick = async () => {
+      b.disabled = true;
+      try { await action(); }
+      catch (err) { mal.textContent = err.message; }
+      finally { b.disabled = false; }
+    };
+    return b;
+  };
+
+  // Toutes les routes du facteur reposent les MEMES champs, sur la meme forme,
+  // et passent par le meme compteur d'essais cote serveur. Un seul envoi ecrit
+  // ici plutot que cinq : c'est le cinquieme qui aurait oublie le code.
+  const poster = async url => {
+    mal.textContent = "";
+    const r = await fetch(url, {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mdp: (f.mdp || {}).value || "",
+                             code: f.code.value }) });
+    const d = await r.json().catch(() => ({}));
+    // La MEME marque qu'a la porte d'entree, et lue de la meme facon : le
+    // champ, jamais le message ni le code de retour.
+    if (!r.ok && d[MARQUE_MFA]) { demanderCode(f, mal); return null; }
+    if (!r.ok) throw new Error(d.erreur || T("page.entree.refus"));
+    return d;
+  };
+
+  /* L'ECRAN DES CODES DE SECOURS EST UN CUL-DE-SAC, et il le faut. Ils
+     n'existent en clair que dans cette reponse-la : ce qui est garde est leur
+     empreinte scrypt, et personne ne peut les redonner — pas meme
+     l'administrateur. Le seul bouton offert ici ferme la boite ; en proposer
+     un autre inviterait a partir sans les noter. */
+  const peindreSecours = (codes, cleMot, avecAttente) => {
+    corps.innerHTML = ""; rang.innerHTML = "";
+    f.querySelector(".code-mfa").hidden = true;
+    const ul = document.createElement("ul");
+    ul.className = "secours";
+    for (const c of codes) {
+      const li = document.createElement("li");
+      li.textContent = c;
+      ul.appendChild(li);
+    }
+    corps.append(dire(cleMot), dire("page.mfa.secours.titre"), ul,
+                 dire("page.mfa.secours.unique", "avertit"));
+    // LE CODE QUI A CONFIRME EST DEJA CONSOMME, et il faut le dire : celui qui
+    // vient de le taper le lit encore sur son telephone, le retape aussitot,
+    // se voit refuse, et croit que son enrolement a rate. C'est voulu — sans
+    // cela le rejeu rentrerait par la porte de l'enrolement — mais personne ne
+    // peut le deviner. Trente secondes au plus, le pas de la RFC 6238.
+    if (avecAttente) corps.append(dire("page.mfa.attente", "avertit"));
+    rang.append(bouton("page.mfa.fini", async () => fermer()));
+  };
+
+  const peindreEnrolement = d => {
+    corps.innerHTML = ""; rang.innerHTML = "";
+    const secret = document.createElement("div");
+    secret.className = "secret";
+    secret.textContent = groupeQuatre(d.secret);
+    const lien = document.createElement("a");
+    lien.className = "otp"; lien.href = d.uri;
+    lien.textContent = T("page.mfa.lien");
+    corps.append(dire("page.mfa.recopie"), secret, lien);
+    // Le champ du code est ouvert ici sans que le serveur l'ait demande : on
+    // sait ce qu'on attend, on vient de tirer le secret.
+    f.querySelector(".code-mfa").hidden = false;
+    f.code.value = "";
+    rang.append(bouton("page.mfa.confirmer", async () => {
+      const r = await poster("/api/compte/mfa/confirmer");
+      if (r) peindreSecours(r.secours, "page.mfa.arme", true);
+    }), bouton("page.annuler", async () => fermer()));
+  };
+
+  const peindreEtat = (etat, mot) => {
+    corps.innerHTML = ""; rang.innerHTML = "";
+    // Le code n'est demande que sur un compte DEJA arme : desarmer et
+    // regenerer presentent la meme preuve que la porte d'entree.
+    f.querySelector(".code-mfa").hidden = !etat.arme;
+    if (mot) corps.append(dire(mot, "avertit"));
+    corps.append(etat.arme
+      ? dire("page.mfa.etat.arme", "dit", { n: etat.secours_restants,
+                                            total: etat.codes_au_depart })
+      : dire("page.mfa.etat.absent"));
+    if (etat.arme) {
+      corps.append(champMdp());
+      rang.append(
+        bouton("page.mfa.regenerer", async () => {
+          const r = await poster("/api/compte/mfa/secours");
+          if (r) peindreSecours(r.secours, "page.mfa.secours.neufs", false);
+        }),
+        bouton("page.mfa.retirer", async () => {
+          if (!confirm(T("page.mfa.retirer.sur"))) return;
+          const r = await poster("/api/compte/mfa/retirer");
+          if (r) peindreEtat(r, "page.mfa.retire");
+        }));
+    } else {
+      corps.append(dire("page.mfa.pourquoi"));
+      // Un enrolement commence et jamais confirme laisse une entree morte dans
+      // l'application : recommencer tire un secret NEUF, et sans cette phrase
+      // l'utilisateur se retrouve avec deux entrees et aucun moyen de savoir
+      // laquelle est la bonne.
+      if (etat.en_attente)
+        corps.append(dire("page.mfa.attente_en_cours", "avertit"));
+      corps.append(champMdp());
+      rang.append(bouton("page.mfa.preparer", async () => {
+        const r = await poster("/api/compte/mfa/preparer");
+        if (r) peindreEnrolement(r);
+      }));
+    }
+    rang.append(bouton("page.annuler", async () => fermer()));
+  };
+
+  (async () => {
+    try {
+      const r = await fetch("/api/compte/mfa", { credentials: "same-origin" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erreur || T("page.entree.refus"));
+      peindreEtat(d, "");
+    } catch (err) {
+      corps.innerHTML = ""; rang.innerHTML = "";
+      mal.textContent = err.message;
+      rang.append(bouton("page.annuler", async () => fermer()));
+    }
+  })();
 }
 PRET.then(peindreCompte);
 

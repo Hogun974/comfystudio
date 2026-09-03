@@ -351,7 +351,21 @@ BESOINS = {
     # dictionnaire — la meme moitie de contrat que MARQUE_DEJA, mais sur cent
     # quatre-vingt-quinze chaines. Sans ce fichier, le banc meurt a l'import,
     # ce qui ressemblerait a une mutation attrapee.
-    "banc_page.py": ["banc_page.py", "web/index.html", "traductions.py"],
+    # serveur.py DEPUIS LE BRANCHEMENT DU SECOND FACTEUR : banc_page.py y releve
+    # le NOM du champ « il manque le code » et exige que la page dise le meme
+    # mot. C'est la moitie de contrat que MARQUE_DEJA devait aller chercher dans
+    # un banc a studio ; ici le champ est une constante, donc les deux moities
+    # se relevent au meme endroit. Sans ce fichier, le banc meurt a l'ouverture,
+    # ce qui ressemblerait a une mutation attrapee.
+    "banc_page.py": ["banc_page.py", "web/index.html", "traductions.py",
+                     "serveur.py"],
+    # LE SEUL BANC AVEC banc_page.py A LIRE DEUX MONDES : comptes.py qu'il
+    # IMPORTE (et mfa.py avec lui, que comptes.py importe en tete), et
+    # serveur.py qu'il LIT par l'arbre de syntaxe pour la derniere section — un
+    # seul site d'appel a authentifier(), un seul compteur, cinq routes
+    # branchees. Il n'a besoin d'aucune dependance : ni comptes.py ni mfa.py
+    # n'importent autre chose que la bibliotheque standard.
+    "banc_comptes.py": ["banc_comptes.py", "comptes.py", "mfa.py", "serveur.py"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
@@ -443,6 +457,7 @@ BESOINS = {
 MARQUE_ROUGE = {"banc_cout.py": "  RATE ", "banc_adulte.py": "    ",
                 "banc_multilingue.py": "  RATE ",
                 "banc_traductions.py": "  RATE ",
+                "banc_comptes.py": "  RATE ",
                 "verifier_formulations.py": "    "}
 
 
@@ -2823,9 +2838,206 @@ PAGE_LANGUES = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  Le second facteur — onze mutations, sur DEUX bancs
+# ──────────────────────────────────────────────────────────────────────
+# La seule liste de ce fichier qui vise deux bancs a la fois, et c'est le sujet
+# qui l'impose : la regle se coupe en deux moities qui vivent chacune de son
+# cote. banc_comptes.py garde LA PORTE — un seul site d'appel a authentifier(),
+# un seul compteur d'essais, cinq routes branchees — et banc_page.py garde LE
+# CONTRAT AVEC L'ECRAN : le nom du champ, ce sur quoi la case du code s'ouvre,
+# et les deux phrases que l'enrolement ne peut pas taire. Les separer en deux
+# listes ferait croire a deux sujets.
+#
+# LE SENS INVERSE, ET IL FAUT LE DIRE ICI. Ces onze mutations naissent AVEC les
+# deux bancs qu'elles eprouvent : ni banc_comptes.py ni banc_page.py ne
+# mesuraient quoi que ce soit du second facteur avant ce travail — les routes
+# n'existaient pas, l'ecran non plus. Il n'y a donc pas de « filet d'avant » a
+# leur opposer, et CONTRIBUTING.md tranche ce cas : on lance le banc NEUF sur le
+# code d'AVANT. Il y MEURT au lieu de rougir — les ancres qu'il releve
+# (_ouvrir_porte, MARQUE_MFA, peindreSecours) n'existent pas encore, et le banc
+# s'arrete a l'ouverture ou compte des zeros partout. Ce qui a ete mesure a la
+# place, c'est l'ISOLEMENT : chaque mutation jouee seule sur le depot du jour
+# allume SA ligne, et le releve nomme laquelle. C'est ce que ce fichier exige
+# deja de toutes les autres — la ligne NOMMEE et pas un code de retour — mais
+# cela ne dit pas ce qu'elles mesurent d'AUTRE, et il faut l'ecrire : ces onze
+# restent des mutations rouges dont on ne sait pas ce qu'elles mesurent d'autre,
+# comme les trois de banc_durees, banc_adulte et poids() plus haut.
+FACTEUR = [
+    dict(
+        nom="le site d'appel oublie le code du second facteur",
+        banc="banc_comptes.py",
+        imite="le defaut que le sentinelle FAUX rend muet : la porte echoue "
+              "FERME, donc plus personne n'entre sur un compte arme, et le "
+              "studio a l'air de refuser un mot de passe juste. C'est mot pour "
+              "mot ce que faisait le changement de mot de passe avant ce "
+              "travail — « ancien mot de passe incorrect » sur le bon",
+        rougit="UN SEUL site d'appel a authentifier() dans serveur.py, et il "
+               "passe le code",
+        editions=[
+            ("serveur.py", brut(
+                "    c = COMPTES.authentifier(nom, mdp, code)\n",
+                "    c = COMPTES.authentifier(nom, mdp)\n")),
+        ]),
+    dict(
+        nom="la demande de code remet le compteur d'essais a zero",
+        banc="banc_comptes.py",
+        imite="le forçage rouvert en grand : il suffit d'intercaler un appel "
+              "SANS code entre deux essais de code pour effacer l'ardoise, et "
+              "l'attente exponentielle ne mord plus jamais. Six chiffres se "
+              "parcourent alors a pleine vitesse",
+        rougit="et elle ne touche PAS au compteur",
+        editions=[
+            ("serveur.py", brut(
+                "    if c is _comptes.BESOIN_MFA:\n"
+                "        return None, web.json_response(\n",
+                "    if c is _comptes.BESOIN_MFA:\n"
+                "        _ECHECS.pop(cle, None)\n"
+                "        return None, web.json_response(\n")),
+        ]),
+    dict(
+        nom="le freinage vient APRES la verification",
+        banc="banc_comptes.py",
+        imite="chaque essai s'execute avant d'etre compte : le scrypt des dix "
+              "codes de secours est paye a chaque saisie, et qui tape n'importe "
+              "quoi occupe le studio sans jamais etre ralenti",
+        rougit="et elle freine AVANT de verifier, jamais apres",
+        editions=[
+            ("serveur.py", brut(
+                "    cle = _cle_freinage(req, nom)\n"
+                "    reste = _freinage(cle)\n"
+                "    if reste > 0:\n"
+                "        return None, web.json_response(\n"
+                '            {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},\n'
+                "            status=429)\n"
+                "    c = COMPTES.authentifier(nom, mdp, code)\n",
+                "    cle = _cle_freinage(req, nom)\n"
+                "    c = COMPTES.authentifier(nom, mdp, code)\n"
+                "    reste = _freinage(cle)\n"
+                "    if reste > 0:\n"
+                "        return None, web.json_response(\n"
+                '            {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},\n'
+                "            status=429)\n")),
+        ]),
+    dict(
+        nom="le compteur est indexe par la seule adresse",
+        banc="banc_comptes.py",
+        imite="derriere un reverse proxy qui n'ajoute pas « X-Forwarded-For », "
+              "tout le monde arrive de la meme IP : le premier qui se trompe "
+              "trois fois freine la maison entiere, et le studio parait tombe",
+        rougit="le compteur est indexe par le COUPLE (compte, adresse)",
+        editions=[
+            ("serveur.py", brut(
+                '    return ((nom or "").strip().lower(), hote)',
+                '    return ("compte", hote)')),
+        ]),
+    dict(
+        nom="une route desarme le facteur sans passer par la porte",
+        banc="banc_comptes.py",
+        imite="exactement ce que le middleware « origine_verifiee » a corrige "
+              "ailleurs : la garde ecrite route par route s'oublie a la "
+              "prochaine route ajoutee. Ici la route qui RETIRE le second "
+              "facteur verifie le code elle-meme, donc sans compteur — un "
+              "oracle a codes, a pleine vitesse, sur la porte de sortie",
+        rougit="et aucune ne verifie un mot de passe ni un code a cote",
+        editions=[
+            ("serveur.py", brut(
+                '    c, refus = _ouvrir_porte(req, nom, d.get("mdp"), d.get("code"), lg)\n'
+                "    if refus is not None:\n"
+                "        return refus\n"
+                "    COMPTES.mfa_retirer(nom)\n",
+                '    if not COMPTES.mfa_verifier(nom, d.get("code")):\n'
+                '        return web.json_response({"erreur": "code refuse"},\n'
+                "                                 status=403)\n"
+                "    COMPTES.mfa_retirer(nom)\n")),
+        ]),
+    dict(
+        nom="regenerer COMPLETE le jeu de codes au lieu de le remplacer",
+        banc="banc_comptes.py",
+        imite="on regenere justement parce qu'on a perdu de vue le papier "
+              "d'avant : garder les anciens laisse valides les dix codes qu'on "
+              "cherchait a annuler, et le geste ne sert plus a rien tout en "
+              "ayant l'air de servir",
+        rougit="AUCUN ancien code ne vaut plus",
+        editions=[
+            ("comptes.py", brut(
+                '        m["secours"] = _empreintes_secours(secours)\n',
+                '        m["secours"] = ((m.get("secours") or [])\n'
+                "                        + _empreintes_secours(secours))\n")),
+        ]),
+    dict(
+        nom="une des cinq routes du facteur n'est plus branchee",
+        banc="banc_comptes.py",
+        imite="une fonctionnalite morte que rien ne signale — le defaut qui a "
+              "fait naitre ce fichier. Le bouton « desarmer » est la, il "
+              "s'appuie, et il rend un 404 que la page affiche comme un refus",
+        rougit="et les cinq routes du second facteur sont branchees",
+        editions=[
+            ("serveur.py", brut(
+                '    a.router.add_post("/api/compte/mfa/retirer", api_mfa_retirer)\n',
+                "")),
+        ]),
+    dict(
+        nom="le nom du champ change du seul cote du serveur",
+        banc="banc_page.py",
+        imite="la case du code ne s'affiche plus jamais : l'utilisateur d'un "
+              "compte arme tape son mot de passe JUSTE et lit « nom, mot de "
+              "passe ou code incorrect », sans qu'une ligne de la page ni du "
+              "serveur n'ait l'air fautive. C'est le degat de MARQUE_DEJA, sur "
+              "la porte d'entree",
+        rougit="porte le MEME nom dans la page et dans le serveur",
+        editions=[
+            ("serveur.py", brut('MARQUE_MFA = "mfa"',
+                                'MARQUE_MFA = "code_attendu"')),
+        ]),
+    dict(
+        nom="la page decide la case du code sur le TEXTE du refus",
+        banc="banc_page.py",
+        imite="le contrat de « deja refait » une troisieme fois : une "
+              "reformulation cote serveur, un accent, une traduction — et la "
+              "case du code cesse de s'ouvrir. Le refus se lit en anglais des "
+              "que le navigateur le demande, donc le motif francais ne mord "
+              "meme pas toujours",
+        rougit="ouvre la case du code sur ce champ, jamais sur le texte du refus",
+        editions=[
+            ("web/index.html", brut(
+                "      if (!r.ok && d[MARQUE_MFA]) { demanderCode(f, mal); return; }\n",
+                '      if (!r.ok && /code/i.test(d.erreur || "")) '
+                "{ demanderCode(f, mal); return; }\n")),
+        ]),
+    dict(
+        nom="l'ecran ne dit plus que les codes de secours ne reviendront pas",
+        banc="banc_page.py",
+        imite="dix codes affiches comme un reglage qu'on retrouvera : l'onglet "
+              "se ferme, et ils n'existent plus nulle part — ce qui est garde "
+              "est leur empreinte scrypt, et personne ne peut les redonner, pas "
+              "meme l'administrateur",
+        rougit="dit qu'ils ne s'affichent QU'UNE fois",
+        editions=[
+            ("web/index.html", brut(
+                '    corps.append(dire(cleMot), dire("page.mfa.secours.titre"), ul,\n'
+                '                 dire("page.mfa.secours.unique", "avertit"));\n',
+                '    corps.append(dire(cleMot), dire("page.mfa.secours.titre"), ul);\n')),
+        ]),
+    dict(
+        nom="l'attente de trente secondes n'est plus annoncee",
+        banc="banc_page.py",
+        imite="le code qui vient de CONFIRMER l'enrolement est deja consomme, "
+              "et rien ne le dit : celui qui le lit encore sur son telephone le "
+              "retape, se voit refuse, et croit avoir rate son enrolement. Il "
+              "desarme, recommence, et retombe sur le meme mur",
+        rougit="annonce l'attente d'au plus trente secondes",
+        editions=[
+            ("web/index.html", brut(
+                '    if (avecAttente) corps.append(dire("page.mfa.attente", "avertit"));\n',
+                "")),
+        ]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
-             + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES)
+             + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + FACTEUR)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

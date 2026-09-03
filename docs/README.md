@@ -37,7 +37,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 ## Utiliser le studio
 
 - [Plusieurs utilisateurs](plusieurs-utilisateurs.md) — les espaces séparés par navigateur, l'ouverture au réseau local, et pourquoi retrouver son espace sur un téléphone passe par un compte.
-- [Comptes](comptes.md) — l'authentification obligatoire par défaut, le compte `admin`, et ce qu'un compte apporte.
+- [Comptes](comptes.md) — l'authentification obligatoire par défaut, le compte `admin`, ce qu'un compte apporte, et le second facteur (TOTP) : l'enrôler, les codes de secours, rouvrir un compte dont le téléphone est perdu.
 - [Piloter ComfyUI depuis l'interface](piloter-comfyui.md) — démarrer et arrêter le moteur depuis la barre latérale.
 - [Moteur, priorité, taille, machine](reglages-de-rendu.md) — les quatre réglages qui sont à toi, portés par la conversation, et les cas où ils ne s'appliquent pas.
 - [Le brouillon, et « refaire en soigné »](brouillon.md) — un rendu au quart des étapes pour juger un prompt, et pourquoi il ne prédit pas le cadrage.

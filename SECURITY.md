@@ -90,6 +90,79 @@ ralentit, il n'arrête pas — et il vit en mémoire, donc un redémarrage le re
 zéro. Si le studio est joignable au-delà de ta machine, mets une vraie
 limitation dans le reverse proxy.
 
+### Le second facteur (TOTP), s'il est armé
+
+**Il n'est pas armé par défaut, et il ne l'est jamais pour quelqu'un d'autre.**
+Chacun l'arme sur son propre compte, depuis le bouton « second facteur » du
+bandeau. L'administrateur ne peut pas l'armer à la place d'un autre — il
+faudrait son téléphone.
+
+Un code à six chiffres qui change toutes les trente secondes, calculé hors ligne
+(RFC 6238, HMAC-SHA1, aucune dépendance, aucun service tiers). L'implémentation
+est mesurée contre **les vecteurs de test publiés par la RFC**, pas seulement
+contre elle-même.
+
+**Ce que ça protège** : une fuite du mot de passe seul. Un mot de passe volé,
+deviné, réutilisé d'un autre site, ou lu dans un journal ne suffit plus à entrer.
+
+**Ce que ça ne protège pas** — et c'est plus long que la liste d'au-dessus :
+
+- **Pas une session déjà ouverte.** Le cookie `studio_compte` reste valable
+  jusqu'à sa péremption ; armer, désarmer ou changer de mot de passe ne le
+  révoque pas. Voir « il n'y a pas de révocation » ci-dessous.
+- **Pas l'hôte.** Le secret est en clair sur le disque (voir plus bas) : qui lit
+  `conversations/_comptes.json` calcule les codes lui-même.
+- **Pas l'hameçonnage en temps réel.** Un code recopié dans une page qui imite
+  le studio est utilisable pendant sa fenêtre de 90 s. TOTP ne défend pas
+  contre ça — seule une clef matérielle liée à l'origine le ferait.
+- **Pas le transit.** Sans HTTPS, le code passe en clair comme le mot de passe.
+- **Pas le jeton d'administration.** `/admin` s'ouvre avec `STUDIO_ADMIN`, sans
+  second facteur : c'est le seul moyen d'entrer sur une installation neuve, et
+  le fermer condamnerait l'amorçage.
+
+**Le freinage est le même que celui de la porte d'entrée, et c'est délibéré.**
+Six chiffres font un million de possibilités, ce qui paraît beaucoup — mais la
+fenêtre de vérification est de 90 s, donc trois codes valent à chaque instant,
+et un code de secours ne pèse qu'une quarantaine de bits. Sans limite, on les
+essaie. Le code se saisit donc **sur la même route que le mot de passe**
+(`/api/compte/entrer`), sous le **même compteur**, indexé par le couple
+`(compte, adresse)` : après trois échecs, l'attente double — 1 s, 2, 4, 8…
+plafonnée à 30. Une route séparée pour le code aurait eu son propre compteur, ou
+pas de compteur du tout, et il aurait suffi de frapper à l'autre porte.
+
+Le refus « il manque le code » ne compte **ni comme un échec ni comme une
+réussite** : le compter freinerait la connexion normale d'un compte armé, qui
+fait deux appels à chaque fois ; le laisser remettre le compteur à zéro
+permettrait d'effacer l'ardoise entre deux essais de code.
+
+Les cinq routes du second facteur passent toutes par la même fonction, et
+`banc_comptes.py` lit `serveur.py` pour l'exiger : **un seul site d'appel** à la
+vérification, dans une porte qui freine **avant** de vérifier, et aucune route
+qui vérifie un secret à côté d'elle.
+
+**Le secret est en clair dans `_comptes.json`, et il ne peut pas en être
+autrement.** Ce n'est pas un mot de passe : il faut le relire pour recalculer le
+code attendu, donc il ne peut pas être gardé sous forme d'empreinte. C'est vrai
+de toutes les implémentations de TOTP. Le fichier est écrit en `0600` (sans
+effet sur Windows) et le secret ne sort jamais par une route, sauf la réponse de
+l'enrôlement qui vient de le tirer. Les **codes de secours**, eux, se comparent :
+ils sont empreints avec scrypt, exactement comme des mots de passe, et ne sont
+jamais relisibles.
+
+**Dix codes de secours, à usage unique**, affichés **une seule fois**. Un second
+facteur sans porte de sortie enferme son propriétaire : téléphone perdu,
+remplacé ou réinitialisé, et le compte serait mort — personne ne pourrait le
+rouvrir, pas même l'administrateur, puisque c'est justement ce qu'on vient
+d'empêcher. Voir `docs/comptes.md` pour la procédure quand ils sont épuisés
+eux aussi.
+
+**Désarmer et régénérer exigent le mot de passe courant *et* un code**, c'est-à-dire
+la même preuve qu'à la porte d'entrée. Sans cela, un onglet laissé ouvert sur une
+machine partagée suffirait à retirer le second facteur, ce qui le viderait de son
+sens. **Préparer un enrôlement l'exige aussi**, pour la raison symétrique : sans
+mot de passe, quelqu'un qui trouve un onglet ouvert armerait le facteur avec
+*son* téléphone, garderait l'accès et enfermerait le propriétaire dehors.
+
 ### Les sessions sont des jetons signés
 
 Le cookie `studio_compte` contient `nom.péremption.signature`, où la signature
@@ -132,7 +205,7 @@ Dans `conversations/`, en JSON lisible :
 | `_cles.json` | **les clés d'API des fournisseurs, en clair** (Anthropic, OpenAI, Mistral, Google, Mammouth, Meshy) |
 | `_admin.json` | le jeton d'administration, en clair — et donc le secret de signature des sessions |
 | `_noeuds.json` | les jetons des machines à agent, en clair |
-| `_comptes.json` | les empreintes scrypt et leurs sels |
+| `_comptes.json` | les empreintes scrypt et leurs sels — et **les secrets TOTP en clair**, qui ne peuvent pas être empreints (il faut les relire pour calculer le code). Les codes de secours, eux, sont empreints. |
 | `*.json` | les conversations : demandes, prompts, chemins des images |
 
 Il n'y a **aucun chiffrement au repos**, et il n'y a rien pour en faire un :
@@ -219,8 +292,8 @@ dans le journal de la tâche.
 
 | | |
 |---|---|
-| Protégé | mots de passe (scrypt + sel), sessions (HMAC), cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt |
-| **Pas** protégé | le transit (HTTP simple, cookies sans `Secure`), les secrets au repos (JSON en clair), la révocation de session, l'hôte lui-même |
+| Protégé | mots de passe (scrypt + sel), second facteur TOTP au choix de chacun, sessions (HMAC), cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt |
+| **Pas** protégé | le transit (HTTP simple, cookies sans `Secure`), les secrets au repos (JSON en clair, secrets TOTP compris), la révocation de session, l'hameçonnage en temps réel, l'hôte lui-même |
 
 ## Ce qui n'est pas une faille
 

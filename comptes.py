@@ -102,6 +102,22 @@ def verifier(mdp, sel_b64, empreinte_b64):
     return hmac.compare_digest(calcule, empreinte_b64 or "")
 
 
+def _empreintes_secours(secours):
+    """Ce qui est GARDE d'un jeu de codes de secours : leur empreinte, jamais eux.
+
+    Une seule ecriture pour les deux sites qui en produisent — la confirmation
+    de l'enrolement et la regeneration. Recopiee, elle aurait diverge : c'est la
+    lecon que banc_mutations.py a payee trois fois (« tant qu'il y a deux
+    ecritures du meme enchainement, elles divergent »), et ici la divergence
+    serait un jeu de codes garde EN CLAIR sans que rien ne le dise.
+
+    normalise_secours() des DEUX cotes — ici et a la verification — sinon
+    l'empreinte tombe a cote des que quelqu'un recopie son code en majuscules.
+    """
+    return [dict(zip(("sel", "empreinte"),
+                     empreinte(mfa.normalise_secours(s)))) for s in secours]
+
+
 def identifiant(nom):
     """L'identite d'espace attachee a ce compte.
 
@@ -265,6 +281,19 @@ class Comptes:
         c = self.gens.get((nom or "").lower()) or {}
         return bool((c.get("mfa") or {}).get("secret"))
 
+    def mfa_en_attente(self, nom):
+        """Un enrolement est-il commence sans etre confirme ?
+
+        LE SYMETRIQUE DE mfa_arme(), ET IL SE LIT AUTANT. Sans lui, un appelant
+        qui veut distinguer « ce code ne correspond pas » d'« aucun enrolement
+        en cours » n'a que l'exception de mfa_confirmer(), c'est-a-dire une
+        PHRASE FRANCAISE a comparer — le contrat sur un texte que ce depot a
+        deja defait deux fois. Les deux remedes different : l'un se retape,
+        l'autre se recommence.
+        """
+        c = self.gens.get((nom or "").lower()) or {}
+        return bool((c.get("mfa_attente") or {}).get("secret"))
+
     def mfa_preparer(self, nom):
         """Tire un secret et le met EN ATTENTE. Rend (secret, uri).
 
@@ -309,10 +338,39 @@ class Comptes:
                     # encore une session dans la minute — le rejeu, par la
                     # porte de l'enrolement.
                     "dernier_pas": pas,
-                    "secours": [dict(zip(("sel", "empreinte"),
-                                         empreinte(mfa.normalise_secours(s))))
-                                for s in secours]}
+                    "secours": _empreintes_secours(secours)}
         c.pop("mfa_attente", None)
+        self.sauver()
+        return secours
+
+    def mfa_regenerer(self, nom):
+        """Un jeu NEUF de codes de secours. L'ancien cesse de valoir.
+
+        POURQUOI CETTE PORTE EXISTE. Les dix codes s'epuisent — c'est le but,
+        ils sont a usage unique — et quelqu'un qui arrive au dernier n'a plus
+        que deux issues : desarmer le facteur, ou perdre le compte. Sans elle,
+        la seule facon d'en refaire etait de desarmer puis de reenroler, ce qui
+        change le SECRET : il faut ressortir le telephone, effacer l'ancienne
+        entree, en scanner une neuve. Une manoeuvre a trois etapes pour un
+        besoin qui n'en demande aucune.
+
+        LE SECRET NE BOUGE PAS, et c'est tout ce qui separe cette methode de
+        « retirer puis preparer ». Le telephone deja enrole continue de servir ;
+        seuls les codes de papier changent.
+
+        L'ANCIEN JEU EST REMPLACE, jamais complete. Y ajouter dix codes en
+        gardant les anciens laisserait valides ceux du papier qu'on regenere
+        justement parce qu'on l'a perdu de vue — la seule raison d'appeler
+        ceci.
+        """
+        c = self.gens.get((nom or "").lower())
+        if not c:
+            raise ErreurCompte("compte inconnu")
+        m = c.get("mfa") or {}
+        if not m.get("secret"):
+            raise ErreurCompte("aucun second facteur sur ce compte")
+        secours = mfa.codes_de_secours()
+        m["secours"] = _empreintes_secours(secours)
         self.sauver()
         return secours
 

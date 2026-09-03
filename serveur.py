@@ -107,6 +107,11 @@ from catalogue import CATALOGUE, POIDS
 # Meme raison : ces modules vivent a cote du script, pas dans le chemin fige.
 import fournisseurs
 import comptes as _comptes
+# Aucune dependance de plus : comptes.py le charge deja. Il est nomme ici pour
+# la seule chose que les routes du second facteur lui demandent — COMBIEN de
+# codes de secours un jeu compte —, plutot que d'ecrire « 10 » dans une
+# reponse HTTP et de le laisser deriver de mfa.CODES_SECOURS.
+import mfa as _mfa
 import aiguilleur as _aiguilleur
 import traductions
 # T() est appele a soixante endroits dans ce fichier : le nom court est ici
@@ -7628,6 +7633,101 @@ def _freinage(cle):
     return max(0.0, quand + attente - time.time())
 
 
+# ══ CE QUE LA PAGE LIT QUAND IL MANQUE LE SECOND FACTEUR ═══════════════
+# Le patron du depot, pour la troisieme fois : le serveur pose un CHAMP NOMME,
+# la page lit ce nom, et un banc releve le nom des DEUX cotes pour que le jour
+# ou l'un bouge il rougisse au lieu de laisser le contrat mentir
+# (MARQUE_DEJA, MARQUE_DEVIS, MARQUE_PANNE, et banc_page.py pour celui-ci).
+#
+# LE CODE DE RETOUR N'EST PAS LE CONTRAT, ET N'EN A JAMAIS ETE UN ICI. Aucun
+# nouveau code n'est invente : ce refus rend 403, comme les deux autres refus
+# de cette route, parce que la page ne l'interroge pas. Elle a deja fait une
+# fois l'erreur inverse — « r.status === 409 && /deja/i.test(d.erreur) » — et
+# il a fallu la defaire deux fois : d'abord la phrase francaise, puis le code
+# de retour. Ce qui distingue « il manque le code » d'« identifiants faux »,
+# c'est CE champ et rien d'autre ; le message, lui, reste une phrase a lire.
+#
+# LE CHAMP NE DIT RIEN DE PLUS QU'IL N'EN FAUT. « true », et pas le nom du
+# compte, pas s'il reste des codes de secours, pas depuis quand le facteur est
+# arme : ce refus est le seul endroit du studio ou l'on apprenne qu'un mot de
+# passe etait bon sans etre entre, et tout ce qu'on y ajoute se lit sans
+# session.
+MARQUE_MFA = "mfa"
+
+
+def _cle_freinage(req, nom):
+    """(compte, adresse) — LES DEUX, et c'est la ligne a ne pas simplifier.
+
+    PAR ADRESSE SEULE, un studio derriere un reverse proxy qui n'ajoute pas
+    « X-Forwarded-For » voit tout le monde arriver de la meme IP : le premier
+    qui se trompe trois fois freine la maison entiere. PAR COMPTE SEUL, un
+    tiers bloque a distance le compte de quelqu'un d'autre en tapant faux —
+    un deni de service gratuit, et c'est deja la raison pour laquelle le
+    compteur ne va pas sur le disque.
+
+    Le couple ferme les deux : on ne freine que celui qui essaie CE compte
+    depuis CETTE machine.
+    """
+    hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
+    return ((nom or "").strip().lower(), hote)
+
+
+def _ouvrir_porte(req, nom, mdp, code, lg):
+    """LA porte des comptes — le mot de passe, le code, et UN SEUL compteur.
+
+    Rend (compte, None) quand elle s'ouvre, (None, refus) sinon.
+
+    POURQUOI TOUT PASSE PAR ICI. Six chiffres font un million de possibilites,
+    ce qui parait beaucoup — mais la fenetre de verification est de 90 s
+    (mfa.FENETRE), donc trois codes valent a chaque instant, et un code de
+    secours ne pese que 40 bits d'un alphabet de 31 caracteres. Sans freinage,
+    ces deux-la s'essaient. Une route de plus qui verifie un mot de passe sans
+    passer par ce compteur en ferait un oracle a pleine vitesse, et c'est
+    exactement la faute que le middleware « origine_verifiee » a corrigee
+    ailleurs : ecrite route par route, la garde s'oublie a la prochaine route
+    ajoutee. Une seule fonction, un seul site d'appel de authentifier(), et
+    banc_comptes.py releve les deux dans le TEXTE de ce fichier.
+    Cinq portes l'empruntent : entrer, changer son mot de passe, preparer un
+    enrolement, desarmer, regenerer les codes de secours.
+
+    LE SENTINELLE NE COMPTE PAS COMME UN ECHEC, ET NE REMET RIEN A ZERO. Les
+    deux moities importent :
+      - le compter en echec freinerait la connexion NORMALE d'un compte arme,
+        qui fait deux appels a chaque fois — au troisieme il faudrait attendre ;
+      - le laisser remettre le compteur a zero rouvrirait le forçage en grand :
+        il suffirait d'intercaler un appel sans code entre deux essais de code
+        pour effacer l'ardoise, et l'attente exponentielle ne mordrait jamais.
+    Il ne touche donc pas au compteur, ni dans un sens ni dans l'autre.
+    """
+    cle = _cle_freinage(req, nom)
+    reste = _freinage(cle)
+    if reste > 0:
+        return None, web.json_response(
+            {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},
+            status=429)
+    c = COMPTES.authentifier(nom, mdp, code)
+    if c is _comptes.BESOIN_MFA:
+        return None, web.json_response(
+            {"erreur": T("erreur.code_requis", lg), MARQUE_MFA: True},
+            status=403)
+    if not c:
+        combien = _ECHECS.get(cle, (0, 0.0))[0] + 1
+        _ECHECS[cle] = (combien, time.time())
+        if combien in (3, 10, 50):
+            # Une rafale d'echecs doit se voir dans le journal du studio : c'est
+            # le seul endroit ou son proprietaire la remarquera.
+            print(f"  {combien} echecs de connexion pour « {cle[0]} » "
+                  f"depuis {cle[1] or 'origine inconnue'}", flush=True)
+        # Un seul message pour « compte inconnu », « mauvais mot de passe » et
+        # « mauvais code » : les distinguer publierait la liste des comptes, et
+        # dire « le mot de passe etait bon » a qui se trompe de code ferait de
+        # cette route un oracle a mots de passe.
+        return None, web.json_response(
+            {"erreur": T("erreur.identifiants_faux", lg)}, status=403)
+    _ECHECS.pop(cle, None)
+    return c, None
+
+
 async def api_entrer(req):
     """Ouvre une session. Le mot de passe ne transite qu'ici, et n'est pas garde."""
     # LA SEULE ROUTE OU LA LANGUE VIENT FORCEMENT DE L'EN-TETE au premier
@@ -7643,29 +7743,14 @@ async def api_entrer(req):
     if not origine_sure(req):
         return web.json_response({"erreur": T("erreur.origine_refusee", lg)},
                                  status=403)
-    hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
-    cle_freinage = (str(d.get("nom") or "").lower(), hote)
-    reste = _freinage(cle_freinage)
-    if reste > 0:
-        return web.json_response(
-            {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},
-            status=429)
-
-    c = COMPTES.authentifier(d.get("nom"), d.get("mdp"))
-    if not c:
-        combien = _ECHECS.get(cle_freinage, (0, 0.0))[0] + 1
-        _ECHECS[cle_freinage] = (combien, time.time())
-        if combien in (3, 10, 50):
-            # Une rafale d'echecs doit se voir dans le journal du studio : c'est
-            # le seul endroit ou son proprietaire la remarquera.
-            print(f"  {combien} echecs de connexion pour « {cle_freinage[0]} » "
-                  f"depuis {hote or 'origine inconnue'}", flush=True)
-        # Un seul message pour « compte inconnu » et « mauvais mot de passe » :
-        # les distinguer publierait la liste des comptes.
-        return web.json_response(
-            {"erreur": T("erreur.identifiants_faux", lg)}, status=403)
-
-    _ECHECS.pop(cle_freinage, None)
+    # LE CODE DU SECOND FACTEUR ENTRE PAR CETTE ROUTE-CI, et non par une route
+    # a lui. Une seconde porte aurait eu son propre compteur — ou pas de
+    # compteur du tout, ce qui est le cas courant — et le freinage de
+    # l'ecran de connexion n'aurait plus rien garde : il aurait suffi de
+    # frapper a l'autre. Le navigateur repose donc les trois champs ensemble.
+    c, refus = _ouvrir_porte(req, d.get("nom"), d.get("mdp"), d.get("code"), lg)
+    if refus is not None:
+        return refus
 
     # Ce que ce navigateur avait accumule sans compte le rejoint : c'est la
     # premiere chose qu'on cherche apres s'etre connecte, et sans cela
@@ -7694,23 +7779,214 @@ async def api_sortir(req):
     return rep_
 
 
-async def api_mon_mdp(req):
-    """Changer son propre mot de passe, en prouvant l'ancien."""
+def _ma_session(req):
+    """(nom, langue, refus) — le compte connecte, ou de quoi refuser.
+
+    LES ROUTES DE COMPTE SONT LIBRES DANS exiger_compte(), et il le faut : le
+    prefixe « /api/compte » entier y est, sans quoi personne ne pourrait
+    jamais se connecter. Elles verifient donc leur session ELLES-MEMES, et
+    celles qui suivent en ont plus besoin que les autres — elles desarment un
+    second facteur. Une fonction plutot que quatre copies : c'est la copie
+    numero cinq qui aurait oublie la ligne.
+    """
+    lg = langue_de(req)
     nom = req.get("compte") or ""
     if not nom:
-        return web.json_response({"erreur": "aucune session"}, status=403)
+        return "", lg, web.json_response(
+            {"erreur": T("erreur.connexion_requise", lg), "connexion": True},
+            status=401)
+    return nom, lg, None
+
+
+async def _corps(req, lg):
+    """(dictionnaire, refus). Un corps illisible ne doit pas lever un 500."""
     try:
-        d = await req.json()
+        return await req.json(), None
     except Exception:
-        return web.json_response({"erreur": "corps illisible"}, status=400)
-    if not COMPTES.authentifier(nom, d.get("ancien")):
-        return web.json_response({"erreur": "ancien mot de passe incorrect"},
-                                 status=403)
+        return {}, web.json_response(
+            {"erreur": T("erreur.corps_illisible", lg)}, status=400)
+
+
+async def api_mon_mdp(req):
+    """Changer son propre mot de passe, en prouvant l'ancien.
+
+    ET LE CODE AVEC, DEPUIS QUE LE SECOND FACTEUR EXISTE. Cette route etait le
+    second site d'appel de authentifier(), et celui que le sentinelle FAUX
+    protegeait : sur un compte arme, elle rendait « ancien mot de passe
+    incorrect » a quelqu'un qui avait tape le bon. Elle echouait FERME, ce qui
+    est le bon sens de l'erreur — mais elle le disait par un message FAUX, et
+    l'on aurait cherche la panne du cote du mot de passe pendant une heure.
+    Elle passe desormais par la meme porte que la connexion, qui repond
+    « il manque le code » au lieu de mentir.
+    """
+    nom, lg, refus = _ma_session(req)
+    if refus is not None:
+        return refus
+    d, refus = await _corps(req, lg)
+    if refus is not None:
+        return refus
+    c, refus = _ouvrir_porte(req, nom, d.get("ancien"), d.get("code"), lg)
+    if refus is not None:
+        return refus
     try:
         COMPTES.changer_mdp(nom, d.get("nouveau"))
     except _comptes.ErreurCompte as e:
         return web.json_response({"erreur": str(e)}, status=400)
     return web.json_response({"ok": True})
+
+
+# ── le second facteur, cote route ────────────────────────────────────
+# CINQ ROUTES ET PAS UNE DE PLUS : dire l'etat, preparer, confirmer, desarmer,
+# regenerer les codes de secours. Le sixieme geste imaginable — « verifier un
+# code » — n'existe pas, et c'est deliberé : il serait un oracle a codes sans
+# rien ouvrir, donc sans rien qui rende son echec visible a son proprietaire.
+#
+# TROIS DES CINQ EXIGENT LE MOT DE PASSE COURANT, et la raison n'est pas la
+# symetrie. Un onglet laisse ouvert sur une machine partagee suffirait sinon a
+# RETIRER le second facteur — et retirer un second facteur qu'on ne peut pas
+# reposer, c'est le vider de son sens : la personne qui a l'onglet a tout.
+# Preparer en fait partie, ce que la premiere version de ce travail n'avait pas
+# vu : preparer PUIS confirmer avec SON telephone arme le facteur au nom de
+# l'attaquant, qui garde l'acces et enferme le proprietaire dehors. C'est le
+# meme degat que « desarmer », dans l'autre sens.
+#
+# CONFIRMER, LUI, NE DEMANDE QUE LE CODE. Le mot de passe vient d'etre prouve a
+# la preparation, et confirmer sans le code est impossible : le redemander
+# n'ajouterait rien qu'un champ a remplir deux fois dans le meme ecran.
+
+
+def _etat_mfa(nom):
+    """Ce que la page a besoin de savoir, et rien qui soit secret.
+
+    NI LE SECRET NI LES CODES : le secret ne sort que de mfa_preparer(), une
+    fois, dans la reponse qui l'a tire ; les codes de secours ne sont jamais
+    relisibles, seule leur empreinte est gardee. Le NOMBRE restant, lui, se
+    dit — c'est ce qui pousse a en regenerer un jeu avant d'etre a court, et
+    l'ignorer est justement ce qui enferme les gens dehors.
+    """
+    return {"arme": COMPTES.mfa_arme(nom),
+            "en_attente": COMPTES.mfa_en_attente(nom),
+            "secours_restants": COMPTES.mfa_secours_restants(nom),
+            "codes_au_depart": _mfa.CODES_SECOURS}
+
+
+async def api_mfa_etat(req):
+    nom, lg, refus = _ma_session(req)
+    if refus is not None:
+        return refus
+    return web.json_response(_etat_mfa(nom))
+
+
+async def api_mfa_preparer(req):
+    """Tire un secret et le met en attente. N'arme RIEN.
+
+    L'enrolement est en deux temps parce qu'armer au moment du tirage enferme
+    dehors quiconque a mal scanne son QR code, ferme l'onglet trop tot, ou dont
+    l'horloge de telephone est fausse — et l'administrateur ne peut rien pour
+    lui, c'est justement ce qu'on vient d'empecher. Tant que ce n'est pas
+    confirme, le compte entre avec son seul mot de passe.
+    """
+    nom, lg, refus = _ma_session(req)
+    if refus is not None:
+        return refus
+    d, refus = await _corps(req, lg)
+    if refus is not None:
+        return refus
+    if COMPTES.mfa_arme(nom):
+        # Verifie ICI plutot que par l'exception de mfa_preparer() : le refus
+        # se dit dans la langue du lecteur, et le message de comptes.py est une
+        # phrase francaise ecrite pour un journal.
+        return web.json_response({"erreur": T("erreur.mfa_deja_arme", lg)},
+                                 status=400)
+    c, refus = _ouvrir_porte(req, nom, d.get("mdp"), d.get("code"), lg)
+    if refus is not None:
+        return refus
+    secret, uri = COMPTES.mfa_preparer(nom)
+    # LE SECRET SORT EN CLAIR, ET C'EST LE SEUL ENDROIT. Il le faut : c'est
+    # cette reponse-la que l'utilisateur recopie dans son application. Il ne
+    # ressort plus jamais ensuite — ni par _etat_mfa(), ni par liste().
+    return web.json_response(dict(_etat_mfa(nom), secret=secret, uri=uri))
+
+
+async def api_mfa_confirmer(req):
+    """Arme le facteur si le code tombe juste, et rend les codes de secours.
+
+    EN CLAIR UNE SEULE FOIS. Ce qui est garde est leur empreinte scrypt :
+    cette reponse est le seul moment ou ils existent en clair, et l'ecran doit
+    le dire en toutes lettres — quelqu'un qui ferme l'onglet en pensant les
+    retrouver dans ses reglages ne les retrouvera pas.
+    """
+    nom, lg, refus = _ma_session(req)
+    if refus is not None:
+        return refus
+    d, refus = await _corps(req, lg)
+    if refus is not None:
+        return refus
+    if COMPTES.mfa_arme(nom):
+        return web.json_response({"erreur": T("erreur.mfa_deja_arme", lg)},
+                                 status=400)
+    if not COMPTES.mfa_en_attente(nom):
+        # « aucun enrolement en cours » n'est PAS « ce code ne correspond
+        # pas », et les deux remedes different : l'un se retape, l'autre se
+        # recommence. Les confondre enverrait quelqu'un retaper indefiniment un
+        # code juste contre un enrolement qui n'existe plus.
+        return web.json_response({"erreur": T("erreur.mfa_sans_enrolement", lg)},
+                                 status=400)
+    try:
+        secours = COMPTES.mfa_confirmer(nom, d.get("code"))
+    except _comptes.ErreurCompte:
+        return web.json_response({"erreur": T("erreur.code_faux", lg)},
+                                 status=400)
+    return web.json_response(dict(_etat_mfa(nom), secours=secours))
+
+
+async def api_mfa_retirer(req):
+    """Desarme le facteur, et efface le secret avec.
+
+    LE MOT DE PASSE ET LE CODE, tous les deux : c'est la meme preuve qu'a la
+    porte d'entree, et il n'y a pas de raison qu'il en faille moins pour
+    RETIRER la garde que pour passer devant elle. Un onglet laisse ouvert ne
+    suffit donc pas. Celui qui a perdu son telephone se sert d'un code de
+    secours — mfa_verifier() les accepte l'un comme l'autre.
+    """
+    nom, lg, refus = _ma_session(req)
+    if refus is not None:
+        return refus
+    d, refus = await _corps(req, lg)
+    if refus is not None:
+        return refus
+    if not COMPTES.mfa_arme(nom):
+        return web.json_response({"erreur": T("erreur.mfa_absent", lg)},
+                                 status=400)
+    c, refus = _ouvrir_porte(req, nom, d.get("mdp"), d.get("code"), lg)
+    if refus is not None:
+        return refus
+    COMPTES.mfa_retirer(nom)
+    return web.json_response(dict(_etat_mfa(nom), ok=True))
+
+
+async def api_mfa_secours(req):
+    """Un jeu NEUF de codes de secours ; l'ancien cesse de valoir.
+
+    Le secret ne bouge pas : le telephone deja enrole continue de servir, seuls
+    les codes de papier changent. Sans cette route, arriver au dernier code
+    obligeait a desarmer puis reenroler — donc a ressortir le telephone pour un
+    besoin qui ne le demande pas.
+    """
+    nom, lg, refus = _ma_session(req)
+    if refus is not None:
+        return refus
+    d, refus = await _corps(req, lg)
+    if refus is not None:
+        return refus
+    if not COMPTES.mfa_arme(nom):
+        return web.json_response({"erreur": T("erreur.mfa_absent", lg)},
+                                 status=400)
+    c, refus = _ouvrir_porte(req, nom, d.get("mdp"), d.get("code"), lg)
+    if refus is not None:
+        return refus
+    secours = COMPTES.mfa_regenerer(nom)
+    return web.json_response(dict(_etat_mfa(nom), secours=secours))
 
 
 async def api_admin_comptes(req):
@@ -12892,6 +13168,11 @@ def app():
     a.router.add_post("/api/compte/entrer", api_entrer)
     a.router.add_post("/api/compte/sortir", api_sortir)
     a.router.add_post("/api/compte/mdp", api_mon_mdp)
+    a.router.add_get("/api/compte/mfa", api_mfa_etat)
+    a.router.add_post("/api/compte/mfa/preparer", api_mfa_preparer)
+    a.router.add_post("/api/compte/mfa/confirmer", api_mfa_confirmer)
+    a.router.add_post("/api/compte/mfa/retirer", api_mfa_retirer)
+    a.router.add_post("/api/compte/mfa/secours", api_mfa_secours)
     a.router.add_get("/api/admin/comptes", api_admin_comptes)
     a.router.add_post("/api/admin/comptes", api_admin_compte_poser)
     a.router.add_delete("/api/admin/comptes/{nom}", api_admin_compte_supprimer)

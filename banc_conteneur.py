@@ -107,7 +107,17 @@ CODE = "\n".join(lire(f) for f in FICHIERS)
 # monter — laisse a cinq, il rendait vraie la mutation « un module suivi
 # charge par importlib » : le suivi tombait a cinq fichiers, le seuil etait
 # atteint, et le filet ecrit exactement pour ce nettoyage-la passait au vert.
-FICHIERS_SUIVIS = 6
+#
+# SEPT le 3 septembre 2026, avec le branchement du second facteur : serveur.py
+# nomme mfa.py directement, pour la seule chose que ses routes lui demandent —
+# COMBIEN de codes de secours un jeu compte. Et le defaut annonce deux lignes
+# plus haut est arrive une SECONDE fois, exactement comme ecrit : laisse a six,
+# la mutation « un module suivi charge par importlib » passait au vert, parce
+# que retirer comptes.py du suivi laissait encore six fichiers. Ce n'est pas
+# une hypothese, c'est le verdict de banc_mutations.py avant de monter ce
+# chiffre-ci. Le seuil suit le nombre de modules importes, ou il ne mesure
+# plus rien.
+FICHIERS_SUIVIS = 7
 dit(len(FICHIERS) >= FICHIERS_SUIVIS,
     f"les {len(FICHIERS)} fichiers du conteneur sont suivis",
     ", ".join(FICHIERS[1:]) or "aucun module importe")

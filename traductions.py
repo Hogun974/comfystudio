@@ -195,9 +195,36 @@ TEXTES = {
     "erreur.origine_refusee": {
         "fr": "origine refusee",
         "en": "origin refused"},
+    # LES TROIS SONT NOMMES ENSEMBLE, ET C'EST LA MEME RAISON QU'AVANT. Dire
+    # « le mot de passe etait bon, c'est le code qui est faux » ferait de la
+    # porte un oracle a mots de passe : on essaie un dictionnaire, on note ceux
+    # qui font changer la phrase, et le second facteur ne garde plus qu'un
+    # compte dont le mot de passe est desormais connu. Le code a rejoint la
+    # liste le jour ou il est entre par cette route ; la phrase n'apprend
+    # toujours rien.
     "erreur.identifiants_faux": {
-        "fr": "nom ou mot de passe incorrect",
-        "en": "wrong name or password"},
+        "fr": "nom, mot de passe ou code incorrect",
+        "en": "wrong name, password or code"},
+    # ── le second facteur ───────────────────────────────────────────
+    # CELLE-CI N'EST PAS UN REFUS, c'est une demande : le mot de passe etait
+    # bon. Elle voyage a cote du champ « mfa » que la page lit, et c'est LE
+    # CHAMP qui decide d'afficher la case — jamais cette phrase, qui se
+    # reformule et se traduit.
+    "erreur.code_requis": {
+        "fr": "code du second facteur requis",
+        "en": "second-factor code required"},
+    "erreur.code_faux": {
+        "fr": "ce code ne correspond pas",
+        "en": "this code does not match"},
+    "erreur.mfa_deja_arme": {
+        "fr": "le second facteur est déjà armé sur ce compte",
+        "en": "the second factor is already armed on this account"},
+    "erreur.mfa_sans_enrolement": {
+        "fr": "aucun enrôlement en cours : recommence depuis le début",
+        "en": "no enrolment under way: start again from the beginning"},
+    "erreur.mfa_absent": {
+        "fr": "aucun second facteur sur ce compte",
+        "en": "no second factor on this account"},
     "erreur.trop_d_essais": {
         "fr": "trop d'essais — reessaie dans {secondes} s",
         "en": "too many attempts — try again in {secondes} s"},
@@ -984,6 +1011,110 @@ TEXTES = {
                "account.",
                "{n} conversations from this browser were attached to your "
                "account."]},
+
+    # ── le second facteur ───────────────────────────────────────────
+    # PAS DE QR CODE, ET C'EST ECRIT DANS CES PHRASES. Le dessiner demanderait
+    # une bibliotheque, et la page n'a aucune dependance — c'est une regle du
+    # depot, pas une paresse. Restent les deux formes qu'une application sait
+    # lire sans appareil photo : le secret recopie a la main, et le lien
+    # « otpauth:// » que le telephone ouvre directement. Les textes disent donc
+    # « recopie » et « ouvre », jamais « scanne ».
+    "page.mfa.bouton": {
+        "fr": "second facteur",
+        "en": "second factor"},
+    "page.mfa.titre": {
+        "fr": "Second facteur",
+        "en": "Second factor"},
+    "page.mfa.pourquoi": {
+        "fr": "Un code à six chiffres en plus du mot de passe, calculé hors "
+              "ligne par ton application d'authentification.",
+        "en": "A six-digit code on top of the password, computed offline by "
+              "your authenticator app."},
+    "page.mfa.preparer": {
+        "fr": "commencer",
+        "en": "start"},
+    "page.mfa.recopie": {
+        "fr": "Recopie ce secret dans ton application d'authentification. Les "
+              "espaces sont là pour la lecture : ils ne comptent pas.",
+        "en": "Copy this secret into your authenticator app. The spaces are "
+              "there to make it readable: they do not count."},
+    "page.mfa.lien": {
+        "fr": "ou ouvrir dans l'application",
+        "en": "or open in the app"},
+    "page.mfa.code": {
+        "fr": "code à six chiffres",
+        "en": "six-digit code"},
+    "page.mfa.confirmer": {
+        "fr": "confirmer",
+        "en": "confirm"},
+    "page.mfa.arme": {
+        "fr": "Le second facteur est armé.",
+        "en": "The second factor is armed."},
+    "page.mfa.retire": {
+        "fr": "Le second facteur est désarmé, et son secret effacé.",
+        "en": "The second factor is disarmed, and its secret erased."},
+    "page.mfa.secours.titre": {
+        "fr": "Tes codes de secours",
+        "en": "Your backup codes"},
+    # CETTE PHRASE-LA EST LA PLUS IMPORTANTE DE L'ECRAN, et elle est ecrite en
+    # toutes lettres parce qu'un utilisateur qui ferme l'onglet en pensant les
+    # retrouver dans ses réglages ne les retrouvera pas : seule leur empreinte
+    # est gardée, comme un mot de passe.
+    "page.mfa.secours.unique": {
+        "fr": "Ils ne s'affichent qu'UNE fois. Note-les maintenant : ils ne "
+              "sont pas conservés en clair, et personne ne peut te les "
+              "redonner — pas même l'administrateur.",
+        "en": "They are shown ONCE. Write them down now: they are not kept in "
+              "clear, and nobody can hand them back — not even the "
+              "administrator."},
+    "page.mfa.secours.neufs": {
+        "fr": "Voici un jeu neuf. Les anciens codes ne valent plus rien.",
+        "en": "Here is a fresh set. The old codes are worthless now."},
+    "page.mfa.secours.aussi": {
+        "fr": "Un code de secours convient aussi.",
+        "en": "A backup code works too."},
+    # L'ATTENTE EST ANNONCEE PARCE QU'ELLE SE DEDUIT MAL. Le code qui vient de
+    # CONFIRMER l'enrôlement est déjà consommé — sans cela, le rejeu rentrerait
+    # par la porte de l'enrôlement — et quelqu'un qui le retape aussitôt, en le
+    # lisant encore sur son écran, se voit refusé et croit avoir raté son
+    # enrôlement. Trente secondes au plus, et c'est le pas de la RFC 6238.
+    "page.mfa.attente": {
+        "fr": "Le code que tu viens de taper est déjà consommé : attends le "
+              "suivant, trente secondes au plus, avant de te reconnecter.",
+        "en": "The code you just typed is already spent: wait for the next "
+              "one, thirty seconds at most, before signing in again."},
+    "page.mfa.attente_en_cours": {
+        "fr": "Un enrôlement commencé n'a jamais été confirmé. Recommencer "
+              "tire un secret neuf : efface l'ancienne entrée de ton "
+              "application.",
+        "en": "An enrolment was started and never confirmed. Starting again "
+              "draws a fresh secret: delete the old entry from your app."},
+    "page.mfa.fini": {
+        "fr": "j'ai noté",
+        "en": "noted"},
+    # « SUR {total} » ET PAS SEULEMENT LE RESTE. « 2 codes de secours » ne dit
+    # pas s'il en reste beaucoup ou presque plus ; « 2 sur 10 » le dit d'un
+    # coup d'oeil, et c'est le seul signal qui pousse a en regénérer un jeu
+    # avant d'être à court — être à court, c'est perdre le compte.
+    "page.mfa.etat.arme": {
+        "fr": ["armé · {n} code de secours restant sur {total}",
+               "armé · {n} codes de secours restants sur {total}"],
+        "en": ["armed · {n} backup code left out of {total}",
+               "armed · {n} backup codes left out of {total}"]},
+    "page.mfa.etat.absent": {
+        "fr": "pas encore armé",
+        "en": "not armed yet"},
+    "page.mfa.regenerer": {
+        "fr": "de nouveaux codes de secours",
+        "en": "new backup codes"},
+    "page.mfa.retirer": {
+        "fr": "désarmer",
+        "en": "disarm"},
+    "page.mfa.retirer.sur": {
+        "fr": "Désarmer le second facteur ? Son secret est effacé : il faudra "
+              "recommencer l'enrôlement pour le remettre.",
+        "en": "Disarm the second factor? Its secret is erased: you will have "
+              "to enrol again to put it back."},
 
     # ── les interrupteurs de nuage ──────────────────────────────────
     "page.nuage.plafond.title": {

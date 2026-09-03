@@ -25,11 +25,20 @@ CE QU'IL EXISTE POUR EMPECHER, dans l'ordre de gravite :
     secours rejouable est un second mot de passe note sur un papier.
   - QUE LE REJEU ROUVRE AU REDEMARRAGE. Le dernier pas accepte doit etre sur le
     DISQUE : le studio redemarre souvent, c'est ecrit en tete de comptes.py.
+  - QU'UNE PORTE DU SERVEUR ECHAPPE AU FREINAGE. Six chiffres font un million,
+    mais la fenetre vaut 90 s et un code de secours pese une quarantaine de
+    bits : sans limite, on les essaie. La derniere section lit serveur.py par
+    l'arbre de syntaxe et exige qu'il n'y ait qu'UN site d'appel a
+    authentifier(), dans une porte qui freine avant de verifier, et qu'aucune
+    route ne verifie un secret a cote d'elle.
 
-Aucun reseau, aucun studio : un registre dans un dossier temporaire.
+Aucun reseau, aucun studio : un registre dans un dossier temporaire, et
+serveur.py LU sans etre importe — il tirerait aiohttp derriere lui.
 
     python banc_comptes.py
 """
+import ast
+import io
 import json
 import os
 import shutil
@@ -108,6 +117,14 @@ try:
         "et le mot de passe seul ouvre encore : on ne s'enferme pas dehors")
     dit(r.gens["jordan"].get("mfa_attente", {}).get("secret") == secret,
         "le secret attend dans « mfa_attente », pas dans « mfa »")
+    # LE SYMETRIQUE DE mfa_arme(), ET IL SE LIT AUTANT. Sans lui, un appelant
+    # qui veut distinguer « ce code ne correspond pas » d'« aucun enrolement en
+    # cours » n'a que la PHRASE FRANCAISE de l'exception a comparer — le
+    # contrat sur un texte que ce depot a deja defait deux fois. Les deux
+    # remedes different : l'un se retape, l'autre se recommence.
+    dit(r.mfa_en_attente("jordan") and not r.mfa_arme("jordan"),
+        "« en attente » et « arme » sont deux etats distincts, et on est dans "
+        "le premier")
 
     mauvais = False
     try:
@@ -139,6 +156,9 @@ try:
         "dix codes de secours, tous distincts, EN CLAIR une seule fois",
         str(len(secours)))
     dit("mfa_attente" not in r.gens["jordan"], "et l'attente a disparu")
+    dit(not r.mfa_en_attente("jordan"),
+        "donc plus rien n'est « en attente » : confirmer une seconde fois "
+        "n'est plus un code faux, c'est un enrolement qui n'existe plus")
 
     print("\n  ── un appelant distrait echoue FERME ──")
     # LE CAS LE PLUS IMPORTANT DE CE BANC. Le code d'avant s'ecrit
@@ -205,6 +225,39 @@ try:
         "la casse, les espaces et les tirets sont pardonnes en le recopiant",
         secours[1])
 
+    print("\n  ── un jeu NEUF de codes de secours ──")
+    # POURQUOI CETTE PORTE EXISTE : les dix codes s'epuisent — c'est le but,
+    # ils sont a usage unique — et arriver au dernier ne doit pas obliger a
+    # desarmer puis reenroler, ce qui change le SECRET et fait ressortir le
+    # telephone.
+    #
+    # LE TEMOIN D'ABORD. Sans cette premiere ligne, « aucun ancien code ne vaut
+    # plus » serait vraie d'un jeu qui n'a JAMAIS rien valu : verte parce que
+    # rien ne s'est passe, le defaut que ce depot a corrige treize fois d'un
+    # coup.
+    dit(bool(relu.authentifier("jordan", MDP, secours[2])),
+        "un code de l'ancien jeu ouvre encore — c'est le temoin de la suite",
+        secours[2])
+    avant = relu.mfa_secours_restants("jordan")
+    neufs = relu.mfa_regenerer("jordan")
+    dit(len(neufs) == 10 and not (set(neufs) & set(secours)),
+        "regenerer rend dix codes NEUFS, aucun en commun avec les anciens",
+        f"{len(neufs)} codes")
+    dit(relu.mfa_secours_restants("jordan") == 10,
+        "et le compte repart de dix", f"{avant} avant, "
+        f"{relu.mfa_secours_restants('jordan')} apres")
+    dit(relu.authentifier("jordan", MDP, secours[3]) is None,
+        "AUCUN ancien code ne vaut plus : le jeu est REMPLACE, jamais complete "
+        "— on le regenere justement parce qu'on a perdu de vue le papier "
+        "d'avant", secours[3])
+    dit(bool(relu.authentifier("jordan", MDP, neufs[0])),
+        "un code neuf, lui, ouvre", neufs[0])
+    # LE SECRET NE BOUGE PAS, et c'est tout ce qui separe cette methode de
+    # « retirer puis reenroler » : le telephone deja enrole continue de servir,
+    # seuls les codes de papier changent.
+    dit(secret2 in open(CHEMIN, encoding="utf-8").read(),
+        "et le SECRET n'a pas change : le telephone deja enrole sert encore")
+
     print("\n  ── rien de secret ne sort ──")
     l = relu.liste()
     plat = json.dumps(l)
@@ -229,6 +282,14 @@ try:
         "LE SECRET EST EFFACE, et non garde « au cas ou » : le garder ferait "
         "qu'un compte desarme puis rearme reprendrait l'ancien — le telephone "
         "qu'on venait de perdre rouvrirait le studio")
+    absent = False
+    try:
+        relu.mfa_regenerer("jordan")
+    except C.ErreurCompte:
+        absent = True
+    dit(absent,
+        "et l'on ne regenere pas des codes de secours sur un compte desarme : "
+        "ils ne garderaient rien")
 
     print("\n  ── ce que les autres comptes ne subissent pas ──")
     r2 = neuf()
@@ -246,6 +307,140 @@ try:
     except C.ErreurCompte:
         deja = True
     dit(deja, "on ne prepare pas un enrolement sur un compte deja arme")
+
+    # ══ LA PORTE DU SERVEUR ════════════════════════════════════════════
+    # SIX CHIFFRES FONT UN MILLION, ET CE N'EST PAS BEAUCOUP. La fenetre de
+    # verification vaut 90 s (mfa.FENETRE), donc trois codes sont valables a
+    # chaque instant ; un code de secours ne pese que huit caracteres d'un
+    # alphabet de trente et un, soit une quarantaine de bits. Sans freinage,
+    # ces deux-la s'essaient — et le freinage ne vaut que s'il n'existe AUCUNE
+    # route qui verifie un mot de passe ou un code a cote de lui. C'est la
+    # meme forme que le middleware « origine_verifiee » : ecrite route par
+    # route, la garde s'oublie a la prochaine route ajoutee.
+    #
+    # SERVEUR.PY EST LU, PAS IMPORTE : il tirerait aiohttp derriere lui, que la
+    # machine du releve n'a pas. Et il est lu par l'ARBRE DE SYNTAXE et non par
+    # expression reguliere — « une expression reguliere decrit UNE facon
+    # d'ecrire la panne, jamais la panne » (banc_mutations.py, les quatre trous
+    # de banc_page.py). Un appel etale sur trois lignes, un argument reordonne,
+    # un commentaire au milieu : ast les voit tous.
+    print("\n  ── la porte du serveur : un seul site, un seul compteur ──")
+    SERVEUR = io.open(os.path.join(ICI, "serveur.py"), encoding="utf-8",
+                      newline=None).read()
+    arbre = ast.parse(SERVEUR)
+
+    appels = [n for n in ast.walk(arbre)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+              and n.func.attr == "authentifier"]
+    # TROIS ARGUMENTS, ET C'EST LE CAS QUI COMPTE. Un site d'appel qui oublie
+    # le code ne LEVE PAS : authentifier() rend BESOIN_MFA, qui est faux, donc
+    # la route refuse — elle echoue ferme, ce qui est le bon sens de l'erreur,
+    # mais plus PERSONNE n'entre sur un compte arme et le studio a l'air de
+    # refuser un mot de passe juste. C'est exactement ce que faisait le
+    # changement de mot de passe avant ce travail.
+    dit(len(appels) == 1 and len(appels[0].args) == 3,
+        "UN SEUL site d'appel a authentifier() dans serveur.py, et il passe le "
+        "code",
+        f"{len(appels)} site(s) : "
+        + "; ".join(ast.unparse(a)[:50] for a in appels[:3]))
+
+    portes = [n for n in ast.walk(arbre)
+              if isinstance(n, ast.FunctionDef) and n.name == "_ouvrir_porte"]
+    dedans = (len(portes) == 1 and appels
+              and any(a is appels[0] for a in ast.walk(portes[0])))
+    dit(bool(dedans), "et ce site est dans _ouvrir_porte(), la porte commune",
+        f"{len(portes)} definition(s) de _ouvrir_porte")
+
+    porte = portes[0] if portes else None
+    noms_porte = {n.id for n in ast.walk(porte or ast.Module(body=[], type_ignores=[]))
+                  if isinstance(n, ast.Name)}
+    dit(porte is not None and {"_freinage", "_ECHECS"} <= noms_porte,
+        "cette porte-la consulte le freinage ET compte l'echec : la saisie du "
+        "code passe par le MEME compteur que le mot de passe",
+        ", ".join(sorted(noms_porte & {"_freinage", "_ECHECS"})) or "ni l'un ni l'autre")
+
+    # L'ORDRE, ET PAS SEULEMENT LA PRESENCE. Freiner APRES avoir verifie le
+    # code laisserait chaque essai s'executer avant d'etre compte : le scrypt
+    # des dix codes de secours serait paye a chaque fois, et le studio se
+    # laisserait occuper par qui tape n'importe quoi.
+    lignes_frein = [n.lineno for n in ast.walk(porte) if porte is not None
+                    and isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                    and n.func.id == "_freinage"]
+    dit(bool(lignes_frein) and appels and min(lignes_frein) < appels[0].lineno,
+        "et elle freine AVANT de verifier, jamais apres",
+        f"freinage ligne {min(lignes_frein) if lignes_frein else '?'}, "
+        f"verification ligne {appels[0].lineno if appels else '?'}")
+
+    # LE SENTINELLE NE TOUCHE PAS AU COMPTEUR, NI DANS UN SENS NI DANS L'AUTRE.
+    #   - le compter en echec freinerait la connexion NORMALE d'un compte arme,
+    #     qui fait deux appels a chaque fois : au troisieme il faudrait
+    #     attendre, sans s'etre trompe une seule fois ;
+    #   - le laisser remettre le compteur a zero rouvrirait le forçage en
+    #     grand — il suffirait d'intercaler un appel SANS code entre deux
+    #     essais de code pour effacer l'ardoise, et l'attente exponentielle ne
+    #     mordrait jamais.
+    branches = [n for n in ast.walk(porte) if porte is not None
+                and isinstance(n, ast.If) and "BESOIN_MFA" in ast.unparse(n.test)]
+    dit(len(branches) == 1,
+        "la demande de code est une branche a elle seule dans cette porte",
+        f"{len(branches)} branche(s) qui nomment BESOIN_MFA")
+    touche = set()
+    for b in branches:
+        for corps in b.body:
+            touche |= {n.id for n in ast.walk(corps) if isinstance(n, ast.Name)}
+    dit(bool(branches) and "_ECHECS" not in touche,
+        "et elle ne touche PAS au compteur : ni comptee en echec (la connexion "
+        "normale se freinerait elle-meme), ni remise a zero (un appel sans "
+        "code entre deux essais effacerait l'ardoise)",
+        ", ".join(sorted(touche))[:70] or "aucun nom")
+
+    # PAR COMPTE **ET** PAR ADRESSE. Par adresse seule, un studio derriere un
+    # reverse proxy qui n'ajoute pas « X-Forwarded-For » voit tout le monde
+    # arriver de la meme IP, et le premier qui se trompe trois fois freine la
+    # maison. Par compte seul, un tiers bloque a distance le compte de
+    # quelqu'un d'autre en tapant faux.
+    cles = [n for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef) and n.name == "_cle_freinage"]
+    rendus = [n for c in cles for n in ast.walk(c) if isinstance(n, ast.Return)]
+    forme = ast.unparse(rendus[0].value) if rendus else ""
+    dit(len(rendus) == 1 and isinstance(rendus[0].value, ast.Tuple)
+        and len(rendus[0].value.elts) == 2 and "nom" in forme and "hote" in forme,
+        "le compteur est indexe par le COUPLE (compte, adresse), pas par l'un "
+        "des deux", forme or "aucun _cle_freinage")
+
+    # ET AUCUNE ROUTE NE VERIFIE UN MOT DE PASSE A COTE. Le sol est pris par le
+    # haut : non pas la liste des routes auxquelles on a pense, mais celle des
+    # methodes qui savent dire « ce secret est le bon ». Le jour ou une route
+    # en appellera une directement, ce cas rougira et demandera qu'elle passe
+    # par la porte — c'est le bon sens de l'erreur.
+    a_cote = sorted({n.func.attr for n in ast.walk(arbre)
+                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                     and n.func.attr in ("verifier", "mfa_verifier")})
+    passages = [n for n in ast.walk(arbre)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "_ouvrir_porte"]
+    # « >= 5 » EST LE TEMOIN : sans lui, « aucune verification a cote » serait
+    # vrai d'un serveur qui ne verifierait plus rien du tout.
+    dit(len(passages) >= 5 and not a_cote,
+        "cinq portes empruntent _ouvrir_porte(), et aucune ne verifie un mot "
+        "de passe ni un code a cote",
+        ", ".join(a_cote) or f"{len(passages)} passages")
+
+    # LES CINQ ROUTES SONT ENREGISTREES. Une route ecrite et jamais branchee
+    # est une fonctionnalite morte que rien ne signale : c'est le defaut qui a
+    # fait naitre banc_mutations.py, et recette_chemin_page.py existe pour la
+    # meme raison.
+    attendues = ["/api/compte/mfa", "/api/compte/mfa/preparer",
+                 "/api/compte/mfa/confirmer", "/api/compte/mfa/retirer",
+                 "/api/compte/mfa/secours"]
+    poses = {n.args[0].value for n in ast.walk(arbre)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+             and n.func.attr.startswith("add_") and n.args
+             and isinstance(n.args[0], ast.Constant)
+             and isinstance(n.args[0].value, str)}
+    manquantes = [r for r in attendues if r not in poses]
+    dit(not manquantes, "et les cinq routes du second facteur sont branchees",
+        ", ".join(manquantes) or f"{len(attendues)} sur {len(poses)} routes")
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for x in rate:
