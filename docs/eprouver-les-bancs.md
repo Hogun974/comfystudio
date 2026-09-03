@@ -249,6 +249,33 @@ ajoutée à son tour. **Une mutation aussi s'éprouve.**
   gigaoctets, « ce qui donne exactement l'apparence d'un `/free` qui ne marche
   pas ». La périmée n'est **pas** un succès silencieux : c'est ce message-là,
   répété, qui a nommé le trou. `banc_agent.py` le ferme le 3 septembre 2026.
+- **Un banc qui promettait une porte qu'il n'avait pas remplacée.** Le même
+  jour, au soir, `banc_agent.py` annonçait dans son en-tête « une seule porte
+  sur le monde, `appeler()` » — et l'étape de CI recopiait la phrase. Il y en a
+  **trois** : `deposer_entrees()` appelle `urllib.request.urlopen` en direct
+  (il lui faut du multipart) et `ecouter_progression()` ouvre une **socket
+  nue**. Les deux portes oubliées sont précisément celles par lesquelles
+  l'agent écrit sur le disque de la machine à carte et relaie la progression.
+  Même reproche que celui de `SECURITY.md` à une politique qui promet un
+  contrôle inexistant : la phrase faisait croire à une couverture qui
+  n'existait pas.
+- **Et la première chose que la troisième porte a montrée est un vrai défaut.**
+  `ecouter_progression()` remettait le pourcentage à zéro dans son seul
+  `except` — or les **deux sorties les plus fréquentes** de sa boucle de trames
+  n'y passent pas : une fermeture propre (opcode `0x8`, ce qu'envoie un ComfyUI
+  qui redémarre) et un flux qui s'arrête net sortent par un `break`. Mesuré au
+  banc : **7/20 après la fermeture, 7/20 après la coupure, 0/0 après une
+  poignée de main refusée**, pour trois pertes de connexion identiques. Le
+  studio affichait 35 % sur un rendu mort jusqu'au délai d'`executer()`, soit
+  une heure au pire, et le rendu **suivant** démarrait à 35 %. La remise à zéro
+  est passée dans le `finally`. Sens inverse mesuré : le banc neuf sur l'agent
+  d'avant rend **83/1**, rouge sur la ligne nommée.
+- **La porte probabiliste qu'un seul tirage ne voit pas.** Le pong de la
+  websocket est masqué par `os.urandom(4)`, comme l'exige la RFC 6455. Une clef
+  **constante** passe le tour complet — XOR par zéro rend la charge intacte —
+  et l'octet de tête déclare toujours le masque : deux cas sur trois restent
+  verts. Il faut **cinquante tirages** pour la distinguer d'une clef tirée au
+  hasard, et la mutation « clef constante » ne rougit que sur ce cas-là.
 - **Un cas écrit pour un couplage qui n'en voyait que la moitié.** Le relevé
   « /admin et le serveur nomment les mêmes réglages » comparait les **noms** et
   pas les **bornes**, alors que les quatre paires `min`/`max` de la page sont

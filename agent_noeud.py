@@ -499,8 +499,24 @@ def ecouter_progression(comfy):
                                "execution_interrupted"):
                     PROGRES.update(fait=0, total=0)
         except Exception:
-            PROGRES.update(fait=0, total=0)
+            # ComfyUI absent, poignee de main refusee, trame illisible : on se
+            # rattrape au tour suivant. Le pourcentage, lui, est remis a zero
+            # par le « finally » ci-dessous, quelle que soit la façon dont
+            # cette connexion s'est terminee.
+            pass
         finally:
+            # ICI ET PAS DANS LE SEUL « except ». Une connexion perdue est un
+            # pourcentage qu'on ne connait plus, et les DEUX sorties les plus
+            # frequentes de la boucle de trames n'en sont pas une : une
+            # fermeture propre (opcode 0x8, ce qu'envoie un ComfyUI qui
+            # redemarre) et un flux qui s'arrete net sortent par un « break »,
+            # sans jamais passer par le gestionnaire. Le pourcentage restait
+            # alors fige a sa derniere valeur — mesure au banc : 7/20 apres la
+            # fermeture, 7/20 apres la coupure, 0/0 apres une poignee de main
+            # refusee, pour trois pertes de connexion identiques. Le studio
+            # affichait 35 % sur un rendu mort jusqu'au delai d'executer(),
+            # soit une heure au pire, et le rendu SUIVANT demarrait a 35 %.
+            PROGRES.update(fait=0, total=0)
             try:
                 if sock:
                     sock.close()

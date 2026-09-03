@@ -4332,10 +4332,462 @@ ADVERSE = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  agent_noeud.py, le reste du fichier — vingt-huit mutations
+# ──────────────────────────────────────────────────────────────────────
+# banc_agent.py ne couvrait que liberer_carte() et battre_annonce(). Le fichier
+# fait onze cents lignes, et le RESTE n'avait aucun filet : la mise a jour, le
+# rendu, le depot des entrees, le registre des sorties, la websocket de
+# progression. Les mutations ci-dessous suivent l'ordre de la CONSEQUENCE.
+#
+# LE SENS INVERSE. Toutes ces gardes existaient avant le banc : la mutation EST
+# la correction defaite, et « banc_agent.py est vert sur le depot sain » en tete
+# de ce fichier tient l'autre moitie. Une seule exception, la derniere de la
+# liste — la remise a zero du pourcentage, corrigee le 3 septembre 2026 en meme
+# temps que le banc : elle n'a pas de filet d'avant, et le sens inverse a donc
+# ete pris comme pour banc_refaire.py. banc_agent.py NEUF lance sur
+# l'agent_noeud.py d'AVANT rend 83/1, rouge sur la ligne exacte que la mutation
+# nomme, et 84/0 sur le depot du jour.
+MAJ_AGENT = [
+    dict(
+        nom="l'empreinte epinglee n'est plus qu'un avertissement",
+        banc="banc_agent.py",
+        imite="le seul garde-fou dont dispose celui qui heberge contre un "
+              "agent servi par autre chose que son studio. Il a releve le "
+              "sha256 en SSH sur l'hote, l'a epingle par --empreinte, et la "
+              "machine installe quand meme ce qu'on lui donne — en le lui "
+              "DISANT, ce qui est pire : la ligne rassurante est la, et le "
+              "code d'un autre tourne",
+        rougit="une empreinte EPINGLEE qui ne correspond pas : rien n'est "
+               "remplace",
+        editions=[("agent_noeud.py", brut(
+            '        print("  EMPREINTE INATTENDUE — rien n\'a ete remplace")'
+            + chr(10)
+            + '        print(f"    recue    : {recue}")' + chr(10)
+            + '        print(f"    attendue : {attendue}")' + chr(10)
+            + '        return 1' + chr(10),
+            '        print("  EMPREINTE INATTENDUE")' + chr(10)))]),
+    dict(
+        nom="l'empreinte doit etre tapee exactement comme le sha256 sort",
+        banc="banc_agent.py",
+        imite="un sha256 qui se releve a la main. « sha256sum » rend des "
+              "minuscules, « certutil -hashfile » et « Get-FileHash » de "
+              "Windows rendent des MAJUSCULES, et un copier-coller ramene une "
+              "espace. L'empreinte JUSTE est alors refusee : la machine reste "
+              "sur sa vieille version en croyant se defendre, et l'on cherche "
+              "l'erreur du cote du studio",
+        rougit="l'empreinte relevee en MAJUSCULES, ou avec des espaces, reste "
+               "la bonne",
+        editions=[("agent_noeud.py", brut(
+            'attendue = (empreinte or "").strip().lower()',
+            'attendue = empreinte or ""'))]),
+    dict(
+        nom="on ne verifie plus que c'est du texte, pas que c'est du Python",
+        banc="banc_agent.py",
+        imite="le code d'avant le 31 aout, ou le fichier n'etait pas relu "
+              "avant d'ecraser un agent qui fonctionnait. Anodin tant qu'un "
+              "humain lançait « --maj » et voyait l'erreur au redemarrage ; "
+              "depuis que la mise a jour est automatique, un telechargement "
+              "tronque fait une brique sans personne pour le voir — et la "
+              "machine ne redemarrera plus pour aller chercher la correction",
+        rougit="un telechargement TRONQUE ne remplace pas un agent qui "
+               "fonctionne",
+        editions=[("agent_noeud.py", brut(
+            "        ast.parse(octets.decode(\"utf-8\"))",
+            "        octets.decode(\"utf-8\")"))]),
+    dict(
+        nom="le refus ne couvre plus que la syntaxe, pas l'encodage",
+        banc="banc_agent.py",
+        imite="la moitie oubliee du meme garde-fou. ast.parse() ne recoit pas "
+              "du texte, il recoit ce que le reseau a rendu : des octets. Une "
+              "image, une archive, une reponse binaire d'un proxy ne levent "
+              "pas SyntaxError mais UnicodeDecodeError — qui traverse "
+              "se_mettre_a_jour(), traverse se_mettre_a_jour_seul(), et "
+              "emporte la boucle de travail de l'agent",
+        rougit="ni des octets qui ne sont meme pas du texte",
+        editions=[("agent_noeud.py", brut(
+            "    except (UnicodeDecodeError, SyntaxError) as e:",
+            "    except SyntaxError as e:"))]),
+    dict(
+        nom="la copie de secours n'est plus faite",
+        banc="banc_agent.py",
+        imite="l'agent remplace, et il ne reste rien a cote. Une version "
+              "cassee est justement celle qui ne redemarrera pas pour aller "
+              "en chercher une autre : sans .precedent, il faut aller "
+              "physiquement sur la machine a carte, qui est souvent celle de "
+              "quelqu'un d'autre",
+        rougit="et il garde l'ancienne a cote, sous .precedent",
+        editions=[("agent_noeud.py", brut(
+            '        with open(moi + ".precedent", "wb") as f:' + chr(10)
+            + '            f.write(open(moi, "rb").read())' + chr(10),
+            ""))]),
+    dict(
+        nom="l'agent se reecrit meme quand rien n'a change",
+        banc="banc_agent.py",
+        imite="ce qui detruit la copie de secours a petit feu. La mise a jour "
+              "est tentee a chaque battement : sans ce court-circuit, l'agent "
+              "recopie son propre fichier dans .precedent au premier passage, "
+              "et la version d'avant — la seule qui marchait — est perdue "
+              "avant meme qu'on en ait besoin",
+        rougit="et quand le studio sert le meme agent, rien n'est reecrit",
+        editions=[("agent_noeud.py", brut(
+            '    if octets == open(moi, "rb").read():' + chr(10)
+            + '        print("  deja a jour.")' + chr(10)
+            + '        return 0' + chr(10),
+            ""))]),
+    dict(
+        nom="la mise a jour automatique ignore l'empreinte epinglee",
+        banc="banc_agent.py",
+        imite="l'epingle qui ne tient que sur « --maj » tape a la main, et pas "
+              "sur le chemin qui compte : celui ou personne ne regarde. "
+              "L'agent se remplace tout seul a chaque battement, et l'epingle "
+              "de celui qui heberge ne sert plus a rien",
+        rougit="une empreinte EPINGLEE arrete la mise a jour automatique",
+        editions=[("agent_noeud.py", brut(
+            "    if epinglee:" + chr(10)
+            + '        print(f"  le studio sert un agent different (sha256 '
+            + '{attendue[:12]}…), "' + chr(10)
+            + '              f"mais une empreinte est epinglee : rien ne sera '
+            + 'remplace",' + chr(10)
+            + "              flush=True)" + chr(10)
+            + "        return None" + chr(10),
+            ""))]),
+    dict(
+        nom="le studio annonce une empreinte et en sert une autre",
+        banc="banc_agent.py",
+        imite="ce que la mise a jour automatique cesse de verifier quand elle "
+              "ne repasse plus l'empreinte annoncee. Le studio dit servir X, "
+              "sert Y — telechargement tronque, proxy qui reecrit les fins de "
+              "ligne, studio mis a jour entre l'annonce et la demande — et la "
+              "machine redemarre sur un fichier different de celui qu'elle "
+              "croit avoir, en boucle puisque son empreinte ne correspondra "
+              "jamais",
+        rougit="un agent servi different de l'empreinte ANNONCEE n'est pas "
+               "installe",
+        editions=[("agent_noeud.py", brut(
+            "    if se_mettre_a_jour(studio, attendue) != 0:",
+            "    if se_mettre_a_jour(studio) != 0:"))]),
+    dict(
+        nom="le marqueur anti-boucle cloue la machine sur sa version",
+        banc="banc_agent.py",
+        imite="un marqueur qui arrete TOUTE mise a jour au lieu de la seule "
+              "empreinte deja tentee. Une premiere tentative rate — le studio "
+              "servait un fichier tronque — et la machine ne prendra plus "
+              "jamais aucune version, y compris celle qui corrige justement le "
+              "defaut. Elle est perdue jusqu'a ce que quelqu'un aille la "
+              "relancer a la main",
+        rougit="mais une AUTRE empreinte repart : le marqueur ne cloue pas la "
+               "machine",
+        editions=[("agent_noeud.py", brut(
+            "    if os.environ.get(MARQUE_MAJ) == attendue:",
+            "    if os.environ.get(MARQUE_MAJ):"))]),
+    dict(
+        nom="le marqueur n'est pas pose avant le redemarrage",
+        banc="banc_agent.py",
+        imite="l'autre moitie de l'anti-boucle. Le marqueur voyage par "
+              "l'environnement, qui survit a os.execv ; pose apres, il ne "
+              "serait pose par personne — le processus n'existe plus. Une "
+              "empreinte qui ne correspondra jamais fait alors redemarrer la "
+              "machine toutes les dix secondes, sans fin et sans qu'aucun "
+              "message ne le dise",
+        rougit="et il laisse sa trace dans l'environnement AVANT de se "
+               "remplacer",
+        editions=[("agent_noeud.py", brut(
+            "    os.environ[MARQUE_MAJ] = attendue" + chr(10), ""))]),
+    dict(
+        nom="l'agent redemarre meme quand le remplacement a echoue",
+        banc="banc_agent.py",
+        imite="un redemarrage tire sur un fichier qui n'a pas ete remplace. "
+              "L'agent repart sur le MEME code, retrouve la meme empreinte a "
+              "l'annonce suivante, et recommence : une machine qui redemarre "
+              "en rond au lieu de continuer a travailler avec la version "
+              "qu'elle a",
+        rougit="un agent casse servi par le studio : rien de pose, rien de "
+               "redemarre, aucun marqueur",
+        editions=[("agent_noeud.py", brut(
+            "    if se_mettre_a_jour(studio, attendue) != 0:" + chr(10)
+            + "        return None" + chr(10),
+            "    se_mettre_a_jour(studio, attendue)" + chr(10)))]),
+    dict(
+        nom="les morceaux d'os.execv partent sans guillemets sous Windows",
+        banc="banc_agent.py",
+        imite="la mesure du 31 aout avec « C:/Program Files/Python314 ». "
+              "os.execv y recolle les arguments en une seule ligne de commande "
+              "SANS les proteger : l'enfant meurt sur « C:\\Program: can't "
+              "open file », et le parent sort avec le code 0 — donc aucune "
+              "OSError, donc le repli ne s'execute jamais et l'agent est mort "
+              "pour de bon. La CI tourne sous Linux et ne le verrait jamais",
+        rougit="sous Windows, l'interpreteur et le script a espaces partent "
+               "proteges",
+        editions=[("agent_noeud.py", brut(
+            '        if os.name == "nt":' + chr(10)
+            + '            morceaux = [f\'"{m}"\' if " " in m and not '
+            + 'm.startswith(\'"\') else m' + chr(10)
+            + "                        for m in morceaux]" + chr(10),
+            ""))]),
+]
+
+RENDU_AGENT = [
+    dict(
+        nom="les deux client_id de l'agent divergent",
+        banc="banc_agent.py",
+        imite="le seul couplage de ce fichier qui ne leve jamais. executer() "
+              "soumet le graphe sous un client_id, ecouter_progression() "
+              "s'abonne a la websocket sous un autre — deux chaines "
+              "litterales, dans deux fonctions, a trois cents lignes d'ecart. "
+              "ComfyUI adresse la progression AU CLIENT QUI A SOUMIS : les "
+              "rendus continuent de sortir, la barre de la file est morte, et "
+              "rien ne le dit",
+        rougit="et il s'abonne sous le MEME client_id que celui qui a soumis "
+               "le graphe",
+        editions=[("agent_noeud.py", brut(
+            'f"GET /ws?clientId=agent HTTP/1.1' + chr(92) + 'r' + chr(92) + 'n"',
+            'f"GET /ws?clientId=comfystudio HTTP/1.1' + chr(92) + 'r'
+            + chr(92) + 'n"'))]),
+    dict(
+        nom="« dire » n'est appele que s'il y a un pourcentage a montrer",
+        banc="banc_agent.py",
+        imite="le trou que le commentaire d'executer() decrit lui-meme. C'est "
+              "la REPONSE a cette annonce qui apporte l'annulation, et les "
+              "premieres dizaines de secondes d'un rendu — le chargement du "
+              "modele — n'ont aucun pourcentage. Annuler pendant ce trou-la ne "
+              "coupe rien : l'utilisateur clique, l'interface dit annule, et "
+              "la carte continue de calculer une image que personne ne verra",
+        rougit="« dire » est appele des le premier tour, sans attendre un "
+               "pourcentage",
+        editions=[("agent_noeud.py", brut(
+            '        if dire and dire(PROGRES["fait"], PROGRES["total"]):',
+            '        if dire and PROGRES["total"] and dire(PROGRES["fait"],'
+            + ' PROGRES["total"]):'))]),
+    dict(
+        nom="l'annulation tire sans regarder la file",
+        banc="banc_agent.py",
+        imite="POST /interrupt ne nomme pas le travail qu'il coupe : il coupe "
+              "ce qui tourne. Sur une carte que son proprietaire fait aussi "
+              "travailler depuis l'interface de ComfyUI, une annulation cote "
+              "studio lui vole SON rendu a lui — et l'agent annonce « carte "
+              "interrompue » comme si de rien n'etait",
+        rougit="et un rendu qui n'est pas le notre n'est NI coupe NI retire de "
+               "la file",
+        editions=[("agent_noeud.py", brut(
+            '    if _dedans("queue_pending"):' + chr(10)
+            + '        appeler(f"{comfy}/queue", corps={"delete": [pid]},'
+            + " secondes=10)" + chr(10)
+            + '        return "retire de la file avant le GPU"' + chr(10)
+            + '    if _dedans("queue_running"):' + chr(10)
+            + '        appeler(f"{comfy}/interrupt", corps={}, secondes=10)'
+            + chr(10)
+            + '        return "carte interrompue"' + chr(10)
+            + '    return "deja fini, rien a couper"',
+            '    appeler(f"{comfy}/interrupt", corps={}, secondes=10)' + chr(10)
+            + '    return "carte interrompue"'))]),
+    dict(
+        nom="tout ce qu'un noeud pose dans « outputs » est pris pour un fichier",
+        banc="banc_agent.py",
+        imite="un noeud qui rend un nombre, un texte ou une liste de rien a "
+              "cote de ses images — il y en a. L'agent les prend pour des "
+              "fichiers, lire_sortie() leve sur un « filename » absent au "
+              "moment de livrer, et le rendu ECHOUE apres que la carte a "
+              "travaille : le travail est fait, l'utilisateur lit « echec »",
+        rougit="et ce qu'un noeud pose dans « outputs » sans etre un fichier "
+               "est ecarte",
+        editions=[("agent_noeud.py", brut(
+            '                        sorties += [x for x in valeur' + chr(10)
+            + '                                    if isinstance(x, dict) and '
+            + '"filename" in x]',
+            '                        sorties += [x for x in valeur' + chr(10)
+            + '                                    if isinstance(x, dict)]'))]),
+]
+
+DISQUE_AGENT = [
+    dict(
+        nom="le fichier d'entree part en base64 au lieu de ses octets",
+        banc="banc_agent.py",
+        imite="une image d'entree ecrite sur la machine a carte sous une forme "
+              "que ComfyUI ne sait pas lire. Le depot repond 200, le graphe "
+              "est correct, et le rendu echoue sur un fichier illisible — sans "
+              "que rien, du cote du studio, ne puisse distinguer ça d'un "
+              "modele absent",
+        rougit="et ce sont les octets decodes qui partent, pas le base64",
+        editions=[("agent_noeud.py", brut(
+            "        octets = base64.b64decode(donnees)",
+            "        octets = donnees.encode()"))]),
+    dict(
+        nom="la frontiere du multipart est fixe",
+        banc="banc_agent.py",
+        imite="une frontiere constante dans un corps qui transporte des "
+              "octets d'image bruts. Le jour ou la suite apparait dans "
+              "l'image, le corps est coupe en plein milieu et ComfyUI retient "
+              "un fichier tronque. C'est rare, ce n'est jamais reproductible, "
+              "et c'est exactement pour ça que uuid4 est la",
+        rougit="chaque fichier porte SA frontiere, tiree au hasard",
+        editions=[("agent_noeud.py", brut(
+            '        limite = "----" + uuid.uuid4().hex',
+            '        limite = "----frontiere-comfystudio"'))]),
+    dict(
+        nom="seul le champ « image » du graphe est corrige",
+        banc="banc_agent.py",
+        imite="la moitie de CHAMPS_ENTREE, qui doit bouger avec "
+              "entrees_du_graphe() de serveur.py. ComfyUI renomme en "
+              "« x (1).png » quand le nom existe deja : les champs non "
+              "corriges pointent alors sur un fichier qui n'est pas celui "
+              "qu'on vient d'ecrire — le son, la video ou le fichier du "
+              "rendu PRECEDENT, ou celui d'un autre utilisateur",
+        rougit="quand ComfyUI renomme, les quatre champs d'entree du graphe "
+               "suivent",
+        editions=[("agent_noeud.py", brut(
+            'CHAMPS_ENTREE = ("image", "file", "audio", "video")',
+            'CHAMPS_ENTREE = ("image",)'))]),
+    dict(
+        nom="le registre des depots retourne vivre a cote du script",
+        banc="banc_agent.py",
+        imite="le demenagement defait. En conteneur, le script, les reglages "
+              "et /tmp repartent a zero a chaque demarrage : le registre est "
+              "perdu a chaque redemarrage, le menage ne trouve plus rien a "
+              "effacer, et le disque de la machine a carte se remplit en "
+              "silence — sans que personne ne s'en apercoive avant qu'il soit "
+              "plein",
+        rougit="le registre des depots vit DANS le dossier des sorties, pas a "
+               "cote du script",
+        editions=[("agent_noeud.py", brut(
+            '    chemin = os.path.join(sorties or ICI,' + chr(10)
+            + '                          "." + DEPOSEES if sorties else '
+            + "DEPOSEES)",
+            "    chemin = os.path.join(ICI, DEPOSEES)"))]),
+    dict(
+        nom="la garde n'est plus un delai",
+        banc="banc_agent.py",
+        imite="un menage qui efface une sortie a la seconde ou elle est "
+              "deposee. Le studio en a bien une copie — mais le proprietaire "
+              "de la machine a carte, lui, voit ses rendus disparaitre de son "
+              "dossier output sous ses yeux, et --garder-heures ne sert plus a "
+              "rien",
+        rougit="ni une sortie deposee trop recemment — la garde est un delai, "
+               "pas un drapeau",
+        editions=[("agent_noeud.py", brut(
+            "    limite = time.time() - garde_h * 3600",
+            "    limite = time.time()"))]),
+    dict(
+        nom="un fichier qu'on n'a pas pu effacer est raye du registre",
+        banc="banc_agent.py",
+        imite="une sortie verrouillee au moment du menage — ouverte dans une "
+              "visionneuse, un disque reseau qui repond mal. Rayee du "
+              "registre, elle n'est plus surveillee par personne : elle "
+              "restera la pour toujours, et le --garder-heures ne la reprendra "
+              "jamais",
+        rougit="ce qui a deja disparu est oublie, ce qu'on n'a pas pu effacer "
+               "reste au registre",
+        editions=[("agent_noeud.py", brut(
+            '            print(f"  suppression impossible ({err}) — on garde '
+            + 'la trace",' + chr(10)
+            + "                  flush=True)" + chr(10)
+            + "            restant.append(e)",
+            '            print(f"  suppression impossible ({err})",'
+            + chr(10) + "                  flush=True)"))]),
+    dict(
+        nom="a la reprise du registre, c'est la note la plus ancienne qui gagne",
+        banc="banc_agent.py",
+        imite="un fichier redepose entre les deux registres. La vieille note "
+              "l'emporte, sa date est deja au-dela de la garde, et le menage "
+              "efface une sortie que l'agent vient de reposer — celle que le "
+              "studio est justement en train de venir chercher",
+        rougit="et d'un fichier note deux fois, c'est la note la PLUS RECENTE "
+               "qui compte",
+        editions=[("agent_noeud.py", brut(
+            '        if vue is None or e.get("quand", 0) >= vue.get("quand", 0):',
+            "        if vue is None:"))]),
+]
+
+PROGRESSION_AGENT = [
+    dict(
+        nom="le pong n'est pas masque",
+        banc="banc_agent.py",
+        imite="une trame client vers serveur sans masque, ce que la RFC 6455 "
+              "interdit. Le serveur ferme la connexion des le premier ping — "
+              "toutes les minutes chez aiohttp — l'agent se reconnecte, et la "
+              "barre de la file clignote sans que rien ne leve nulle part",
+        rougit="et son second octet declare le masque et la longueur de la "
+               "charge",
+        editions=[("agent_noeud.py", brut(
+            "                    sock.sendall(bytes([0x8A, 0x80 | "
+            + "len(charge)]) + cle4 + charge)",
+            "                    sock.sendall(bytes([0x8A, len(charge)]) + "
+            + "cle4 + charge)"))]),
+    dict(
+        nom="la clef de masque du pong est constante",
+        banc="banc_agent.py",
+        imite="LE CAS QU'UN SEUL TIRAGE NE VOIT PAS. Un masque nul passe le "
+              "round-trip — XOR par zero rend la charge intacte — et l'octet "
+              "de tete declare toujours le masque : deux cas sur trois restent "
+              "verts. La RFC exige une clef IMPREVISIBLE par trame, et c'est "
+              "la seule chose qui empeche un cache intermediaire d'empoisonner "
+              "la connexion. Il faut cinquante tirages pour la distinguer "
+              "d'une clef tiree au hasard",
+        rougit="avec une clef de masque TIREE A CHAQUE TRAME, comme l'exige la "
+               "RFC 6455",
+        editions=[("agent_noeud.py", brut(
+            "                    cle4 = os.urandom(4)",
+            '                    cle4 = b"' + chr(92) + "x00" + chr(92) + "x00"
+            + chr(92) + "x00" + chr(92) + 'x00"'))]),
+    dict(
+        nom="les trames de plus de 125 octets ne sont plus lues",
+        banc="banc_agent.py",
+        imite="la longueur etendue de la websocket, oubliee. Au-dela de 125 "
+              "octets la taille passe dans deux octets de plus, et un message "
+              "de progression qui nomme le noeud en cours y arrive tout de "
+              "suite. Sans cette branche, l'agent lit la taille comme un "
+              "corps : il se desynchronise du flux et ne comprend plus une "
+              "seule trame jusqu'a la reconnexion",
+        rougit="une trame de plus de 125 octets est lue, longueur etendue "
+               "comprise",
+        editions=[("agent_noeud.py", brut(
+            "    if taille == 126:" + chr(10)
+            + '        t = lire(2)' + chr(10)
+            + '        taille = int.from_bytes(t, "big") if t else 0' + chr(10)
+            + "    elif taille == 127:",
+            "    if taille == 127:"))]),
+    dict(
+        nom="une trame illisible emporte la connexion",
+        banc="banc_agent.py",
+        imite="un « continue » devenu « break ». ComfyUI emet des messages que "
+              "l'agent ne connait pas et n'a pas a connaitre ; une seule trame "
+              "que json refuse, et la connexion tombe. Elle se rattrape, mais "
+              "le temps d'attente double a chaque fois jusqu'a trente "
+              "secondes : la progression finit par ne plus arriver du tout",
+        rougit="une trame illisible est sautee, et la suivante est lue quand "
+               "meme",
+        editions=[("agent_noeud.py", brut(
+            "                except ValueError:" + chr(10)
+            + "                    continue",
+            "                except ValueError:" + chr(10)
+            + "                    break"))]),
+    dict(
+        nom="le pourcentage reste fige quand la connexion tombe",
+        banc="banc_agent.py",
+        imite="LE DEFAUT CORRIGE LE 3 SEPTEMBRE 2026, remis en place. La "
+              "remise a zero ne vivait que dans le « except », et les DEUX "
+              "sorties les plus frequentes de la boucle de trames n'y passent "
+              "pas : une fermeture propre (opcode 0x8, ce qu'envoie un ComfyUI "
+              "qui redemarre) et un flux qui s'arrete net sortent par un "
+              "« break ». Mesure au banc : 7/20 apres la fermeture, 7/20 apres "
+              "la coupure, 0/0 apres une poignee de main refusee — pour trois "
+              "pertes de connexion identiques. Le studio affichait 35 % sur un "
+              "rendu mort jusqu'au delai d'executer(), soit une heure au pire, "
+              "et le rendu SUIVANT demarrait a 35 %",
+        rougit="une connexion fermee par ComfyUI ne laisse pas un pourcentage "
+               "FIGE",
+        editions=[("agent_noeud.py", motif(
+            r"            # ICI ET PAS DANS LE SEUL .*?\n"
+            r"            PROGRES\.update\(fait=0, total=0\)\n",
+            ""))]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
-             + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE)
+             + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
+             + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

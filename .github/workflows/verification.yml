@@ -463,9 +463,22 @@ jobs:
       # le studio ne peut pas tenir a sa place — et les dix-sept bancs
       # restaient verts.
       #
-      # Il n'a aucune dependance et une seule porte sur le monde, appeler() :
-      # un faux a cet endroit fait tourner le VRAI code contre un faux ComfyUI
-      # et un faux studio. Aucun reseau, aucune carte, une fraction de seconde.
+      # Il n'a aucune dependance et TROIS portes sur le monde : appeler() pour
+      # le HTTP ordinaire, urllib.request.urlopen pour le depot multipart des
+      # entrees, socket.create_connection pour la websocket de progression. Un
+      # faux a ces trois endroits fait tourner le VRAI code contre un faux
+      # ComfyUI et un faux studio. Cette ligne annonçait « une seule porte »,
+      # recopiee de l'en-tete du banc : c'etait faux, et les deux portes
+      # oubliees etaient justement celles par lesquelles l'agent ECRIT sur le
+      # disque de la machine a carte.
+      #
+      # CE QU'IL COUVRE DEPUIS LE 3 SEPTEMBRE 2026 AU SOIR, dans l'ordre de la
+      # consequence : la MISE A JOUR — le studio distribue le code de l'agent,
+      # l'agent le telecharge et l'EXECUTE sur la machine de quelqu'un d'autre,
+      # et ses trois gardes (empreinte epinglee, ast.parse, marqueur
+      # anti-boucle) n'etaient pas exercees ; puis executer(), le depot des
+      # entrees, le registre des sorties et la websocket de progression.
+      # Aucun reseau, aucune carte, un quart de seconde.
       - name: L'agent de noeud, contre un faux ComfyUI
         run: python banc_agent.py
 
