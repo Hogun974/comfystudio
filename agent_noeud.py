@@ -172,6 +172,28 @@ def etat_comfy(comfy):
             "ram": round(ram / 1024 ** 3, 1)}
 
 
+def liberer_carte(comfy):
+    """Demande a CE ComfyUI de rendre sa VRAM. Rend (abouti, statut HTTP).
+
+    C'est le studio qui decide QUAND — il est le seul a savoir si une demande
+    vise cette machine, si une autre attend son reveil, si un verrou est tenu.
+    L'agent, lui, sait une chose que le studio ne peut pas savoir a temps : que
+    la boucle vient de prendre un travail. Cette moitie-la du garde-fou est
+    donc ici, et pas la-bas (voir le site d'appel).
+
+    « unload_models » ET « free_memory » : le premier decharge les modeles, le
+    second rend le cache. L'un sans l'autre laisse plusieurs gigaoctets, ce qui
+    donne exactement l'apparence d'un /free qui ne marche pas.
+
+    Vingt secondes : le dechargement est local et ne calcule rien, mais il
+    attend la fin de ce que la carte fait — et l'on prefere un delai franc a un
+    agent qui se tait pendant que le studio le croit vivant.
+    """
+    st, _ = appeler(f"{comfy}/free", corps={"unload_models": True,
+                                            "free_memory": True}, secondes=20)
+    return 200 <= st < 300, st
+
+
 def modeles_comfy(comfy):
     """Ce que ce ComfyUI sait charger, dossier par dossier."""
     trouve = {}
@@ -866,6 +888,14 @@ def battre_annonce(studio, jeton, comfy, ollama):
     # d'autant.
     reclame_modeles = True
     connu = False
+    # Ce que le dernier /free a donne, en attente d'etre rapporte au studio.
+    # Une variable LOCALE et non DEPUIS_L_ANNONCE : elle est ecrite et lue par
+    # ce seul fil, et la partager serait ouvrir un partage dont personne n'a
+    # besoin. Gardee tant que le studio n'a pas repondu 200 — un studio qui
+    # redemarre a la seconde ou l'on rapporte ne doit pas faire perdre le
+    # diagnostic, qui est justement ce qui distingue « ComfyUI trop ancien »
+    # de « la carte etait deja vide ».
+    rapport_liberation = None
     while True:
         debut = time.time()
         attente = intervalle
@@ -953,6 +983,8 @@ def battre_annonce(studio, jeton, comfy, ollama):
             # unique, donc sure meme si la boucle ecrit au meme instant : au
             # pire on lit l'etat d'avant.
             corps["travaux"] = list(EN_COURS_ICI)
+            if rapport_liberation is not None:
+                corps["libere"] = rapport_liberation
             st, d = appeler(f"{studio}/api/noeud/annonce", jeton, corps)
             DEPUIS_L_ANNONCE["studio"] = st == 200
             if st == 401:
@@ -968,6 +1000,33 @@ def battre_annonce(studio, jeton, comfy, ollama):
                 attente = PAUSE_LONGUE
                 continue
             d = d if isinstance(d, dict) else {}
+            # Recu par le studio : le diagnostic n'a plus a etre garde.
+            rapport_liberation = None
+            # LE STUDIO RECLAME LA CARTE. Il ne l'a jamais reclamee de lui-meme
+            # — il ne peut pas, il n'a pas notre adresse — et c'est pour cela
+            # que la consigne descend par la reponse a l'annonce, comme
+            # « intervalle » et « modeles_demandes ».
+            #
+            # « not EN_COURS_ICI » EST L'AUTRE MOITIE DU GARDE-FOU, et elle ne
+            # pouvait pas etre ailleurs qu'ici. Le studio decide sur ce qu'il
+            # savait au debut du battement ; entre sa decision et l'arrivee de
+            # sa reponse, la boucle a pu prendre un travail — le meme intervalle
+            # qui faisait annoncer libre une machine qui calculait, deux lignes
+            # plus haut. Au pire, sans cette ligne, ComfyUI recharge un modele
+            # qu'il vient de decharger : rien n'est perdu, mais une image part
+            # avec une minute de retard sans que personne ne comprenne pourquoi.
+            if d.get("liberer") and not EN_COURS_ICI:
+                abouti, statut = liberer_carte(comfy)
+                rapport_liberation = {"ok": abouti, "statut": statut}
+                # Une ligne au plus par periode de repos : le studio n'envoie
+                # la consigne qu'une fois entre deux travaux.
+                print("  carte rendue au systeme" if abouti
+                      else f"  ComfyUI a refuse /free ({statut}) — version trop "
+                           f"ancienne ?", flush=True)
+                # Remesurer tout de suite : c'est la VRAM du battement SUIVANT
+                # qui dit au studio ce que la liberation a rendu, et sans cela
+                # elle serait celle d'avant, prise dans le cache d'une minute.
+                DEPUIS_L_ANNONCE["remesurer"] = True
             # Le studio dit s'il connait nos modeles. Il ne les connait
             # plus apres chacun de ses redemarrages.
             reclame_modeles = bool(d.get("modeles_demandes"))

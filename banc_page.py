@@ -1341,6 +1341,56 @@ dit('for="langue"' in _avant_entete,
 # ON LIT L'ARBRE ET NON UN MOTIF : une FileResponse s'ecrit sur une ou trois
 # lignes, avec ou sans os.path.join, et « une expression reguliere decrit UNE
 # facon d'ecrire la panne, jamais la panne ».
+# ══ /admin ET LE SERVEUR NOMMENT LES MEMES REGLAGES ════════════════════
+# /admin n'est pas traduit — il parle a celui qui heberge, apres coup — et rien
+# ici ne lui demande de l'etre. Ce qu'on releve est l'autre moitie de contrat,
+# celle qui a deja coute des jours au depot : la page ECRIT un nom de reglage,
+# le serveur en ATTEND un, et les deux se relisent a des annees-lumiere l'un de
+# l'autre. Un « vram_repos_min » devenu « vram_repos » cote page ne leve rien du
+# tout — le POST repond 400 « aucun reglage connu », le champ se remet a sa
+# valeur d'avant au rafraichissement suivant, et l'administrateur croit que son
+# chiffre n'a pas ete accepte.
+#
+# LES DEUX SENS, parce qu'ils attrapent deux fautes differentes : un nom ecrit
+# dans la page et inconnu du serveur (le reglage ne se pose pas), et un reglage
+# du serveur qu'aucun champ ne pose (il existe et personne ne peut l'atteindre
+# — c'etait vrai de « plafond_nuage » entre son ajout et son onglet).
+print("\n  ── /admin et le serveur nomment les memes reglages ──")
+try:
+    ADMIN = io.open(os.path.join(ICI, "web", "admin.html"),
+                    encoding="utf-8", newline=None).read()
+except OSError:
+    ADMIN = ""
+dit(bool(ADMIN), "la console d'administration est lisible",
+    f"{len(ADMIN)} octets" if ADMIN else "web/admin.html absent")
+
+_BORNES = set()
+for _n in ast.walk(ast.parse(SERVEUR)):
+    if (isinstance(_n, ast.Assign) and len(_n.targets) == 1
+            and getattr(_n.targets[0], "id", "") == "BORNES_REGLAGES"
+            and isinstance(_n.value, ast.Dict)):
+        _BORNES = {k.value for k in _n.value.keys
+                   if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+# Les corps d'objet passes au POST des reglages, et les noms qu'ils portent.
+_CORPS = re.findall(r'"/api/admin/reglages",\s*"POST",\s*\{(.*?)\}', ADMIN, re.S)
+_ECRITS = set()
+for _c in _CORPS:
+    _ECRITS |= set(re.findall(r"(\w+)\s*:", _c))
+# LE COMPTE D'ABORD, DES DEUX COTES. « inclus dans » est vrai de l'ensemble
+# vide : sans ces deux nombres, le cas serait vert le jour ou le releve cesse
+# de mordre — un attribut renomme, un appel ecrit autrement — et il serait vert
+# de rien. C'est le defaut que ce banc porte deja sur les cles de page.
+dit(len(_BORNES) >= 3 and len(_ECRITS) >= 3,
+    "on releve bien des reglages des deux cotes",
+    f"{len(_BORNES)} au serveur, {len(_ECRITS)} dans la page")
+dit(_ECRITS <= _BORNES,
+    "aucun champ de /admin ne pose un reglage que le serveur ignore",
+    ", ".join(sorted(_ECRITS - _BORNES)) or "aucun")
+dit(_BORNES <= _ECRITS,
+    "et aucun reglage du serveur n'est hors d'atteinte de /admin",
+    ", ".join(sorted(_BORNES - _ECRITS)) or "aucun")
+
+
 print("\n  ── la page ne se sert pas de memoire ──")
 _pages_html, _sans_entete = 0, []
 for _n in ast.walk(ast.parse(SERVEUR)):

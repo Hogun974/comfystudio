@@ -7,7 +7,7 @@ posent dans `/etc/comfystudio.env`.
 > relaie que ce que son bloc `environment:` nomme — les autres restent lettre
 > morte, sans un mot. Voir [En
 > conteneur](en-conteneur.md#variables-reconnues) pour la liste exacte et pour
-> les trois réglages qui passent par `/admin`.
+> les quatre réglages qui passent par `/admin`.
 
 ```
 set STUDIO_LLM=qwen2.5vl:7b
@@ -49,10 +49,11 @@ set OLLAMA_URL=http://localhost:11434
 | `STUDIO_ANALYSE_PETITE` | `0` | `1` pour analyser sur la plus **petite** carte plutôt que la plus grosse — l'ordre d'avant le 1er septembre 2026. **Ne concerne que l'analyse empruntée à une machine par son agent** ; en direct, la règle est la même et ne se règle pas. Voir [Qui prend le travail](qui-prend-le-travail.md) |
 | `STUDIO_PAUSE_PROPOSE` | `30` | minutes qu'une demande patiente devant l'écran pour une machine en pause |
 | `STUDIO_ARMEE_HEURES` | `12` | heures pendant lesquelles elle reste ensuite **armée**, prête à repartir seule au réveil. `0` rétablit le refus immédiat — voir [Attendre le retour d'une machine en pause](attendre-une-machine.md) |
+| `STUDIO_VRAM_REPOS` | `1` | minutes sans travail au bout desquelles une carte **rend sa mémoire**. Un seul réglage pour tout le parc. **Ce défaut change le comportement de toute installation existante à la mise à jour** : qui ne rend qu'une image de temps en temps paiera un rechargement du modèle à chaque fois, vingt à quarante secondes. `0` annule complètement le réglage — voir [Rendre la carte quand plus rien ne la demande](rendre-la-carte.md) |
 
-`STUDIO_PAUSE_PROPOSE`, `STUDIO_ARMEE_HEURES` et `STUDIO_PLAFOND_NUAGE` ne
-donnent que la valeur de **départ** : les trois se règlent ensuite dans `/admin`
-et sont conservés d'un démarrage à l'autre.
+`STUDIO_PAUSE_PROPOSE`, `STUDIO_ARMEE_HEURES`, `STUDIO_VRAM_REPOS` et
+`STUDIO_PLAFOND_NUAGE` ne donnent que la valeur de **départ** : les quatre se
+règlent ensuite dans `/admin` et sont conservés d'un démarrage à l'autre.
 
 ## Nuage
 

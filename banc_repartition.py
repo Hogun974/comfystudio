@@ -24,6 +24,10 @@ Les trois ensemble donnent exactement le symptome decrit. Aucun banc ne
 regardait la repartition ; celui-ci le fait.
 """
 import asyncio
+import contextlib
+import inspect
+import io
+import json
 import os
 import sys
 import tempfile
@@ -625,6 +629,370 @@ async def _reprise():
 
 
 asyncio.run(_reprise())
+
+
+# ══ RENDRE LA CARTE QUAND PLUS RIEN NE LA DEMANDE ══════════════════════
+# « Si rien n'est demande, j'aimerais que les cartes soient liberees au bout de
+# X min. » Le studio n'appelle JAMAIS une machine a agent : la consigne descend
+# donc dans la REPONSE a l'annonce, et c'est cette route-la qu'on eprouve ici,
+# pas une fonction interne — « un banc qui teste un contrat que personne
+# n'emprunte ne mesure rien ».
+#
+# MEFIANCE ENVERS L'ASSERTION CREUSE. La moitie des cas ci-dessous verifient
+# qu'AUCUNE consigne ne part : verts parce que rien ne s'est passe, ils ne
+# mesureraient rien du tout — un jeton refuse, une route morte, un typo dans le
+# nom de la cle les rendraient tous verts a la fois. Chacun exige donc en plus
+# le TEMOIN que le battement a bel et bien eu lieu : 200, « ok », l'intervalle
+# servi, et l'heure de derniere vue qui a AVANCE.
+#
+# LE BANC EST NE AVEC LA CORRECTION : il n'y a pas de filet d'avant. Le releve
+# du sens inverse est ecrit dans banc_mutations.py, a la tete de LIBERATION.
+_A_LA_LIBERATION = all(hasattr(S, n) for n in
+                       ("_doit_liberer", "_au_repos", "_horloge_repos",
+                        "_tient_quelque_chose", "liberer_noeuds_a_url"))
+# ZERO FONCTION VAUT NON, ET EXPLICITEMENT — le meme tour que banc_page.py avec
+# web/demarrage.html. Sans ce garde, ce banc MOURRAIT sur un AttributeError
+# quand la liberation n'est pas la, et « le banc s'est casse » ne dit rien la
+# ou « le banc rougit » dit tout. C'est ce qui rend le sens inverse mesurable.
+dit(_A_LA_LIBERATION,
+    "le studio sait rendre une carte laissee au repos",
+    "presente" if _A_LA_LIBERATION else "la machinerie entiere manque")
+
+
+class ReqAnnonce:
+    """Le minimum qu'attend api_noeud_annonce : un jeton, un corps, une IP."""
+
+    def __init__(self, jeton, corps):
+        self.headers = {"X-Jeton": jeton}
+        self.cookies = {}
+        self.remote = "10.0.0.9"
+        self._corps = corps
+
+    async def json(self):
+        return self._corps
+
+
+async def battre(ident, **sup):
+    """Un vrai battement, par la vraie route. Rend (reponse, temoin).
+
+    « temoin » est ce qui empeche l'assertion creuse : il dit que le studio a
+    REPONDU a ce battement-ci — 200, « ok », la cadence servie — et qu'il a
+    note l'heure a laquelle il a vu la machine. Un cas qui verifie l'absence de
+    consigne sans lui serait vert sur une route qui refuse tout.
+    """
+    e = S.ETAT_NOEUDS.setdefault(ident, {})
+    vu_avant = e.get("vu") or 0
+    # La cle « vu » est ecrite avec time.time() : sans ce recul, deux appels
+    # dans la meme milliseconde rendraient le temoin faux sur une route qui a
+    # pourtant repondu.
+    e["vu"] = vu_avant - 1 if vu_avant else 0
+    corps = dict({"carte": "RTX 2080 Ti", "vram": 11.0, "libre": 1.0,
+                  "travaux": []}, **sup)
+    rep = await S.api_noeud_annonce(ReqAnnonce(S.REGISTRE[ident]["jeton"], corps))
+    d = json.loads(rep.text)
+    temoin = (rep.status == 200 and d.get("ok") is True
+              and d.get("intervalle") == 10
+              and (S.ETAT_NOEUDS[ident].get("vu") or 0) > vu_avant - 1)
+    return d, temoin
+
+
+def poser_repos(minutes_de_repos=5.0, repos_min=1):
+    """Le parc, plus une machine « pc » oisive depuis un moment."""
+    poser()
+    S.PREFERENCES["vram_repos_min"] = repos_min
+    S.ARMEES.clear()
+    S.TRAVAUX.clear()
+    S.EN_VOL.clear()
+    S.TACHES.clear()
+    S.VERROUS_NOEUD.clear()
+    e = S.ETAT_NOEUDS["pc"]
+    e.update(travaux=[], libre=1.0, repond=True, vu=S.time.time(),
+             repos_depuis=S.time.time() - minutes_de_repos * 60)
+    for k in ("libere_demande", "libere_avant", "libere_dit",
+              "liberation_refusee"):
+        e.pop(k, None)
+
+
+class _FauxPost:
+    def __init__(self, statut):
+        self.status = statut
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+
+APPELS_FREE = []
+STATUT_FREE = [200]
+
+
+class _FausseSession:
+    """Le ComfyUI local, sans ComfyUI. Retient ce qu'on lui a POSTe."""
+
+    def __init__(self, *_a, **_k):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    def post(self, url, json=None):
+        APPELS_FREE.append((url, json))
+        return _FauxPost(STATUT_FREE[0])
+
+
+async def _liberation():
+    print("\n  ── rendre la carte quand plus rien ne la demande ──")
+
+    # ── la consigne part, et elle part par l'annonce ────────────────────
+    poser_repos()
+    d, temoin = await battre("pc")
+    dit(temoin and d.get("liberer") is True,
+        "au repos, la carte pleine, la consigne descend dans la reponse a "
+        "l'annonce", str(d))
+
+    # ── une carte DEJA VIDE ne recoit rien, et le battement a bien eu lieu ──
+    # Le seuil vaut 2 Go : au-dessous, il n'y a aucun moteur du catalogue sur
+    # la carte, et /free ne rendrait rien.
+    poser_repos()
+    d, temoin = await battre("pc", libre=10.8)
+    dit(temoin and not d.get("liberer"),
+        "sur une carte deja vide il ne se passe rien — et le battement a eu lieu",
+        f"temoin={temoin}, reponse={d}")
+
+    # ── « libre » ABSENT N'EST PAS UN ZERO ──────────────────────────────
+    # L'agent d'avant ce jour n'annonce pas ce champ. Le lire comme un zero
+    # ferait croire la carte pleine, donc candidate, a CHAQUE battement et pour
+    # toujours — sur la machine precisement trop vieille pour comprendre la
+    # consigne.
+    poser_repos()
+    corps = {"carte": "RTX 2080 Ti", "vram": 11.0, "travaux": []}
+    rep = await S.api_noeud_annonce(ReqAnnonce(S.REGISTRE["pc"]["jeton"], corps))
+    d = json.loads(rep.text)
+    dit(rep.status == 200 and d.get("ok") is True and not d.get("liberer")
+        and S.ETAT_NOEUDS["pc"].get("libre") is None,
+        "un agent qui ne dit pas sa VRAM libre n'est pas une carte pleine",
+        f"libre={S.ETAT_NOEUDS['pc'].get('libre')!r}, reponse={d}")
+
+    # ── le delai se compte, et depuis la FIN DU DERNIER TRAVAIL ─────────
+    poser_repos(minutes_de_repos=0.3)
+    d, temoin = await battre("pc")
+    dit(temoin and not d.get("liberer"),
+        "vingt secondes de repos ne suffisent pas quand le reglage en demande "
+        "soixante", f"temoin={temoin}")
+
+    poser_repos(minutes_de_repos=5.0)
+    d, _ = await battre("pc", travaux=["t1"])
+    dit(not d.get("liberer") and not S.ETAT_NOEUDS["pc"]["repos_depuis"],
+        "un travail en cours remet le compteur de repos a zero",
+        f"repos_depuis={S.ETAT_NOEUDS['pc']['repos_depuis']}")
+    d, temoin = await battre("pc")
+    dit(temoin and not d.get("liberer"),
+        "et le battement suivant repart de zero, il ne rattrape pas le repos "
+        "d'avant", f"temoin={temoin}")
+
+    # ── ce qui vise la machine l'empeche, et chaque garde tient SEULE ───
+    poser_repos()
+    S.TRAVAUX["pc"] = [{"tid": "t1", "graphe": {}}]
+    d, temoin = await battre("pc")
+    dit(temoin and not d.get("liberer"),
+        "un travail depose et pas encore reclame retient la carte")
+
+    poser_repos()
+    S.EN_VOL["t1"] = {}
+    S.TACHES["t1"] = {"noeud": "pc"}
+    d, temoin = await battre("pc")
+    dit(temoin and not d.get("liberer"),
+        "une demande qui a CHOISI cette machine la retient, avant meme d'avoir "
+        "depose son travail")
+
+    poser_repos()
+    await S.verrou_noeud("pc").acquire()
+    try:
+        d, temoin = await battre("pc")
+        dit(temoin and not d.get("liberer"),
+            "un verrou tenu la retient — l'analyse le prend avant qu'un travail "
+            "existe")
+    finally:
+        S.verrou_noeud("pc").release()
+
+    poser_repos()
+    S.ARMEES["t9"] = {"quand": S.time.time(), "depuis": S.time.time(),
+                      "jusqua": S.time.time() + 3600, "cle": CLE,
+                      "noeuds": ["pc"], "titres": ["PC"]}
+    d, temoin = await battre("pc")
+    dit(temoin and not d.get("liberer"),
+        "et une demande ARMEE qui attend cette machine la retient aussi")
+    S.ARMEES.clear()
+
+    # ── LA PAUSE, ELLE, N'EMPECHE RIEN ─────────────────────────────────
+    # C'est le cas pour lequel tout ceci existe : « je vais jouer un peu ». Une
+    # machine en pause ne recevra pas de travail, donc rien ne viendra
+    # reprendre la carte — c'est la que la rendre vaut le plus.
+    poser_repos()
+    S.REGISTRE["pc"]["pause"] = S.time.time()
+    d, temoin = await battre("pc")
+    dit(temoin and d.get("liberer") is True,
+        "une machine en pause rend sa carte : c'est le cas pour lequel le "
+        "reglage existe", str(d))
+    S.REGISTRE["pc"]["pause"] = None
+
+    # ── le reglage a zero retablit exactement le studio d'avant ─────────
+    poser_repos(repos_min=0)
+    d, temoin = await battre("pc")
+    dit(temoin and not d.get("liberer"),
+        "a zero, plus rien n'est jamais libere")
+    S.PREFERENCES["vram_repos_min"] = 1
+
+    # ── UNE SEULE CONSIGNE PAR PERIODE DE REPOS ────────────────────────
+    # « Ne pas redemander sans fin » : une fois la consigne envoyee, le studio
+    # sait qu'il l'a envoyee. Si la VRAM ne bouge pas, il ne recommence pas.
+    poser_repos()
+    d1, _ = await battre("pc")
+    d2, temoin = await battre("pc")
+    dit(d1.get("liberer") is True and temoin and not d2.get("liberer"),
+        "la consigne ne part qu'UNE fois, meme si la VRAM n'a pas bouge",
+        f"1er={d1.get('liberer')}, 2e={d2.get('liberer')}")
+    # ... mais un nouveau travail rouvre le droit a une consigne.
+    await battre("pc", travaux=["t2"])
+    S.ETAT_NOEUDS["pc"]["repos_depuis"] = S.time.time() - 300
+    d3, temoin = await battre("pc")
+    dit(temoin and d3.get("liberer") is True,
+        "et un travail passe par la rouvre le droit a une nouvelle consigne")
+
+    # ── LA MESURE EST GRATUITE : le battement suivant la donne ──────────
+    poser_repos()
+    d1, _ = await battre("pc")
+    S.ETAT_NOEUDS["pc"]["libere_demande"] = S.time.time() - 10
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        await battre("pc", libre=10.9)
+    dit(d1.get("liberer") is True and "9.9 Go" in sortie.getvalue(),
+        "le battement d'apres dit COMBIEN la carte a rendu, sans rien mesurer "
+        "de plus", sortie.getvalue().strip() or "rien ecrit")
+
+    # ── et un agent PERIME n'est pas un ComfyUI qui refuse ─────────────
+    # Le cas le plus frequent le jour de la mise a jour : l'agent recoit la
+    # consigne et ne la lit pas. Accuser son ComfyUI enverrait chercher au
+    # mauvais endroit — et l'empreinte, qu'on a deja, tranche.
+    poser_repos()
+    d1, _ = await battre("pc", empreinte="ceci-n-est-pas-l-empreinte-servie")
+    S.ETAT_NOEUDS["pc"]["libere_demande"] = S.time.time() - 10
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        await battre("pc", empreinte="ceci-n-est-pas-l-empreinte-servie")
+    dit(d1.get("liberer") is True and "agent est perime" in sortie.getvalue(),
+        "une carte qui n'a rien rendu sous un agent perime accuse l'AGENT, pas "
+        "ComfyUI", sortie.getvalue().strip()[:90] or "rien ecrit")
+
+    # ── un ComfyUI qui ne connait pas /free : une fois, puis on se tait ─
+    poser_repos()
+    d1, _ = await battre("pc")
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        await battre("pc", libere={"ok": False, "statut": 404})
+    dit(d1.get("liberer") is True
+        and S.ETAT_NOEUDS["pc"].get("liberation_refusee") == 404
+        and "404" in sortie.getvalue(),
+        "un ComfyUI qui repond 404 est note, et la raison est ecrite",
+        sortie.getvalue().strip()[:90] or "rien ecrit")
+    # Et l'on ne redemande plus, meme apres un nouveau cycle de travail.
+    await battre("pc", travaux=["t3"])
+    S.ETAT_NOEUDS["pc"]["repos_depuis"] = S.time.time() - 300
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        d, temoin = await battre("pc")
+    dit(temoin and not d.get("liberer") and not sortie.getvalue().strip(),
+        "puis on cesse de demander, et l'on cesse aussi de l'ecrire",
+        sortie.getvalue().strip()[:90] or "journal muet")
+    # Le retour de son ComfyUI rouvre la question : c'est le seul evenement
+    # apres lequel un 404 peut avoir cesse d'etre vrai.
+    await battre("pc", comfy=False)
+    S.ETAT_NOEUDS["pc"]["repos_depuis"] = S.time.time() - 300
+    d, temoin = await battre("pc")
+    dit(temoin and d.get("liberer") is True
+        and not S.ETAT_NOEUDS["pc"].get("liberation_refusee"),
+        "et le retour de son ComfyUI rouvre la question — c'est ce qui suit "
+        "une mise a jour")
+
+    # ── LE NOEUD LOCAL : meme regle, autre transport ────────────────────
+    # Le studio a son adresse, il peut l'appeler lui-meme. Ce qui change n'est
+    # pas la decision — c'est la meme fonction — mais le chemin.
+    poser_repos()
+    S.ETAT_NOEUDS["local"].update(repond=True, vram=24.0, libre=3.0,
+                                  travaux=[],
+                                  repos_depuis=S.time.time() - 300)
+    dit(S._doit_liberer("local"),
+        "le noeud local est soumis a la MEME regle, sans exception")
+    del APPELS_FREE[:]
+    STATUT_FREE[0] = 200
+    _vraie_session = S.aiohttp.ClientSession
+    S.aiohttp.ClientSession = _FausseSession
+    try:
+        await S.liberer_noeuds_a_url()
+        dit(len(APPELS_FREE) == 1
+            and APPELS_FREE[0][0] == "http://127.0.0.1:8188/free"
+            and APPELS_FREE[0][1] == {"unload_models": True,
+                                      "free_memory": True},
+            "et le studio le POSTe lui-meme, avec les DEUX moities du "
+            "dechargement", str(APPELS_FREE))
+        # Une seule fois, la aussi.
+        await S.liberer_noeuds_a_url()
+        dit(len(APPELS_FREE) == 1,
+            "une seule consigne par repos, du cote local comme de l'autre",
+            f"{len(APPELS_FREE)} appel(s)")
+        # Et un 404 local ferme la porte pareillement.
+        S.ETAT_NOEUDS["local"].update(travaux=["t4"])
+        await S.liberer_noeuds_a_url()
+        S.ETAT_NOEUDS["local"].update(travaux=[],
+                                      repos_depuis=S.time.time() - 300)
+        STATUT_FREE[0] = 404
+        del APPELS_FREE[:]
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            await S.liberer_noeuds_a_url()
+        refuse = S.ETAT_NOEUDS["local"].get("liberation_refusee")
+        S.ETAT_NOEUDS["local"].update(travaux=["t5"])
+        await S.liberer_noeuds_a_url()
+        S.ETAT_NOEUDS["local"].update(travaux=[],
+                                      repos_depuis=S.time.time() - 300)
+        del APPELS_FREE[:]
+        await S.liberer_noeuds_a_url()
+        dit(refuse == 404 and not APPELS_FREE,
+            "un ComfyUI local qui refuse /free n'est plus sollicite",
+            f"refus={refuse}, rappels={len(APPELS_FREE)}")
+    finally:
+        S.aiohttp.ClientSession = _vraie_session
+
+    # LE VEILLEUR L'APPELLE VRAIMENT. Sans cette ligne, tout ce qui precede
+    # mesurerait une fonction que personne n'appelle — « sept bancs sont restes
+    # verts pendant que les reglages par conversation etaient morts ».
+    dit("liberer_noeuds_a_url()" in inspect.getsource(S.veiller_noeuds),
+        "et la ronde du veilleur l'appelle a chaque tour")
+
+    # ── ET LA VRAM LIBRE EST ENFIN EXPOSEE ─────────────────────────────
+    # Elle arrivait toutes les dix secondes depuis toujours et aucune route ne
+    # la rendait : c'est pourtant la seule chose qui permette de VOIR qu'une
+    # carte a ete rendue.
+    poser_repos()
+    await battre("pc", libre=7.5)
+    lignes = {x["id"]: x for x in S.machines_connues()}
+    dit(lignes["pc"].get("libre") == 7.5,
+        "/api/admin/noeuds rend la VRAM libre de chaque machine",
+        str(lignes["pc"].get("libre")))
+    dit("libre" in lignes["local"],
+        "la machine locale comprise — les deux lignes sortent du meme releve")
+    S.ETAT_NOEUDS["pc"]["libre"] = None
+    dit(S.machines_connues()[1].get("libre") is None,
+        "et « on ne sait pas » se rend tel quel, jamais comme un zero")
+
+
+if _A_LA_LIBERATION:
+    asyncio.run(_liberation())
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

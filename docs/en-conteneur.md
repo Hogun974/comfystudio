@@ -151,9 +151,11 @@ Ces quatre-là ne sont pas lus par le studio mais par **Compose** :
 | `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
 | `ROUE`, `COMFY_ARGS` | construction et arguments du ComfyUI conteneurisé |
 
-**Trois réglages ont aussi leur champ dans `/admin`.** Les deux délais de pause
+**Quatre réglages ont aussi leur champ dans `/admin`.** Les deux délais de pause
 (`STUDIO_PAUSE_PROPOSE`, `STUDIO_ARMEE_HEURES`, voir [Attendre le retour d'une
-machine en pause](attendre-une-machine.md)) et le plafond du nuage
+machine en pause](attendre-une-machine.md)), le repos au bout duquel une carte
+rend sa mémoire (`STUDIO_VRAM_REPOS`, voir [Rendre la carte quand plus rien ne
+la demande](rendre-la-carte.md)) et le plafond du nuage
 (`STUDIO_PLAFOND_NUAGE`, voir [Ce que le nuage a coûté](cout-du-nuage.md)). La
 variable ne donne que la valeur du **premier** démarrage ; ensuite c'est la
 valeur posée dans `/admin` qui fait foi, et elle survit aux redémarrages.

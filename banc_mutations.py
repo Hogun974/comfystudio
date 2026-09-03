@@ -376,8 +376,15 @@ BESOINS = {
     # a cote de /admin (elle mesure, elle ne repose aucun reglage). Le fichier
     # est ouvert sous try la-bas : sans lui le banc ROUGIT sur un cas nomme au
     # lieu de mourir, et c'est ce qui rend mesurable le sens inverse.
+    # web/admin.html DEPUIS LA LIBERATION DE LA VRAM : banc_page.py y releve
+    # les noms de reglage que la console POSTe et exige qu'ils soient ceux de
+    # BORNES_REGLAGES, dans les deux sens. La page n'est pas traduite — /admin
+    # parle a celui qui heberge — mais c'est l'autre moitie de contrat, celle
+    # de MENU_REGLAGE et CLE_REGLAGE, dont la derive a fait perdre un reglage
+    # pendant des jours. Le fichier est ouvert sous try la-bas : sans lui le
+    # banc ROUGIT sur un cas nomme au lieu de mourir.
     "banc_page.py": ["banc_page.py", "web/index.html", "web/demarrage.html",
-                     "traductions.py", "serveur.py"],
+                     "web/admin.html", "traductions.py", "serveur.py"],
     # LE SEUL BANC AVEC banc_page.py A LIRE DEUX MONDES : comptes.py qu'il
     # IMPORTE (et mfa.py avec lui, que comptes.py importe en tete), et
     # serveur.py qu'il LIT par l'arbre de syntaxe pour la derniere section — un
@@ -1203,6 +1210,213 @@ REPARTITION = [
 # C'est contre le banc de cac8aa7^ qu'elles passent au vert, et c'est la leur
 # preuve inverse. Une mutation datee du mauvais commit se serait declaree
 # prouvee contre un filet qui la voyait deja.
+# ── RENDRE LA CARTE QUAND PLUS RIEN NE LA DEMANDE ────────────────────
+# LE SENS INVERSE, ET IL FAUT L'ECRIRE PLUTOT QUE DE LE MIMER. Ces quinze
+# mutations gardent une regle qui N'EXISTAIT PAS avant elles : aucun /free
+# nulle part, ni dans serveur.py ni dans agent_noeud.py, et « libre » arrivait
+# a chaque battement sans qu'aucune route ne le rende. Il n'y a donc pas de
+# filet d'avant a leur opposer, et CONTRIBUTING nomme exactement ce cas :
+# « lance le banc NEUF sur le code d'AVANT et verifie que les lignes que ta
+# mutation nomme y rougissent ».
+#
+# CE QUE ÇA A DONNE, RELEVE LE 3 SEPTEMBRE 2026 : le banc NEUF joue contre un
+# serveur.py d'ou les seize morceaux de la liberation sont retires rend
+# « 48 verifications passees, 1 echouee », code de retour 1 — les quarante-huit
+# d'avant restent vertes, et la ligne rouge est « le studio sait rendre une
+# carte laissee au repos ». Les vingt-sept cas de la section ne s'executent
+# pas : elle est gardee par un hasattr, exactement comme banc_page.py garde
+# web/demarrage.html — « sans lui le banc ROUGIT sur un cas nomme au lieu de
+# mourir ». Un AttributeError aurait dit « le banc s'est casse », ce qui ne
+# mesure rien. Sur le depot d'aujourd'hui le meme banc rend 76/0.
+#
+# La quatorzieme, celle de banc_page.py, est dans le meme cas pour une autre
+# raison : le couplage /admin ↔ BORNES_REGLAGES qu'elle vise est un filet neuf,
+# et il aurait ete VERT sur le depot d'avant — les trois reglages qui
+# existaient s'accordaient deja. Ce n'est pas un defaut qu'on repare, c'est un
+# filet qui manquait.
+#
+# On ne peut donc PAS montrer ces quatorze lignes-la rouges sur le code
+# d'avant : elles n'ont rien a nommer la-bas. Ce qui est montre, et qui est
+# tout ce qui peut l'etre, c'est que le banc neuf DISTINGUE les deux depots au
+# lieu de se casser sur l'un des deux. Le reste de la preuve vient du sens
+# ALLER, ou verdict() exige la ligne NOMMEE : une mutation qui ferait rougir
+# ailleurs est rendue « casse », pas « rouge ».
+LIBERATION = [
+    dict(
+        nom="« libre » absent relu comme une carte pleine",
+        banc="banc_repartition.py",
+        imite="le piege que l'utilisateur avait nomme : « float(d.get('libre') "
+              "or 0) » lit l'agent d'avant — celui qui n'annonce pas ce champ — "
+              "comme une carte entierement pleine, donc candidate, a chaque "
+              "battement et pour toujours. Sur la machine precisement trop "
+              "vieille pour comprendre la consigne",
+        rougit="un agent qui ne dit pas sa VRAM libre n'est pas une carte pleine",
+        editions=[("serveur.py", brut(
+            '                    libre=(float(d["libre"])' + chr(10)
+            + '                           if isinstance(d.get("libre"), (int, float))'
+            + chr(10) + "                           else None),",
+            '                    libre=float(d.get("libre") or 0),'))]),
+    dict(
+        nom="le delai ne repart pas de la fin du dernier travail",
+        banc="banc_repartition.py",
+        imite="le compteur de repos n'est jamais remis a zero : il se remplit "
+              "pendant que la machine calcule, et la consigne part a la seconde "
+              "ou le rendu finit — sur la carte qui vient tout juste de servir, "
+              "et qui va probablement resservir",
+        rougit="un travail en cours remet le compteur de repos a zero",
+        editions=[("serveur.py", brut(
+            '        e["repos_depuis"] = 0',
+            '        e["repos_depuis"] = e.get("repos_depuis") or 0'))]),
+    dict(
+        nom="le studio redemande la carte sans fin",
+        banc="banc_repartition.py",
+        imite="une carte qui ne rend rien — un ComfyUI qui accepte /free sans "
+              "liberer, un jeu qui tient la memoire — se voit reclamee toutes "
+              "les dix secondes jusqu'a la fin des temps, et le journal en est "
+              "noye",
+        rougit="la consigne ne part qu'UNE fois, meme si la VRAM n'a pas bouge",
+        editions=[("serveur.py", brut(
+            ' or e.get("libere_demande")', ""))]),
+    dict(
+        nom="le refus de /free est oublie au battement suivant",
+        banc="banc_repartition.py",
+        imite="un ComfyUI trop ancien repond 404, et il repondra 404 six fois "
+              "par minute : sans memoire du refus, la meme ligne de journal "
+              "s'ecrit indefiniment — la facon exacte dont on cesse de lire un "
+              "journal",
+        rougit="puis on cesse de demander, et l'on cesse aussi de l'ecrire",
+        editions=[("serveur.py", brut(
+            ' or e.get("liberation_refusee")', ""))]),
+    dict(
+        nom="une demande ARMEE ne retient plus la carte",
+        banc="banc_repartition.py",
+        imite="on rend la carte d'une machine qu'une demande attend deja : elle "
+              "repart des le reveil, et recharge le modele qu'on venait de "
+              "decharger",
+        rougit="et une demande ARMEE qui attend cette machine la retient aussi",
+        editions=[("serveur.py", brut(
+            "                or charge_noeud(ident)" + chr(10)
+            + "                or any(ident in (a.get(\"noeuds\") or ())" + chr(10)
+            + "                       for a in ARMEES.values()))",
+            "                or charge_noeud(ident))"))]),
+    dict(
+        nom="l'INTENTION ne retient plus la carte, seule la file",
+        banc="banc_repartition.py",
+        imite="entre le choix d'une machine et le depot du travail il y a toute "
+              "l'analyse et les telechargements — des minutes. Ne regarder que "
+              "la file rend « au repos » une carte que trois demandes attendent "
+              "deja : le meme aveuglement que « compter les verrous tenus "
+              "revenait a croire libre une carte que trois demandes attendaient »",
+        rougit="une demande qui a CHOISI cette machine la retient, avant meme "
+               "d'avoir depose son travail",
+        editions=[("serveur.py", brut(
+            chr(10) + "                or charge_noeud(ident)", ""))]),
+    dict(
+        nom="le reglage a zero n'annule plus rien",
+        banc="banc_repartition.py",
+        imite="« 0 » est la sortie de secours promise a qui ne veut pas de ce "
+              "defaut d'une minute. Sans cette garde, zero minute se lit "
+              "« immediatement » et le reglage fait l'exact contraire de ce "
+              "qu'il annonce",
+        rougit="a zero, plus rien n'est jamais libere",
+        editions=[("serveur.py", brut(
+            '    if PREFERENCES["vram_repos_min"] <= 0:' + chr(10)
+            + "        return False" + chr(10), ""))]),
+    dict(
+        nom="la pause empeche la liberation",
+        banc="banc_repartition.py",
+        imite="le reflexe : « une machine en pause, on n'y touche pas ». Or "
+              "c'est LE cas pour lequel ce reglage existe — « je vais jouer un "
+              "peu » — et une machine en pause ne recevra pas de travail, donc "
+              "rien ne viendra reprendre la carte. La garder pleine la ferait "
+              "tenir des heures pour personne",
+        rougit="une machine en pause rend sa carte : c'est le cas pour lequel "
+               "le reglage existe",
+        editions=[("serveur.py", brut(
+            "    if not _tient_quelque_chose(ident) or not _au_repos(ident):",
+            "    if ((REGISTRE.get(ident) or {}).get(\"pause\")" + chr(10)
+            + "            or not _tient_quelque_chose(ident)"
+            + " or not _au_repos(ident)):"))]),
+    dict(
+        nom="le seuil tombe : une carte vide recoit la consigne",
+        banc="banc_repartition.py",
+        imite="une carte qui affiche un bureau tient deja un a deux gigaoctets "
+              "sans rien avoir charge. Sans seuil, chaque repos lui vaut un "
+              "/free qui ne rend rien — et un appel qui ne rend rien ne se "
+              "distingue plus d'un echec le jour ou l'on lit le journal",
+        rougit="sur une carte deja vide il ne se passe rien",
+        editions=[("serveur.py", brut(
+            '    return e["vram"] - e["libre"] >= SEUIL_TENU',
+            '    return e["vram"] - e["libre"] > 0'))]),
+    dict(
+        nom="la consigne ne descend plus dans la reponse a l'annonce",
+        banc="banc_repartition.py",
+        imite="le studio decide et ne dit rien : la regle entiere tourne dans "
+              "le vide. C'est le seul transport possible — le studio n'a pas "
+              "l'adresse d'une machine a agent et n'en veut pas",
+        rougit="au repos, la carte pleine, la consigne descend dans la reponse "
+               "a l'annonce",
+        editions=[("serveur.py", brut(
+            '                              **({"liberer": True} if liberer else {}),'
+            + chr(10), ""))]),
+    dict(
+        nom="le noeud local n'est plus traite du tout",
+        banc="banc_repartition.py",
+        imite="le studio a l'adresse de son propre ComfyUI et peut l'appeler : "
+              "l'oublier laisserait la carte de la machine hote pleine pendant "
+              "que celles des agents se vident, sans que rien ne le dise",
+        rougit="et la ronde du veilleur l'appelle a chaque tour",
+        editions=[("serveur.py", brut(
+            "            await liberer_noeuds_a_url()" + chr(10), ""))]),
+    dict(
+        nom="le dechargement n'est fait qu'a moitie",
+        banc="banc_repartition.py",
+        imite="« unload_models » sans « free_memory » laisse le cache, soit "
+              "plusieurs gigaoctets : exactement l'apparence d'un /free qui ne "
+              "marche pas, et le diagnostic partirait chercher un ComfyUI trop "
+              "ancien",
+        rougit="et le studio le POSTe lui-meme, avec les DEUX moities du "
+               "dechargement",
+        editions=[("serveur.py", brut(
+            'json={"unload_models": True,' + chr(10)
+            + '                                        "free_memory": True}',
+            'json={"unload_models": True}'))]),
+    dict(
+        nom="la VRAM libre cesse d'etre exposee",
+        banc="banc_repartition.py",
+        imite="l'etat d'avant : la donnee arrive toutes les dix secondes et "
+              "aucune route ne la rend. La liberation serait alors a croire sur "
+              "parole — on ne peut plus voir si elle marche",
+        rougit="/api/admin/noeuds rend la VRAM libre de chaque machine",
+        editions=[("serveur.py", brut(
+            '                      "libre": e.get("libre"),' + chr(10), ""))]),
+    dict(
+        nom="un agent perime est diagnostique comme un ComfyUI fautif",
+        banc="banc_repartition.py",
+        imite="le jour de la mise a jour, c'est le cas le plus frequent : "
+              "l'agent recoit la consigne et ne la lit pas. Sans cette "
+              "distinction, le studio accuse un ComfyUI qui n'a jamais rien "
+              "recu, et le diagnostic part chercher a l'autre bout de la "
+              "machine — alors que l'empreinte, qu'on a deja sous la main, "
+              "tranche",
+        rougit="une carte qui n'a rien rendu sous un agent perime accuse "
+               "l'AGENT, pas ComfyUI",
+        editions=[("serveur.py", motif(
+            r'    elif e\.get\("empreinte"\) and e\["empreinte"\] != empreinte_agent\(\):\n.*?              f"pas encore cette consigne — voir /admin", flush=True\)\n',
+            ""))]),
+    dict(
+        nom="le nom du reglage derive entre /admin et le serveur",
+        banc="banc_page.py",
+        imite="la moitie de contrat qui a deja coute des jours a ce depot : la "
+              "page ecrit un nom, le serveur en attend un autre, et rien ne "
+              "leve. Le POST repond 400, le champ se remet a sa valeur d'avant "
+              "au rafraichissement suivant, et l'administrateur croit "
+              "simplement que son chiffre a ete refuse",
+        rougit="aucun champ de /admin ne pose un reglage que le serveur ignore",
+        editions=[("web/admin.html", brut(
+            "{ vram_repos_min: Number(", "{ vram_repos: Number("))]),
+]
+
 VARIANTES = [
     dict(
         nom="la mediatheque ne sert ni le tour ni le groupe",
@@ -3722,7 +3936,7 @@ QR = [
 ]
 
 
-MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
+MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + FACTEUR
              + DEMARRAGE + QR)

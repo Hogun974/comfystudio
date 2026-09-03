@@ -379,6 +379,10 @@ Quelques portes d'entrée :
   une machine à carte en une commande, et tenir un parc à jour.
 - [Qui prend le travail](docs/qui-prend-le-travail.md) — quelle carte reçoit
   quoi, et pourquoi l'analyse et le rendu ne veulent pas la même.
+- [Rendre la carte quand plus rien ne la demande](docs/rendre-la-carte.md) — la
+  mémoire vidéo libérée toute seule au bout d'une minute sans travail, sans que
+  la machine cesse d'accepter du travail. **Ce réglage change le comportement de
+  toute installation existante à la mise à jour** ; `0` l'annule.
 - [Ne changer qu'une partie de l'image](docs/retouche-localisee.md) — la
   retouche localisée, mesurée pixel par pixel.
 - [Le brouillon, et « refaire en soigné »](docs/brouillon.md) — le rendu au

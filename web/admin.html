@@ -195,6 +195,29 @@ td .detail{display:block;max-width:34ch}
     </div>
 
     <div class="carte">
+      <h2 style="margin-top:0">rendre la carte au repos</h2>
+      <p class="aide">Quand une machine n'a plus rien à faire, son ComfyUI garde
+        le modèle sur la carte — six à douze gigaoctets qui ne servent plus à
+        rien. Passé ce délai, le studio lui demande de les rendre. La machine
+        continue d'accepter du travail : ce n'est pas une pause, c'est juste la
+        mémoire qui se libère. Un réglage pour <b>tout le parc</b>.</p>
+      <p class="aide"><b>Une minute par défaut, comme Ollama</b> — le studio lui
+        demande déjà de rendre la carte au bout de 60 s, et la symétrie est
+        voulue. <b>Ce défaut change le comportement de toute installation à la
+        mise à jour :</b> si tu ne rends qu'une image de temps en temps, tu
+        paieras désormais un rechargement du modèle à chaque fois, vingt à
+        quarante secondes selon le moteur. Mets <b>0</b> pour annuler
+        complètement le réglage et retrouver le studio d'avant, où rien n'est
+        jamais libéré.</p>
+      <label>rendre la carte après
+        <input type="number" id="vramReposMin" min="0" max="1440" step="1"
+               style="width:5em"> minutes sans travail</label>
+      <button id="poserRepos">enregistrer</button>
+      <p class="aide">La colonne « carte » ci-dessus dit ce que chaque machine a
+        de libre : c'est là qu'on voit si ça marche.</p>
+    </div>
+
+    <div class="carte">
       <h2 style="margin-top:0">ajouter une machine</h2>
       <p class="aide">L'identifiant entre dans le nom des fichiers produits :
         lettres, chiffres, tiret et souligné.</p>
@@ -433,7 +456,8 @@ async function detailMachine(ident, ou) {
     b.appendChild(v); z.appendChild(b);
   };
   bloc("carte", d.carte || "aucune", "mono");
-  bloc("mémoire", `${d.vram ?? "?"} Go de carte, ${d.ram ?? "?"} Go de RAM `
+  bloc("mémoire", `${d.vram ?? "?"} Go de carte dont ${d.libre ?? "?"} libres, `
+                + `${d.ram ?? "?"} Go de RAM `
                 + `— ${d.vram_utile} Go utilisables avec le débordement`, "mono");
   if (d.agent) bloc("vue", d.vu_il_y_a === null ? "jamais" : `il y a ${d.vu_il_y_a} s`, "mono");
   bloc("modèle de langage", d.llm
@@ -809,7 +833,15 @@ async function rafraichir() {
          pour executer du code ici, avec toute l'API d'administration a
          portee. */
     const carte = n.carte ? ech(n.carte.replace(/^cuda:\d+\s*/, "")) : "—";
-    const vram = n.vram ? ` · ${n.vram} Go` : "";
+    /* La VRAM libre arrive depuis toujours dans le battement et n'était
+       affichée nulle part. C'est pourtant elle, et elle seule, qui permet de
+       VOIR qu'une carte a été rendue : sans ce chiffre sous les yeux, la
+       libération automatique serait à croire sur parole.
+       « null » n'est pas « 0 » — un agent d'avant ne dit rien, et « ? Go
+       libres » est plus honnête que « 0 Go libres », qui se lit « carte
+       pleine ». */
+    const vram = n.vram
+      ? ` · ${n.libre == null ? "?" : n.libre} / ${n.vram} Go libres` : "";
     tr.innerHTML = `
       <td><span class="pastille ${pastille}"></span><b>${ech(n.titre || n.id)}</b>
           <div class="ident">${ech(n.id)}${n.agent ? "" : " · cette machine"}</div></td>
@@ -874,6 +906,12 @@ async function rafraichir() {
   const champH = $("#armeeHeures");
   if (champH && document.activeElement !== champH)
     champH.value = d.armee_heures ?? 12;
+  /* Le même garde-fou une troisième fois : ce panneau se réécrit tout seul
+     toutes les 5 s, et un champ qu'on est en train de taper serait écrasé
+     entre deux chiffres. */
+  const champR = $("#vramReposMin");
+  if (champR && document.activeElement !== champR)
+    champR.value = d.vram_repos_min ?? 1;
   $("#languePanne").innerHTML = !casses.length ? "" : `
     <div class="carte" style="border-color:var(--rouge)">
       <h2 style="margin-top:0">modèle de langage qui ne se charge pas</h2>
@@ -891,6 +929,16 @@ $("#poserPause").onclick = async () => {
   await api("/api/admin/reglages", "POST",
             { pause_propose: Number($("#pauseMinutes").value),
               armee_heures: Number($("#armeeHeures").value) });
+  rafraichir();
+};
+
+/* Son propre bouton, et non celui de la pause : les deux cartes ne parlent pas
+   de la même chose — l'une de ce qu'on fait attendre, l'autre de ce qu'on rend
+   — et chaque clef du POST est facultative, exprès, pour que chaque carte
+   n'envoie que la sienne. */
+$("#poserRepos").onclick = async () => {
+  await api("/api/admin/reglages", "POST",
+            { vram_repos_min: Number($("#vramReposMin").value) });
   rafraichir();
 };
 

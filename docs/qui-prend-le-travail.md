@@ -187,10 +187,12 @@ est séparé du pouce — est dans [Pouce en l'air, pouce en bas](avis.md).
 
 ## Ce que les bancs vérifient
 
-`banc_repartition.py` (**48** vérifications) et `banc_cerveaux.py` (**39**)
-tiennent cette page : relevé le **2 septembre 2026**, sans carte, sans ComfyUI
+`banc_repartition.py` (**76** vérifications) et `banc_cerveaux.py` (**39**)
+tiennent cette page : relevé le **3 septembre 2026**, sans carte, sans ComfyUI
 et sans réseau — le parc y est posé en mémoire. Les bancs grossissent ;
-lance-les plutôt que de recopier ces nombres.
+lance-les plutôt que de recopier ces nombres — il en comptait 48 la veille,
+avant que la libération de la VRAM n'en ajoute 28 (voir [Rendre la carte quand
+plus rien ne la demande](rendre-la-carte.md)).
 
 Deux des cas de `banc_repartition.py` ne mesuraient rien à l'origine : les trois
 gardes du « pas de carte, pas de rendu » se recouvrent, la première suffit à

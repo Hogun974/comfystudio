@@ -217,6 +217,15 @@ Une machine en pause **ne pense pas non plus** : si elle héberge un Ollama que
 le studio connaît, il ne lui pose aucune question. Voir [Plusieurs
 Ollama](plusieurs-ollama.md).
 
+Elle **rend sa carte**, en revanche, et c'est exactement le cas pour lequel ce
+réglage-là existe : au bout d'une minute sans travail, le studio demande à la
+machine de libérer sa mémoire vidéo. La consigne descend dans la réponse à
+l'annonce — le studio n'appelle jamais une machine à agent — et l'agent exécute
+un `POST /free` sur son propre ComfyUI. Ça ne dépend pas de la pause : une
+machine qui accepte du travail rend sa carte de la même façon dès qu'elle n'a
+plus rien à faire. Voir [Rendre la carte quand plus rien ne la
+demande](rendre-la-carte.md).
+
 ## Ce qu'un nœud ne peut pas faire
 
 Installer ses propres modèles. Le studio n'écrit que sur son disque : une

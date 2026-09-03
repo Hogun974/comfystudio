@@ -1022,13 +1022,22 @@ async def sonder_noeud(x):
             async with s.get(f"{x['url']}/system_stats") as r:
                 d = await r.json()
         dev = next((v for v in d.get("devices", []) if v.get("vram_total")), {})
+        # Ce ComfyUI vient de revenir : s'il avait refuse /free, la question se
+        # rouvre. C'est le seul evenement apres lequel un 404 peut avoir cesse
+        # d'etre vrai — c'est celui qui suit une mise a jour de ComfyUI.
+        if not etat.get("repond"):
+            etat.pop("liberation_refusee", None)
         etat.update(repond=True, carte=dev.get("name"),
                     vram=round(dev.get("vram_total", 0) / 1024 ** 3, 1),
                     libre=round(dev.get("vram_free", 0) / 1024 ** 3, 1))
         if x.get("local"):
             VRAM_GO["total"] = etat["vram"] or VRAM_GO["total"]
     except Exception:
-        etat.update(repond=False, libre=0.0)
+        # « libre » A NONE ET NON A ZERO. Zero se lit « la carte est pleine »,
+        # et c'est faux : on ne sait pas ce qu'elle tient, on ne l'a pas jointe.
+        # Depuis que la liberation de la VRAM lit ce champ, la difference se
+        # voit — une carte injoignable serait declaree pleine, donc candidate.
+        etat.update(repond=False, libre=None)
         # l'instantane des modeles ne vaut plus rien : la machine peut revenir
         # avec un contenu different
         MODELES_NOEUD.pop(x["id"], None)
@@ -11920,6 +11929,11 @@ async def veiller_noeuds():
             await expirer_armees()
             await reveiller_armees()
             await sonder_noeuds()
+            # APRES la sonde, jamais avant : c'est elle qui vient de relever la
+            # VRAM libre, et la decision se prend sur ce releve-la. Prise avant,
+            # elle aurait porte sur un etat vieux de trente secondes — assez
+            # pour reclamer la carte d'une machine qui venait de reprendre.
+            await liberer_noeuds_a_url()
             for x in NOEUDS:
                 if ETAT_NOEUDS.get(x["id"], {}).get("repond"):
                     frais = MODELES_NOEUD.get(x["id"], {}).get("quand", 0)
@@ -12185,14 +12199,36 @@ FICHIER_PREFERENCES = os.path.join(DOSSIER_CONV, "_reglages.json")
 # « plafond_nuage » : combien d'appels distants un compte peut faire dans le
 # mois. Zero, le defaut, veut dire aucune limite — le studio se comporte alors
 # exactement comme avant.
+#
+# « vram_repos_min » : combien de MINUTES une carte peut rester sans rien faire
+# avant qu'on lui demande de rendre sa memoire. UN SEUL REGLAGE POUR TOUT LE
+# PARC, et c'est un choix de l'utilisateur : une valeur par machine se serait
+# reglee une fois puis oubliee, et personne ne relit /admin machine par machine.
+#
+# UNE MINUTE PAR DEFAUT, COMME OLLAMA. Le studio demande deja a Ollama de rendre
+# la carte au bout de 60 s (GARDER_LLM, plus haut : « ComfyUI reprend la carte
+# juste apres »), et la symetrie est voulue — les deux gros consommateurs de la
+# meme carte la rendent au meme rythme.
+#
+# ET CE DEFAUT CHANGE LE COMPORTEMENT DE TOUTE INSTALLATION A LA MISE A JOUR.
+# Il faut le lire en toutes lettres, ici et dans docs/reglages.md : qui rend une
+# image par heure paiera desormais un rechargement de modele a chaque fois —
+# vingt a quarante secondes selon le moteur et le disque — parce que la carte
+# aura ete rendue entre-temps. C'est le bon echange quand la machine sert aussi
+# a autre chose, et le mauvais quand elle ne fait que rendre. « 0 » annule le
+# reglage et retablit exactement le comportement d'avant : plus rien n'est
+# jamais libere.
+#
 # Les memes bornes a la lecture et a l'ecriture : deux tables se seraient
 # separees, et c'est par la que le fichier acceptait ce que le POST refusait.
 BORNES_REGLAGES = {
     "pause_propose": (0, 1440, "une duree en minutes, de 0 a 1440"),
     "armee_heures": (0, 168, "une duree en heures, de 0 a 168"),
+    "vram_repos_min": (0, 1440, "une duree en minutes, de 0 a 1440"),
     "plafond_nuage": (0, 100000, "un nombre d'appels, de 0 a 100000")}
 PREFERENCES = {"pause_propose": int(os.environ.get("STUDIO_PAUSE_PROPOSE") or 30),
                "armee_heures": int(os.environ.get("STUDIO_ARMEE_HEURES") or 12),
+               "vram_repos_min": int(os.environ.get("STUDIO_VRAM_REPOS") or 1),
                "plafond_nuage": int(os.environ.get("STUDIO_PLAFOND_NUAGE") or 0)}
 
 
@@ -12309,6 +12345,15 @@ def noeuds_agents():
                                      and e.get("repond")),
                       "vu_il_y_a": round(time.time() - vu) if vu else None,
                       "carte": e.get("carte"), "vram": e.get("vram"),
+                      # LA VRAM LIBRE ARRIVAIT DEPUIS TOUJOURS et n'etait
+                      # exposee nulle part : l'agent l'annonce toutes les dix
+                      # secondes, ETAT_NOEUDS la garde, aucune route ne la
+                      # rendait. C'est pourtant la seule chose qui permette de
+                      # VOIR qu'une carte a ete rendue — sans elle, la
+                      # liberation automatique serait a croire sur parole.
+                      # None quand on ne sait pas : la page ecrit alors « ? »,
+                      # ce qui n'est pas la meme chose que « 0 Go libres ».
+                      "libre": e.get("libre"),
                       "moteurs": moteurs_du_noeud(x["id"]),
                       # None quand la machine ne dit rien : un agent d'avant le
                       # 31 aout n'annonce pas d'empreinte, et « inconnue » est
@@ -12343,6 +12388,238 @@ def _inventaire_a_rafraichir(ident):
     if not _inventaire_connu(ident):
         return True
     return time.time() - connu.get("quand", 0) > FRAICHEUR_MODELES
+
+
+# ── rendre la carte quand plus rien ne la demande ─────────────────────
+# LE STUDIO N'APPELLE JAMAIS UNE MACHINE A AGENT : c'est elle qui appelle, six
+# fois par minute. La consigne voyage donc dans la REPONSE a l'annonce, a cote
+# d'« intervalle » et de « modeles_demandes », et l'agent la execute chez lui
+# — un POST /free a son propre ComfyUI. Aucune autre forme n'etait possible :
+# une route que le studio composerait supposerait qu'il puisse joindre la
+# machine, ce que toute cette section existe pour ne pas supposer.
+#
+# Combien la carte doit tenir pour qu'il y ait quelque chose a rendre. Le plus
+# petit moteur du catalogue en demande 1,0 Go (detourage) et le plus petit
+# generatif 1,5 ; une carte qui affiche un bureau, elle, en tient deja un a deux
+# sans rien avoir charge.
+#
+# CE CHIFFRE-CI N'EST PAS MESURE, et il faut le savoir avant de s'en servir :
+# aucune carte n'etait joignable le jour ou cette regle a ete ecrite. Il est
+# CHOISI, et il se trompe dans un sens sur : trop haut, un detourage de 1 Go
+# dort sur la carte sans qu'on le rende ; trop bas, on envoie un /free
+# parfaitement inoffensif, une fois par cycle de travail, a une carte qui
+# n'affiche qu'un bureau. C'est pour pouvoir le corriger sur une vraie machine
+# que /api/admin/noeuds rend desormais « libre ».
+SEUIL_TENU = 2.0
+
+
+def _tient_quelque_chose(ident):
+    """Vrai si la carte porte de quoi valoir un /free.
+
+    « libre » PEUT MANQUER, et l'absence n'est pas un zero : un agent d'avant
+    le 3 septembre 2026 ne l'annonce pas, une machine dont ComfyUI ne declare
+    aucun peripherique non plus. Lire l'absence comme un zero ferait croire la
+    carte PLEINE — c'est-a-dire candidate — et enverrait la consigne a chaque
+    battement d'un agent trop vieux pour la comprendre. On ne conclut rien,
+    donc on ne demande rien.
+    """
+    e = ETAT_NOEUDS.get(ident) or {}
+    if e.get("libre") is None or not e.get("vram"):
+        return False
+    return e["vram"] - e["libre"] >= SEUIL_TENU
+
+
+def _au_repos(ident):
+    """Vrai si RIEN ne vise cette machine : ni file, ni verrou, ni intention.
+
+    Les cinq questions ne se recouvrent pas, et c'est pour cela qu'elles y sont
+    toutes les cinq. « travaux » vient de la machine et dit ce qu'elle CALCULE ;
+    TRAVAUX est ce que le studio lui a depose et qu'elle n'est pas encore venue
+    chercher ; le verrou est tenu pendant l'analyse, avant meme qu'un travail
+    existe ; charge_noeud compte l'INTENTION — la demande a choisi cette
+    machine et telecharge encore ses modeles, ce qui prend des minutes ; et
+    ARMEES porte les demandes qui attendent le reveil de cette machine-la.
+    Ne regarder que la file rendrait « au repos » une carte que trois demandes
+    attendent deja, et le rechargement serait paye juste avant l'usage.
+    """
+    e = ETAT_NOEUDS.get(ident) or {}
+    verrou = VERROUS_NOEUD.get(ident)
+    return not (e.get("travaux") or TRAVAUX.get(ident)
+                or (verrou is not None and verrou.locked())
+                or charge_noeud(ident)
+                or any(ident in (a.get("noeuds") or ())
+                       for a in ARMEES.values()))
+
+
+def _horloge_repos(ident):
+    """Tient l'heure a laquelle cette machine a fini de travailler.
+
+    Appelee a CHAQUE releve — le battement d'un agent, la sonde d'un noeud a
+    URL — parce que c'est le seul instant ou l'on sait ce que la machine fait.
+    Le compteur part au premier releve qui la voit oisive, et non au demarrage
+    du studio : sans cela, un studio qui redemarre reclamerait la carte de tout
+    le parc dans la minute, y compris celle qui allait recevoir la demande que
+    reprendre_file() est en train de remettre en file.
+    """
+    e = ETAT_NOEUDS.setdefault(ident, {})
+    if not _au_repos(ident):
+        e["repos_depuis"] = 0
+        # UN NOUVEAU CYCLE DE TRAVAIL REDONNE DROIT A UNE CONSIGNE, et c'est ce
+        # qui borne la boucle : au plus une consigne par periode de repos. Sans
+        # cette remise a zero, une carte qui ne rend rien serait relancee toutes
+        # les dix secondes jusqu'a la fin des temps.
+        e.pop("libere_demande", None)
+        e.pop("libere_avant", None)
+        e.pop("libere_dit", None)
+    elif not e.get("repos_depuis"):
+        e["repos_depuis"] = time.time()
+
+
+def _doit_liberer(ident):
+    """La consigne part-elle vers cette machine, maintenant ?
+
+    Six conditions, et chacune repare un cas different :
+
+      - le reglage est arme (« 0 » retablit exactement le studio d'avant) ;
+      - la machine repond — on ne parle pas a une carte qu'on n'a pas vue ;
+      - son ComfyUI n'a pas DEJA refuse /free (voir _refuser_liberation) ;
+      - on ne lui a pas deja demande pendant ce repos-ci ;
+      - sa carte tient vraiment quelque chose — sur une carte vide, il ne se
+        passe rien du tout, et c'est voulu : un appel qui ne rend rien n'est
+        pas un appel gratuit, c'est un appel qu'on ne saura pas distinguer d'un
+        echec le jour ou l'on lira le journal ;
+      - et le delai est passe DEPUIS LA FIN DU DERNIER TRAVAIL, pas depuis le
+        demarrage ni depuis la derniere annonce.
+
+    La pause, elle, n'empeche RIEN — et c'est le cas pour lequel tout ceci
+    existe. Une machine en pause est une machine dont le proprietaire joue :
+    elle ne recevra pas de travail, donc rien ne viendra reprendre la carte,
+    donc c'est la ou la rendre vaut le plus.
+    """
+    if PREFERENCES["vram_repos_min"] <= 0:
+        return False
+    e = ETAT_NOEUDS.get(ident) or {}
+    if not e.get("repond") or e.get("liberation_refusee") or e.get("libere_demande"):
+        return False
+    if not _tient_quelque_chose(ident) or not _au_repos(ident):
+        return False
+    depuis = e.get("repos_depuis") or 0
+    return bool(depuis) and (time.time() - depuis
+                             >= PREFERENCES["vram_repos_min"] * 60)
+
+
+def _consigne_envoyee(ident):
+    """Note qu'on vient de demander la carte, et ce qu'elle tenait alors.
+
+    « libere_avant » est la moitie qui manque a la mesure : sans le releve
+    d'AVANT, le battement suivant dit combien la carte a de libre et pas
+    combien elle vient d'en rendre.
+    """
+    e = ETAT_NOEUDS.setdefault(ident, {})
+    e["libere_demande"] = time.time()
+    e["libere_avant"] = e.get("libre")
+    e.pop("libere_dit", None)
+
+
+def _refuser_liberation(ident, statut):
+    """Ce ComfyUI ne connait pas /free. Une ligne, une seule, puis on se tait.
+
+    /free est le premier point d'appel neuf du studio depuis longtemps : un
+    ComfyUI assez ancien repond 404, et il repondra 404 a chaque battement —
+    six fois par minute et par machine. On l'ecrit UNE fois, on cesse de
+    demander, et l'on ne rouvre la question qu'au retour de son ComfyUI : c'est
+    le seul evenement apres lequel la reponse peut avoir change, parce que
+    c'est celui qui suit une mise a jour.
+    """
+    e = ETAT_NOEUDS.setdefault(ident, {})
+    if e.get("liberation_refusee") == statut:
+        return
+    e["liberation_refusee"] = statut
+    titre = (noeud(ident) or {}).get("titre") or ident
+    print(f"  {titre} : son ComfyUI a refuse /free ({statut}) — la carte ne "
+          f"sera plus liberee sur cette machine. Un ComfyUI trop ancien ne "
+          f"connait pas cette route ; mets-le a jour et relance-le.", flush=True)
+
+
+def _juger_liberation(ident):
+    """Ce que la consigne precedente a REELLEMENT rendu. Ecrit une fois.
+
+    LA MESURE EST GRATUITE : le battement suivant porte une VRAM libre fraiche,
+    il suffit de la lire. Ce que ce releve attrape et qu'un code de retour ne
+    dit pas, c'est le ComfyUI qui repond 200 et ne libere rien — parce qu'autre
+    chose tient la carte, un jeu par exemple.
+
+    « libere_dit » borne l'ecriture a une ligne par consigne. Sans lui, une
+    carte qui ne rend rien reecrirait la meme phrase toutes les dix secondes,
+    ce qui est exactement la maniere dont on cesse de lire un journal.
+    """
+    e = ETAT_NOEUDS.get(ident) or {}
+    if not e.get("libere_demande") or e.get("libere_dit"):
+        return
+    if e.get("libere_avant") is None or e.get("libre") is None:
+        return
+    # Le releve d'apres, pas celui d'avant : la consigne vient de partir dans la
+    # REPONSE a cette annonce-ci, la VRAM qu'elle porte est donc celle d'avant.
+    if time.time() - e["libere_demande"] < 5:
+        return
+    e["libere_dit"] = True
+    rendu = round(e["libre"] - e["libere_avant"], 1)
+    titre = (noeud(ident) or {}).get("titre") or ident
+    if rendu >= 0.5:
+        print(f"  {titre} a rendu {rendu} Go de carte apres "
+              f"{PREFERENCES['vram_repos_min']} min sans travail", flush=True)
+    elif e.get("empreinte") and e["empreinte"] != empreinte_agent():
+        # LA TROISIEME CAUSE, ET C'EST LA PLUS FREQUENTE LE JOUR DE LA MISE A
+        # JOUR : un agent d'avant recoit la consigne et ne la lit pas. Sans
+        # cette branche, le studio accusait ComfyUI — « il accepte /free sans
+        # rien liberer » — pour une machine dont le ComfyUI n'a jamais rien
+        # recu. On a l'empreinte sous la main, autant s'en servir.
+        print(f"  {titre} n'a rien rendu : son agent est perime et ne connait "
+              f"pas encore cette consigne — voir /admin", flush=True)
+    else:
+        print(f"  {titre} n'a rendu que {rendu} Go — son ComfyUI accepte /free "
+              f"sans rien liberer, ou quelque chose d'autre tient la carte",
+              flush=True)
+
+
+async def liberer_noeuds_a_url():
+    """Le meme repos, pour les machines que le studio peut appeler lui-meme.
+
+    LE NOEUD LOCAL EST TRAITE, et par la meme regle : _doit_liberer() ne
+    demande jamais « est-ce un agent ? ». Ce qui change n'est pas la decision,
+    c'est le transport — ici le studio POSTe /free directement, la-bas il
+    depose la consigne dans la reponse a l'annonce. Deux transports, une seule
+    regle : les avoir ecrits deux fois les aurait fait diverger, et c'est la
+    faute que ce depot a deja payee trois fois.
+
+    Cadence : trente secondes, celle du veilleur, et non dix. Un repos regle a
+    une minute est donc honore avec jusqu'a trente secondes de retard — ce qui
+    est sans consequence pour un reglage dont l'unite est la minute, et ce qui
+    evite une boucle de plus.
+    """
+    for x in NOEUDS:
+        if not x.get("url"):
+            continue
+        _juger_liberation(x["id"])
+        _horloge_repos(x["id"])
+        if not _doit_liberer(x["id"]):
+            continue
+        _consigne_envoyee(x["id"])
+        try:
+            to = aiohttp.ClientTimeout(total=20)
+            async with aiohttp.ClientSession(timeout=to) as s:
+                async with s.post(f"{x['url']}/free",
+                                  json={"unload_models": True,
+                                        "free_memory": True}) as r:
+                    statut = r.status
+        except Exception as e:
+            # Injoignable n'est pas « refuse » : la machine peut revenir. On ne
+            # ferme donc pas la porte, la prochaine periode de repos reessaiera.
+            print(f"  {x.get('titre') or x['id']} : /free injoignable "
+                  f"({type(e).__name__})", flush=True)
+            continue
+        if not 200 <= statut < 300:
+            _refuser_liberation(x["id"], statut)
 
 
 async def api_noeud_annonce(req):
@@ -12388,10 +12665,32 @@ async def api_noeud_annonce(req):
     if d.get("comfy") is False:
         etat.update(vu=time.time(), agent=True, repond=False)
     else:
+        # SON ComfyUI VIENT DE REVENIR : on rouvre la question de /free. C'est
+        # le seul evenement apres lequel un refus peut avoir cesse d'etre vrai,
+        # puisque c'est celui qui suit une mise a jour de ComfyUI. Sans cette
+        # ligne, un 404 fermait la machine pour toute la vie du studio, et il
+        # fallait redemarrer le studio pour profiter d'une mise a jour faite
+        # ailleurs.
+        if not etat.get("repond"):
+            etat.pop("liberation_refusee", None)
         etat.update(repond=True, vu=time.time(), agent=True,
                     carte=d.get("carte"), vram=float(d.get("vram") or 0),
-                    libre=float(d.get("libre") or 0),
+                    # NONE ET NON ZERO QUAND LA CLE MANQUE. « float(x or 0) »
+                    # lisait l'agent d'avant le 3 septembre 2026 — qui n'annonce
+                    # pas ce champ — comme une carte entierement pleine, donc
+                    # comme candidate a la liberation, a chaque battement et
+                    # pour toujours. L'absence n'est pas un zero.
+                    libre=(float(d["libre"])
+                           if isinstance(d.get("libre"), (int, float))
+                           else None),
                     ram=float(d.get("ram") or 0))
+    # CE QUE LA CONSIGNE PRECEDENTE A DONNE. L'agent rend le code HTTP de son
+    # ComfyUI : un 404 se diagnostique tout seul, la ou la seule lecture de la
+    # VRAM aurait laisse choisir entre « route inconnue » et « la carte etait
+    # deja vide ». Les deux lectures se completent, elles ne se remplacent pas.
+    rendu = d.get("libere")
+    if isinstance(rendu, dict) and not rendu.get("ok"):
+        _refuser_liberation(x["id"], rendu.get("statut"))
     dossiers = d.get("modeles") or {}
     # Un dictionnaire de listes VIDES est bien forme et ne veut rien dire : il
     # arrive pendant que ComfyUI se releve. L'enregistrer effacait tout ce
@@ -12417,10 +12716,23 @@ async def api_noeud_annonce(req):
     # machine encore en pause ne declenche rien, six fois par minute.
     if ARMEES:
         await reveiller_armees(x["id"])
+    # LA MESURE D'ABORD, L'HORLOGE ENSUITE. _horloge_repos() efface le souvenir
+    # de la consigne des que la machine retravaille : juger apres, ce serait ne
+    # jamais rien lire le jour ou un travail arrive dans le meme battement.
+    _juger_liberation(x["id"])
+    _horloge_repos(x["id"])
+    liberer = _doit_liberer(x["id"])
+    if liberer:
+        _consigne_envoyee(x["id"])
     # Tant qu'on ne connait pas ses modeles, on les reclame a chaque battement.
     # Sans cela, une machine bien equipee reste declaree incapable de tout
     # pendant les cinq minutes qui suivent un redemarrage du studio.
     return web.json_response({"ok": True, "intervalle": 10, "titre": x.get("titre"),
+                              # LA CONSIGNE. Presente seulement quand elle est
+                              # vraie : un agent d'avant l'ignore, et un studio
+                              # qui la rendrait toujours ferait croire, a la
+                              # lecture d'une trace, qu'il la repete sans fin.
+                              **({"liberer": True} if liberer else {}),
                               # Ce que le studio distribue. L'agent le compare a
                               # ce qu'il execute et se remplace tout seul — dire
                               # a une machine qu'elle est perimee ne sert a rien
@@ -12756,7 +13068,8 @@ def machines_connues():
     e = ETAT_NOEUDS.get(local["id"], {})
     ligne_locale = {"id": local["id"], "titre": local.get("titre"), "agent": False,
                     "repond": bool(e.get("repond")), "carte": e.get("carte"),
-                    "vram": e.get("vram"), "vu_il_y_a": 0,
+                    "vram": e.get("vram"), "libre": e.get("libre"),
+                    "vu_il_y_a": 0,
                     # Zero en dur : la console affichait « en travail 0 » pendant
                     # qu'un rendu tournait sur cette machine.
                     "en_travail": len(TRAVAUX.get(local["id"], [])),
@@ -12784,6 +13097,7 @@ async def api_admin_noeuds(req):
                                   for (u, nom), p in MODELES_CASSES.items()},
                               "pause_propose": PREFERENCES["pause_propose"],
                               "armee_heures": PREFERENCES["armee_heures"],
+                              "vram_repos_min": PREFERENCES["vram_repos_min"],
                               "modele_ecriture": choisir_modele_ecriture(),
                               "silence_max": SILENCE_MAX})
 
@@ -12819,7 +13133,7 @@ async def api_admin_noeud_detail(req):
     return web.json_response({
         "id": ident, "titre": x.get("titre", ident), "agent": bool(x.get("agent")),
         "carte": e.get("carte"), "vram": e.get("vram"), "ram": e.get("ram"),
-        "vram_utile": round(dispo, 1),
+        "libre": e.get("libre"), "vram_utile": round(dispo, 1),
         "vu_il_y_a": round(time.time() - e["vu"]) if e.get("vu") else None,
         "llm": bool(e.get("llm")), "llm_modeles": e.get("llm_modeles") or [],
         "inventaire_connu": _inventaire_connu(ident),
@@ -12901,10 +13215,11 @@ async def api_admin_pause(req):
 async def api_admin_reglages(req):
     """Les reglages qui n'ont pas leur place dans une variable d'environnement.
 
-    Trois : combien de temps une machine en pause fait patienter la demande qui
+    Quatre : combien de temps une machine en pause fait patienter la demande qui
     la reclame, combien de temps cette demande reste ensuite gardee en attente
-    de son retour, et combien d'appels distants un compte peut faire dans le
-    mois avant de revenir au local.
+    de son retour, au bout de combien de minutes sans travail une carte rend sa
+    memoire, et combien d'appels distants un compte peut faire dans le mois
+    avant de revenir au local.
     """
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)

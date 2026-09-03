@@ -33,6 +33,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Déplacer le studio sur une machine sans carte](studio-sans-carte.md) — poser le studio sur un NAS et laisser les cartes où elles sont, données comprises.
 - [Quand une machine tombe](quand-une-machine-tombe.md) — la reprise automatique, et comment une panne est distinguée d'une faute.
 - [Attendre le retour d'une machine en pause](attendre-une-machine.md) — la demande gardée armée, les trois portes de réveil, et le réglage `armee_heures`.
+- [Rendre la carte quand plus rien ne la demande](rendre-la-carte.md) — la VRAM libérée toute seule après une minute sans travail. **Ce réglage change le comportement de toute installation existante à la mise à jour** ; `0` l'annule.
 - [Le modèle de langage peut venir d'une autre machine](modele-de-langage-distant.md) — la bascule vers l'Ollama d'un nœud quand le sien ne répond plus.
 
 ## Utiliser le studio

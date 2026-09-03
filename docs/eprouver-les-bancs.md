@@ -143,6 +143,41 @@ qui meurt sur le code d'avant ne mesure pas le sens inverse**, et **une ligne
 verte à vide n'est verte que faute d'objet** — il faut le dire, pas s'en
 contenter.
 
+### Et parfois il n'y a rien à nommer sur le code d'avant
+
+Les quinze mutations de la [libération de la
+VRAM](rendre-la-carte.md) gardent une règle qui **n'existait pas** : aucun
+`/free` nulle part, ni dans `serveur.py` ni dans `agent_noeud.py`, et la mémoire
+libre arrivait à chaque battement sans qu'aucune route ne la rende. Le sens
+inverse a donc été pris par le second chemin, et il rend moins que pour
+`banc_refaire` — c'est la limite du procédé, et elle mérite d'être écrite.
+
+`serveur.py` reconstruit sans les **seize morceaux** de la libération, le banc
+neuf lancé dessus le **3 septembre 2026** :
+
+```
+  NON  le studio sait rendre une carte laissee au repos
+       — la machinerie entiere manque
+  48 verifications passees, 1 echouee
+```
+
+Une ligne rouge, **une seule**, et les quarante-huit d'avant restent vertes : le
+banc **distingue** les deux dépôts au lieu de mourir sur l'un des deux, parce
+que la section neuve est gardée par un `hasattr` — le même tour que
+`web/demarrage.html` sous `try`. Mais les vingt-sept cas de la section ne
+s'exécutent pas, et les quinze lignes que les mutations nomment **n'ont rien à
+nommer là-bas**. On ne peut donc pas les montrer rouges sur le code d'avant.
+
+Ce qui porte la preuve, ici, c'est le sens **aller** et l'exigence de la ligne
+nommée : `verdict()` rend « cassé » quand le rouge tombe ailleurs. Les quinze
+sont rouges **sur la ligne qu'elles annoncent**, et **dix** d'entre elles sur
+cette ligne **seule**. Les cinq autres en entraînent une à six de plus, et c'est
+attendu : couper le **transport** de la consigne — la clef que la réponse à
+l'annonce ne porte plus — fait tomber tout ce qui en dépend, là où couper une
+seule **garde** ne fait tomber qu'elle.
+
+Sur le dépôt d'aujourd'hui, le même banc rend **76/0**.
+
 ### Et le sens inverse trouve des trous que les mutations ne trouvent pas
 
 `banc_multilingue` est né le même soir avec sa correction, donc par le second
