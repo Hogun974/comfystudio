@@ -2,9 +2,11 @@
 
 > **Ce réglage change le comportement de toute installation existante à la mise
 > à jour.** Il arrive **armé à une minute**. Si tu ne rends qu'une image de
-> temps en temps, tu paieras désormais un rechargement du modèle à chaque fois
-> — de vingt à quarante secondes selon le moteur et le disque — parce que la
-> carte aura été rendue entre-temps. Mets le réglage à **0** dans `/admin` pour
+> temps en temps, tu paieras désormais un rechargement du modèle à chaque fois,
+> parce que la carte aura été rendue entre-temps. **Ce que ce rechargement
+> coûte n'a pas pu être mesuré** — voir [Mesures](mesures.md) : sur le parc de
+> l'auteur, ComfyUI décharge de lui-même après chaque rendu, si bien que les
+> deux rendus de comparaison étaient tous les deux à froid. Mets le réglage à **0** dans `/admin` pour
 > l'annuler complètement et retrouver exactement le studio d'avant, où rien
 > n'est jamais libéré.
 

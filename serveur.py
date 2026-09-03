@@ -12220,9 +12220,19 @@ FICHIER_PREFERENCES = os.path.join(DOSSIER_CONV, "_reglages.json")
 #
 # ET CE DEFAUT CHANGE LE COMPORTEMENT DE TOUTE INSTALLATION A LA MISE A JOUR.
 # Il faut le lire en toutes lettres, ici et dans docs/reglages.md : qui rend une
-# image par heure paiera desormais un rechargement de modele a chaque fois —
-# vingt a quarante secondes selon le moteur et le disque — parce que la carte
-# aura ete rendue entre-temps. C'est le bon echange quand la machine sert aussi
+# image par heure paiera desormais un rechargement de modele a chaque fois,
+# parce que la carte aura ete rendue entre-temps.
+#
+# CE QUE CE RECHARGEMENT COUTE N'EST PAS MESURE, et il faut le dire ici : ce
+# chiffre est le seul argument du reglage. « Vingt a quarante secondes » a ete
+# ecrit cinq fois — jusque dans /admin, sous les yeux de celui qui decide —
+# sans date ni machine, et docs/mesures.md le contredisait depuis la mesure du
+# 3 septembre 2026. Sur le parc de l'auteur il n'a PAS PU l'etre : ComfyUI y
+# decharge de lui-meme apres chaque rendu, si bien que les deux rendus de
+# comparaison — meme plan rejoue par « refaire » — etaient tous les deux a
+# froid, 81 s des deux cotes. Le cout depend du moteur, du disque et de ce que
+# le cache du systeme garde ; il se mesurera sur une machine dont ComfyUI
+# GARDE ses modeles, et pas avant. C'est le bon echange quand la machine sert aussi
 # a autre chose, et le mauvais quand elle ne fait que rendre. « 0 » annule le
 # reglage et retablit exactement le comportement d'avant : plus rien n'est
 # jamais libere.

@@ -196,19 +196,23 @@ td .detail{display:block;max-width:34ch}
 
     <div class="carte">
       <h2 style="margin-top:0">rendre la carte au repos</h2>
-      <p class="aide">Quand une machine n'a plus rien à faire, son ComfyUI garde
-        le modèle sur la carte — six à douze gigaoctets qui ne servent plus à
-        rien. Passé ce délai, le studio lui demande de les rendre. La machine
-        continue d'accepter du travail : ce n'est pas une pause, c'est juste la
-        mémoire qui se libère. Un réglage pour <b>tout le parc</b>.</p>
+      <p class="aide">Quand une machine n'a plus rien à faire, son ComfyUI peut
+        garder le modèle sur la carte — <b>9,4 Go sur 11</b> pendant un rendu
+        FLUX.1 dev, mesuré le 3 septembre 2026 sur une RTX 2080 Ti. Passé ce
+        délai, le studio lui demande de les rendre. La machine continue
+        d'accepter du travail : ce n'est pas une pause, c'est juste la mémoire
+        qui se libère. Un réglage pour <b>tout le parc</b>.</p>
       <p class="aide"><b>Une minute par défaut, comme Ollama</b> — le studio lui
         demande déjà de rendre la carte au bout de 60 s, et la symétrie est
         voulue. <b>Ce défaut change le comportement de toute installation à la
         mise à jour :</b> si tu ne rends qu'une image de temps en temps, tu
-        paieras désormais un rechargement du modèle à chaque fois, vingt à
-        quarante secondes selon le moteur. Mets <b>0</b> pour annuler
-        complètement le réglage et retrouver le studio d'avant, où rien n'est
-        jamais libéré.</p>
+        paieras un rechargement du modèle à chaque fois. <b>Ce que ça coûte n'a
+        pas pu être mesuré</b> : sur le parc de l'auteur, ComfyUI décharge de
+        lui-même après chaque rendu, si bien que les deux rendus de comparaison
+        étaient tous les deux à froid — 81 s des deux côtés. Le coût dépend du
+        moteur, du disque et de ce que le cache du système garde. Mets <b>0</b>
+        pour annuler complètement le réglage et retrouver le studio d'avant, où
+        rien n'est jamais libéré.</p>
       <label>rendre la carte après
         <input type="number" id="vramReposMin" min="0" max="1440" step="1"
                style="width:5em"> minutes sans travail</label>
