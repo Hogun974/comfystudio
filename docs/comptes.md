@@ -13,10 +13,19 @@ fois** au démarrage : dans la console si le studio tourne au premier plan, dans
 le journal sinon (`docker compose logs comfystudio`, `journalctl -u
 comfystudio`).
 
+**Le changer est la première chose à faire, et le studio le mesure.** Le compte
+porte un drapeau `origine` tant que personne n'a touché à ce mot de passe ;
+`changer_mdp()` l'efface — le seul endroit du dépôt où un mot de passe est
+remplacé, emprunté par les deux portes qui en changent un. L'écran de
+[première mise en route](premiere-mise-en-route.md) en fait une ligne qui
+rougit. Un mot de passe posé par `STUDIO_ADMIN_MDP` n'est **pas** marqué : c'est
+une décision de celui qui héberge, et il n'y a rien à en mesurer.
+
 Ce qui reste ouvert sans session : la page elle-même (sinon on ne pourrait pas
-afficher le formulaire de connexion), les routes de session, et les routes
-d'administration — celles-ci vérifient elles-mêmes le jeton, et les fermer
-condamnerait le seul moyen d'entrer quand aucun compte n'existe encore.
+afficher le formulaire de connexion), les routes de session, les routes
+d'administration, et `/demarrage` — ces dernières vérifient elles-mêmes le
+jeton, et les fermer condamnerait le seul moyen d'entrer quand aucun compte
+n'existe encore.
 
 **Autrefois facultatifs.** Sans compte, le studio est celui d'avant : chaque navigateur
 reçoit un identifiant opaque et garde son espace privé. Créer des comptes dans

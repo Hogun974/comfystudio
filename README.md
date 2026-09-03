@@ -313,6 +313,24 @@ Où le lire selon le chemin de démarrage :
 docker compose logs comfystudio | grep -A3 "Compte administrateur"
 ```
 
+## Et d'abord : `/demarrage`, ce qui manque encore
+
+Une fois connecté, le lien **`à faire`** apparaît dans l'en-tête tant que
+l'écran n'a pas été refermé. Il ouvre une **liste de contrôle qui mesure** —
+pas un assistant d'installation : la langue de l'interface, le mot de passe
+d'origine, le second facteur, une carte qui répond, les fichiers des moteurs, le
+modèle de langage, les clés d'API. Chaque ligne porte son verdict du moment et
+le lien vers l'endroit qui la règle.
+
+**Elle ne redemande aucun réglage de `/admin`** : elle en vérifie le résultat.
+Deux tables du même réglage divergent ; il n'y en a qu'une, et c'est celle de
+`/admin`.
+
+Ce qui **bloque** vraiment est court : un compte, une machine dont la carte
+répond, les fichiers d'un moteur. Le modèle de langage n'en fait pas partie —
+voir l'encadré plus bas. Détail :
+[La première mise en route](docs/premiere-mise-en-route.md).
+
 ## Et ensuite : `/admin`
 
 Une fois connecté, le lien **`admin`** apparaît dans l'en-tête si ton compte est

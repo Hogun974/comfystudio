@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- L'ONGLET SE TRADUIT AUSSI, et il porte sa cle comme le reste. C'est le seul
+     texte de cette page hors du corps : sans « data-t », il serait resté
+     francais dans une interface anglaise, et aucun releve ne l'aurait vu —
+     banc_page.py lit desormais depuis le debut du fichier et non depuis
+     <body>, pour que ce titre-ci soit tenu au meme contrat que les autres. -->
+<title data-t="demarrage.onglet">ComfyStudio — première mise en route</title>
+<style>
+:root{
+  --nuit:#15120f; --plan:#1d1915; --creux:#120f0d; --relief:#262019;
+  --trait:#2e2721; --trait-vif:#4a3f34;
+  --encre:#f0e9e0; --encre-douce:#b6a999; --encre-pale:#8e8175;
+  --braise:#e8a33d; --braise-sourde:#3a2a13; --braise-vive:#ffc266;
+  --vert:#8fbf72; --rouge:#e07a55;
+  --serif:Constantia,Georgia,"Times New Roman",serif;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --nuit:#f2ede4; --plan:#fffdf9; --creux:#e8e1d5; --relief:#faf6ef;
+    --trait:#ddd4c5; --trait-vif:#a3927c;
+    --encre:#20180f; --encre-douce:#584c3e; --encre-pale:#6f6151;
+    --braise:#b06d10; --braise-sourde:#f3e3c8; --braise-vive:#8a5308;
+    --vert:#4a7a33; --rouge:#a84120;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--nuit);color:var(--encre);font:15px/1.6 var(--serif)}
+header{display:flex;align-items:center;gap:14px;padding:14px 22px;flex-wrap:wrap;
+  background:var(--plan);border-bottom:1px solid var(--trait)}
+.marque{font:600 17px var(--sans);letter-spacing:.2px}
+.marque em{color:var(--braise);font-style:normal}
+.ident{font:12px var(--mono);color:var(--encre-douce)}
+header .lien{font:12px var(--mono);color:var(--encre-douce);text-decoration:none;
+  border-bottom:1px dotted var(--trait-vif)}
+header .lien:hover{color:var(--braise-vive)}
+header .lien:first-of-type{margin-left:auto}
+.choix-langue{display:inline-flex;align-items:center;gap:5px}
+.choix-langue label{cursor:pointer}
+main{max-width:840px;margin:0 auto;padding:26px 22px 60px}
+p.aide{color:var(--encre-pale);font-size:14px;margin:0 0 20px}
+.resume{font:600 16px var(--sans);margin:0 0 6px}
+.resume.bloque{color:var(--rouge)}
+.resume.calme{color:var(--vert)}
+.ligne{background:var(--plan);border:1px solid var(--trait);border-radius:12px;
+  padding:14px 16px;margin:10px 0;display:flex;gap:14px;align-items:flex-start}
+.ligne.bloque{border-color:var(--rouge)}
+.ligne.risque{border-color:var(--braise)}
+/* La pastille dit la couleur ; l'etiquette a cote dit le mot. Une couleur
+   seule ne se lit ni en niveaux de gris ni par un lecteur d'ecran, et c'est
+   precisement cet ecran-la qu'on lit quand on ne sait pas encore ou regarder. */
+.pastille{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:8px;
+  background:var(--trait-vif)}
+.pastille.fait{background:var(--vert)}
+.pastille.bloque{background:var(--rouge);box-shadow:0 0 6px var(--rouge)}
+.pastille.risque{background:var(--braise);box-shadow:0 0 6px var(--braise)}
+.corps{flex:1 1 auto;min-width:0}
+.corps b{display:block;font:600 14px var(--sans)}
+.dit{margin-top:3px;font-size:14px;color:var(--encre-douce)}
+.etiquette{flex:0 0 auto;font:10.5px var(--mono);text-transform:uppercase;
+  letter-spacing:.6px;color:var(--encre-pale);border:1px solid var(--trait-vif);
+  border-radius:6px;padding:2px 7px;margin-top:5px}
+.etiquette.bloque{color:var(--rouge);border-color:var(--rouge)}
+.etiquette.risque{color:var(--braise);border-color:var(--braise)}
+.etiquette.fait{color:var(--vert);border-color:var(--vert)}
+.ou{display:inline-block;margin-top:6px;font:12px var(--mono);
+  color:var(--braise);text-decoration:none;border-bottom:1px dotted var(--braise)}
+.ou:hover{color:var(--braise-vive)}
+.fixe{display:block;margin-top:6px;font:11px var(--mono);color:var(--encre-pale)}
+button,input,select{font:13px var(--sans);color:var(--encre);
+  background:var(--relief);border:1px solid var(--trait-vif);border-radius:7px;
+  padding:7px 11px}
+button{cursor:pointer}
+button:hover:not(:disabled){border-color:var(--braise);color:var(--braise-vive)}
+button:disabled{opacity:.4;cursor:default}
+input:focus,button:focus-visible,select:focus-visible{outline:2px solid var(--braise);
+  outline-offset:1px}
+.rangee{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:22px 0 0}
+.detail{font:11px var(--mono);color:var(--encre-pale)}
+.alerte{color:var(--rouge);font:13px var(--sans);min-height:20px;margin:8px 0}
+#entree{max-width:460px;margin:60px auto}
+@media (max-width:640px){
+  header{gap:8px 12px;padding:11px 14px}
+  header .lien:first-of-type{margin-left:0}
+  main{padding:18px 12px 48px}
+  input{min-width:0;width:100%}
+  .rangee > input{flex:1 1 100%}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <!-- « data-t » : la cle du dictionnaire qui porte ce texte-la. LE FRANCAIS
+       RESTE ECRIT ICI, comme dans web/index.html et pour les deux memes
+       raisons : c'est la valeur par defaut, et c'est la moitie d'un contrat que
+       banc_page.py releve — le texte du HTML doit etre EXACTEMENT celui du
+       dictionnaire, faute de quoi une reformulation d'un seul cote laisse un
+       lecteur anglais devant une traduction devenue fausse. -->
+  <span class="marque">Comfy<em>Studio</em></span>
+  <span class="ident" data-t="demarrage.titre">première mise en route</span>
+  <!-- LE MENU DE LANGUE EST ICI AUSSI, ET C'EST LA PREMIERE RAISON D'ETRE DE
+       CET ECRAN. Il ne vit ailleurs que dans l'en-tete du studio : quelqu'un
+       qui ne lit pas le francais ouvre une page francaise et doit reconnaitre
+       un globe pour en sortir. Sur l'ecran de premiere mise en route, la
+       langue est une LIGNE DE LA LISTE — mesuree comme les autres — et le menu
+       est ici, sous la main, avant tout le reste. -->
+  <span class="choix-langue">
+    <label for="langue" aria-hidden="true" title="langue de l'interface"
+           data-t-title="page.langue.title">🌐</label>
+    <select id="langue" data-t-aria-label="demarrage.langue.aria"
+            aria-label="Langue"></select>
+  </span>
+  <a class="lien" href="/" data-t="demarrage.retour">retour au studio</a>
+  <a class="lien" href="/admin" data-t="demarrage.admin">administration</a>
+</header>
+
+<main>
+
+<!-- LA PORTE. Meme forme que /admin : la page est servie a tout le monde — sans
+     elle on ne pourrait pas afficher ce formulaire — et ce sont les DONNEES qui
+     sont gardees. /api/demarrage dit qu'un compte porte encore son mot de passe
+     d'origine et qu'aucune carte ne repond : servie sans garde, elle serait la
+     meilleure page de reconnaissance qu'un studio puisse offrir. -->
+<div id="entree" hidden>
+  <p class="aide" data-t="demarrage.jeton.dit">Cet écran dit ce qui manque à ce studio : il demande le jeton d’administration affiché au premier démarrage, ou un compte administrateur déjà connecté.</p>
+  <div class="rangee">
+    <input id="jeton" type="password" data-t-placeholder="demarrage.jeton.invite"
+           placeholder="jeton d’administration">
+    <button id="entrer" type="button" data-t="demarrage.jeton.entrer">entrer</button>
+  </div>
+  <div class="alerte" id="alerteEntree"></div>
+</div>
+
+<div id="ecran" hidden>
+  <p class="resume" id="resume"></p>
+  <p class="aide" data-t="demarrage.intro">Cette liste ne règle rien : elle mesure. Chaque ligne dit ce que le studio constate à l’instant, et renvoie à l’endroit qui la règle.</p>
+  <div id="lignes"></div>
+  <div class="rangee">
+    <button id="remesurer" type="button" data-t="demarrage.remesurer">remesurer</button>
+    <button id="basculer" type="button"></button>
+    <span class="detail" id="ditFerme"></span>
+  </div>
+</div>
+
+<p class="aide" id="attente" data-t="demarrage.attente">mesure en cours…</p>
+
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* ══ CE QUE CET ECRAN DIT, DANS LA LANGUE DE SON LECTEUR ════════════════
+   La meme mecanique que web/index.html, et volontairement la meme : T(), la
+   table des pluriels, la passe « data-t », le rendu d'une MARQUE. Elle est
+   recopiee et non partagee parce que ce depot sert ses pages en FileResponse,
+   sans rien assembler — c'est ce qui garde web/index.html ouvrable a la main
+   dans un navigateur, et banc_page.py tient les deux copies au meme contrat.
+
+   /admin, lui, reste en francais : il parle a celui qui heberge, apres coup.
+   Cet ecran-ci parle a celui qui vient d'installer le studio, et c'est le seul
+   moment ou personne n'a encore choisi sa langue. */
+const LANGUE_SOURCE = "fr";
+let LANGUE = LANGUE_SOURCE;
+let LANGUES = [LANGUE_SOURCE];
+let TEXTES = {};
+
+/* La regle du pluriel est celle de la LANGUE, jamais celle du site d'appel :
+   le francais met 0 ET 1 au singulier, l'anglais met 0 au pluriel. Copie de
+   traductions.PLURIELS, comme celle de web/index.html. */
+const PLURIELS = {
+  fr: n => (n > 1 ? 1 : 0),
+  en: n => (n !== 1 ? 1 : 0),
+};
+
+const _VALEUR = /\{([a-z_][a-z0-9_]*)\}/g;
+
+function T(cle, valeurs) {
+  let formes = TEXTES[cle];
+  if (formes === undefined || formes === null) return cle;
+  const v = Object.assign({}, valeurs || {});
+  if (Array.isArray(formes)) {
+    const regle = PLURIELS[LANGUE] || PLURIELS[LANGUE_SOURCE];
+    formes = formes[regle(Number(v.n) || 0)];
+  }
+  if (typeof formes !== "string") return cle;
+  let manque = false;
+  const rendu = formes.replace(_VALEUR, (tout, nom) => {
+    if (v[nom] === undefined || v[nom] === null) { manque = true; return tout; }
+    return String(v[nom]);
+  });
+  return manque ? formes : rendu;
+}
+
+/* traductions.rendre() : une MARQUE — {cle, valeurs} — mise en phrase.
+
+   LE SERVEUR MESURE, IL NE MET PAS EN PHRASE. Chaque ligne de la liste arrive
+   comme une cle et ses valeurs, jamais comme du texte : c'est ce qui permet a
+   la meme mesure de se lire en francais et en anglais, et c'est le mecanisme
+   des pannes (serveur.MARQUE_PANNE). UN SEUL NIVEAU d'imbrication, comme
+   la-bas : le nom d'une langue est lui-meme une cle du dictionnaire. */
+function rendreMarque(marque) {
+  if (!marque || typeof marque !== "object" || !marque.cle) return "";
+  const valeurs = {};
+  for (const [nom, v] of Object.entries(marque.valeurs || {}))
+    valeurs[nom] = (v && typeof v === "object" && v.cle)
+                 ? T(v.cle, v.valeurs || {}) : v;
+  return T(marque.cle, valeurs);
+}
+
+function traduirePage() {
+  for (const el of document.querySelectorAll("[data-t]"))
+    el.textContent = T(el.getAttribute("data-t"));
+  for (const el of document.querySelectorAll("*"))
+    for (const nom of el.getAttributeNames()) {
+      if (!nom.startsWith("data-t-")) continue;
+      el.setAttribute(nom.slice(7), T(el.getAttribute(nom)));
+    }
+}
+
+function peindreMenuLangue() {
+  const sel = $("#langue");
+  sel.innerHTML = "";
+  for (const lg of LANGUES) {
+    const o = document.createElement("option");
+    o.value = lg; o.textContent = T("page.langue." + lg);
+    sel.appendChild(o);
+  }
+  sel.value = LANGUE;
+  sel.onchange = async () => {
+    try {
+      await fetch("/api/textes", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ langue: sel.value }) });
+    } catch (e) { /* le cookie n'est pas pose : le rechargement le dira */ }
+    // RECHARGER, ET NON REPEINDRE — la meme decision que web/index.html, et
+    // ici elle est encore plus simple a tenir : la liste est remesuree et
+    // repeinte entierement par le serveur au chargement suivant.
+    location.reload();
+  };
+}
+
+/* ══ LES QUATRE VERDICTS, ET LE SERVEUR PORTE LA MEME TABLE ═════════════
+   serveur.VERDICTS les nomme, cette table-ci les peint, et banc_page.py releve
+   les deux pour qu'elles ne puissent pas diverger. Meme patron que
+   MENU_REGLAGE et CLE_REGLAGE, dont la derive a fait perdre un reglage pendant
+   des jours : ici, un verdict inconnu de cette table donnerait une ligne sans
+   couleur et sans etiquette — c'est-a-dire une ligne qui se lit « tout va
+   bien ». */
+const VERDICTS = { fait: "fait", bloque: "bloque", risque: "risque",
+                   option: "option" };
+
+function peindreLigne(l) {
+  const bloc = document.createElement("div");
+  const teinte = VERDICTS[l.verdict] || "option";
+  bloc.className = "ligne " + teinte;
+
+  const pastille = document.createElement("span");
+  pastille.className = "pastille " + teinte;
+
+  const corps = document.createElement("div");
+  corps.className = "corps";
+  const titre = document.createElement("b");
+  titre.textContent = rendreMarque(l.titre);
+  const dit = document.createElement("div");
+  dit.className = "dit";
+  dit.textContent = rendreMarque(l.dit);
+  corps.append(titre, dit);
+
+  // LE RENVOI PLUTOT QUE LE REGLAGE. /admin sait deja tout poser ; refaire ici
+  // ses formulaires ferait deux tables du meme reglage, et deux tables du meme
+  // reglage divergent. Cet ecran mesure le RESULTAT et montre la porte.
+  if (l.ou) {
+    const ou = document.createElement("a");
+    ou.className = "ou"; ou.href = l.ou;
+    ou.textContent = T("demarrage.aller");
+    corps.appendChild(ou);
+  }
+  // ET QUAND IL N'Y A PAS DE PORTE, ON LE DIT. COMFY_URL, OLLAMA_URL,
+  // STUDIO_LLM et STUDIO_AUTH sont lues UNE SEULE FOIS au chargement du
+  // module : aucune route ne les change, et un bouton serait un mensonge.
+  if (l.au_lancement) {
+    const fixe = document.createElement("span");
+    fixe.className = "fixe";
+    fixe.textContent = T("demarrage.au_lancement");
+    corps.appendChild(fixe);
+  }
+
+  const etiquette = document.createElement("span");
+  etiquette.className = "etiquette " + teinte;
+  etiquette.textContent = T("demarrage.verdict." + l.verdict);
+
+  bloc.append(pastille, corps, etiquette);
+  return bloc;
+}
+
+function peindre(d) {
+  $("#attente").hidden = true;
+  $("#entree").hidden = true;
+  $("#ecran").hidden = false;
+
+  const resume = $("#resume");
+  if (d.bloquants) {
+    resume.className = "resume bloque";
+    resume.textContent = T("demarrage.bloque.compte", { n: d.bloquants });
+  } else {
+    resume.className = "resume calme";
+    resume.textContent = T("demarrage.rien_ne_bloque");
+  }
+  if (d.risques)
+    resume.textContent += " " + T("demarrage.risque.compte", { n: d.risques });
+
+  const zone = $("#lignes");
+  zone.innerHTML = "";
+  for (const l of d.lignes || []) zone.appendChild(peindreLigne(l));
+
+  // SE REFERMER, ET POUVOIR SE ROUVRIR. Le meme bouton dans les deux sens :
+  // une liste qu'on ne peut pas faire taire finit masquee par habitude, et une
+  // liste qu'on ne peut pas rappeler oblige a retenir une adresse.
+  const bascule = $("#basculer");
+  bascule.textContent = T(d.ferme ? "demarrage.reouvrir" : "demarrage.fermer");
+  bascule.onclick = () => mesurer("POST", { ferme: !d.ferme });
+  $("#ditFerme").textContent = d.ferme ? T("demarrage.est_ferme") : "";
+}
+
+async function mesurer(methode, corps) {
+  let r;
+  try {
+    r = await fetch("/api/demarrage", {
+      method: methode || "GET", credentials: "same-origin",
+      headers: corps ? { "Content-Type": "application/json" } : undefined,
+      body: corps ? JSON.stringify(corps) : undefined });
+  } catch (e) {
+    $("#attente").hidden = false;
+    $("#attente").textContent = T("demarrage.injoignable");
+    return;
+  }
+  if (r.status === 403) {
+    // Pas de compte administrateur connecte et pas de jeton : on demande le
+    // jeton, comme /admin le fait.
+    $("#attente").hidden = true;
+    $("#ecran").hidden = true;
+    $("#entree").hidden = false;
+    $("#jeton").focus();
+    return;
+  }
+  peindre(await r.json());
+}
+
+$("#remesurer").onclick = () => mesurer();
+$("#entrer").onclick = async () => {
+  $("#alerteEntree").textContent = "";
+  let r;
+  try {
+    // LA MEME PORTE QUE /admin, ET LA SEULE. Poser le cookie « studio_admin »
+    // depuis cette page-ci aurait fait une seconde ecriture du meme
+    // enchainement — et c'est celle qui compte les jetons refuses.
+    r = await fetch("/api/admin/entrer", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jeton: $("#jeton").value }) });
+  } catch (e) {
+    $("#alerteEntree").textContent = T("demarrage.injoignable");
+    return;
+  }
+  if (!r.ok) { $("#alerteEntree").textContent = T("demarrage.jeton.refus"); return; }
+  $("#jeton").value = "";
+  mesurer();
+};
+$("#jeton").onkeydown = e => { if (e.key === "Enter") $("#entrer").click(); };
+
+/* TOUT ATTEND LE DICTIONNAIRE : sans ce verrou, la mesure pouvait revenir
+   avant les textes et la liste s'ecrivait « demarrage.carte.aucune » a
+   l'ecran. Le HTML, lui, porte deja son francais. */
+fetch("/api/textes", { credentials: "same-origin" })
+  .then(r => r.json())
+  .then(d => {
+    if (Array.isArray(d.langues) && d.langues.length) LANGUES = d.langues;
+    if (d.langue) LANGUE = d.langue;
+    TEXTES = d.textes || {};
+    document.documentElement.lang = LANGUE;
+    if (LANGUE !== LANGUE_SOURCE) traduirePage();
+    peindreMenuLangue();
+  })
+  .catch(() => { peindreMenuLangue(); })
+  .then(() => mesurer());
+</script>
+</body>
+</html>

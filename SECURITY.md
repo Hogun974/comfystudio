@@ -53,9 +53,21 @@ dans ce programme.
 
 `STUDIO_AUTH` vaut `obligatoire` : sans session, aucune route qui fait ou montre
 quelque chose ne répond. Restent ouvertes la page elle-même (sinon on ne
-pourrait pas afficher le formulaire de connexion), les routes de session, et les
-routes d'administration — qui vérifient elles-mêmes le jeton, et dont la
-fermeture condamnerait le seul moyen d'entrer sur une installation neuve.
+pourrait pas afficher le formulaire de connexion), les routes de session, les
+routes d'administration et `/demarrage` — qui vérifient elles-mêmes le jeton, et
+dont la fermeture condamnerait le seul moyen d'entrer sur une installation
+neuve.
+
+**`/api/demarrage` est de celles-là, et c'est la plus bavarde.** Elle sert la
+liste de contrôle de la [première mise en route](docs/premiere-mise-en-route.md) :
+qu'un compte porte encore le mot de passe tiré au premier démarrage, qu'aucune
+carte ne répond, que `STUDIO_AUTH` vaut `libre`. Elle est libre de session parce
+qu'il faut pouvoir amorcer une installation neuve, et **gardée par `admin_ok()`**
+— compte administrateur connecté, ou jeton d'administration. Servie sans cette
+garde, elle serait la meilleure page de reconnaissance qu'un studio puisse
+offrir ; `banc_page.py` relève les deux moitiés ensemble, la porte ouverte et le
+verrou derrière. Pour la même raison, `/api/compte` — qui se lit sans session —
+ne dit `demarrage` qu'à un administrateur.
 
 `STUDIO_AUTH=libre` rétablit l'ancien comportement : **plus aucune
 authentification**, chaque navigateur reçoit un identifiant opaque et son espace
@@ -64,7 +76,13 @@ occuper le GPU. Ne le combine pas avec `STUDIO_HOTE=0.0.0.0` sur un réseau que
 tu ne maîtrises pas.
 
 Au premier démarrage sans compte, un compte `admin` est créé et son mot de passe
-affiché une fois dans la console (ou fixé par `STUDIO_ADMIN_MDP`). Change-le.
+affiché une fois dans la console (ou fixé par `STUDIO_ADMIN_MDP`). Change-le —
+et **le studio le mesure maintenant** : un mot de passe qu'il a tiré lui-même
+porte un drapeau `origine`, effacé par `changer_mdp()` et par lui seul, et
+`/demarrage` en fait une ligne qui rougit tant que personne n'y a touché. Le
+drapeau ne dit rien du secret ; garder le mot de passe pour pouvoir comparer
+reviendrait à le conserver en clair. Un mot de passe posé par
+`STUDIO_ADMIN_MDP` n'est pas marqué : c'est une décision de celui qui héberge.
 
 ### Les mots de passe ne sont pas conservés
 

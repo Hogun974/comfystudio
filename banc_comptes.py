@@ -38,6 +38,7 @@ serveur.py LU sans etre importe — il tirerait aiohttp derriere lui.
     python banc_comptes.py
 """
 import ast
+import inspect
 import io
 import json
 import os
@@ -307,6 +308,106 @@ try:
     except C.ErreurCompte:
         deja = True
     dit(deja, "on ne prepare pas un enrolement sur un compte deja arme")
+
+    # ══ LE MOT DE PASSE D'ORIGINE ══════════════════════════════════════
+    # LE STUDIO TIRE UN MOT DE PASSE AU PREMIER DEMARRAGE ET L'AFFICHE UNE
+    # FOIS. Il defile dans une console, il se recolle dans un fil de
+    # discussion, et il reste le seul secret du studio tant que personne ne l'a
+    # change — mais RIEN ne savait dire s'il l'avait ete. « Change-le » etait
+    # une phrase de documentation, pas une mesure : l'ecran de premiere mise en
+    # route en a fait une ligne qui rougit, et cette ligne tient a un drapeau.
+    #
+    # UN DRAPEAU ET NON UNE COMPARAISON. Garder le mot de passe pour pouvoir
+    # dire « c'est encore lui » reviendrait a le conserver en clair, ce que
+    # comptes.py refuse en tete de fichier. Le drapeau ne dit rien du secret :
+    # il dit que personne n'y a touche.
+    print("\n  ── le mot de passe tire au demarrage ──")
+    # LE BANC ROUGIT, IL NE MEURT PAS, et cette ligne-ci est ce qui l'y oblige.
+    # Sur un comptes.py qui ne connait pas « origine », l'appel a creer()
+    # levait un TypeError et emportait avec lui les soixante verifications
+    # suivantes — banc_mutations.py rend alors « le banc s'est casse au lieu de
+    # rougir », et le SENS INVERSE, le banc NEUF lance sur le code d'AVANT, ne
+    # mesurait plus rien du tout. C'est le meme geste que l'ouverture sous try
+    # de web/demarrage.html dans banc_page.py.
+    #
+    # LA SIGNATURE ET NON UN try/except : « except TypeError » attraperait
+    # aussi un appel mal ecrit ici, et se declarerait alors satisfait d'un
+    # comptes.py parfaitement sain.
+    sait_marquer = "origine" in inspect.signature(C.Comptes.creer).parameters
+    dit(sait_marquer,
+        "creer() sait marquer le mot de passe que le studio vient de tirer",
+        ", ".join(inspect.signature(C.Comptes.creer).parameters))
+    if sait_marquer:
+        r3 = neuf()
+        r3.creer("origine", MDP, admin=True, origine=True)
+        # LES DEUX SENS, ET LE SECOND EST LE TEMOIN. Sans lui, « le compte
+        # marque est nomme » serait vrai d'une methode qui nommerait TOUS les
+        # comptes.
+        dit(r3.mdp_d_origine("origine") and not r3.mdp_d_origine("jordan"),
+            "seul le compte cree avec « origine » porte la marque",
+            f"marques : {r3.comptes_d_origine()}")
+        dit(r3.comptes_d_origine() == ["origine"],
+            "et comptes_d_origine() le NOMME : « il reste un mot de passe "
+            "d'origine » enverrait chercher lequel dans une page de vingt lignes",
+            str(r3.comptes_d_origine()))
+        r3.changer_mdp("origine", "un-autre-mot-de-passe")
+        dit(not r3.mdp_d_origine("origine") and r3.comptes_d_origine() == [],
+            "changer le mot de passe efface la marque, des deux cotes")
+        # LE DISQUE SE RELIT ICI ET PAS PLUS BAS, et l'ordre est la mesure : la
+        # premiere version de ce cas relisait apres authentifier(), qui ecrit
+        # « vu » et RESAUVE tout le registre. Elle se comptait donc verte contre
+        # un changer_mdp() qui aurait sauve AVANT d'effacer la marque — le
+        # defaut exact qu'elle nomme, repare par la ligne suivante. Trou releve
+        # par banc_mutations.py le 3 septembre 2026.
+        relu3 = C.Comptes(CHEMIN, "secret-de-banc")
+        dit(not relu3.mdp_d_origine("origine"),
+            "l'effacement est sur le DISQUE, pas seulement en memoire : sinon "
+            "l'ecran rougirait de nouveau au prochain demarrage")
+        dit(bool(r3.authentifier("origine", "un-autre-mot-de-passe")),
+            "et le compte s'ouvre avec le nouveau : la marque n'est qu'une note")
+
+    # UNE SEULE ECRITURE DE L'EFFACEMENT, et c'est la lecon que ce depot a
+    # payee trois fois : tant qu'il y a deux ecritures du meme enchainement,
+    # elles divergent. Les DEUX portes qui changent un mot de passe —
+    # /api/compte/mdp et /api/admin/comptes — passent par changer_mdp(). Poser
+    # l'effacement dans les routes l'aurait recopie, et la seconde copie aurait
+    # fini par manquer : l'ecran aurait alors reclame indefiniment un
+    # changement deja fait, ce qui est la facon la plus sure de le faire
+    # ignorer.
+    COMPTES_PY = io.open(os.path.join(ICI, "comptes.py"), encoding="utf-8",
+                         newline=None).read()
+    arbre_c = ast.parse(COMPTES_PY)
+    efface = [n for n in ast.walk(arbre_c)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+              and n.func.attr == "pop" and n.args
+              and isinstance(n.args[0], ast.Constant)
+              and n.args[0].value == "origine"]
+    dans_changer = [f for f in ast.walk(arbre_c)
+                    if isinstance(f, ast.FunctionDef) and f.name == "changer_mdp"
+                    and any(e is x for e in efface for x in ast.walk(f))]
+    dit(len(efface) == 1 and len(dans_changer) == 1,
+        "la marque n'est effacee qu'a UN endroit, et c'est changer_mdp()",
+        f"{len(efface)} effacement(s)")
+
+    # ── ET LE SERVEUR NE MARQUE QUE CE QU'IL A TIRE ──────────────────
+    # STUDIO_ADMIN_MDP laisse l'hebergeur poser le mot de passe d'avance, dans
+    # un docker-compose par exemple. Celui-la est une DECISION, et il n'y a
+    # rien a en mesurer : le marquer ferait rougir pour toujours une ligne que
+    # personne ne peut eteindre autrement qu'en changeant un secret qu'il a
+    # choisi. Le drapeau ne vaut donc que pour le mot de passe tire au sort.
+    SERVEUR_TXT = io.open(os.path.join(ICI, "serveur.py"), encoding="utf-8",
+                          newline=None).read()
+    arbre_s = ast.parse(SERVEUR_TXT)
+    creations = [n for n in ast.walk(arbre_s)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                 and n.func.attr == "creer"
+                 and any(k.arg == "origine" for k in n.keywords)]
+    dit(len(creations) == 1
+        and "ADMIN_MDP" in ast.unparse(
+            next(k.value for k in creations[0].keywords if k.arg == "origine")),
+        "le serveur ne marque « origine » que le mot de passe qu'il a TIRE, "
+        "jamais celui de STUDIO_ADMIN_MDP",
+        "; ".join(ast.unparse(c)[:60] for c in creations) or "aucune creation")
 
     # ══ LA PORTE DU SERVEUR ════════════════════════════════════════════
     # SIX CHIFFRES FONT UN MILLION, ET CE N'EST PAS BEAUCOUP. La fenetre de

@@ -33,6 +33,7 @@ qui ne voit pas ce defaut, c'est le pire des filets — il rassure. Chacun porte
 desormais, a l'endroit de la decision, ce que la version d'avant laissait
 passer.
 """
+import ast
 import io
 import os
 import re
@@ -883,6 +884,183 @@ dormantes_t = sorted(c for c in TR.TEXTES
 dit(not dormantes_t, "et aucune cle « page. » ne dort au dictionnaire",
     ", ".join(dormantes_t[:3]) or
     f"{sum(1 for c in TR.TEXTES if c.startswith('page.'))} cles de page")
+
+
+# ══ L'ECRAN DE PREMIERE MISE EN ROUTE ══════════════════════════════════
+# web/demarrage.html est la SECONDE page traduite du depot — /admin, lui, reste
+# en francais parce qu'il parle a celui qui heberge, apres coup. Celle-ci parle
+# a quelqu'un qui vient de lancer le studio, c'est-a-dire au seul moment ou
+# personne n'a encore choisi sa langue : elle est donc tenue au meme contrat que
+# web/index.html, et les cinq releves ci-dessous sont les siens, refaits sur
+# elle.
+#
+# S'Y AJOUTENT DEUX COUPLAGES QUI N'EXISTENT QUE POUR CET ECRAN :
+#   - la table des VERDICTS, ecrite des deux cotes (serveur.py la nomme, la page
+#     la peint) — meme patron que MENU_REGLAGE et CLE_REGLAGE, dont la derive a
+#     fait perdre un reglage pendant des jours ;
+#   - la regle qui fait tenir l'ecran a cote de /admin sans deriver : il MESURE
+#     et il RENVOIE, il ne repose aucun reglage. Elle se verifie, et c'est ce
+#     qui l'empeche d'etre une intention.
+print("\n  ── l'ecran de premiere mise en route ──")
+
+# ZERO FICHIER VAUT NON, ET EXPLICITEMENT. Ouvrir sans filet ferait MOURIR ce
+# banc la ou il doit rougir — sur un depot ou l'ecran n'existe pas encore, ou
+# sur celui d'ou on l'aurait retire. Un banc qui se casse ne dit rien : c'est
+# la distinction que banc_mutations.py fait entre « casse » et « rouge », et
+# elle vaut aussi pour un fichier absent.
+try:
+    DEMARRAGE = io.open(os.path.join(ICI, "web", "demarrage.html"),
+                        encoding="utf-8", newline=None).read()
+except OSError as _e:
+    DEMARRAGE = ""
+dit(bool(DEMARRAGE),
+    "l'ecran de premiere mise en route existe : web/demarrage.html",
+    f"{len(DEMARRAGE)} octets" if DEMARRAGE else "fichier absent")
+
+# DEPUIS LE DEBUT DU FICHIER, ET NON DEPUIS <body> comme pour index.html : le
+# <title> de cette page-ci porte une cle, et il vit dans l'en-tete. Le laisser
+# hors du releve laissait un texte francais dans une interface anglaise, sans
+# qu'aucun cas ne puisse le voir. La borne haute reste la meme — le script
+# porte « <span class="…"> » dans des chaines, que l'analyseur lirait comme des
+# balises — et le <style> traverse sans dommage : son contenu est une donnee,
+# et _Marques n'en retient que ce qui tombe DANS un element porteur de
+# « data-t ».
+_CORPS_DEM = DEMARRAGE.split("<script>", 1)[0]
+_md = _Marques()
+_md.feed(_CORPS_DEM)
+
+ecarts_d = []
+for _c, _texte in _md.textes:
+    attendu = (TR.TEXTES.get(_c) or {}).get("fr")
+    if _texte != attendu:
+        ecarts_d.append(f"{_c} : page « {_texte} » vs dictionnaire « {attendu} »")
+for _c, _attribut, _valeur in _md.attributs:
+    attendu = (TR.TEXTES.get(_c) or {}).get("fr")
+    if _valeur != attendu:
+        ecarts_d.append(f"{_c} [{_attribut}] : page « {_valeur} » vs "
+                        f"dictionnaire « {attendu} »")
+dit(len(_md.textes) + len(_md.attributs) > 0 and not ecarts_d,
+    "chaque texte francais de l'ecran est EXACTEMENT celui du dictionnaire",
+    " / ".join(ecarts_d[:2])
+    or f"{len(_md.textes)} textes, {len(_md.attributs)} attributs")
+
+dit(bool(_md.attributs) and not _md.nus,
+    "et chaque titre, invite et aria-label de l'ecran passe par une cle",
+    ", ".join(_md.nus[:3]) or f"{len(_md.attributs)} attributs")
+
+# LES TITRES DES LIGNES SONT COMPOSES — « demarrage.<nom> », serveur._ligne —
+# et on les releve dans les SITES D'APPEL, par l'arbre de syntaxe. Un motif de
+# texte decrirait une facon d'ecrire l'appel, jamais l'appel : la meme lecon que
+# les quatre trous de ce banc et que banc_traductions.py.
+_arbre_srv = ast.parse(SERVEUR)
+_appels_ligne = [n for n in ast.walk(_arbre_srv)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                 and n.func.id == "_ligne"]
+_noms_lignes = {a.args[0].value for a in _appels_ligne
+                if a.args and isinstance(a.args[0], ast.Constant)}
+_titres_dem = {"demarrage." + n for n in _noms_lignes}
+
+# COTE SERVEUR, ON NE LIT QUE CE QUI ENTRE DANS _marque() — et non toute chaine
+# du fichier qui ressemble a une cle. « web/demarrage.html », le chemin que sert
+# page_demarrage(), passait sinon pour une entree de dictionnaire manquante :
+# le releve rougissait sur un nom de fichier. La meme lecon que le CSS plus
+# haut, ou ce banc s'etait signale lui-meme en lisant une classe dans un
+# commentaire — on releve ce qui AGIT, pas ce qui s'ecrit.
+_marques_srv = [n for n in ast.walk(_arbre_srv)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "_marque"]
+_cites_srv = {c.value for a in _marques_srv for c in ast.walk(a)
+              if isinstance(c, ast.Constant) and isinstance(c.value, str)
+              and re.fullmatch(r"demarrage\.[a-z0-9_.]+", c.value)}
+
+_cites_dem = set(re.findall(r'["\'](demarrage\.[a-z0-9_.]*)["\']', DEMARRAGE))
+_prefixes_dem = {c for c in _cites_dem if c.endswith(".")}
+_cites_dem = (_cites_dem - _prefixes_dem) | _cites_srv
+
+# « demarrage. » TOUT COURT NE DOIT PAS EXISTER DANS LA PAGE, et c'est un
+# garde-fou sur le releve lui-meme : un tel litteral serait lu comme un
+# prefixe, couvrirait la famille entiere, et rendrait muette la verification de
+# dormance juste en dessous — verte parce que plus rien ne peut y dormir. C'est
+# la faute que ce depot a corrigee treize fois d'un coup ailleurs : une
+# assertion vraie parce qu'elle ne mesure plus rien.
+dit("demarrage." not in _prefixes_dem,
+    "aucun releve ne cite « demarrage. » nu, qui couvrirait toute la famille",
+    ", ".join(sorted(_prefixes_dem)) or "aucun prefixe nu")
+
+
+def couvre_dem(c):
+    return (c in _cites_dem or c in _titres_dem
+            or any(c.startswith(p) for p in _prefixes_dem))
+
+
+inventees_d = sorted(c for c in (_cites_dem | _titres_dem) if c not in TR.TEXTES)
+dit(len(_noms_lignes) > 0 and _cites_dem and not inventees_d,
+    "toute cle « demarrage. » citee par l'ecran ou par le serveur existe",
+    ", ".join(inventees_d[:3]) or
+    f"{len(_cites_dem)} citees, {len(_noms_lignes)} titres de lignes composes")
+
+dormantes_d = sorted(c for c in TR.TEXTES
+                     if c.startswith("demarrage.") and not couvre_dem(c))
+dit(not dormantes_d, "et aucune cle « demarrage. » ne dort au dictionnaire",
+    ", ".join(dormantes_d[:3]) or
+    f"{sum(1 for c in TR.TEXTES if c.startswith('demarrage.'))} cles")
+
+# ── LES QUATRE VERDICTS, DES DEUX COTES ──────────────────────────────
+# serveur.VERDICTS les nomme, la page les peint. Un verdict connu du serveur et
+# inconnu de la page donne une ligne sans couleur et sans etiquette — donc une
+# ligne qu'on lit « tout va bien », ce qui est exactement l'inverse du service
+# rendu par cet ecran.
+_v_srv = re.search(r'^VERDICTS = \(([^)]*)\)', SERVEUR, re.M)
+_v_page = re.search(r'const VERDICTS = \{(.*?)\};', DEMARRAGE, re.S)
+_verdicts_srv = set(re.findall(r'"([a-z]+)"', _v_srv.group(1))) if _v_srv else set()
+_verdicts_page = set(re.findall(r'([a-z]+)\s*:', _v_page.group(1))) if _v_page else set()
+dit(len(_verdicts_srv) >= 3 and _verdicts_srv == _verdicts_page,
+    "la page peint exactement les verdicts que le serveur nomme",
+    f"{sorted(_verdicts_srv)} contre {sorted(_verdicts_page)}")
+
+# ET CHAQUE VERDICT REELLEMENT POSE EST DANS LA TABLE. La table peut etre juste
+# des deux cotes pendant qu'un site d'appel en ecrit un cinquieme a la main :
+# le second argument de _ligne() est donc relu, ternaires compris.
+_poses = set()
+for _a in _appels_ligne:
+    if len(_a.args) >= 2:
+        _poses |= {c.value for c in ast.walk(_a.args[1])
+                   if isinstance(c, ast.Constant) and isinstance(c.value, str)}
+dit(_poses and _poses <= _verdicts_srv,
+    "et chaque verdict pose par une ligne figure dans cette table",
+    f"{sorted(_poses - _verdicts_srv)} hors table" if _poses - _verdicts_srv
+    else f"{len(_poses)} verdicts poses sur {len(_appels_ligne)} lignes")
+
+# ── L'ECRAN MESURE, IL NE REGLE PAS ──────────────────────────────────
+# C'EST LA REGLE QUI LE FAIT TENIR A COTE DE /admin. Six onglets y posent deja
+# les machines, les jetons d'agent, les cles d'API, le choix local/distant par
+# modalite, les comptes, le plafond du nuage et le reentrainement de
+# l'aiguilleur. Un ecran d'accueil qui redemanderait l'un d'eux serait une
+# SECONDE table du meme reglage — et ce depot a mesure trois fois que deux
+# tables du meme reglage divergent. Il ne pose donc que ce que personne d'autre
+# ne pose (la langue) et ce qui n'appartient qu'a lui (se refermer), et il
+# emprunte la porte d'administration au lieu d'en ouvrir une seconde.
+_APPELS_PERMIS = {"/api/textes", "/api/demarrage", "/api/admin/entrer"}
+_appels_dem = set(re.findall(r'fetch\("([^"]+)"', DEMARRAGE))
+dit(_appels_dem == _APPELS_PERMIS,
+    "l'ecran n'appelle que la langue, sa propre mesure et la porte d'admin",
+    ", ".join(sorted(_appels_dem - _APPELS_PERMIS)) or
+    ", ".join(sorted(_appels_dem)))
+
+# ── ET SA MESURE EST GARDEE ──────────────────────────────────────────
+# Cette reponse dit qu'un compte porte encore son mot de passe d'origine,
+# qu'aucune carte ne repond et que STUDIO_AUTH vaut « libre ». Servie sans
+# garde, elle serait la meilleure page de reconnaissance qu'un studio puisse
+# offrir — et elle est ATTEIGNABLE SANS SESSION, puisque exiger_compte la laisse
+# passer pour que l'amorçage d'une installation neuve reste possible. Les deux
+# moities se relevent donc ensemble : la porte ouverte, et le verrou derriere.
+_corps_api_dem = (SERVEUR.split("async def api_demarrage(req):", 1)[-1]
+                  .split("\ndef ", 1)[0].split("\nasync def ", 1)[0])
+dit("admin_ok(req)" in _corps_api_dem
+    and 'chemin == "/api/demarrage"' in SERVEUR,
+    "la mesure est libre de session mais gardee par le jeton d'administration",
+    "admin_ok present" if "admin_ok(req)" in _corps_api_dem
+    else "AUCUNE garde dans api_demarrage")
 
 
 # ══ LA REGLE DU PLURIEL EST CELLE DE LA LANGUE ═════════════════════════

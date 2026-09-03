@@ -6,6 +6,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 ## Installer et démarrer
 
 - [Installation](installation.md) — prérequis, installeur, exécutable Windows, ce qu'il télécharge selon la carte, et le premier démarrage.
+- [La première mise en route](premiere-mise-en-route.md) — **`/demarrage`, l'écran qui dit ce qui manque encore** : une liste de contrôle qui mesure l'état réel — la langue, le mot de passe d'origine, le second facteur, les cartes, les moteurs, les clés — et renvoie vers `/admin` sans redemander un seul de ses réglages. Ce qui bloque vraiment, ce qui n'y ressemble que, et pourquoi le modèle de langage n'en fait pas partie.
 - [En conteneur](en-conteneur.md) — Docker et Compose, ComfyUI conteneurisé, volumes, et le tableau complet des variables d'environnement.
 - [Deux studios sur la même machine](deux-studios-sur-la-meme-machine.md) — **à lire avant de lancer un second studio** : par défaut il écrit dans le volume du premier et un `down -v` efface les données de l'autre.
 - [Réglages](reglages.md) — les variables d'environnement à poser avant de lancer, hors conteneur.

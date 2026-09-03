@@ -670,6 +670,15 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     <a class="lien-admin" id="lienAdmin" href="/admin" style="display:none"
        data-t-title="page.admin.title" data-t="page.admin"
        title="administration : machines, comptes, clés">admin</a>
+    <!-- LA PREMIERE MISE EN ROUTE, ET CE LIEN DISPARAIT. Il ne s'affiche que
+         pour un administrateur, et seulement tant que l'ecran n'a pas ete
+         referme (« demarrage », /api/compte) : un lien permanent vers une
+         liste entierement verte est un lien qu'on cesse de voir, et le jour ou
+         quelque chose y rougira personne n'ira regarder. Le rouvrir ensuite se
+         fait depuis /admin, ou l'adresse est ecrite. -->
+    <a class="lien-admin" id="lienDemarrage" href="/demarrage" style="display:none"
+       data-t-title="page.demarrage.title" data-t="page.demarrage"
+       title="première mise en route : ce qui manque encore à ce studio">à faire</a>
     <!-- L'infobulle tenait sur DEUX lignes de source, saut de ligne compris
          dans l'attribut : le texte affiche portait donc un retour a la ligne
          que le dictionnaire n'aurait pas su reproduire, et le releve des deux
@@ -1939,6 +1948,12 @@ async function peindreCompte() {
     if (!document.querySelector(".voile-entree")) formulaireEntree();
   }
   document.querySelector("#lienAdmin").style.display = d.admin ? "" : "none";
+  // « d.demarrage » est deja restreint aux administrateurs cote serveur — le
+  // « et » y est ecrit, parce que /api/compte se lit SANS session et que « ce
+  // studio n'a jamais ete configure » n'est pas une phrase a servir a un
+  // visiteur anonyme. On ne le recopie pas ici : une seconde condition, posee
+  // dans la page, laisserait croire que la route peut se relacher.
+  document.querySelector("#lienDemarrage").style.display = d.demarrage ? "" : "none";
   if (d.connecte) {
     const qui = document.createElement("span");
     qui.innerHTML = `<b>${ech(d.nom)}</b>${

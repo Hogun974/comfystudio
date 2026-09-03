@@ -357,8 +357,15 @@ BESOINS = {
     # un banc a studio ; ici le champ est une constante, donc les deux moities
     # se relevent au meme endroit. Sans ce fichier, le banc meurt a l'ouverture,
     # ce qui ressemblerait a une mutation attrapee.
-    "banc_page.py": ["banc_page.py", "web/index.html", "traductions.py",
-                     "serveur.py"],
+    # web/demarrage.html DEPUIS L'ECRAN DE PREMIERE MISE EN ROUTE : c'est la
+    # seconde page traduite du depot, et banc_page.py lui applique les memes
+    # releves qu'a index.html plus deux couplages qui n'existent que pour elle
+    # — la table des verdicts, ecrite des deux cotes, et la regle qui la tient
+    # a cote de /admin (elle mesure, elle ne repose aucun reglage). Le fichier
+    # est ouvert sous try la-bas : sans lui le banc ROUGIT sur un cas nomme au
+    # lieu de mourir, et c'est ce qui rend mesurable le sens inverse.
+    "banc_page.py": ["banc_page.py", "web/index.html", "web/demarrage.html",
+                     "traductions.py", "serveur.py"],
     # LE SEUL BANC AVEC banc_page.py A LIRE DEUX MONDES : comptes.py qu'il
     # IMPORTE (et mfa.py avec lui, que comptes.py importe en tete), et
     # serveur.py qu'il LIT par l'arbre de syntaxe pour la derniere section — un
@@ -3088,9 +3095,304 @@ FACTEUR = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  L'ECRAN DE PREMIERE MISE EN ROUTE — dix-huit mutations
+# ──────────────────────────────────────────────────────────────────────
+# web/demarrage.html MESURE ce qui manque a un studio neuf et RENVOIE vers
+# /admin ; il ne repose aucun reglage. Toute sa valeur tient a cela : /admin
+# sait deja tout poser, et un ecran d'accueil qui redemanderait l'un de ses
+# reglages serait une SECONDE table du meme reglage. Les mutations ci-dessous
+# defont, une par une, chaque regle qui l'y tient.
+#
+# LE SENS INVERSE, MESURE LE 3 SEPTEMBRE 2026. Ces sections de banc sont NEES
+# avec l'ecran : il n'existe pas de « filet d'avant » a leur opposer, comme
+# pour banc_durees.py, banc_adulte.py et les douze de banc_refaire.py. Il a
+# donc ete pris comme pour banc_catalogue — le banc NEUF lance sur le code
+# d'AVANT, reconstruit en retirant l'ecran, ses routes, sa famille du
+# dictionnaire et le drapeau « origine » des comptes. Voici ce qu'il a rendu :
+#
+#   - banc_page.py NEUF sur le code d'AVANT : ROUGIT sur HUIT de ses dix
+#     lignes neuves, et ne meurt pas. C'est la premiere mutation ci-dessous
+#     qui rend ce chiffre possible : le releve ouvre web/demarrage.html sous
+#     try et pose un cas NOMME, au lieu de lever a l'ouverture. Sans elle,
+#     banc_mutations aurait rendu « le banc s'est casse au lieu de rougir »
+#     pour les neuf autres, et le sens inverse n'aurait rien mesure du tout.
+#     LES DEUX QUI RESTENT VERTES LE SONT A VIDE, et il faut le dire : « aucun
+#     releve ne cite demarrage. nu » et « aucune cle demarrage. ne dort » sont
+#     vraies d'un dictionnaire qui ne porte aucune cle de cette famille. Elles
+#     ne mesurent quelque chose qu'a partir du moment ou l'ecran existe — leur
+#     sens inverse a elles, c'est leur mutation et rien d'autre.
+#   - banc_comptes.py NEUF sur le code d'AVANT : ROUGIT sur trois lignes, dont
+#     « creer() sait marquer le mot de passe que le studio vient de tirer ».
+#     Il MOURAIT d'abord, sur « TypeError: Comptes.creer() got an unexpected
+#     keyword argument 'origine' », et emportait ses soixante verifications
+#     avec lui — la section lit desormais la SIGNATURE avant d'appeler, et
+#     garde le reste derriere. C'est la meme reparation que le try de
+#     banc_page.py, et elle a sa mutation.
+#   - banc_traductions.py NEUF sur le code d'AVANT : ROUGIT sur « une marque
+#     qui compte accorde sa forme » — « 1 echange / 2 echange / 1 exchanges /
+#     2 exchanges ». LE DEFAUT PREEXISTAIT : rendre() ne passait pas « nombre »
+#     a T() depuis toujours, et personne ne pouvait le voir parce qu'aucune
+#     marque ne comptait quoi que ce soit. L'autre ligne neuve — le nom de
+#     valeur qui heurte un parametre de T() — y est verte a vide, pour la meme
+#     raison : aucune entree d'avant ne heurtait.
+DEMARRAGE = [
+    dict(
+        nom="l'ecran de premiere mise en route disparait",
+        banc="banc_page.py",
+        imite="le code d'AVANT : la page n'existe pas. Le releve qui l'ouvre "
+              "doit ROUGIR sur un cas nomme, jamais mourir a l'ouverture — un "
+              "banc qui se casse ne dit rien du defaut qu'on lui presente",
+        rougit="l'ecran de premiere mise en route existe",
+        editions=[
+            ("web/demarrage.html", motif(r"\A[\s\S]+\Z", "")),
+        ]),
+    dict(
+        nom="un texte de l'ecran reformule d'un seul cote",
+        banc="banc_page.py",
+        imite="la page francaise reste juste, le studio ne leve pas, et un "
+              "lecteur anglais se retrouve devant une traduction devenue "
+              "fausse sans que personne au studio ne l'apprenne jamais",
+        rougit="chaque texte francais de l'ecran est EXACTEMENT celui du dictionnaire",
+        editions=[
+            ("web/demarrage.html", brut(
+                'data-t="demarrage.retour">retour au studio</a>',
+                'data-t="demarrage.retour">revenir au studio</a>')),
+        ]),
+    dict(
+        nom="une invite de l'ecran ecrite sans cle",
+        banc="banc_page.py",
+        imite="le champ du jeton garde son invite FRANCAISE dans une interface "
+              "anglaise — et c'est le seul champ que voie quelqu'un qui n'est "
+              "pas encore entre",
+        rougit="et chaque titre, invite et aria-label de l'ecran passe par une cle",
+        editions=[
+            ("web/demarrage.html", brut(
+                '    <input id="jeton" type="password" data-t-placeholder="demarrage.jeton.invite"\n',
+                '    <input id="jeton" type="password"\n')),
+        ]),
+    dict(
+        nom="la page compose « demarrage. » nu",
+        banc="banc_page.py",
+        imite="le releve de citations lit alors un PREFIXE qui couvre la "
+              "famille entiere : plus aucune cle ne peut y dormir, et la "
+              "verification suivante devient verte parce qu'elle ne mesure "
+              "plus rien — la faute corrigee treize fois d'un coup ailleurs",
+        rougit="aucun releve ne cite « demarrage. » nu",
+        editions=[
+            ("web/demarrage.html", brut(
+                'T("demarrage.verdict." + l.verdict)',
+                'T("demarrage." + "verdict." + l.verdict)')),
+        ]),
+    dict(
+        nom="le serveur cite une cle qui n'existe pas",
+        banc="banc_page.py",
+        imite="T() rend SA PROPRE CLE : la ligne affiche « demarrage.mdp.changee » "
+              "a l'ecran, et seulement pour qui regarde",
+        rougit="toute cle « demarrage. » citee par l'ecran ou par le serveur existe",
+        editions=[
+            ("serveur.py", brut('_marque("demarrage.mdp.change")',
+                                '_marque("demarrage.mdp.changee")')),
+        ]),
+    dict(
+        nom="une cle de l'ecran cesse d'etre posee",
+        banc="banc_page.py",
+        imite="une entree que plus aucun site ne pose : sa traduction se "
+              "perime sans bruit, et le dictionnaire donne l'impression de "
+              "couvrir un ecran qui n'existe plus",
+        rougit="et aucune cle « demarrage. » ne dort au dictionnaire",
+        editions=[
+            ("serveur.py", brut('_marque("demarrage.cles.aucune")',
+                                '_marque("demarrage.cles.posees", n=0, qui="")')),
+        ]),
+    dict(
+        nom="la table des verdicts derive entre la page et le serveur",
+        banc="banc_page.py",
+        imite="MENU_REGLAGE et CLE_REGLAGE une seconde fois : un verdict connu "
+              "du serveur et inconnu de la page donne une ligne sans couleur "
+              "et sans etiquette, c'est-a-dire une ligne qu'on lit « tout va "
+              "bien »",
+        rougit="la page peint exactement les verdicts que le serveur nomme",
+        editions=[
+            ("web/demarrage.html", brut('option: "option" };',
+                                        'absent: "option" };')),
+        ]),
+    dict(
+        nom="une ligne pose un verdict absent de la table",
+        banc="banc_page.py",
+        imite="la table peut etre juste des DEUX cotes pendant qu'un site "
+              "d'appel en ecrit un cinquieme a la main : la ligne des cles se "
+              "peint alors sans couleur",
+        rougit="et chaque verdict pose par une ligne figure dans cette table",
+        editions=[
+            ("serveur.py", brut('return _ligne("cles", "option",',
+                                'return _ligne("cles", "neutre",')),
+        ]),
+    dict(
+        nom="l'ecran se remet a poser un reglage de /admin",
+        banc="banc_page.py",
+        imite="la SECONDE table du meme reglage — et deux tables du meme "
+              "reglage divergent, ce depot l'a mesure trois fois. C'est la "
+              "regle qui fait tenir cet ecran a cote de /admin sans deriver",
+        rougit="l'ecran n'appelle que la langue, sa propre mesure et la porte d'admin",
+        editions=[
+            ("web/demarrage.html", brut(
+                '$("#remesurer").onclick = () => mesurer();',
+                '$("#remesurer").onclick = () => fetch("/api/admin/cles",\n'
+                '  { method: "POST", body: "{}" });')),
+        ]),
+    dict(
+        nom="la mesure de l'ecran perd sa garde",
+        banc="banc_page.py",
+        imite="/api/demarrage est LIBRE de session — exiger_compte la laisse "
+              "passer pour que l'amorçage d'une installation neuve reste "
+              "possible. Sans admin_ok, elle dit a n'importe quel visiteur "
+              "qu'un compte porte encore son mot de passe d'origine et "
+              "qu'aucune carte ne repond : la meilleure page de reconnaissance "
+              "qu'un studio puisse offrir",
+        rougit="la mesure est libre de session mais gardee par le jeton d'administration",
+        editions=[
+            ("serveur.py", brut(
+                '    if not admin_ok(req):\n'
+                '        return web.json_response({"erreur": "acces refuse"}, status=403)\n'
+                '    if req.method == "POST":\n'
+                '        try:\n'
+                '            d = await req.json()\n'
+                '        except Exception:\n'
+                '            return web.json_response(\n'
+                '                {"erreur": T("erreur.corps_illisible", langue_de(req))}, status=400)\n'
+                '        _ecrire_demarrage(bool(d.get("ferme")))',
+                '    if req.method == "POST":\n'
+                '        try:\n'
+                '            d = await req.json()\n'
+                '        except Exception:\n'
+                '            return web.json_response(\n'
+                '                {"erreur": T("erreur.corps_illisible", langue_de(req))}, status=400)\n'
+                '        _ecrire_demarrage(bool(d.get("ferme")))')),
+        ]),
+
+    # ── le mot de passe d'origine, cote registre ──────────────────────
+    dict(
+        nom="creer() ne sait plus marquer un mot de passe d'origine",
+        banc="banc_comptes.py",
+        imite="le code d'AVANT, cote registre. Cette mutation-ci existe pour "
+              "que le banc ROUGISSE au lieu de MOURIR : sans la ligne qui lit "
+              "la signature, l'appel a creer(origine=True) levait un TypeError "
+              "et emportait les soixante verifications suivantes — le banc "
+              "s'est casse au lieu de rougir, et le sens inverse ne mesurait "
+              "plus rien",
+        rougit="creer() sait marquer le mot de passe que le studio vient de tirer",
+        editions=[
+            # LES DEUX, ET PAS SEULEMENT LE PARAMETRE. Retirer « origine=False »
+            # seul laissait « if origine: » sur un nom qui n'existe plus : le
+            # banc mourait sur un NameError au lieu de rougir, c'est-a-dire
+            # exactement le defaut que cette mutation-ci vient mesurer, retourne
+            # contre elle. Une mutation aussi s'eprouve.
+            ("comptes.py", brut(", origine=False", "")),
+            ("comptes.py", brut(
+                "        if origine:\n"
+                '            self.gens[nom.lower()]["origine"] = True\n', "")),
+        ]),
+    dict(
+        nom="tout compte cree est marque « origine »",
+        banc="banc_comptes.py",
+        imite="l'ecran reclame un changement de mot de passe a chaque compte "
+              "creee a la main — une ligne rouge qu'aucun geste n'eteint, "
+              "c'est-a-dire une ligne qu'on apprend a ignorer",
+        rougit="seul le compte cree avec « origine » porte la marque",
+        editions=[
+            ("comptes.py", brut("        if origine:\n", "        if True:\n")),
+        ]),
+    dict(
+        nom="changer le mot de passe n'efface plus la marque",
+        banc="banc_comptes.py",
+        imite="l'ecran reclame indefiniment un changement DEJA FAIT : la facon "
+              "la plus sure de le faire ignorer, et il ne rougirait plus le "
+              "jour ou un vrai mot de passe d'origine trainerait",
+        rougit="changer le mot de passe efface la marque, des deux cotes",
+        editions=[
+            ("comptes.py", brut('        c.pop("origine", None)\n', "")),
+        ]),
+    dict(
+        nom="l'effacement de la marque n'atteint pas le disque",
+        banc="banc_comptes.py",
+        imite="la marque disparait en memoire et reste sur le disque : l'ecran "
+              "est vert jusqu'au redemarrage, et rouge de nouveau apres — le "
+              "genre de defaut qu'on met des semaines a croire",
+        rougit="l'effacement est sur le DISQUE",
+        editions=[
+            ("comptes.py", brut(
+                '        c.pop("origine", None)\n        self.sauver()\n',
+                '        self.sauver()\n        c.pop("origine", None)\n')),
+        ]),
+    dict(
+        nom="la marque s'efface a un second endroit",
+        banc="banc_comptes.py",
+        imite="deux ecritures du meme enchainement, et elles divergent : c'est "
+              "la lecon que ce depot a payee trois fois. Le decoupage compte — "
+              "cette mutation-ci laisse l'effacement en place, elle en AJOUTE "
+              "un, et seule la ligne de l'unicite doit mordre",
+        rougit="la marque n'est effacee qu'a UN endroit",
+        editions=[
+            ("comptes.py", brut(
+                '        c["admin"] = bool(admin)\n',
+                '        c["admin"] = bool(admin)\n        c.pop("origine", None)\n')),
+        ]),
+    dict(
+        nom="le serveur marque aussi le mot de passe pose par l'hebergeur",
+        banc="banc_comptes.py",
+        imite="STUDIO_ADMIN_MDP est une DECISION de celui qui heberge : la "
+              "marquer fait rougir pour toujours une ligne que personne ne "
+              "peut eteindre autrement qu'en changeant un secret qu'il a choisi",
+        rougit="le serveur ne marque « origine » que le mot de passe qu'il a TIRE",
+        editions=[
+            ("serveur.py", brut("origine=not ADMIN_MDP", "origine=True")),
+        ]),
+
+    # ── les deux pieges du dictionnaire, trouves en branchant l'ecran ──
+    dict(
+        nom="une valeur reprend le nom d'un parametre de T()",
+        banc="banc_traductions.py",
+        imite="rendre() LEVE — « got multiple values for argument 'langue' » — "
+              "au moment precis ou l'on essayait de dire quelque chose a "
+              "quelqu'un. Pas une phrase fausse : une exception. Deux entrees "
+              "le faisaient le 3 septembre 2026, et rien ne l'aurait dit avant "
+              "qu'un lecteur ne les atteigne",
+        rougit="aucune valeur ne porte le nom d'un parametre de T()",
+        editions=[
+            ("traductions.py", brut(
+                '    "demarrage.cles.posees": {\n'
+                '        "fr": ["{n} clé posée : {qui}.",\n'
+                '               "{n} clés posées : {qui}."],\n'
+                '        "en": ["{n} key set: {qui}.",\n'
+                '               "{n} keys set: {qui}."]},',
+                '    "demarrage.cles.posees": {\n'
+                '        "fr": ["{n} clé posée : {langue}.",\n'
+                '               "{n} clés posées : {langue}."],\n'
+                '        "en": ["{n} key set: {langue}.",\n'
+                '               "{n} keys set: {langue}."]},')),
+        ]),
+    dict(
+        nom="rendre() cesse de passer le nombre a T()",
+        banc="banc_traductions.py",
+        imite="toute marque plurielle prend la forme d'indice zero en francais "
+              "et celle d'indice un en anglais, quel que soit le compte : "
+              "« 1 accounts registered ». La page, elle, lit « v.n » et "
+              "accorde juste — les deux moities du contrat divergent la ou "
+              "rendre() se declare leur specification",
+        rougit="une marque qui compte accorde sa forme, comme la page le fait",
+        editions=[
+            ("traductions.py", brut(
+                'return T(marque["cle"], langue, nombre=valeurs.get("n"), **valeurs)',
+                'return T(marque["cle"], langue, **valeurs)')),
+        ]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
-             + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + FACTEUR)
+             + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + FACTEUR
+             + DEMARRAGE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

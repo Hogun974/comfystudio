@@ -22,6 +22,17 @@ CE BANC MESURE DONC CE QUI NE SE VOIT PAS :
     « ${n} echange${n > 1 ? "s" : ""} ». Cette regle-la est FAUSSE en anglais
     des zero — « 0 exchanges » — et la recopier vingt fois garantit qu'une des
     vingt sera oubliee.
+  - AUCUNE VALEUR NE PORTE LE NOM D'UN PARAMETRE DE T(). Celle-la LEVE, et
+    c'est la seule : rendre() ecrit « T(cle, langue, **valeurs) », donc une
+    valeur nommee « langue » arrive deux fois sur le meme parametre et Python
+    rend un TypeError au moment ou l'on essayait de dire quelque chose a
+    quelqu'un. Deux entrees le faisaient le 3 septembre 2026.
+  - ET UNE MARQUE QUI COMPTE S'ACCORDE. rendre() oubliait « nombre » : toute
+    marque plurielle prenait la forme d'indice zero en francais et celle
+    d'indice un en anglais — « 1 accounts registered » — pendant que la page,
+    qui lit « v.n », accordait juste. Les deux moities du contrat divergeaient
+    la ou rendre() se declare leur specification, et rien ne pouvait le montrer
+    tant qu'aucune marque ne comptait quelque chose.
   - LE CHOIX DE LA LANGUE se fait sur le cookie, et l'en-tete du navigateur ne
     sert que de premiere valeur. Un francophone sur un Windows anglais doit
     pouvoir revenir au francais et y rester.
@@ -45,6 +56,7 @@ les voit tous, un motif de texte en voit un.
     python banc_traductions.py
 """
 import ast
+import inspect
 import io
 import os
 import re
@@ -150,6 +162,33 @@ dit(not ecarts,
     "chaque traduction pose exactement les memes valeurs que le francais",
     " / ".join(ecarts[:3]) or
     f"{sum(len(valeurs(e['fr'])) for e in TR.TEXTES.values())} valeurs verifiees")
+
+# ── ET AUCUNE NE PORTE LE NOM D'UN PARAMETRE DE T() ──────────────────
+# CELLE-CI LEVE, ET C'EST LA SEULE DU FICHIER QUI LEVE. rendre() ecrit
+# « T(marque["cle"], langue, **valeurs) » : une valeur nommee « langue » —
+# ou « nombre », ou « cle » — arrive alors deux fois sur le meme parametre, et
+# Python rend un TypeError, « got multiple values for argument 'langue' ». Pas
+# une phrase fausse, pas un trou dans le texte : une exception, au moment
+# precis ou l'on essayait de dire quelque chose a quelqu'un.
+#
+# Mesure du 3 septembre 2026 : deux entrees de « demarrage. » posaient
+# « {langue} » — le nom de la langue servie — et faisaient lever le rendu de la
+# premiere ligne de l'ecran de premiere mise en route. Rien ne l'aurait dit
+# avant qu'un lecteur ne l'atteigne.
+#
+# LES NOMS INTERDITS SE LISENT DANS LA SIGNATURE, jamais dans une liste ecrite
+# a la main : le jour ou T() prend un parametre de plus, ce cas le sait tout
+# seul. Enumerer est la faute que ce depot a deja faite cinq fois.
+_INTERDITS = {p for p in inspect.signature(TR.T).parameters
+              if inspect.signature(TR.T).parameters[p].kind
+              is not inspect.Parameter.VAR_KEYWORD}
+heurtees = sorted(f"{cle} : {sorted(valeurs(entree['fr']) & _INTERDITS)}"
+                  for cle, entree in TR.TEXTES.items()
+                  if valeurs(entree["fr"]) & _INTERDITS)
+dit(len(_INTERDITS) >= 3 and not heurtees,
+    "et aucune valeur ne porte le nom d'un parametre de T(), qui ferait lever "
+    "rendre()",
+    " / ".join(heurtees[:3]) or f"noms reserves : {sorted(_INTERDITS)}")
 
 print("\n  ── le pluriel est une regle de la langue ──")
 # LES DEUX LANGUES NE COMPTENT PAS PAREIL, et c'est tout l'interet d'avoir sorti
@@ -287,6 +326,28 @@ dit(TR.rendre({"cle": "panne.echec", "valeurs": {"quoi": "KeyError('sdxl')"}},
 dit(TR.rendre(None, "en") == "" and TR.rendre({"valeurs": {}}, "en") == "",
     "et rien du tout ne rend rien du tout, sans lever",
     f"« {TR.rendre(None, 'en')} »")
+# ── ET UNE MARQUE QUI COMPTE S'ACCORDE ───────────────────────────────
+# rendre() OUBLIAIT « nombre », et T() lisait alors « nombre or 0 » : toute
+# marque plurielle prenait la forme d'indice zero en francais et celle
+# d'indice un en anglais, quel que soit le compte. « 1 accounts registered ».
+# La page, elle, lit « v.n » et accordait juste — les deux moities du contrat
+# divergeaient donc exactement la ou cette fonction se declare leur
+# specification, et personne ne pouvait le voir tant qu'aucune marque ne
+# comptait quelque chose. La premiere est arrivee avec l'ecran de premiere
+# mise en route, le 3 septembre 2026.
+#
+# LES DEUX LANGUES ET LES DEUX COMPTES, sinon le cas serait vrai d'une
+# fonction qui rendrait toujours le singulier. L'anglais a 1, c'est ce qui
+# distingue les deux regles.
+_compte1 = {"cle": "compte.echanges", "valeurs": {"n": 1}}
+_compte2 = {"cle": "compte.echanges", "valeurs": {"n": 2}}
+dit(TR.rendre(_compte1, "en") == "1 exchange"
+    and TR.rendre(_compte2, "en") == "2 exchanges"
+    and TR.rendre(_compte1, "fr") == "1 echange"
+    and TR.rendre(_compte2, "fr") == "2 echanges",
+    "une marque qui compte accorde sa forme, comme la page le fait",
+    " / ".join(TR.rendre(m, lg) for lg in ("fr", "en")
+               for m in (_compte1, _compte2)))
 
 
 # ── ce que le SERVEUR nomme, et ce qu'il oublie de nommer ───────────────

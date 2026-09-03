@@ -115,6 +115,34 @@ la mutation voit quelque chose, cela dit que le banc voit le vrai défaut.
 Quand ni l'un ni l'autre n'est possible, **écris-le**. La règle complète est
 dans [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
+### Et parfois le sens inverse oblige à réparer le banc
+
+Les dix-huit mutations de l'écran de
+[première mise en route](premiere-mise-en-route.md) sont nées avec lui, donc par
+ce second chemin : le dépôt reconstruit sans l'écran, sans ses routes, sans sa
+famille du dictionnaire et sans le drapeau `origine` des comptes, et les bancs
+neufs lancés dessus. Le 3 septembre 2026 :
+
+- `banc_page.py` **rougit sur huit de ses dix lignes neuves**, et ne meurt pas —
+  parce qu'il ouvre `web/demarrage.html` sous `try` et pose un cas nommé. Les
+  deux qui restent vertes le sont **à vide** : « aucune clé `demarrage.` ne
+  dort » est vraie d'un dictionnaire qui n'en porte aucune.
+- `banc_comptes.py` **mourait**, sur `TypeError: Comptes.creer() got an
+  unexpected keyword argument 'origine'`, et emportait ses soixante
+  vérifications avec lui. `banc_mutations` rend alors « le banc s'est cassé au
+  lieu de rougir », et le sens inverse ne mesure plus rien. La section lit
+  désormais la **signature** avant d'appeler, et garde le reste derrière ; elle
+  rougit sur trois lignes. La réparation a sa mutation.
+- `banc_traductions.py` **rougit sur un défaut qui préexistait** : `rendre()` ne
+  passait pas `nombre` à `T()`, donc toute marque plurielle prenait la mauvaise
+  forme — « 1 accounts registered ». Personne ne pouvait le voir tant qu'aucune
+  marque ne comptait quoi que ce soit.
+
+Deux leçons, et ce sont les mêmes qu'ailleurs sous une autre forme : **un banc
+qui meurt sur le code d'avant ne mesure pas le sens inverse**, et **une ligne
+verte à vide n'est verte que faute d'objet** — il faut le dire, pas s'en
+contenter.
+
 ### Et le sens inverse trouve des trous que les mutations ne trouvent pas
 
 `banc_multilingue` est né le même soir avec sa correction, donc par le second

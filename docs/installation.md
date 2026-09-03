@@ -275,3 +275,10 @@ Mieux vaut le poser d'avance : `STUDIO_ADMIN_MDP` dans le fichier
 d'environnement du service, ou dans l'environnement avant `python3 serveur.py`.
 Un mot de passe tiré au sort et manqué au vol ne se relit pas — il n'est pas
 conservé en clair, seule une empreinte scrypt l'est.
+
+**Une fois connecté, va voir `/demarrage`.** Le studio en donne l'adresse dans
+sa bannière (`A FAIRE : http://…/demarrage`) tant que l'écran n'a pas été
+refermé. C'est une liste de contrôle qui **mesure** ce qui manque encore — le
+mot de passe d'origine, une carte qui répond, les fichiers des moteurs, la
+langue de l'interface — et qui distingue ce qui bloque de ce qui n'y ressemble
+que : [La première mise en route](premiere-mise-en-route.md).

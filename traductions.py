@@ -456,6 +456,17 @@ TEXTES = {
     "page.admin.title": {
         "fr": "administration : machines, comptes, clés",
         "en": "administration: machines, accounts, keys"},
+    # LE LIEN VERS L'ECRAN DE PREMIERE MISE EN ROUTE, ET IL DISPARAIT. Il ne
+    # s'affiche que pour un administrateur, et seulement tant que l'ecran n'a
+    # pas ete referme : un lien permanent vers une liste entierement verte est
+    # un lien qu'on cesse de voir, et le jour ou quelque chose y rougira,
+    # personne n'ira regarder.
+    "page.demarrage": {
+        "fr": "à faire",
+        "en": "to do"},
+    "page.demarrage.title": {
+        "fr": "première mise en route : ce qui manque encore à ce studio",
+        "en": "first run: what this studio is still missing"},
     "page.source": {
         "fr": "source",
         "en": "source"},
@@ -1256,6 +1267,284 @@ TEXTES = {
     "page.devis.estime": {
         "fr": "≈ {mot}",
         "en": "≈ {mot}"},
+
+    # ══ LA PREMIERE MISE EN ROUTE ══════════════════════════════════════
+    # UNE FAMILLE A ELLE, ET NON « page. ». banc_page.py exige qu'aucune cle
+    # « page. » ne dorme, c'est-a-dire que web/index.html les cite toutes ;
+    # celles-ci sont citees par web/demarrage.html et par serveur.py, qui pose
+    # les verdicts. Les ranger sous « page. » les aurait declarees mortes a
+    # tort — et les y forcer aurait demande d'ecrire l'ecran dans index.html,
+    # c'est-a-dire de le mettre la ou personne qui debute ne le cherche.
+    #
+    # LES PHRASES DE VERDICT SONT POSEES PAR LE SERVEUR, sous forme de marques
+    # — {"cle", "valeurs"} — et rendues par la page dans la langue de son
+    # lecteur. C'est le meme mecanisme que les pannes (traductions.rendre) et
+    # pour la meme raison : le serveur MESURE, il ne met pas en phrase.
+
+    # ── le titre de chaque ligne ────────────────────────────────────
+    # Composes par serveur._ligne() : « demarrage. » + le nom de la ligne.
+    # banc_page.py releve ces noms dans les sites d'appel plutot que de les
+    # chercher en toutes lettres, sans quoi il declarerait ces huit-la
+    # dormantes.
+    "demarrage.langue": {
+        "fr": "la langue de l’interface",
+        "en": "the interface language"},
+    "demarrage.acces": {
+        "fr": "l’accès au studio",
+        "en": "access to the studio"},
+    "demarrage.mdp": {
+        "fr": "le mot de passe d’origine",
+        "en": "the original password"},
+    "demarrage.facteur": {
+        "fr": "le second facteur",
+        "en": "two-factor authentication"},
+    "demarrage.carte": {
+        "fr": "une machine qui calcule",
+        "en": "a machine that renders"},
+    "demarrage.moteurs": {
+        "fr": "les fichiers des moteurs",
+        "en": "the engine files"},
+    "demarrage.cerveau": {
+        "fr": "le modèle de langage",
+        "en": "the language model"},
+    "demarrage.cles": {
+        "fr": "les clés d’API",
+        "en": "API keys"},
+
+    # ── les quatre verdicts ─────────────────────────────────────────
+    # « à faire » et non « risque » : le mot du dictionnaire est celui que lit
+    # quelqu'un qui vient d'installer un studio, pas celui du code. Ce qu'un
+    # « risque » veut dire ici — rien ne t'attend, et pourtant fais-le tout de
+    # suite — se dit mieux ainsi.
+    "demarrage.verdict.fait": {
+        "fr": "fait",
+        "en": "done"},
+    "demarrage.verdict.bloque": {
+        "fr": "bloquant",
+        "en": "blocking"},
+    "demarrage.verdict.risque": {
+        "fr": "à faire",
+        "en": "to do"},
+    "demarrage.verdict.option": {
+        "fr": "facultatif",
+        "en": "optional"},
+
+    # ── ce que chaque ligne mesure ──────────────────────────────────
+    # « {quelle} » ET NON « {langue} », ET C'EST UNE MESURE. traductions.rendre()
+    # appelle « T(cle, langue, **valeurs) » : une valeur nommee comme un
+    # parametre de T() — « langue », « nombre », « cle » — fait lever un
+    # TypeError au rendu, « got multiple values for argument ». Rien ne le
+    # signalait avant que ces deux entrees-ci ne le declenchent ; banc_traductions.py
+    # le releve desormais sur tout le dictionnaire, en lisant la signature de
+    # T() plutot qu'une liste ecrite a la main.
+    "demarrage.langue.retenue": {
+        "fr": "{quelle} — ton choix est retenu, il ne dépend plus du navigateur.",
+        "en": "{quelle} — your choice is kept, it no longer depends on the browser."},
+    "demarrage.langue.devinee": {
+        "fr": "{quelle}, d’après ton navigateur. Choisis-la ici pour qu’elle "
+              "soit retenue.",
+        "en": "{quelle}, guessed from your browser. Pick it here to make it stick."},
+    "demarrage.acces.libre": {
+        "fr": "aucune connexion n’est demandée : quiconque atteint ce studio "
+              "peut générer, téléverser et piloter ComfyUI.",
+        "en": "no sign-in is required: anyone who can reach this studio can "
+              "generate, upload and drive ComfyUI."},
+    "demarrage.acces.oui": {
+        "fr": ["{n} compte enregistré, et la connexion est obligatoire.",
+               "{n} comptes enregistrés, et la connexion est obligatoire."],
+        "en": ["{n} account registered, and signing in is required.",
+               "{n} accounts registered, and signing in is required."]},
+    "demarrage.acces.aucun": {
+        "fr": "aucun compte n’existe alors que la connexion est obligatoire : "
+              "le jeton d’administration est la seule porte qui reste.",
+        "en": "no account exists while signing in is required: the admin token "
+              "is the only door left."},
+    "demarrage.mdp.origine": {
+        "fr": ["{qui} porte encore le mot de passe tiré au premier démarrage "
+               "et affiché une seule fois dans la console.",
+               "{qui} portent encore le mot de passe tiré au premier démarrage "
+               "et affiché une seule fois dans la console."],
+        "en": ["{qui} still carries the password drawn at first start and "
+               "shown once in the console.",
+               "{qui} still carry the password drawn at first start and shown "
+               "once in the console."]},
+    "demarrage.mdp.change": {
+        "fr": "aucun compte ne porte plus le mot de passe tiré au démarrage.",
+        "en": "no account still carries the password drawn at startup."},
+    "demarrage.facteur.sans_compte": {
+        "fr": "tu es entré par le jeton d’administration : il n’y a pas de "
+              "compte à armer ici.",
+        "en": "you came in with the admin token: there is no account to arm here."},
+    "demarrage.facteur.arme": {
+        "fr": ["{qui} : armé, il reste {n} code de secours.",
+               "{qui} : armé, il reste {n} codes de secours."],
+        "en": ["{qui}: armed, {n} backup code left.",
+               "{qui}: armed, {n} backup codes left."]},
+    "demarrage.facteur.attente": {
+        "fr": "{qui} : un enrôlement est commencé, aucun code juste n’a encore "
+              "été présenté.",
+        "en": "{qui}: an enrolment is started, no correct code has been given yet."},
+    "demarrage.facteur.absent": {
+        "fr": "{qui} : mot de passe seul. Le second facteur s’arme depuis le "
+              "panneau du compte, dans le studio.",
+        "en": "{qui}: password only. The second factor is armed from the "
+              "account panel, in the studio."},
+    "demarrage.carte.oui": {
+        "fr": ["{n} machine répond avec une carte : {qui}.",
+               "{n} machines répondent avec une carte : {qui}."],
+        "en": ["{n} machine answers with a graphics card: {qui}.",
+               "{n} machines answer with a graphics card: {qui}."]},
+    "demarrage.carte.aucune": {
+        "fr": ["aucune carte ne répond, sur {n} machine connue. Rien ne se "
+               "calculera tant qu’il n’y en aura pas une.",
+               "aucune carte ne répond, sur {n} machines connues. Rien ne se "
+               "calculera tant qu’il n’y en aura pas une."],
+        "en": ["no card answers, out of {n} known machine. Nothing will be "
+               "rendered until one does.",
+               "no card answers, out of {n} known machines. Nothing will be "
+               "rendered until one does."]},
+    "demarrage.moteurs.prets": {
+        "fr": ["{n} moteur sur {total} a ses fichiers, quelque part dans le parc.",
+               "{n} moteurs sur {total} ont leurs fichiers, quelque part dans "
+               "le parc."],
+        "en": ["{n} engine out of {total} has its files, somewhere in the fleet.",
+               "{n} engines out of {total} have their files, somewhere in the "
+               "fleet."]},
+    # ELLE NOMME LA MACHINE QUI ECRIRA SUR SON DISQUE. Le drapeau « local » de
+    # noeuds.json n'est pas une position mais un droit d'ecriture : mal posé,
+    # il fait télécharger dix gigaoctets pour une machine qui ne les verra
+    # jamais, et rien ne le disait avant cet écran.
+    "demarrage.moteurs.aucun": {
+        "fr": "aucun des {total} moteurs n’a ses fichiers. Le studio les "
+              "télécharge à la première demande, sur {machine} — la machine "
+              "que noeuds.json marque « local ».",
+        "en": "none of the {total} engines has its files. The studio downloads "
+              "them on the first request, onto {machine} — the machine that "
+              "noeuds.json marks as “local”."},
+    "demarrage.cerveau.oui": {
+        "fr": ["{n} modèle de langage joignable ; il écrit avec {modele}.",
+               "{n} modèles de langage joignables ; le premier écrit avec "
+               "{modele}."],
+        "en": ["{n} language model reachable; it writes with {modele}.",
+               "{n} language models reachable; the first one writes with "
+               "{modele}."]},
+    # L'ETAT QUE RIEN NE SIGNALAIT. Ollama répond et ne porte aucun modèle :
+    # modele_ecriture_de() retombe sur MODELE_LLM, et la bannière annonce un
+    # nom que personne n'a téléchargé. Les deux remèdes n'ont rien de commun —
+    # une machine éteinte se rallume, un Ollama vide se remplit.
+    "demarrage.cerveau.vide": {
+        "fr": "Ollama répond sur {ou} mais ne porte aucun modèle. Le studio "
+              "annonce quand même {annonce} : c’est son repli, pas un modèle "
+              "installé. Rien ne bloque — l’aiguillage se fait par mots-clés.",
+        "en": "Ollama answers at {ou} but carries no model. The studio still "
+              "announces {annonce}: that is its fallback, not an installed "
+              "model. Nothing is blocked — routing falls back to keywords."},
+    "demarrage.cerveau.absent": {
+        "fr": "aucun modèle de langage joignable sur {ou}. Rien ne bloque : "
+              "l’aiguillage se fait alors par mots-clés, et l’image sort "
+              "quand même.",
+        "en": "no language model reachable at {ou}. Nothing is blocked: "
+              "routing falls back to keywords, and the image still comes out."},
+    "demarrage.cles.sans_cle": {
+        "fr": ["{quoi} est confié à un fournisseur distant sans clé : le "
+               "moteur n’est pas proposé et tout reste en local.",
+               "{quoi} sont confiés à des fournisseurs distants sans clé : "
+               "les moteurs ne sont pas proposés et tout reste en local."],
+        "en": ["{quoi} is handed to a remote provider with no key: the engine "
+               "is not offered and everything stays local.",
+               "{quoi} are handed to remote providers with no key: the engines "
+               "are not offered and everything stays local."]},
+    "demarrage.cles.posees": {
+        "fr": ["{n} clé posée : {qui}.",
+               "{n} clés posées : {qui}."],
+        "en": ["{n} key set: {qui}.",
+               "{n} keys set: {qui}."]},
+    "demarrage.cles.aucune": {
+        "fr": "aucune clé d’API. Tout reste sur tes machines.",
+        "en": "no API key. Everything stays on your own machines."},
+
+    # ── l’écran lui-même ────────────────────────────────────────────
+    "demarrage.titre": {
+        "fr": "première mise en route",
+        "en": "first run"},
+    # LE NOM DE L'ONGLET, et il porte le nom du studio avec lui : « first run »
+    # seul, dans une barre de dix onglets, ne dit pas de quelle application il
+    # s'agit. C'est le seul texte de la page qui vive hors du corps, et
+    # banc_page.py lit le fichier depuis son debut pour le tenir au meme
+    # contrat que les autres.
+    "demarrage.onglet": {
+        "fr": "ComfyStudio — première mise en route",
+        "en": "ComfyStudio — first run"},
+    "demarrage.intro": {
+        "fr": "Cette liste ne règle rien : elle mesure. Chaque ligne dit ce "
+              "que le studio constate à l’instant, et renvoie à l’endroit qui "
+              "la règle.",
+        "en": "This list settles nothing: it measures. Each line says what the "
+              "studio observes right now, and points to the place that fixes it."},
+    "demarrage.retour": {
+        "fr": "retour au studio",
+        "en": "back to the studio"},
+    "demarrage.admin": {
+        "fr": "administration",
+        "en": "administration"},
+    "demarrage.remesurer": {
+        "fr": "remesurer",
+        "en": "measure again"},
+    "demarrage.fermer": {
+        "fr": "ne plus afficher cet écran",
+        "en": "stop showing this screen"},
+    "demarrage.reouvrir": {
+        "fr": "le réafficher au démarrage",
+        "en": "show it again at startup"},
+    "demarrage.est_ferme": {
+        "fr": "Refermé. Le studio ne le proposera plus ; il reste à /demarrage.",
+        "en": "Closed. The studio will not offer it again; it stays at /demarrage."},
+    "demarrage.bloque.compte": {
+        "fr": ["{n} chose empêche encore le studio de produire.",
+               "{n} choses empêchent encore le studio de produire."],
+        "en": ["{n} thing still stops the studio from producing.",
+               "{n} things still stop the studio from producing."]},
+    "demarrage.rien_ne_bloque": {
+        "fr": "Rien ne bloque : ce studio peut produire.",
+        "en": "Nothing is blocking: this studio can produce."},
+    "demarrage.risque.compte": {
+        "fr": ["{n} point est à régler tout de suite.",
+               "{n} points sont à régler tout de suite."],
+        "en": ["{n} point should be settled right away.",
+               "{n} points should be settled right away."]},
+    "demarrage.aller": {
+        "fr": "y aller",
+        "en": "go there"},
+    # Elle dit POURQUOI il n'y a pas de bouton : ces valeurs-la sont lues une
+    # seule fois au chargement du module, et aucune route ne les change.
+    "demarrage.au_lancement": {
+        "fr": "se pose au lancement du studio, pas depuis une page",
+        "en": "set when the studio starts, not from a page"},
+    "demarrage.langue.aria": {
+        "fr": "Langue",
+        "en": "Language"},
+    "demarrage.jeton.dit": {
+        "fr": "Cet écran dit ce qui manque à ce studio : il demande le jeton "
+              "d’administration affiché au premier démarrage, ou un compte "
+              "administrateur déjà connecté.",
+        "en": "This screen says what this studio is missing: it asks for the "
+              "admin token shown at first start, or an already signed-in "
+              "administrator account."},
+    "demarrage.jeton.invite": {
+        "fr": "jeton d’administration",
+        "en": "admin token"},
+    "demarrage.jeton.entrer": {
+        "fr": "entrer",
+        "en": "enter"},
+    "demarrage.jeton.refus": {
+        "fr": "jeton refusé",
+        "en": "token refused"},
+    "demarrage.injoignable": {
+        "fr": "le studio ne répond pas",
+        "en": "the studio is not answering"},
+    "demarrage.attente": {
+        "fr": "mesure en cours…",
+        "en": "measuring…"},
 }
 
 
@@ -1322,7 +1611,18 @@ def rendre(marque, langue="fr"):
     for nom, v in (marque.get("valeurs") or {}).items():
         valeurs[nom] = (T(v["cle"], langue, **(v.get("valeurs") or {}))
                         if isinstance(v, dict) and v.get("cle") else v)
-    return T(marque["cle"], langue, **valeurs)
+    # « n » CHOISIT LA FORME, ET IL FAUT LE PASSER. Sans « nombre= », T() lisait
+    # « nombre or 0 » et prenait TOUJOURS la forme d'indice zero en francais,
+    # celle d'indice un en anglais : une marque plurielle rendue par cette
+    # fonction disait « 1 accounts registered ». La page, elle, lit « v.n » et
+    # accordait juste — donc les deux moities du contrat divergeaient
+    # exactement la ou cette fonction se declare leur specification.
+    # Aucune marque plurielle n'existait avant l'ecran de premiere mise en
+    # route : le defaut a vecu invisible jusqu'a ce qu'une en pose une.
+    # « n » reste AUSSI dans les valeurs — T() fait setdefault, il ne l'ecrase
+    # donc pas — parce que la phrase affiche presque toujours le compte qu'elle
+    # accorde.
+    return T(marque["cle"], langue, nombre=valeurs.get("n"), **valeurs)
 
 
 def textes_de(langue):

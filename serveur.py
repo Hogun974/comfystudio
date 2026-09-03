@@ -776,16 +776,25 @@ FRAICHEUR_CERVEAU = 120
 def _relever_cerveau(url):
     """Interroge cet Ollama. BLOQUANT — a n'appeler que hors boucle."""
     c = _CERVEAUX.setdefault(url, {"quand": 0.0, "modeles": [], "noeud": None,
-                                   "en_cours": False})
+                                   "en_cours": False, "repond": False})
     try:
         import urllib.request
 
         with urllib.request.urlopen(f"{url}/api/tags", timeout=8) as r:
             c["modeles"] = json.load(r).get("models", []) or []
+        # « REPOND » N'EST PAS « A DES MODELES », et c'est tout l'objet de ce
+        # drapeau. Une liste vide se lisait jusqu'ici « aucun Ollama » — la
+        # meme phrase pour une machine eteinte et pour un Ollama tout neuf,
+        # installe et joignable, sur lequel personne n'a encore tire un
+        # « ollama pull ». Les deux remedes n'ont rien de commun : l'un se
+        # rallume, l'autre se remplit. Et ce second etat est le plus trompeur
+        # des deux, puisque modele_ecriture_de() retombe alors sur MODELE_LLM
+        # et que la banniere annonce un modele qui n'est nulle part.
+        c["repond"] = True
     except Exception:
         # On garde ce qu'on savait : une machine qui ne repond pas a CET instant
         # n'a pas desinstalle ses modeles.
-        pass
+        c["repond"] = False
     hote = urllib.parse.urlparse(url).hostname
     if hote:
         import socket
@@ -832,7 +841,7 @@ def cerveau(url):
     c = _CERVEAUX.get(url)
     if c is None:
         c = _CERVEAUX[url] = {"quand": 0.0, "modeles": [], "noeud": None,
-                              "en_cours": False}
+                              "en_cours": False, "repond": False}
     if time.time() - c["quand"] >= FRAICHEUR_CERVEAU and not c.get("en_cours"):
         try:
             asyncio.get_running_loop()
@@ -7600,11 +7609,20 @@ async def api_admin_cles_poser(req):
 
 def _etat_compte(req):
     nom = req.get("compte") or ""
+    admin = bool(nom) and COMPTES.est_admin(nom)
     return {"connecte": bool(nom), "nom": nom,
-            "admin": bool(nom) and COMPTES.est_admin(nom),
+            "admin": admin,
             # Sans aucun compte, l'interface n'a pas a proposer de se connecter :
             # la fonction n'existe pas encore pour cette installation.
             "comptes_existent": bool(COMPTES and COMPTES.gens),
+            # AUX SEULS ADMINISTRATEURS, et le « and » compte autant que le
+            # champ. Cette route est LIBRE — exiger_compte la laisse passer
+            # sans session, il le faut pour afficher le formulaire de
+            # connexion — et « ce studio n'a jamais ete configure » est
+            # precisement ce qu'on ne dit pas a un visiteur anonyme. Il le lira
+            # de toute facon a l'ecran s'il est administrateur ; les autres
+            # n'ont aucun lien a montrer.
+            "demarrage": admin and demarrage_a_montrer(),
             "obligatoire": AUTH == "obligatoire"}
 
 
@@ -7838,7 +7856,7 @@ async def api_mon_mdp(req):
 # ── le second facteur, cote route ────────────────────────────────────
 # CINQ ROUTES ET PAS UNE DE PLUS : dire l'etat, preparer, confirmer, desarmer,
 # regenerer les codes de secours. Le sixieme geste imaginable — « verifier un
-# code » — n'existe pas, et c'est deliberé : il serait un oracle a codes sans
+# code » — n'existe pas, et c'est delibere : il serait un oracle a codes sans
 # rien ouvrir, donc sans rien qui rende son echec visible a son proprietaire.
 #
 # TROIS DES CINQ EXIGENT LE MOT DE PASSE COURANT, et la raison n'est pas la
@@ -12000,7 +12018,13 @@ def charger_comptes():
         # pourrait entrer, pas meme pour creer le premier compte.
         mdp = ADMIN_MDP or secrets.token_urlsafe(12)
         try:
-            COMPTES.creer("admin", mdp, admin=True)
+            # « origine » seulement quand le studio a TIRE le mot de passe :
+            # celui-la n'existe que dans une console qui defile, et l'ecran de
+            # premiere mise en route reclame qu'on le change. Un mot de passe
+            # pose par l'hebergeur dans son compose est une decision ; le
+            # marquer ferait rougir pour toujours une ligne que personne ne peut
+            # eteindre autrement qu'en changeant un secret qu'il a choisi.
+            COMPTES.creer("admin", mdp, admin=True, origine=not ADMIN_MDP)
         except _comptes.ErreurCompte as e:
             print(f"  compte admin impossible a creer : {e}", flush=True)
         else:
@@ -12069,9 +12093,15 @@ async def exiger_compte(req, handler):
     # ci-dessous aussi : on traduirait tout SAUF ce que lit celui qui n'est
     # encore rien. Elle ne rend que le dictionnaire du depot, le meme pour
     # tout le monde, et ne dit rien de l'installation ni de personne.
+    # « /demarrage » ET « /api/demarrage » suivent /admin, pour la meme raison
+    # et sous la meme garde : cet ecran est celui d'une installation neuve, ou
+    # il n'y a souvent personne de connecte et rien d'autre que le jeton
+    # d'administration. Les fermer ici condamnerait l'amorçage. La route, elle,
+    # verifie admin_ok() — ce qu'elle rend nomme ce qui manque a ce studio.
     libre = (chemin == "/" or chemin.startswith("/api/compte")
              or chemin == "/api/textes"
              or chemin == "/admin" or chemin.startswith("/api/admin/")
+             or chemin == "/demarrage" or chemin == "/api/demarrage"
              or chemin.startswith("/api/noeud/")
              or chemin == "/api/fournisseurs")
     if libre or req.get("compte"):
@@ -12664,9 +12694,18 @@ async def api_machines(_):
     return web.json_response(liste)
 
 
-async def api_admin_noeuds(req):
-    if not admin_ok(req):
-        return web.json_response({"erreur": "acces refuse"}, status=403)
+def machines_connues():
+    """Le parc entier, machine locale comprise, avec son etat du moment.
+
+    Sortie de api_admin_noeuds le jour ou l'ecran de premiere mise en route a
+    eu besoin de la meme liste. La recopier aurait fait deux ecritures du meme
+    assemblage — c'est la faute que ce depot a payee trois fois (« tant qu'il y
+    a deux ecritures du meme enchainement, elles divergent ») —, et la
+    divergence aurait porte precisement sur « repond » : noeuds_agents() ne le
+    tient pas pour vrai sur le seul ETAT_NOEUDS, il exige en plus que l'agent
+    se soit annonce depuis moins de SILENCE_MAX. Un releve ecrit a cote aurait
+    declare vivante une machine que le repartiteur ecarte a juste titre.
+    """
     local = noeud_local()
     e = ETAT_NOEUDS.get(local["id"], {})
     ligne_locale = {"id": local["id"], "titre": local.get("titre"), "agent": False,
@@ -12676,7 +12715,13 @@ async def api_admin_noeuds(req):
                     # qu'un rendu tournait sur cette machine.
                     "en_travail": len(TRAVAUX.get(local["id"], [])),
                     "moteurs": moteurs_du_noeud(local["id"])}
-    return web.json_response({"noeuds": [ligne_locale] + noeuds_agents(),
+    return [ligne_locale] + noeuds_agents()
+
+
+async def api_admin_noeuds(req):
+    if not admin_ok(req):
+        return web.json_response({"erreur": "acces refuse"}, status=403)
+    return web.json_response({"noeuds": machines_connues(),
                               # Un modele qui refuse de se charger degrade tout
                               # ce qui s'ecrit — enrichissement, traduction,
                               # paroles — sans jamais rien casser franchement.
@@ -12941,6 +12986,367 @@ async def page_admin(req):
     return web.FileResponse(os.path.join(ICI, "web", "admin.html"))
 
 
+# ══════════════════ la premiere mise en route ══════════════════════════
+# CET ECRAN NE REGLE RIEN, IL MESURE. C'est la seule chose qui le distingue
+# d'un assistant d'installation, et c'est ce qui lui permet de coexister avec
+# /admin sans deriver : /admin sait deja tout poser — machines a carte, jetons
+# d'agent, cles d'API, choix local/distant par modalite, comptes, plafond du
+# nuage, reentrainement de l'aiguilleur — et un assistant qui redemanderait ces
+# reglages serait une seconde table a tenir synchrone. Deux tables du meme
+# reglage divergent ; ce depot l'a mesure trois fois (MENU_REGLAGE et
+# CLE_REGLAGE, les deux ecritures des empreintes de secours, la sequence
+# d'aiguillage recopiee dans un banc). Ici il n'y a qu'une table : celle de
+# /admin. Cet ecran lit le RESULTAT et renvoie chez elle.
+#
+# CE QUI EST BLOQUANT EST MESURE, ET IL Y EN A TROIS. Un compte quand
+# STUDIO_AUTH vaut « obligatoire », une machine dont la carte repond, et les
+# fichiers d'au moins un moteur sur cette machine-la. Rien d'autre.
+# EN PARTICULIER PAS LE MODELE DE LANGAGE : sans Ollama, aiguiller() retombe
+# sur le classifieur — 94 % sur banc_aiguillage, 88 % sur banc_neuf — et
+# l'image sort quand meme. Le dire est la moitie du travail de cet ecran :
+# quelqu'un qui installe un studio passe volontiers une soiree a chercher
+# pourquoi « le modele de langage ne repond pas » alors que rien ne l'attend.
+#
+# CE QU'IL NE PRETEND PAS REGLER. COMFY_URL, OLLAMA_URL, STUDIO_LLM et
+# STUDIO_AUTH sont lues UNE SEULE FOIS au chargement du module : aucune route
+# ne les change, et un ecran qui offrirait de les poser mentirait. Les lignes
+# qui en dependent portent « au_lancement » et disent ou se pose la valeur.
+# Les deux mecanismes qui changent quelque chose a chaud sont ailleurs :
+# noeuds.json, relu au demarrage, et les routes /api/admin/*.
+
+FICHIER_DEMARRAGE = os.path.join(DOSSIER_CONV, "_demarrage.json")
+
+# LES QUATRE VERDICTS, ET LA PAGE PORTE LA MEME TABLE. Meme patron que
+# MENU_REGLAGE et CLE_REGLAGE : deux fichiers disent la meme chose, et
+# banc_page.py releve les deux pour que le jour ou l'un bouge il rougisse au
+# lieu de laisser l'ecran peindre une ligne sans couleur — c'est-a-dire une
+# ligne qu'on lit comme « tout va bien ».
+#
+# « risque » N'EST PAS « bloque », et la distinction porte tout l'ecran. Un
+# mot de passe d'origine n'empeche RIEN : le studio calcule, rend, sert. Le
+# ranger avec ce qui bloque ferait de la liste un mur a franchir, et l'on
+# apprend a franchir un mur en cliquant. Il est donc a part : rien ne t'attend,
+# et pourtant c'est la premiere chose a faire.
+VERDICTS = ("fait", "bloque", "risque", "option")
+
+
+def _lire_demarrage():
+    """Ce que le studio sait de sa propre mise en route. {} si le fichier
+    n'existe pas — et cette absence EST le signal, voir demarrage_a_montrer."""
+    try:
+        with open(FICHIER_DEMARRAGE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _ecrire_demarrage(ferme):
+    d = {"ferme": bool(ferme), "quand": time.strftime("%Y-%m-%d %H:%M")}
+    tmp = FICHIER_DEMARRAGE + ".tmp"
+    try:
+        os.makedirs(DOSSIER_CONV, exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, FICHIER_DEMARRAGE)
+    except OSError as e:
+        # Genant, pas dangereux : l'ecran reviendra au prochain demarrage. On
+        # le dit plutot que de laisser croire que le geste a porte.
+        print(f"  premiere mise en route non conservee ({e})", flush=True)
+        return False
+    return True
+
+
+def demarrage_a_montrer():
+    """Faut-il encore proposer l'ecran de premiere mise en route ?
+
+    LE SIGNAL EST UN FICHIER A LUI, ET C'ETAIT LE POINT DELICAT. Trois etats
+    du studio ressemblent a « premiere fois » et aucun ne l'est :
+
+      - « not COMPTES.gens » est FAUX par construction des le premier
+        demarrage, puisque charger_comptes() cree le compte « admin » avant
+        que quiconque ait rien vu. En STUDIO_AUTH=libre il est VRAI pour
+        toujours, et l'ecran reviendrait a chaque lancement d'un studio qui a
+        delibere de n'avoir aucun compte.
+      - « comptes_existent », servi par /api/compte, dit la meme chose et se
+        lit sans session : le fonder dessus publierait a un visiteur anonyme
+        que ce studio n'a jamais ete configure.
+      - l'absence de « _admin.json » est vraie une seule fois, et pas au bon
+        moment : charger_registre() l'ecrit AU MEME DEMARRAGE que celui qui
+        cree le compte admin, donc avant que la page ait ete servie une fois.
+
+    Les trois mesurent autre chose et changeraient de sens le jour ou ce
+    qu'elles mesurent changera. Un fichier dont c'est la SEULE raison d'etre ne
+    peut pas deriver : il n'existe pas tant que personne n'a referme l'ecran,
+    et il existe des que quelqu'un l'a fait.
+    """
+    return not _lire_demarrage().get("ferme")
+
+
+def _marque(cle, **valeurs):
+    """Une phrase du dictionnaire, non rendue. Meme forme que MARQUE_PANNE.
+
+    LE SERVEUR NE MET PAS EN PHRASE, et c'est delibere : la page rend, dans la
+    langue de son lecteur, a partir des memes donnees — traductions.rendre()
+    en est la specification, et la page en porte la copie. Rendre ici obligerait
+    a relire langue_de(req) a chaque ligne et donnerait un JSON qu'aucun banc ne
+    peut relire autrement qu'en comparant des phrases francaises.
+    """
+    return {"cle": cle, "valeurs": valeurs}
+
+
+def _ligne(quoi, verdict, marque, bloquant=False, ou="", au_lancement=False):
+    # LE TITRE SE COMPOSE, et banc_page.py va donc chercher les huit noms dans
+    # les SITES D'APPEL de cette fonction, par l'arbre de syntaxe : sans cela il
+    # declarerait dormantes huit entrees du dictionnaire que personne ne cite en
+    # toutes lettres. Un gabarit plutot qu'une concatenation, pour qu'aucun
+    # litteral « demarrage. » nu ne traine dans ce fichier — le releve de
+    # citations le lirait comme un prefixe couvrant la famille entiere, et la
+    # verification de dormance deviendrait verte parce qu'elle ne mesure plus
+    # rien.
+    return {"quoi": quoi, "verdict": verdict, "dit": marque,
+            "titre": _marque(f"demarrage.{quoi}"),
+            "bloquant": bool(bloquant), "ou": ou,
+            # « au_lancement » : ce que cette ligne mesure ne se pose PAS depuis
+            # une page. STUDIO_AUTH est lue une fois au chargement du module ;
+            # promettre un bouton serait mentir, et l'ecran dit alors ou la
+            # valeur se pose vraiment.
+            "au_lancement": bool(au_lancement)}
+
+
+def _ligne_langue(req):
+    """La langue de l'interface. ELLE N'EST NULLE PART AILLEURS.
+
+    Le menu vit dans l'en-tete du studio, et c'est le seul endroit du depot qui
+    l'expose : /admin ne la connait pas. Quelqu'un qui ne lit pas le francais
+    ouvre donc une page francaise, et doit reconnaitre un globe pour en sortir.
+    C'est la premiere ligne de cet ecran-ci pour cette raison, et la seule qui
+    se regle SUR PLACE — parce qu'il n'y a aucune autre table a tenir.
+    """
+    lg = langue_de(req)
+    explicite = (req.cookies.get(COOKIE_LANGUE) or "") in traductions.LANGUES
+    return _ligne("langue", "fait" if explicite else "option",
+                  # « quelle » et non « langue » : rendre() appelle
+                  # « T(cle, langue, **valeurs) », et une valeur qui porte le
+                  # nom d'un parametre de T() fait lever le rendu. Mesure du
+                  # 3 septembre 2026 — c'est cette ligne-ci qui l'a decouvert,
+                  # et banc_traductions.py le releve maintenant sur tout le
+                  # dictionnaire.
+                  _marque("demarrage.langue.retenue" if explicite
+                          else "demarrage.langue.devinee",
+                          quelle=_marque("page.langue." + lg)))
+
+
+def _ligne_acces():
+    """Un compte, ou pas de porte du tout."""
+    if AUTH != "obligatoire":
+        # « libre » est un reglage documente, pas un defaut — mais c'est celui
+        # qui donne a quiconque joint le studio le droit de generer et de
+        # televerser. Il se pose au lancement et nulle part ailleurs.
+        return _ligne("acces", "risque", _marque("demarrage.acces.libre"),
+                      au_lancement=True)
+    if COMPTES and COMPTES.gens:
+        return _ligne("acces", "fait",
+                      _marque("demarrage.acces.oui", n=len(COMPTES.gens),
+                              admins=COMPTES.nombre_admins()), ou="/admin")
+    # charger_comptes() en cree un ; s'il n'y en a aucun, c'est que sa creation
+    # a echoue — et plus personne ne peut entrer.
+    return _ligne("acces", "bloque", _marque("demarrage.acces.aucun"),
+                  bloquant=True, ou="/admin")
+
+
+def _ligne_mdp():
+    """Le mot de passe tire au sort au demarrage, affiche UNE fois.
+
+    Il defile dans une console, il se recolle dans un fil de discussion, et il
+    est le seul secret du studio tant que personne ne l'a change. comptes.py
+    pose le drapeau a la creation et l'efface dans changer_mdp() — le seul
+    endroit du depot ou un mot de passe est remplace.
+    """
+    origines = COMPTES.comptes_d_origine() if COMPTES else []
+    if origines:
+        return _ligne("mdp", "risque",
+                      _marque("demarrage.mdp.origine", n=len(origines),
+                              qui=", ".join(origines)), ou="/admin")
+    return _ligne("mdp", "fait", _marque("demarrage.mdp.change"), ou="/admin")
+
+
+def _ligne_facteur(req):
+    """Le second facteur du compte qui LIT cet ecran, et d'aucun autre.
+
+    /admin peut imposer un mot de passe ; il ne peut pas armer un facteur pour
+    quelqu'un d'autre — il faudrait son telephone. Le renvoi va donc au studio,
+    ou vit le panneau du compte, et non a l'administration.
+    """
+    nom = req.get("compte") or ""
+    if not nom or not COMPTES:
+        # Entre par le jeton d'administration : il n'y a pas de compte a armer.
+        return _ligne("facteur", "option", _marque("demarrage.facteur.sans_compte"))
+    if COMPTES.mfa_arme(nom):
+        return _ligne("facteur", "fait",
+                      _marque("demarrage.facteur.arme", qui=nom,
+                              n=COMPTES.mfa_secours_restants(nom)), ou="/")
+    if COMPTES.mfa_en_attente(nom):
+        return _ligne("facteur", "option",
+                      _marque("demarrage.facteur.attente", qui=nom), ou="/")
+    return _ligne("facteur", "option",
+                  _marque("demarrage.facteur.absent", qui=nom), ou="/")
+
+
+def _ligne_carte():
+    """Une machine dont la carte repond. BLOQUANT : rien ne se calcule sans.
+
+    « repond » vient de machines_connues(), qui exige d'un agent qu'il se soit
+    annonce depuis moins de SILENCE_MAX. Une VRAM non nulle en plus : une
+    machine qui repond sans carte — un studio en conteneur sur un serveur sans
+    GPU — ne rendra jamais une image, et se compter la ferait croire le
+    contraire.
+    """
+    machines = machines_connues()
+    avec = [m for m in machines if m.get("repond") and (m.get("vram") or 0) > 0]
+    if avec:
+        return _ligne("carte", "fait",
+                      _marque("demarrage.carte.oui", n=len(avec),
+                              qui=", ".join(m.get("titre") or m["id"] for m in avec)),
+                      ou="/admin")
+    return _ligne("carte", "bloque",
+                  _marque("demarrage.carte.aucune", n=len(machines)),
+                  bloquant=True, ou="/admin")
+
+
+def _ligne_moteurs():
+    """Les fichiers d'au moins un moteur, quelque part dans le parc.
+
+    manquants_partout() et non manquants() : un moteur present sur la machine a
+    carte est pret, meme si le studio n'en a pas un octet — c'est le cas d'un
+    studio en conteneur qui ne fait que repartir le travail.
+
+    ET L'ON DIT OU LE TELECHARGEMENT ATTERRIRAIT. Le drapeau « local » de
+    noeuds.json n'est pas une position, c'est un DROIT D'ECRITURE SUR LE
+    DISQUE : c'est lui qui designe la machine ou les modeles se posent. Mal
+    place, il fait telecharger dix gigaoctets pour une machine qui ne les verra
+    jamais, et rien dans le studio ne le disait avant cette ligne.
+    """
+    prets = [c for c in CATALOGUE if not manquants_partout(c)]
+    ou_ecrit = noeud_local()
+    if prets:
+        return _ligne("moteurs", "fait",
+                      _marque("demarrage.moteurs.prets", n=len(prets),
+                              total=len(CATALOGUE)))
+    return _ligne("moteurs", "bloque",
+                  _marque("demarrage.moteurs.aucun", total=len(CATALOGUE),
+                          machine=ou_ecrit.get("titre") or ou_ecrit["id"]),
+                  bloquant=True)
+
+
+def _ligne_cerveau():
+    """Le modele de langage — ET IL N'EST PAS BLOQUANT, c'est le point.
+
+    Sans lui, aiguiller() retombe sur le classifieur de aiguilleur.py : 94 % de
+    justesse sur banc_aiguillage.jsonl, 88 % sur banc_neuf.jsonl, 0,03 ms par
+    demande, aucune dependance. La demande part, l'image sort. Ne pas le dire
+    envoie chercher une panne qui n'existe pas.
+
+    TROIS ETATS ET NON DEUX. Le troisieme est celui que rien ne signalait :
+    Ollama repond et ne porte AUCUN modele. La liste vide se lisait comme une
+    machine eteinte, alors que modele_ecriture_de() retombe sur MODELE_LLM et
+    que la banniere annonce « qwen2.5vl:7b » — un nom que personne n'a jamais
+    telecharge. Les deux remedes n'ont rien de commun : l'un se rallume,
+    l'autre se remplit d'un « ollama pull ».
+    """
+    utilisables = [u for u, _ in cerveaux_utilisables()]
+    if utilisables:
+        return _ligne("cerveau", "fait",
+                      _marque("demarrage.cerveau.oui", n=len(utilisables),
+                              modele=modele_ecriture_de(utilisables[0])))
+    vides = [u for u in OLLAMAS
+             if cerveau(u).get("repond") and not cerveau(u)["modeles"]]
+    if vides:
+        return _ligne("cerveau", "option",
+                      _marque("demarrage.cerveau.vide", ou=vides[0],
+                              annonce=MODELE_LLM), au_lancement=True)
+    return _ligne("cerveau", "option",
+                  _marque("demarrage.cerveau.absent", ou=OLLAMA),
+                  au_lancement=True)
+
+
+def _ligne_cles():
+    """Une cle d'API, et surtout : une modalite envoyee au loin SANS cle.
+
+    Ce dernier cas est le seul que cette ligne tienne pour un risque, et il est
+    silencieux : /admin laisse choisir un fournisseur distant avant d'avoir
+    pose sa cle, moteur_distant_pret() rend alors faux, le moteur n'est pas
+    propose, et l'utilisateur voit un studio qui ignore le reglage qu'il vient
+    de faire.
+    """
+    poses = sorted(f for f, v in CLES.items() if v.get("cle"))
+    sans = []
+    for modalite, libelle, _ in MODALITES:
+        choix = CHOIX.get(modalite, "local")
+        if choix == "local":
+            continue
+        if not (cle_de(choix) or (cle_de("google") if choix in _PAR_GOOGLE else "")):
+            sans.append(libelle)
+    if sans:
+        return _ligne("cles", "risque",
+                      _marque("demarrage.cles.sans_cle", n=len(sans),
+                              quoi=", ".join(sans)), ou="/admin")
+    if poses:
+        return _ligne("cles", "fait",
+                      _marque("demarrage.cles.posees", n=len(poses),
+                              qui=", ".join(poses)), ou="/admin")
+    return _ligne("cles", "option", _marque("demarrage.cles.aucune"), ou="/admin")
+
+
+def etat_demarrage(req):
+    """La liste de controle, mesuree a l'instant ou on la demande.
+
+    L'ORDRE EST CELUI DE L'URGENCE, pas celui du montage : la langue d'abord,
+    parce que tout le reste se lit dans une langue ; le mot de passe ensuite,
+    parce qu'il est le seul secret du studio ; le parc apres, parce qu'il est ce
+    qui bloque ; les options a la fin.
+    """
+    lignes = [_ligne_langue(req), _ligne_acces(), _ligne_mdp(),
+              _ligne_facteur(req), _ligne_carte(), _ligne_moteurs(),
+              _ligne_cerveau(), _ligne_cles()]
+    return {"lignes": lignes,
+            "bloquants": sum(1 for x in lignes if x["verdict"] == "bloque"),
+            "risques": sum(1 for x in lignes if x["verdict"] == "risque"),
+            "premiere_fois": not os.path.exists(FICHIER_DEMARRAGE),
+            "ferme": bool(_lire_demarrage().get("ferme")),
+            "langue": langue_de(req),
+            "langues": list(traductions.LANGUES)}
+
+
+async def page_demarrage(req):
+    return web.FileResponse(os.path.join(ICI, "web", "demarrage.html"))
+
+
+async def api_demarrage(req):
+    """L'etat mesure, et le seul reglage que cet ecran possede : se refermer.
+
+    DERRIERE admin_ok, ET C'EST OBLIGATOIRE. Cette reponse dit qu'un compte
+    porte encore le mot de passe d'origine, qu'aucune carte ne repond, et que
+    STUDIO_AUTH vaut « libre ». Servie sans garde, elle serait la meilleure
+    page de reconnaissance qu'un studio puisse offrir. La PAGE, elle, reste
+    ouverte comme /admin l'est : sans elle, on ne pourrait pas afficher le
+    formulaire qui demande le jeton.
+
+    GET mesure, POST referme ou rouvre — deux methodes sur un gestionnaire,
+    comme /api/textes et /api/nuage.
+    """
+    if not admin_ok(req):
+        return web.json_response({"erreur": "acces refuse"}, status=403)
+    if req.method == "POST":
+        try:
+            d = await req.json()
+        except Exception:
+            return web.json_response(
+                {"erreur": T("erreur.corps_illisible", langue_de(req))}, status=400)
+        _ecrire_demarrage(bool(d.get("ferme")))
+    return web.json_response(etat_demarrage(req))
+
+
 # Les scripts qu'une machine-noeud a besoin de recuperer. Servis par le studio
 # lui-meme : poser un noeud, c'est une commande, et le mettre a jour aussi.
 _EMPREINTE_SERVIE = {"quand": 0.0, "valeur": ""}
@@ -13123,6 +13529,12 @@ def app():
     a.router.add_get("/api/noeud/{quoi}", api_agent_source)
     # administration
     a.router.add_get("/admin", page_admin)
+    # La premiere mise en route. Sa PAGE est ouverte comme /admin l'est — sans
+    # elle, pas de formulaire pour presenter le jeton — et ses donnees sont
+    # derriere admin_ok : elles disent ce qui manque a ce studio.
+    a.router.add_get("/demarrage", page_demarrage)
+    a.router.add_get("/api/demarrage", api_demarrage)
+    a.router.add_post("/api/demarrage", api_demarrage)
     a.router.add_post("/api/admin/entrer", api_admin_entrer)
     a.router.add_get("/api/admin/noeuds", api_admin_noeuds)
     a.router.add_get("/api/admin/noeuds/{ident}/detail", api_admin_noeud_detail)
@@ -13222,6 +13634,13 @@ if __name__ == "__main__":
                  if _port_hote != str(PORT) else ""))
     else:
         print(f"  Interface : http://127.0.0.1:{PORT}")
+    # LA LIGNE QUI MANQUAIT AU PREMIER DEMARRAGE. Le studio annonçait deja son
+    # adresse, son jeton et le mot de passe d'admin ; il ne disait nulle part
+    # ou aller voir ce qu'il lui manque encore. Elle disparait des que l'ecran
+    # a ete referme — une banniere qu'on relit vingt fois ne se lit plus.
+    if demarrage_a_montrer():
+        print(f"  A FAIRE   : http://127.0.0.1:{PORT}/demarrage"
+              "   (langue, mot de passe, machines — ce qui manque, mesure)")
     if HOTE in _HOTES_LOCAUX:
         # Le cas muet etait le piege : une relance sans STUDIO_HOTE coupait le
         # telephone et la tablette sans que rien ne le dise.

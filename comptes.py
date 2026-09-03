@@ -162,10 +162,11 @@ class Comptes:
     def liste(self):
         """Sans sel ni empreinte : rien de secret ne sort d'ici."""
         return [{"nom": c["nom"], "admin": bool(c.get("admin")),
-                 "cree": c.get("cree", ""), "vu": c.get("vu", "")}
+                 "cree": c.get("cree", ""), "vu": c.get("vu", ""),
+                 "origine": bool(c.get("origine"))}
                 for c in sorted(self.gens.values(), key=lambda x: x["nom"].lower())]
 
-    def creer(self, nom, mdp, admin=False):
+    def creer(self, nom, mdp, admin=False, origine=False):
         nom = (nom or "").strip()
         if not NOM_VALIDE.fullmatch(nom):
             raise ErreurCompte("nom invalide : 2 a 24 lettres, chiffres, . _ ou -")
@@ -178,6 +179,20 @@ class Comptes:
             "nom": nom, "sel": sel, "empreinte": emp, "admin": bool(admin),
             "cree": time.strftime("%Y-%m-%d %H:%M"), "vu": "",
         }
+        # « origine » : CE MOT DE PASSE EST CELUI QUE LE STUDIO A TIRE LUI-MEME
+        # au premier demarrage, et qu'il a imprime UNE fois dans la console. Le
+        # drapeau n'est pose que dans ce cas-la, jamais pour un mot de passe
+        # choisi par l'hebergeur (STUDIO_ADMIN_MDP) : celui-la est une decision,
+        # et il n'y a rien a en mesurer. Celui-ci, non — il defile dans un
+        # terminal, il se recolle dans un fil de discussion, et il est le seul
+        # secret du studio tant que personne ne l'a change.
+        #
+        # Un drapeau plutot qu'une comparaison : garder le mot de passe pour
+        # pouvoir dire « c'est encore lui » reviendrait a le conserver en clair,
+        # ce que ce fichier refuse en tete. Le drapeau ne dit rien du secret, il
+        # dit seulement que personne n'y a touche.
+        if origine:
+            self.gens[nom.lower()]["origine"] = True
         self.sauver()
         return self.gens[nom.lower()]
 
@@ -188,7 +203,29 @@ class Comptes:
         if len(mdp or "") < MDP_MINIMUM:
             raise ErreurCompte(f"mot de passe : {MDP_MINIMUM} caracteres au moins")
         c["sel"], c["empreinte"] = empreinte(mdp)
+        # ICI ET NULLE PART AILLEURS. C'est le SEUL endroit du depot ou un mot
+        # de passe est remplace — les deux portes qui en changent un, celle du
+        # proprietaire (/api/compte/mdp) et celle de l'administration
+        # (/api/admin/comptes), passent toutes les deux par cette methode. Poser
+        # l'effacement dans les routes l'aurait recopie deux fois, et la seconde
+        # aurait fini par diverger : l'ecran de premiere mise en route aurait
+        # alors reclame indefiniment un changement deja fait, ce qui est la
+        # facon la plus sure de le faire ignorer.
+        c.pop("origine", None)
         self.sauver()
+
+    def mdp_d_origine(self, nom):
+        """Ce compte porte-t-il encore le mot de passe tire au demarrage ?"""
+        return bool((self.gens.get((nom or "").lower()) or {}).get("origine"))
+
+    def comptes_d_origine(self):
+        """Les noms des comptes qui n'ont jamais change de mot de passe.
+
+        Une LISTE et non un booleen : l'ecran qui la lit doit pouvoir nommer le
+        compte a corriger. « il reste un mot de passe d'origine » envoie
+        chercher lequel dans une page qui compte parfois vingt lignes.
+        """
+        return sorted(c["nom"] for c in self.gens.values() if c.get("origine"))
 
     def changer_role(self, nom, admin):
         c = self.gens.get((nom or "").lower())
