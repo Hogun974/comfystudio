@@ -121,6 +121,58 @@ d'un appel direct.** C'est ce qui a décidé de `OLLAMA_URL` en liste — voir
 | Taillage du journal des appels distants, avant correction | 97 ms par appel sur 11 091 lignes | le studio | 1er septembre 2026 |
 | Écriture du journal hors de la boucle, disque ralenti à 50 ms la ligne | 40 appels en 2,0 ms au lieu de 2 s | pc, au banc | 1er septembre 2026 |
 
+## Ce qu'une carte tient quand elle ne fait rien
+
+Ces chiffres décident du seuil de [Rendre la carte](rendre-la-carte.md) : une
+carte en tient toujours un peu — contexte CUDA, bureau affiché — et demander à
+ComfyUI de rendre *ça* serait demander pour rien, à chaque cycle, sans fin.
+
+| Ce qui est mesuré | Combien | Machine | Date |
+|---|---|---|---|
+| Tenu au repos, rien de chargé | **1,5 Go** sur 11 | pc (avec un bureau affiché) | 3 septembre 2026 |
+| Tenu au repos, rien de chargé | **0,3 Go** sur 5,9 | zima (sans écran) | 3 septembre 2026 |
+| Tenu pendant un rendu FLUX.1 dev | 9,4 Go sur 11 | pc | 3 septembre 2026 |
+
+Le seuil vaut **2,0 Go**, soit 0,5 Go au-dessus du plus gourmand des deux
+repos — et en dessous du plus petit moteur du catalogue, le détourage à 1,0 Go.
+
+> **Et sur ce parc-là, la libération ne sert à rien**, ce qui est une mesure
+> aussi. Après un rendu, la carte de **pc** retombe de 9,4 à 1,5 Go **en moins
+> de dix secondes**, sans que le studio ait rien demandé — le délai d'une
+> minute rend cela impossible. C'est ComfyUI qui décharge de lui-même sur cette
+> installation. La carte passe donc sous le seuil avant que le studio n'ait le
+> droit de parler, et la consigne ne part jamais.
+>
+> La fonctionnalité reste juste et gratuite ; elle servira à qui a un ComfyUI
+> qui garde ses modèles, ce qui est le comportement le plus répandu. Ici, elle
+> dort.
+
+## Ce que coûte un rechargement de modèle
+
+**Rien de mesurable sur pc**, et il faut lire la ligne suivante avant de s'en
+servir.
+
+| Ce qui est mesuré | Combien | Machine | Date |
+|---|---|---|---|
+| Même plan rejoué, carte « chaude » | 81 s | pc, FLUX.1 dev, 24 étapes, 1216×832 | 3 septembre 2026 |
+| Le même après une carte tombée à 1,5 Go | 81 s | idem | 3 septembre 2026 |
+
+> **Ces deux rendus étaient tous les deux à froid**, et c'est pour cela que
+> l'écart est nul : ComfyUI ayant déchargé le modèle de lui-même après le
+> premier, le « chaud » n'était pas chaud. Le chiffre honnête que cela donne
+> n'est pas « libérer ne coûte rien » mais **« sur cette installation, chaque
+> rendu paie déjà un rechargement »** — les 81 s l'incluent.
+>
+> Le coût d'un rechargement sur une machine dont ComfyUI garde ses modèles
+> **n'est pas mesuré**, et ne le sera pas depuis ce parc.
+>
+> *Une première tentative avait conclu que libérer faisait **gagner** 32 s.
+> Elle comparait trois rendus que le modèle de langage avait analysés
+> séparément, avec 40, 40 puis 30 étapes, sur un moteur et une taille que les
+> réglages n'avaient pas réussi à imposer — les appels rendaient 404 et rien ne
+> le vérifiait. La seconde version passe par `refaire`, qui rejoue un plan
+> gardé, et **compare les deux plans avant de comparer les durées**.*
+
 ## Ce que ces chiffres ne disent pas
 
 **Ne génère pas dans ComfyUI pendant que le studio travaille** : les deux se

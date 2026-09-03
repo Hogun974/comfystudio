@@ -12403,13 +12403,21 @@ def _inventaire_a_rafraichir(ident):
 # generatif 1,5 ; une carte qui affiche un bureau, elle, en tient deja un a deux
 # sans rien avoir charge.
 #
-# CE CHIFFRE-CI N'EST PAS MESURE, et il faut le savoir avant de s'en servir :
-# aucune carte n'etait joignable le jour ou cette regle a ete ecrite. Il est
-# CHOISI, et il se trompe dans un sens sur : trop haut, un detourage de 1 Go
-# dort sur la carte sans qu'on le rende ; trop bas, on envoie un /free
-# parfaitement inoffensif, une fois par cycle de travail, a une carte qui
-# n'affiche qu'un bureau. C'est pour pouvoir le corriger sur une vraie machine
-# que /api/admin/noeuds rend desormais « libre ».
+# IL A ETE CHOISI, PUIS MESURE — le 3 septembre 2026, sur les deux cartes du
+# parc de l'auteur, et c'est pour cela que /api/admin/noeuds rend « libre ».
+# Au repos, rien de charge : le NAS sans ecran tient 0,3 Go, le PC qui affiche
+# un bureau en tient 1,5. Deux Go laissent donc 0,5 Go de marge au-dessus du
+# plus gourmand des deux repos, et restent sous le plus petit moteur du
+# catalogue — le detourage, a 1,0 Go. Voir docs/mesures.md.
+#
+# ET LA MEME MESURE A MONTRE QUE LA CONSIGNE NE PARTIRA JAMAIS SUR CE PARC-LA :
+# apres un rendu, la carte du PC retombe de 9,4 a 1,5 Go en MOINS DE DIX
+# SECONDES, sans que le studio ait rien demande — le delai d'une minute rend
+# cela impossible. Ce ComfyUI-la decharge de lui-meme, la carte passe sous le
+# seuil avant qu'on ait le droit de parler, et tout ce qui precede dort. C'est
+# le bon comportement : on ne demande rien a une carte qui n'a rien a rendre.
+# Cette section sert a qui a un ComfyUI qui GARDE ses modeles, ce qui est le
+# defaut le plus repandu.
 SEUIL_TENU = 2.0
 
 
