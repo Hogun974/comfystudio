@@ -82,10 +82,19 @@ studio lui-même n'a aucune préférence — c'est un nœud comme les autres, et
 carte il ne rend rien. Voir [Qui prend le
 travail](docs/qui-prend-le-travail.md).
 
-**Rien n'est exposé.** Le nœud n'ouvre aucun port et le studio n'écoute que sur
-`127.0.0.1` par défaut. La connexion est obligatoire, y compris en local. Tout
-fonctionne sans aucune clé d'API, et quand une clé est posée, une demande adulte
-ne sort jamais de la machine — c'est vérifié en code, avant l'appel.
+**Le nœud n'ouvre aucun port**, et le studio écoute sur `127.0.0.1` par défaut.
+La connexion est obligatoire, y compris en local. Tout fonctionne sans aucune
+clé d'API, et quand une clé est posée, une demande adulte ne sort jamais de la
+machine — c'est vérifié en code, avant l'appel.
+
+> **Deux chemins ouvrent quand même au réseau local, et il faut le savoir.**
+> `LANCER ComfyStudio.bat` pose `STUDIO_HOTE=0.0.0.0`, et le conteneur aussi :
+> c'est voulu — on lance le studio sur une machine et on l'ouvre depuis le
+> téléphone du salon — mais **ce n'est pas le défaut du code**, et cette page a
+> longtemps annoncé le contraire en écrivant « rien n'est exposé ». Une
+> connexion reste exigée ; en revanche, **quiconque atteint le port peut
+> occuper la carte**. Sur un réseau que tu ne maîtrises pas, mets
+> `STUDIO_HOTE=127.0.0.1` dans le lanceur ou dans `.env`.
 
 ## Installer
 

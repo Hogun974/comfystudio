@@ -97,9 +97,25 @@ chmod +x "$AGENT"
 echo "  agent a jour — sha256 $EMP"
 
 if [ -n "$JETON" ]; then
-  exec "$PY" "$AGENT" --studio "$STUDIO" --jeton "$JETON"
+  # LE JETON PASSE PAR LE FICHIER DE REGLAGES, ET NON PAR LA LIGNE DE COMMANDE
+  # DE L'AGENT. noeud.sh l'interdit en toutes lettres — « celle d'un processus
+  # est lisible par tout le monde sur la machine, ce qui annulait le masquage de
+  # la saisie » — et ce script-ci la contredisait. La difference n'est pas de
+  # principe : l'argument passe a CE script-ci ne vit que le temps du
+  # telechargement, celui de l'agent reste lisible dans « ps » tant que la
+  # machine sert, c'est-a-dire des semaines. Un jeton de noeud vaut droit de
+  # faire travailler sa carte.
+  "$PY" - agent_noeud.json "$STUDIO" "$JETON" <<'PYFIN'
+import io, json, os, sys
+p, studio, jeton = sys.argv[1:4]
+c = json.load(io.open(p, encoding="utf-8")) if os.path.exists(p) else {}
+c.update(studio=studio, jeton=jeton)
+json.dump(c, io.open(p, "w", encoding="utf-8"), indent=1)
+PYFIN
+  exec "$PY" "$AGENT"
 fi
 echo
-echo "  Pour le demarrer :"
-echo "    $PY $AGENT --studio $STUDIO --jeton TON_JETON"
-echo "  (le jeton se cree dans $STUDIO/admin)"
+echo "  Pour le mettre en service :"
+echo "    ./maj_noeud.sh $STUDIO TON_JETON"
+echo "  (le jeton se cree dans $STUDIO/admin ; il est ecrit dans"
+echo "   agent_noeud.json, jamais sur la ligne de commande de l'agent)"

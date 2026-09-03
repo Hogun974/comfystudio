@@ -2,13 +2,51 @@
 title ComfyStudio
 cd /d "%~dp0"
 
-REM Utilise le Python embarque de ComfyUI : rien n'est installe sur la machine.
-set PY=%~dp0..\ComfyUI_windows_portable\python_embeded\python.exe
-if not exist "%PY%" (
-  echo Python embarque introuvable : %PY%
-  echo Verifie que ComfyStudio est bien a cote de ComfyUI_windows_portable.
-  pause & exit /b 1
-)
+REM Le Python embarque de ComfyUI d'abord : c'est le cas le plus frequent, rien
+REM n'est installe sur la machine, et il ne coute qu'un test de presence.
+set "PY=%~dp0..\ComfyUI_windows_portable\python_embeded\python.exe"
+if exist "%PY%" goto :python_trouve
+
+REM CE CHEMIN ETAIT LE SEUL, ET LE LANCEUR SORTAIT EN 1 SINON. Or l'installeur
+REM n'installe pas cela : installer_comfyui() clone dans ..\ComfyUI et lui monte
+REM un venv, et _candidats_comfy() accepte HUIT emplacements. Suivre le README a
+REM la lettre sous Windows - installer.bat puis ce fichier - echouait donc sur
+REM "Python embarque introuvable", alors qu'un interpreteur parfaitement bon
+REM etait la.
+REM
+REM On ne rajoute pas une seconde liste d'emplacements ici : elle deriverait de
+REM celle de l'installeur des la premiere retouche. On lui POSE la question -
+REM installation.py:python_du_studio(), la fonction que "--dependances" emploie
+REM deja quelques lignes plus bas pour savoir quel interpreteur equiper. Les deux
+REM repondent ainsi toujours la meme chose, ce qui est tout le probleme que ce
+REM commentaire-la decrit : "un paquet pose dans le mauvais Python produit un
+REM Successfully installed suivi d'un ImportError au demarrage".
+REM
+REM Il faut un interpreteur pour poser la question : n'importe lequel fait
+REM l'affaire, installer.py etant ecrit dans une syntaxe que meme Python 2 lit et
+REM refusant poliment les versions trop vieilles.
+set "AMORCE="
+for %%p in (py.exe python.exe python3.exe) do if not defined AMORCE set "AMORCE=%%~$PATH:p"
+if not defined AMORCE goto :sans_python
+set "PY="
+for /f "delims=" %%p in ('""%AMORCE%" installer.py --python-du-studio"') do set "PY=%%p"
+if not defined PY goto :sans_python
+if not exist "%PY%" goto :sans_python
+echo Python du studio : %PY%
+goto :python_trouve
+
+:sans_python
+echo.
+echo   Aucun Python utilisable n'a ete trouve.
+echo   Cherche : %~dp0..\ComfyUI_windows_portable\python_embeded\python.exe
+echo             puis py, python, python3 dans le PATH.
+echo.
+echo   Lance installer.bat (il installe ComfyUI et ce qu'il faut), ou installe
+echo   Python 3.8 ou plus recent depuis python.org.
+echo.
+pause & exit /b 1
+
+:python_trouve
 
 REM --- Partage sur le reseau local ---
 REM  0.0.0.0 : toutes les machines du reseau peuvent se connecter.

@@ -17,12 +17,38 @@ cd /d "%PAQUET%"
 REM Le Python embarque de ComfyUI. C'est le meme interpreteur que celui qui
 REM fait tourner le studio au quotidien : construire avec un autre Python
 REM produirait un exe lie a une version d'aiohttp qui n'est pas celle testee.
-set PY=%PAQUET%..\..\ComfyUI_windows_portable\python_embeded\python.exe
-if not exist "%PY%" (
-    echo [erreur] Python embarque introuvable : %PY%
-    echo          Corrigez la variable PY en tete de ce script.
-    exit /b 1
-)
+set "PY=%PAQUET%..\..\ComfyUI_windows_portable\python_embeded\python.exe"
+if exist "%PY%" goto :python_trouve
+
+REM Le meme chemin en dur que celui de "LANCER ComfyStudio.bat", et le meme
+REM defaut : le dossier portable n'est pas toujours a cote du studio, et
+REM l'installeur, lui, sait ou il a mis les choses. On lui demande plutot que de
+REM tenir ici une seconde liste d'emplacements, qui deriverait de la sienne.
+set "AMORCE="
+for %%p in (py.exe python.exe python3.exe) do if not defined AMORCE set "AMORCE=%%~$PATH:p"
+if not defined AMORCE goto :sans_python
+set "PY="
+for /f "delims=" %%p in ('""%AMORCE%" "%PAQUET%..\installer.py" --python-du-studio"') do set "PY=%%p"
+if not defined PY goto :sans_python
+if not exist "%PY%" goto :sans_python
+REM Et on le DIT, parce que ce n'est pas forcement equivalent : l'exe sera lie a
+REM l'aiohttp de CET interpreteur-la. L'installeur retrouve souvent le meme
+REM Python embarque a un autre endroit - il en connait huit - mais il peut aussi
+REM rendre celui du PATH, et le message ne peut pas trancher a la place de qui
+REM construit.
+echo [attention] le ComfyUI portable n'est pas a l'emplacement attendu.
+echo             L'installeur designe : %PY%
+echo             Si ce n'est pas le Python qui fait tourner le studio,
+echo             verifiez la version d'aiohttp avant de distribuer l'exe.
+goto :python_trouve
+
+:sans_python
+echo [erreur] Aucun Python utilisable trouve.
+echo          Cherche : %PAQUET%..\..\ComfyUI_windows_portable\python_embeded\python.exe
+echo                    puis py, python, python3 dans le PATH.
+exit /b 1
+
+:python_trouve
 
 REM PyInstaller n'est pas une dependance du studio : on ne l'installe qu'ici,
 REM et seulement s'il manque, pour ne pas retelecharger a chaque construction.

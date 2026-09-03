@@ -45,10 +45,29 @@ done
 
 vert()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 rouge() { printf '  \033[31m✗\033[0m %s\n' "$1"; }
+jaune() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 gris()  { printf '    \033[2m%s\033[0m\n' "$1"; }
 titre() { printf '\n%s\n%s\n' "$1" "$(printf '%*s' ${#1} '' | tr ' ' '-')"; }
+
+# DEUX COMPTEURS, ET NON UN. Tout ce qui suit comptait un seul « ENNUIS » et
+# sortait en 1 des qu'il valait plus de zero — y compris pour des cas que ce
+# script declare benins DEUX LIGNES PLUS BAS : « aucun Ollama : le studio le
+# fera ailleurs », « ComfyUI arrete : l'agent attendra qu'il reponde », « Ollama
+# sans modele ». Une machine a carte sans Ollama ne pouvait donc pas s'enroler,
+# c'est-a-dire exactement le montage que le README recommande — studio sur le
+# NAS, cartes ailleurs — et cela contredisait son encadre « le studio produit
+# meme sans modele de langage ».
+#
+# LA LIGNE DE PARTAGE : est bloquant ce qui empeche l'agent de DEMARRER ou de
+# S'ENROLER (pas de Python, pas d'adresse de studio, pas d'agent, un agent dont
+# l'empreinte ne repond pas de lui) ; est consultatif tout ce que l'agent
+# rattrapera en service — un ComfyUI qui n'est pas encore la, un modele de
+# langage qui manque. Ce n'est pas un garde-fou qu'on retire : chaque remarque
+# est toujours dite, et --verifier les compte a part.
 ENNUIS=0
-souci() { rouge "$1"; ENNUIS=$((ENNUIS + 1)); }
+REMARQUES=0
+souci()    { rouge "$1"; ENNUIS=$((ENNUIS + 1)); }
+remarque() { jaune "$1"; REMARQUES=$((REMARQUES + 1)); }
 
 # ══════════════════════════ 1. Python ══════════════════════════════════
 titre "Python"
@@ -87,9 +106,12 @@ modele_conseille() {
 titre "Materiel"
 if command -v nvidia-smi >/dev/null 2>&1; then
   CARTE=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)
-  [ -n "$CARTE" ] && vert "carte : $CARTE" || souci "nvidia-smi ne rend aucune carte"
+  # Consultatif : une machine sans carte rend quand meme service — lentement,
+  # sur son processeur — et c'est a celui qui l'enrole d'en decider, pas a ce
+  # script de le lui refuser.
+  [ -n "$CARTE" ] && vert "carte : $CARTE" || remarque "nvidia-smi ne rend aucune carte"
 else
-  souci "nvidia-smi introuvable : pas de carte NVIDIA utilisable"
+  remarque "nvidia-smi introuvable : pas de carte NVIDIA utilisable"
   gris "ComfyUI tournera sur le processeur, tres lentement"
 fi
 if [ -r /proc/meminfo ]; then
@@ -116,7 +138,10 @@ else
     done
   fi
   if [ -z "$RACINE" ]; then
-    souci "ComfyUI introuvable"
+    # Consultatif, comme « ComfyUI arrete » plus bas et pour la meme raison :
+    # l'agent attendra qu'il reponde. COMFY_URL peut d'ailleurs designer une
+    # autre machine, auquel cas il n'y a rien a trouver ici.
+    remarque "ComfyUI introuvable"
     gris "indique-le par COMFY_DIR=/chemin/vers/ComfyUI, ou installe-le"
   else
     # le Python de son environnement dedie, sinon celui du systeme
@@ -126,12 +151,12 @@ else
     done
     echo "  ComfyUI trouve dans $RACINE"
     if [ "$VERIFIER" = 1 ]; then
-      souci "il ne repond pas (mode verification : on ne le demarre pas)"
+      remarque "il ne repond pas (mode verification : on ne le demarre pas)"
     else
       printf '  Le demarrer maintenant ? [O/n] '
       read -r rep || rep=""
       case "${rep:-o}" in
-        [nN]*) souci "ComfyUI arrete : l'agent attendra qu'il reponde" ;;
+        [nN]*) remarque "ComfyUI arrete : l'agent attendra qu'il reponde" ;;
         *)
           # --disable-auto-launch : pas de navigateur qui s'ouvre sur un serveur
           nohup "$PYC" "$RACINE/main.py" --disable-auto-launch \
@@ -144,7 +169,10 @@ else
           if joignable; then
             vert "ComfyUI repond sur $COMFY_URL"
           else
-            souci "ComfyUI n'a pas repondu en deux minutes — regarde comfyui.log"
+            # Consultatif : le journal est ecrit, l'agent attendra, et une
+            # machine dont le ComfyUI met trois minutes a s'ouvrir n'a pas a
+            # etre refusee au parc pour autant.
+            remarque "ComfyUI n'a pas repondu en deux minutes — regarde comfyui.log"
           fi ;;
       esac
     fi
@@ -170,11 +198,13 @@ if curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" -o /tmp/.ollama.$$ 2>/dev/null;
   if [ "${NBM:-0}" -gt 0 ] 2>/dev/null; then
     vert "Ollama repond sur $OLLAMA_URL — ${NBM} modele(s)"
   else
-    souci "Ollama repond mais n'a aucun modele"
+    remarque "Ollama repond mais n'a aucun modele"
     gris "  ollama pull $(modele_conseille)"
   fi
 else
-  souci "aucun Ollama sur $OLLAMA_URL"
+  # Consultatif, et la ligne suivante le dit deja : « le studio le fera
+  # ailleurs ». C'est le montage que le README recommande.
+  remarque "aucun Ollama sur $OLLAMA_URL"
   gris "cette machine ne pourra pas analyser : le studio le fera ailleurs"
   gris "pour l'installer :  curl -fsSL https://ollama.com/install.sh | sh"
   gris "puis :              ollama pull $(modele_conseille)"
@@ -239,28 +269,38 @@ if [ -z "$JETON" ] && [ -f "$CONFIG" ]; then
 fi
 
 # ══════════════════════════ 6. verdict ═════════════════════════════════
+# Les remarques sont dites, jamais comptees dans le code de sortie : celui de
+# --verifier est le nombre de points BLOQUANTS, pour qu'un script d'installation
+# de parc puisse s'y fier. Un « 0 » qui voulait dire « rien a signaler » aurait
+# pousse a taire les remarques pour l'obtenir.
+dire_les_remarques() {
+  [ "$REMARQUES" -gt 0 ] &&
+    gris "$REMARQUES remarque(s) ci-dessus : l'agent s'en accommode en service"
+}
 if [ "$VERIFIER" = 1 ]; then
   titre "Verdict"
+  dire_les_remarques
   [ "$ENNUIS" = 0 ] && vert "tout est pret" || rouge "$ENNUIS point(s) a regler"
   exit "$ENNUIS"
 fi
 if [ "$ENNUIS" -gt 0 ]; then
   titre "Verdict"
+  dire_les_remarques
   rouge "$ENNUIS point(s) a regler avant de se mettre en service"
   exit 1
 fi
 
-if [ -z "$JETON" ]; then
-  titre "Jeton"
-  echo "  Il se cree dans $STUDIO/admin, sur la machine du studio."
-  echo "  Il n'est affiche qu'une seule fois, a la creation de la machine."
-  printf '  Jeton : '
-  # -s : le jeton ne s'affiche pas a l'ecran, et ne reste pas dans l'historique
-  read -r -s JETON || JETON=""
-  echo
-  [ -z "$JETON" ] && { rouge "aucun jeton — rien a faire"; exit 1; }
-
-# Le jeton passe par le fichier de reglages, pas par la ligne de commande :
+# DEFINIE ICI, AU PREMIER NIVEAU, et non dans le « if » du jeton ou elle etait.
+# Avec --jeton — la commande exacte que /admin affiche et que
+# docs/machines-a-agent.md recopie — cette branche-la n'est pas prise : la
+# fonction n'existait pas au moment des deux appels ci-dessous, « command not
+# found » ne tue rien (ce script n'a pas de set -e), et « exec "$PY" "$AGENT" »
+# demarrait l'agent SANS configuration. Il sortait sur « Il manque l'adresse du
+# studio », a tous les coups. Toute PREMIERE mise en service echouait ; une
+# machine deja enrolee survivait parce que agent_noeud.json etait deja la, et
+# c'est ce qui a cache le defaut.
+#
+# Le jeton passe par ce fichier de reglages, jamais par la ligne de commande :
 # celle d'un processus est lisible par tout le monde sur la machine, ce qui
 # annulait le masquage de la saisie.
 ecrire_reglages() {
@@ -279,8 +319,19 @@ if ollama:
 json.dump(c, io.open(p, "w", encoding="utf-8"), indent=1)
 PYFIN
 }
+
+if [ -z "$JETON" ]; then
+  titre "Jeton"
+  echo "  Il se cree dans $STUDIO/admin, sur la machine du studio."
+  echo "  Il n'est affiche qu'une seule fois, a la creation de la machine."
+  printf '  Jeton : '
+  # -s : le jeton ne s'affiche pas a l'ecran, et ne reste pas dans l'historique
+  read -r -s JETON || JETON=""
+  echo
+  [ -z "$JETON" ] && { rouge "aucun jeton — rien a faire"; exit 1; }
 fi
 
+dire_les_remarques
 titre "En service"
 if [ "$FOND" = 1 ]; then
   ecrire_reglages

@@ -28,6 +28,27 @@ COPY noeuds.exemple.json ./
 # plus lentement, et l'image ne le disait nulle part.
 COPY aiguilleur.json ./
 
+# ET LES CORPUS QUI L'ONT PRODUIT, sans quoi le bouton « reentrainer » de /admin
+# ABIME le classifieur en silence. Mesure du 3 septembre 2026, en reconstruisant
+# le systeme de fichiers de l'image :
+#
+#                        exemples  traits  banc_aiguillage  banc_neuf
+#   depot complet          2 899   7 734      62/66 = 94 %   43/49 = 88 %
+#   image sans les corpus  2 138   2 358      49/66 = 74 %   26/49 = 53 %
+#
+# Les deux chiffres du conteneur passent SOUS les planchers que la CI se donne
+# elle-meme (75 % global, 80 % sur les tranches d'office). Et le resultat est
+# ecrit dans aiguilleur.local.json, sur le volume persistant, que charger()
+# PREFERE au modele publie a chaque demarrage : un clic, silencieux, definitif.
+# Pire, banc_aiguillage.jsonl et banc_neuf.jsonl manquant aussi, /admin
+# n'affiche AUCUNE mesure — alors que c'est elle qui dirait que le
+# reentrainement vient d'abimer quelque chose.
+#
+# paquet/comfystudio.spec embarque ces cinq fichiers depuis toujours, avec la
+# raison ecrite a cote. Les deux empaquetages ne disaient pas la meme chose ;
+# banc_conteneur.py exige desormais qu'ils la disent.
+COPY corpus_aiguillage.jsonl corpus_llm.jsonl corpus_llm2.jsonl banc_aiguillage.jsonl banc_neuf.jsonl ./
+
 # Le studio SERT ces fichiers aux machines qui viennent s'enroler (/api/noeud/…).
 # Sans eux dans l'image, on ne peut plus ajouter de machine depuis un studio en
 # conteneur.

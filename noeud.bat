@@ -34,7 +34,15 @@ if not defined COMFY_URL set "COMFY_URL=http://127.0.0.1:8188"
 if not defined OLLAMA_URL set "OLLAMA_URL=http://127.0.0.1:11434"
 set "CONFIG=agent_noeud.json"
 set "AGENT=agent_noeud.py"
+REM DEUX COMPTEURS, ET NON UN - meme raison que dans noeud.sh, et meme ligne
+REM de partage. Est bloquant ce qui empeche l'agent de DEMARRER ou de S'ENROLER ;
+REM est consultatif ce que l'agent rattrapera en service. Ce fichier comptait
+REM tous ses soucis ensemble et sortait en 1 des le premier, y compris pour des
+REM cas qu'il declare benins deux lignes plus bas : une machine a carte sans
+REM Ollama ne pouvait pas s'enroler, c'est-a-dire le montage meme que le README
+REM recommande.
 set /a ENNUIS=0
+set /a REMARQUES=0
 
 :args
 if "%~1"=="" goto :etape_python
@@ -122,7 +130,9 @@ echo Materiel
 echo --------
 where nvidia-smi >nul 2>nul
 if errorlevel 1 (
-  call :souci "nvidia-smi introuvable : pas de carte NVIDIA utilisable"
+  REM Consultatif : une machine sans carte rend quand meme service, lentement,
+  REM sur son processeur. C'est a celui qui l'enrole d'en decider.
+  call :remarque "nvidia-smi introuvable : pas de carte NVIDIA utilisable"
   echo       ComfyUI tournerait sur le processeur, tres lentement
 ) else (
   set "CARTE="
@@ -130,7 +140,7 @@ if errorlevel 1 (
   if defined CARTE (
     echo   [ok] carte : !CARTE!
   ) else (
-    call :souci "nvidia-smi ne rend aucune carte"
+    call :remarque "nvidia-smi ne rend aucune carte"
   )
 )
 for /f "delims=" %%m in ('powershell -NoProfile -Command "[int]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)" 2^>nul') do echo   [ok] memoire : %%m Go
@@ -153,20 +163,22 @@ if not defined RACINE (
   )
 )
 if not defined RACINE (
-  call :souci "ComfyUI introuvable"
+  REM Consultatif, comme "ComfyUI arrete" plus bas : l'agent attendra qu'il
+  REM reponde, et COMFY_URL peut designer une autre machine.
+  call :remarque "ComfyUI introuvable"
   echo       indique-le : set COMFY_DIR=C:\chemin\vers\ComfyUI
   goto :apres_comfy
 )
 echo       trouve dans %RACINE%
 if "%VERIFIER%"=="1" (
-  call :souci "il ne repond pas - mode verification, on ne le demarre pas"
+  call :remarque "il ne repond pas - mode verification, on ne le demarre pas"
   goto :apres_comfy
 )
 
 set "rep="
 set /p "rep=  Le demarrer maintenant ? [O/n] "
 if /i "%rep%"=="n" (
-  call :souci "ComfyUI arrete : l'agent attendra qu'il reponde"
+  call :remarque "ComfyUI arrete : l'agent attendra qu'il reponde"
   goto :apres_comfy
 )
 REM le lanceur personnalise s'il existe : il porte les reglages de la machine
@@ -189,7 +201,7 @@ call :joignable
 if "%VIVANT%"=="1" (
   echo   [ok] ComfyUI repond sur %COMFY_URL%
 ) else (
-  call :souci "ComfyUI n'a pas repondu en deux minutes"
+  call :remarque "ComfyUI n'a pas repondu en deux minutes"
 )
 
 :apres_comfy
@@ -222,13 +234,13 @@ REM le « else » au SECOND if, et l'on saute alors le cas qu'on croyait traiter
 REM Le piege a deja coute une soiree sur ce meme fichier.
 if not defined NBMOD set "NBMOD=-1"
 if "!NBMOD!"=="-1" (
-  call :souci "aucun Ollama sur !OLLAMA_URL!"
+  call :remarque "aucun Ollama sur !OLLAMA_URL!"
   echo       cette machine ne pourra pas analyser : le studio le fera ailleurs
   echo       a installer depuis https://ollama.com/download
   echo       puis :  ollama pull !CONSEIL!
 )
 if "!NBMOD!"=="0" (
-  call :souci "Ollama repond mais n'a aucun modele"
+  call :remarque "Ollama repond mais n'a aucun modele"
   echo       ollama pull !CONSEIL!
 )
 if not "!NBMOD!"=="-1" if not "!NBMOD!"=="0" (
@@ -309,6 +321,10 @@ if defined JETON echo   [ok] jeton retenu du dernier lancement
 echo.
 echo Verdict
 echo -------
+REM Les remarques sont dites, jamais comptees dans le code de sortie : celui de
+REM --verifier est le nombre de points BLOQUANTS, pour qu'un deploiement de parc
+REM puisse s'y fier.
+if not !REMARQUES!==0 echo       !REMARQUES! remarque(s) ci-dessus : l'agent s'en accommode en service
 if "%VERIFIER%"=="1" (
   if %ENNUIS%==0 (
     echo   [ok] tout est pret
@@ -344,7 +360,13 @@ echo ----------
 REM Le jeton passe par le fichier de reglages, pas par la ligne de commande :
 REM celle d'un processus est lisible par tout le monde sur la machine, ce qui
 REM annulait le masquage de la saisie.
-"%PY%" -c "import json,io,os;f=os.environ['CONFIG'];c=json.load(io.open(f,encoding='utf-8')) if os.path.exists(f) else {};c.update(studio=os.environ['STUDIO'],jeton=os.environ['JETON'],comfy=os.environ['COMFY_URL']);c.update(sorties=os.environ['SORTIES']) if os.environ.get('SORTIES') else None;json.dump(c,io.open(f,'w',encoding='utf-8'),indent=1)"
+REM
+REM OLLAMA_URL Y EST ECRITE AUSSI, comme dans noeud.sh et pour la meme raison :
+REM sans elle, une machine Windows qui a bien un modele de langage ne le pretait
+REM pas au studio des le SECOND lancement, celui ou l'on ne repasse plus
+REM --ollama. Les deux fichiers ecrivaient des reglages differents pour le meme
+REM agent, et seul celui de Linux etait complet.
+"%PY%" -c "import json,io,os;f=os.environ['CONFIG'];c=json.load(io.open(f,encoding='utf-8')) if os.path.exists(f) else {};c.update(studio=os.environ['STUDIO'],jeton=os.environ['JETON'],comfy=os.environ['COMFY_URL']);c.update(sorties=os.environ['SORTIES']) if os.environ.get('SORTIES') else None;c.update(ollama=os.environ['OLLAMA_URL']) if os.environ.get('OLLAMA_URL') else None;json.dump(c,io.open(f,'w',encoding='utf-8'),indent=1)"
 if "%FOND%"=="1" (
   start "Agent ComfyStudio" /min "%PY%" "%AGENT%"
   echo   [ok] agent lance dans une fenetre reduite
@@ -371,4 +393,16 @@ exit /b 0
 :souci
 echo   [X] %~1
 set /a ENNUIS+=1
+exit /b 0
+
+:remarque
+REM « [i] » et non « [!] », qui aurait fait la paire avec le « ! » de noeud.sh :
+REM ce fichier tourne sous « setlocal enabledelayedexpansion », ou un point
+REM d'exclamation OUVRE une variable. Mesure : « echo   [!] %~1 » imprimait
+REM «   [] ComfyUI introuvable », et sur le message d'Ollama — qui contient lui
+REM meme un !OLLAMA_URL! — le shell a lu « !] aucun Ollama sur http:! » comme un
+REM nom de variable et rendu «   [//127.0.0.1:1 ». Le marqueur avalait la
+REM moitie de la phrase qu'il annonce.
+echo   [i] %~1
+set /a REMARQUES+=1
 exit /b 0

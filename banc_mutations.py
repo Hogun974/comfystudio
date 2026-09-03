@@ -374,7 +374,16 @@ def fichiers_du_conteneur():
 
 
 BESOINS = {
-    "banc_conteneur.py": fichiers_du_conteneur(),
+    # ET paquet/comfystudio.spec, depuis le 4 septembre 2026 : banc_conteneur.py
+    # confronte les DEUX empaquetages — ce que l'executable embarque, l'image
+    # doit le copier. Sans ce fichier, le banc meurt sur un FileNotFoundError au
+    # lieu de mesurer, et les DIX-HUIT mutations qui le visent se declarent « le
+    # banc s'est casse au lieu de rougir ». C'est la troisieme fois qu'une
+    # lecture neuve est ajoutee a un banc sans etre ajoutee ici — apres
+    # aiguilleur.json pour banc_multilingue et web/index.html pour banc_refaire.
+    # La regle tient en une phrase : un banc qui ouvre un fichier de plus doit
+    # le declarer ici, sinon il ne mesure plus rien dans le dossier d'essai.
+    "banc_conteneur.py": fichiers_du_conteneur() + ["paquet/comfystudio.spec"],
     # traductions.py DEPUIS LE 2 SEPTEMBRE 2026 AU SOIR : banc_page.py releve
     # le francais ecrit dans le HTML et exige qu'il soit exactement celui du
     # dictionnaire — la meme moitie de contrat que MARQUE_DEJA, mais sur cent
@@ -435,6 +444,25 @@ BESOINS = {
     # son unique porte sur le monde — appeler() — et fait tourner le VRAI code
     # contre un faux ComfyUI et un faux studio.
     "banc_agent.py": ["banc_agent.py", "agent_noeud.py"],
+    # LE SEUL BANC QUI LANCE UN SCRIPT SHELL. Il n'importe rien du studio : il
+    # fait tourner noeud.sh et maj_noeud.sh dans un bac a sable, contre un faux
+    # curl et un faux nvidia-smi qu'il ecrit lui-meme. Il lui faut donc les deux
+    # scripts, et le trio de l'installeur — installer.py, installation.py et le
+    # catalogue que celui-ci importe — parce que sa derniere section demande
+    # POUR DE VRAI, en sous-processus, quel interpreteur fera tourner le studio.
+    # Les deux .bat sont la pour un releve de TEXTE, et le banc le dit : cmd.exe
+    # n'existe pas sur les runners Ubuntu de la CI, et un cas qui ne tournerait
+    # que sur une machine serait vert chez tout le monde sans avoir rien mesure.
+    # Sans eux, ce releve mourrait a l'ouverture, ce qui ressemblerait a une
+    # mutation attrapee.
+    #
+    # PAS agent_noeud.py : le banc sert son PROPRE agent, un temoin de trois
+    # lignes qui ecrit ce qu'il a lu dans agent_noeud.json. Copier le vrai ne
+    # mesurerait rien de plus et le ferait chercher un studio.
+    "banc_noeud.py": ["banc_noeud.py", "noeud.sh", "maj_noeud.sh",
+                      "installer.py", "installation.py", "catalogue.py",
+                      "LANCER ComfyStudio.bat",
+                      "paquet/construire_windows.bat"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
@@ -4783,11 +4811,145 @@ PROGRESSION_AGENT = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  banc_noeud.py — dix mutations, toutes verifiees rouges
+# ──────────────────────────────────────────────────────────────────────
+# CE BANC EST NE AVEC LES CORRECTIONS QU'IL GARDE, et CONTRIBUTING.md dit ce
+# qu'il faut faire dans ce cas : « lance le banc NEUF sur le code d'AVANT et
+# verifie que les lignes que ta mutation nomme y rougissent ». Fait le
+# 4 septembre 2026 sur les fichiers d'avant correction : 18 cas rouges sur 34,
+# et les dix lignes que ces mutations nomment y sont toutes. Les mutations
+# ci-dessous rejouent chacune UNE de ces pannes, pour que le filet reste eprouve
+# quand le defaut, lui, aura ete oublie.
+#
+# Elles visent le SEUL banc du depot qui lance un script shell : ce qu'il
+# mesure ne se lit pas dans le texte des fichiers — c'est tout son propos — et
+# une mutation qui deplacerait une ligne sans changer le comportement le
+# laisserait vert a bon droit.
+NOEUD = [
+    dict(
+        nom="ecrire_reglages n'existe plus au moment de l'appel",
+        banc="banc_noeud.py",
+        imite="LE DEFAUT D'ORIGINE : la fonction etait definie DANS le « if "
+              "[ -z \"$JETON\" ] », donc absente des que --jeton est fourni — "
+              "c'est-a-dire pour la commande exacte que /admin distribue. "
+              "« command not found » ne tue rien (pas de set -e) et l'agent "
+              "demarre sans configuration, puis sort sur « Il manque l'adresse "
+              "du studio »",
+        rougit="et l'agent trouve le jeton dans agent_noeud.json quand il demarre",
+        editions=[
+            ("noeud.sh", brut("ecrire_reglages() {",
+                              "ecrire_reglages_jamais_definie() {"))]),
+    dict(
+        nom="le jeton repart sur la ligne de commande de l'agent",
+        banc="banc_noeud.py",
+        imite="le jeton d'un noeud redevient lisible par « ps » pour tout le "
+              "monde sur la machine, ce qui annule le masquage de la saisie que "
+              "le commentaire juste au-dessus reclame",
+        rougit="le jeton ne passe jamais par la ligne de commande de l'agent",
+        editions=[
+            ("noeud.sh", brut('\nexec "$PY" "$AGENT"\nfi',
+                              '\nexec "$PY" "$AGENT" --studio "$STUDIO"'
+                              ' --jeton "$JETON"\nfi'))]),
+    dict(
+        nom="l'adresse d'Ollama n'est plus retenue dans les reglages",
+        banc="banc_noeud.py",
+        imite="une machine qui a bien un modele de langage cesse de le preter "
+              "au studio des le SECOND lancement, celui ou l'on ne repasse plus "
+              "--ollama",
+        rougit="--ollama est retenu",
+        editions=[
+            ("noeud.sh", brut('if ollama:\n    c["ollama"] = ollama\n', ""))]),
+    dict(
+        nom="l'absence d'Ollama redevient un point bloquant",
+        banc="banc_noeud.py",
+        imite="une machine a carte sans Ollama ne peut plus s'enroler, alors "
+              "que la ligne suivante dit « le studio le fera ailleurs » et que "
+              "c'est le montage que le README recommande",
+        rougit="une machine a carte SANS Ollama s'enrole quand meme",
+        editions=[
+            ("noeud.sh", brut('  remarque "aucun Ollama sur $OLLAMA_URL"',
+                              '  souci "aucun Ollama sur $OLLAMA_URL"'))]),
+    dict(
+        nom="un ComfyUI introuvable redevient un point bloquant",
+        banc="banc_noeud.py",
+        imite="une machine dont le ComfyUI n'est pas encore installe, ou dont "
+              "le COMFY_URL designe une autre machine, ne peut plus s'enroler — "
+              "alors que l'agent attendrait qu'il reponde",
+        rougit="un ComfyUI absent non plus : l'agent attendra qu'il reponde",
+        editions=[
+            ("noeud.sh", brut('    remarque "ComfyUI introuvable"',
+                              '    souci "ComfyUI introuvable"'))]),
+    dict(
+        nom="les remarques sont recomptees avec les points bloquants",
+        banc="banc_noeud.py",
+        imite="les deux compteurs redeviennent un seul : n'importe quel "
+              "avertissement consultatif interdit de nouveau la mise en "
+              "service, et --verifier ne distingue plus ce qu'il faut regler de "
+              "ce dont l'agent s'accommode",
+        rougit="--verifier sort en 0 quand il ne reste que des remarques",
+        editions=[
+            ("noeud.sh", brut(
+                'remarque() { jaune "$1"; REMARQUES=$((REMARQUES + 1)); }',
+                'remarque() { jaune "$1"; ENNUIS=$((ENNUIS + 1)); }'))]),
+    dict(
+        nom="un studio injoignable devient une simple remarque",
+        banc="banc_noeud.py",
+        # LE SENS INVERSE DE LA PRECEDENTE, et il compte autant : un script qui
+        # ne refuserait plus rien passerait tous les cas consultatifs sans rien
+        # mesurer. Le partage doit tenir DES DEUX COTES.
+        imite="l'adresse du studio fautive ou le pare-feu ferme ne sont plus "
+              "signales que du coin de l'oeil, et la machine part en service "
+              "vers un studio qu'elle n'atteint pas",
+        rougit="il est compte comme un point a regler, jamais comme une remarque",
+        editions=[
+            ("noeud.sh", brut('  souci "studio injoignable sur $STUDIO"',
+                              '  remarque "studio injoignable sur $STUDIO"'))]),
+    dict(
+        nom="maj_noeud.sh repasse le jeton sur la ligne de commande",
+        banc="banc_noeud.py",
+        imite="la mise a jour d'un parc contredit de nouveau la regle que "
+              "noeud.sh ecrit en toutes lettres : l'argument de l'agent, lui, "
+              "reste lisible dans « ps » tant que la machine sert",
+        rougit="sans passer le jeton sur la ligne de commande, comme noeud.sh l'exige",
+        editions=[
+            ("maj_noeud.sh", brut('  exec "$PY" "$AGENT"\n',
+                                  '  exec "$PY" "$AGENT" --studio "$STUDIO"'
+                                  ' --jeton "$JETON"\n'))]),
+    dict(
+        nom="le lanceur Windows revient au seul chemin en dur",
+        banc="banc_noeud.py",
+        imite="« LANCER ComfyStudio.bat » sort de nouveau en 1 des que le "
+              "ComfyUI portable n'est pas a cote, alors que l'installeur "
+              "accepte huit emplacements et clone dans ../ComfyUI : suivre le "
+              "README a la lettre sous Windows echoue",
+        rougit="LANCER ComfyStudio.bat demande l'interpreteur a l'installeur",
+        editions=[
+            ("LANCER ComfyStudio.bat", brut(
+                'for /f "delims=" %%p in (\'""%AMORCE%" installer.py'
+                ' --python-du-studio"\') do set "PY=%%p"',
+                "goto :sans_python"))]),
+    dict(
+        nom="STUDIO_PYTHON n'impose plus rien",
+        banc="banc_noeud.py",
+        imite="les lanceurs, qui SAVENT quel interpreteur ils emploient, ne "
+              "peuvent plus le dire : l'installeur deduit a leur place, et un "
+              "paquet pose dans le mauvais Python rend un « Successfully "
+              "installed » suivi d'un ImportError au demarrage",
+        rougit="STUDIO_PYTHON l'emporte",
+        editions=[
+            ("installation.py", brut(
+                '    force = os.environ.get("STUDIO_PYTHON")\n    if force:',
+                '    force = ""\n    if force:'))]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
-             + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT)
+             + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
+             + NOEUD)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

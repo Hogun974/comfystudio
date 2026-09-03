@@ -13,6 +13,7 @@ logique dans deux scripts aurait garanti qu'ils divergent.
     python installer.py --modeles A,B    telecharge ces moteurs
     python installer.py --tout           tout ce que la machine peut tenir
     python installer.py --oui            ne demande aucune confirmation
+    python installer.py --python-du-studio   imprime l'interpreteur du studio
 
 Aucune dependance : le catalogue est lu depuis catalogue.py, et le
 telechargement des modeles installe huggingface_hub au besoin.
@@ -985,7 +986,28 @@ def main():
     a.add_argument("--tout", action="store_true",
                    help="ComfyUI, Ollama et tous les moteurs que la carte tient")
     a.add_argument("--oui", action="store_true", help="aucune confirmation")
+    a.add_argument("--python-du-studio", action="store_true",
+                   help="imprime l'interpreteur qui fera tourner le studio")
     args = a.parse_args()
+
+    if args.python_du_studio:
+        # POUR LES LANCEURS .bat, qui n'ont pas de quoi deduire. « LANCER
+        # ComfyStudio.bat » codait en dur
+        # « ..\ComfyUI_windows_portable\python_embeded\python.exe » et sortait
+        # en 1 sinon : suivre le README a la lettre sous Windows echouait, parce
+        # que installer_comfyui() clone dans ../ComfyUI avec un venv, et que
+        # _candidats_comfy() accepte HUIT emplacements. La resolution existait
+        # deja ici ; le lanceur la demande au lieu d'en ecrire une seconde, qui
+        # aurait derive de celle-ci.
+        #
+        # LE CHEMIN SEUL SUR LA SORTIE STANDARD : le .bat le lit par « for /f »,
+        # qui prendrait la raison pour une seconde ligne de chemin et garderait
+        # la derniere. La raison va donc sur la sortie d'erreur, ou l'utilisateur
+        # la voit passer et peut contredire la deduction par STUDIO_PYTHON.
+        py, raison = python_du_studio()
+        print(py)
+        sys.stderr.write("  " + raison + "\n")
+        return 0
 
     if args.dependances:
         # Chemin court, celui qu'emprunte « LANCER ComfyStudio.bat » a chaque

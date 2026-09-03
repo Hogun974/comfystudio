@@ -482,6 +482,30 @@ jobs:
       - name: L'agent de noeud, contre un faux ComfyUI
         run: python banc_agent.py
 
+      # LA MISE EN SERVICE D'UNE MACHINE, QUE « sh -n » CROYAIT GARDER. Le pas
+      # « analyse syntaxique » ci-dessus lit noeud.sh sans jamais l'executer :
+      # il ne peut donc pas voir une fonction DEFINIE DANS UNE BRANCHE NON
+      # PRISE. C'est exactement ce qui s'y cachait — ecrire_reglages() etait
+      # ecrite dans le « if [ -z "$JETON" ] » et appelee dehors, si bien que la
+      # commande que /admin distribue (« bash noeud.sh --studio ... --jeton
+      # ... ») lancait l'agent SANS configuration et echouait a tous les coups.
+      # Toute premiere mise en service d'un noeud etait perdue ; les machines
+      # deja enrolees survivaient parce que leur agent_noeud.json existait, et
+      # c'est ce qui a cache le defaut. Aucun banc ne lancait ce fichier.
+      #
+      # Celui-ci le LANCE, contre un faux curl et un faux nvidia-smi poses en
+      # tete de PATH, et il exige un TEMOIN : l'agent qu'il fait distribuer par
+      # le faux studio ecrit ce qu'il a trouve dans agent_noeud.json. Un cas qui
+      # verifierait seulement le code de sortie serait vrai d'un script qui ne
+      # fait rien.
+      #
+      # Il lui faut bash — present sur cette image, et le banc ROUGIT plutot que
+      # de se declarer vert s'il ne l'est pas. Les deux .bat, eux, ne peuvent pas
+      # etre lances ici : cmd.exe n'est pas sur un runner Ubuntu, et le banc dit
+      # lui-meme quelle moitie n'est alors qu'un releve de texte.
+      - name: La mise en service d'une machine a carte, pour de vrai
+        run: python banc_noeud.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

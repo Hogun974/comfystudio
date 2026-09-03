@@ -207,6 +207,42 @@ dit(not _absents,
     ", ".join(_absents) + " — absent(s) des lignes COPY" if _absents
     else " ".join(_copies[:3]) + " …")
 
+# ET LES DEUX EMPAQUETAGES EMPORTENT LES MEMES DONNEES. Ils n'en disaient pas
+# autant : paquet/comfystudio.spec embarque les cinq .jsonl depuis toujours,
+# avec la raison ecrite a cote — « le reentrainement depuis l'admin n'a de sens
+# que si les corpus suivent » — et le Dockerfile n'en copiait AUCUN.
+#
+# CE QUE CA COUTAIT, mesure le 3 septembre 2026 en reconstruisant le systeme de
+# fichiers de l'image : le bouton « reentrainer » de /admin faisait tomber le
+# classifieur de 94 % a 74 % sur banc_aiguillage et de 88 % a 53 % sur
+# banc_neuf — sous les planchers que la CI se donne elle-meme — en ecrivant le
+# resultat dans le volume PERSISTANT, que charger() prefere au modele publie a
+# chaque demarrage. Et les deux bancs manquant aussi, /admin n'affichait aucune
+# mesure : rien ne pouvait le dire.
+#
+# On ne compare pas a une liste ecrite ici — ce serait un troisieme comptage du
+# meme fait, et le depot en a corrige quatre en deux jours. On confronte les
+# deux empaquetages l'un a l'autre.
+_spec = lire("paquet/comfystudio.spec")
+# « [a-z0-9_]+ » ET NON « [a-z_]+ » : le premier releve rendait QUATRE corpus
+# sur cinq, parce que « corpus_llm2.jsonl » porte un chiffre. Le cas passait
+# vert en ne mesurant que quatre cinquiemes de ce qu'il annonce — et le
+# cinquieme est justement celui dont le nom sort du motif le plus naturel.
+# C'est la faute que ce depot reproche aux expressions regulieres depuis le
+# premier jour, commise en ecrivant la regle qui la denonce.
+_embarques = set(re.findall(r'"([a-z0-9_]+\.jsonl)"', _spec))
+_oublies = sorted(d for d in _embarques
+                  if not any(fnmatch.fnmatch(d, m) for m in _copies))
+# SANS CE PLANCHER, LA REGLE SERAIT VRAIE DE RIEN : une spec qui n'embarquerait
+# plus aucun corpus rendrait les deux ensembles vides et ce cas vert.
+dit(len(_embarques) >= 3,
+    "l'executable embarque bien les corpus qui font le classifieur",
+    ", ".join(sorted(_embarques)) or "aucun")
+dit(not _oublies,
+    "et l'image en conteneur emporte les MEMES",
+    ", ".join(_oublies) + " — dans la spec, pas dans le Dockerfile"
+    if _oublies else f"{len(_embarques)} corpus des deux cotes")
+
 # AUCUN prefixe de nom, les DEUX sortes de guillemets, et « os.getenv » autant
 # que « os.environ.get ». Chacune de ces trois largesses ferme une mutation qui
 # passait au vert.
