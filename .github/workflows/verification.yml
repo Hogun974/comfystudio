@@ -141,28 +141,80 @@ jobs:
       # ecrase la table des parametres PAR MOTEUR qui portait le meme nom : toute
       # generation qui la lisait mourait sur un KeyError, et l'utilisateur l'a vu
       # avant la CI. Trois secondes de verification valent mieux que cela.
+      # CE PAS A FAIT ECHOUER LA CI DE GITHUB PENDANT DES JOURS, sur QUATORZE
+      # faux positifs et pas un seul vrai. Il refusait toute reaffectation au
+      # niveau d'un module, ce qui condamnait l'ecriture ordinaire d'un script
+      # lineaire : « choisi = S.choisir_noeud(CLE) » onze fois dans
+      # banc_repartition, « boucle » cinq fois dans banc_cout, et le raffinage
+      # « CODE = re.sub(..., CODE) » sur trois lignes de suite dans banc_page.
+      # Aucune n'etait un defaut ; toutes rendaient la CI rouge, donc illisible,
+      # donc ignoree — le mal exact que l'en-tete de ce fichier decrit a propos
+      # des soixante-dix premieres executions.
+      #
+      # LA REGLE VISE MAINTENANT LE DEFAUT QU'ELLE NOMME, et lui seul :
+      #   - un « def » ou un « class » ecrit deux fois : le premier disparait
+      #     en silence, et c'est du code mort que personne ne voit ;
+      #   - une CONSTANTE (nom en majuscules) reecrite sans relire sa propre
+      #     valeur : « SEUIL = 3 » puis « SEUIL = 5 » deux cents lignes plus
+      #     bas. Le raffinage « CODE = f(CODE) » relit la sienne, donc il passe.
+      #
+      # ET IL S'EPROUVE LUI-MEME AVANT DE JUGER LE DEPOT. Un filet qu'on n'a
+      # jamais vu se fermer ne garde rien : il commence par se lancer sur deux
+      # bouts de code ecrits ici, l'un fautif et l'autre non, et s'arrete si
+      # l'un des deux le prend en defaut. Sans cela, une regle trop laxiste se
+      # compterait verte sur tout le depot sans que personne ne le sache —
+      # exactement la symetrie de la faute qu'on repare.
       - name: Aucun nom n'est defini deux fois au niveau d'un module
         run: |
           python - <<'PY'
           import ast, collections, glob, sys
 
-          fautes = 0
-          for chemin in sorted(glob.glob("*.py")):
-              arbre = ast.parse(open(chemin, encoding="utf-8").read())
+          def doublons(source, chemin="<essai>"):
+              """(nom, genre, lignes) pour chaque nom REELLEMENT ecrase."""
+              arbre = ast.parse(source)
               poses = collections.defaultdict(list)
               for n in arbre.body:
-                  if isinstance(n, ast.Assign):
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                    ast.ClassDef)):
+                      poses[n.name].append(("def", n.lineno, False))
+                  elif isinstance(n, ast.Assign):
+                      # « relit » : la nouvelle valeur cite l'ancienne, donc ce
+                      # n'est pas un ecrasement mais un raffinage.
+                      lus = {x.id for x in ast.walk(n.value)
+                             if isinstance(x, ast.Name)}
                       for c in n.targets:
                           if isinstance(c, ast.Name):
-                              poses[c.id].append(n.lineno)
-                  elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
-                                      ast.ClassDef)):
-                      poses[n.name].append(n.lineno)
-              for nom, lignes in sorted(poses.items()):
-                  if len(lignes) > 1:
-                      print(f"  ECRASE    {chemin}:{lignes} — {nom}")
-                      fautes += 1
-              if not any(len(v) > 1 for v in poses.values()):
+                              poses[c.id].append(
+                                  ("valeur", n.lineno, c.id in lus))
+              rendu = []
+              for nom, faits in sorted(poses.items()):
+                  if len(faits) < 2:
+                      continue
+                  genres = {g for g, _, _ in faits}
+                  if "def" in genres:
+                      rendu.append((nom, "def/class", [l for _, l, _ in faits]))
+                  elif nom.isupper() and not any(r for _, _, r in faits[1:]):
+                      rendu.append((nom, "constante", [l for _, l, _ in faits]))
+              return rendu
+
+          # ── le filet s'eprouve avant de juger ────────────────────────────
+          FAUTIF = "def a():\n    pass\n\n\ndef a():\n    pass\n"
+          SAIN = "X = 1\nX = X + 1\nb = 2\nb = 3\n"
+          if not doublons(FAUTIF):
+              print("  LE FILET NE VOIT PLUS un def ecrit deux fois")
+              sys.exit(1)
+          if doublons(SAIN):
+              print(f"  LE FILET REFUSE du code sain : {doublons(SAIN)}")
+              sys.exit(1)
+          print("  ok        le filet distingue l'ecrasement du raffinage")
+
+          fautes = 0
+          for chemin in sorted(glob.glob("*.py")):
+              vus = doublons(open(chemin, encoding="utf-8").read(), chemin)
+              for nom, genre, lignes in vus:
+                  print(f"  ECRASE    {chemin}:{lignes} — {nom} ({genre})")
+                  fautes += 1
+              if not vus:
                   print(f"  ok        {chemin}")
           sys.exit(1 if fautes else 0)
           PY
