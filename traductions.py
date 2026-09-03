@@ -1033,12 +1033,14 @@ TEXTES = {
                "account."]},
 
     # ── le second facteur ───────────────────────────────────────────
-    # PAS DE QR CODE, ET C'EST ECRIT DANS CES PHRASES. Le dessiner demanderait
-    # une bibliotheque, et la page n'a aucune dependance — c'est une regle du
-    # depot, pas une paresse. Restent les deux formes qu'une application sait
-    # lire sans appareil photo : le secret recopie a la main, et le lien
-    # « otpauth:// » que le telephone ouvre directement. Les textes disent donc
-    # « recopie » et « ouvre », jamais « scanne ».
+    # TROIS CHEMINS, ET LES TROIS SONT DITS. Le QR code est calcule par le
+    # studio lui-meme (qr.py, Python nu, aucune dependance ajoutee) ; restent le
+    # secret ecrit en toutes lettres et le lien « otpauth:// ». Ce ne sont pas
+    # des redondances : le QR ne sert a rien a qui enrole depuis la machine qui
+    # affiche l'ecran — un telephone ne se photographie pas lui-meme —, et le
+    # lien ne sert qu'a qui lit cette page SUR son telephone. Les textes disent
+    # donc « scanne », « recopie » et « ouvre », et l'un ne remplace pas
+    # l'autre.
     "page.mfa.bouton": {
         "fr": "second facteur",
         "en": "second factor"},
@@ -1053,11 +1055,25 @@ TEXTES = {
     "page.mfa.preparer": {
         "fr": "commencer",
         "en": "start"},
+    "page.mfa.scanne": {
+        "fr": "Scanne ce code avec ton application d'authentification.",
+        "en": "Scan this code with your authenticator app."},
+    # LE TEXTE DE REMPLACEMENT DU QR CODE. Il est lu à voix haute par un lecteur
+    # d'écran, et c'est la seule chose que quelqu'un qui n'y voit pas entendra à
+    # cet endroit : il doit donc dire où est le chemin qui lui reste — le secret
+    # écrit juste en dessous — et non décrire l'image.
+    "page.mfa.qr.alt": {
+        "fr": "QR code d'enrôlement. Si tu ne peux pas le scanner, le secret "
+              "est écrit juste en dessous.",
+        "en": "Enrolment QR code. If you cannot scan it, the secret is written "
+              "just below."},
+    # « OU RECOPIE », PARCE QUE LE QR EST AU-DESSUS. Sans le « ou », l'écran
+    # donne deux ordres de suite et laisse croire qu'il faut faire les deux.
     "page.mfa.recopie": {
-        "fr": "Recopie ce secret dans ton application d'authentification. Les "
-              "espaces sont là pour la lecture : ils ne comptent pas.",
-        "en": "Copy this secret into your authenticator app. The spaces are "
-              "there to make it readable: they do not count."},
+        "fr": "Ou recopie ce secret à la main. Les espaces sont là pour la "
+              "lecture : ils ne comptent pas.",
+        "en": "Or copy this secret by hand. The spaces are there to make it "
+              "readable: they do not count."},
     "page.mfa.lien": {
         "fr": "ou ouvrir dans l'application",
         "en": "or open in the app"},

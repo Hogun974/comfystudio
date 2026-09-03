@@ -112,6 +112,10 @@ import comptes as _comptes
 # codes de secours un jeu compte —, plutot que d'ecrire « 10 » dans une
 # reponse HTTP et de le laisser deriver de mfa.CODES_SECOURS.
 import mfa as _mfa
+# L'encodeur QR, en Python nu — aucune dependance de plus, c'est tout son
+# interet. Il n'est appele QUE par la route d'enrolement : six millisecondes une
+# fois par compte, sur une route qui fait deja un scrypt de 2**14 tours.
+import qr as _qr
 import aiguilleur as _aiguilleur
 import traductions
 # T() est appele a soixante endroits dans ce fichier : le nom court est ici
@@ -7923,7 +7927,21 @@ async def api_mfa_preparer(req):
     # LE SECRET SORT EN CLAIR, ET C'EST LE SEUL ENDROIT. Il le faut : c'est
     # cette reponse-la que l'utilisateur recopie dans son application. Il ne
     # ressort plus jamais ensuite — ni par _etat_mfa(), ni par liste().
-    return web.json_response(dict(_etat_mfa(nom), secret=secret, uri=uri))
+    #
+    # LA MATRICE PART AVEC, ET PAS UNE IMAGE. Une ligne par rangee, « 1 » pour
+    # un module sombre : c'est la page qui dessine, parce qu'elle seule sait sur
+    # quel fond. Mesure sur l'URI d'un compte ordinaire : 45 lignes de 45
+    # caracteres, 2,1 ko de JSON contre 3,4 ko pour un PNG en base64 — et
+    # surtout aucun encodeur d'image a ecrire.
+    #
+    # LA ZONE DE SILENCE N'Y EST PAS. Elle appartient au dessin, pas a la
+    # donnee, et la page la pose en quatre modules de marge (la norme) : la
+    # mettre ici la ferait payer a chaque rangee et interdirait a la page de la
+    # dessiner autrement.
+    matrice = ["".join("1" if m else "0" for m in ligne)
+               for ligne in _qr.matrice(uri)]
+    return web.json_response(dict(_etat_mfa(nom), secret=secret, uri=uri,
+                                  qr=matrice))
 
 
 async def api_mfa_confirmer(req):

@@ -723,6 +723,75 @@ coupes = [c for _g, c in re.findall(r'\.\s*split\s*\(\s*(["\'`])([^"\'`]*\u2014[
 dit(not coupes, "et aucun libelle visible n'est recoupe sur le tiret cadratin",
     ", ".join(f"« {c} »" for c in coupes) or "aucune coupure")
 
+# ── LE QR CODE DE L'ENROLEMENT ────────────────────────────────────────
+# QUATRE REGLES, ET CHACUNE GARDE UNE PANNE QUI NE LEVE PAS. Un QR mal dessine
+# ne casse rien, ne se signale pas, et ne se lit pas : l'appareil photo reste
+# ouvert sur l'ecran et rien ne se passe. C'est la famille de defauts la plus
+# silencieuse de cette page, et aucune ne se voit en relisant.
+_bloc_qr = CODE.split("function dessinerQR(", 1)
+_dessin = _bloc_qr[1].split("\n}", 1)[0] if len(_bloc_qr) == 2 else ""
+
+# 1. LE PIEGE DU THEME SOMBRE. Un QR se lit sur fond CLAIR avec des modules
+#    SOMBRES. Cette page est sombre par defaut (« color-scheme:dark », le clair
+#    n'arrive que par « prefers-color-scheme: light ») : dessiner les modules
+#    avec la couleur de texte sur le fond de la page INVERSE le code, et
+#    beaucoup de lecteurs refusent un code inverse — sans message, en n'affichant
+#    rien. Les couleurs du QR ne suivent donc AUCUNE variable de theme, ni dans
+#    le SVG ni dans la regle qui le porte.
+_regle_qr = re.search(r'\.entree\s+\.qr\s*\{([^}]*)\}', CSS)
+_couleurs = re.findall(r'fill\s*=\s*"([^"]*)"', _dessin)
+dit(len(_bloc_qr) == 2 and _regle_qr is not None
+    and "var(--" not in _dessin and "var(--" not in _regle_qr.group(1)
+    and sorted(_couleurs) == ["#000000", "#ffffff"],
+    "le QR code ne suit PAS le theme : ses couleurs sont ecrites en clair, des "
+    "deux cotes",
+    "dessinerQR introuvable : ce cas ne mesure plus rien" if len(_bloc_qr) != 2
+    else "« .entree .qr » n'existe plus dans la feuille" if _regle_qr is None
+    else f"fill={_couleurs}, et « var(--…) » nulle part")
+
+# 2. LA ZONE DE SILENCE EST DANS LE DESSIN. Quatre modules clairs tout autour,
+#    ce que la norme exige : sans eux, un lecteur pose contre le fond sombre de
+#    la page ne trouve pas les trois coins de reperage. Elle est dans le
+#    viewBox et non en marge CSS — une marge se recouvre, se supprime au
+#    retrecissement, et ne suit pas l'image quand on la copie.
+_marge = re.findall(r'(?m)^const\s+MARGE_QR\s*=\s*(\d+)\s*;', CORPS)
+_boite = re.search(r'const\s+cote\s*=\s*n\s*\+\s*2\s*\*\s*MARGE_QR', _dessin)
+dit(_marge == ["4"] and _boite is not None
+    and "MARGE_QR}" in _dessin and 'viewBox="0 0 ${cote} ${cote}"' in _dessin,
+    "et sa zone de silence fait quatre modules, posee dans le viewBox du SVG",
+    f"MARGE_QR={_marge}, cote {'calcule' if _boite else 'NON calcule'} depuis "
+    f"elle")
+
+# 3. LE SECRET RESTE ECRIT A COTE. Un QR ne se recopie pas a la main quand
+#    l'appareil photo ne marche pas, et c'est le SEUL chemin pour quelqu'un qui
+#    enrole depuis la machine qui affiche l'ecran — un telephone ne se
+#    photographie pas lui-meme. Le remplacer par le seul code enfermerait
+#    celui-la dehors, et rien a l'ecran ne le lui dirait.
+_bloc_enrol = CORPS.split("const peindreEnrolement =", 1)
+_enrol = _bloc_enrol[1].split("\n  };", 1)[0] if len(_bloc_enrol) == 2 else ""
+_manque = [c for c in ("page.mfa.scanne", "page.mfa.recopie", "page.mfa.lien")
+           if c not in _enrol]
+dit(len(_bloc_enrol) == 2 and not _manque and "dessinerQR(" in _enrol
+    and "groupeQuatre(" in _enrol,
+    "l'ecran d'enrolement offre les TROIS chemins : le code, le secret ecrit, "
+    "le lien",
+    "peindreEnrolement introuvable : ce cas ne mesure plus rien"
+    if len(_bloc_enrol) != 2
+    else ", ".join(_manque) + " : absent de cet ecran" if _manque
+    else "scanner, recopier, ouvrir")
+
+# 4. LE CHAMP QUE LE SERVEUR SERT EST CELUI QUE LA PAGE LIT. Meme famille que
+#    MARQUE_MFA, et la meme panne si les deux moities derivent : le QR
+#    disparaitrait de l'ecran sans qu'une ligne ait l'air fautive, et personne
+#    ne verrait que dessinerQR() rend null sur un « undefined ». Les deux
+#    ecritures sont relevees, pas une seule.
+_sert = re.search(r'return web\.json_response\(dict\(_etat_mfa\(nom\), '
+                  r'secret=secret, uri=uri,\s*\n\s*qr=matrice\)\)', SERVEUR)
+dit(_sert is not None and "dessinerQR(d.qr)" in CORPS,
+    "et la page dessine le champ « qr » que la route d'enrolement sert",
+    "la route ne sert plus « qr » : ce cas ne mesure plus rien"
+    if _sert is None else "serveur qr=matrice / page dessinerQR(d.qr)")
+
 # ── designer la variante retenue ──────────────────────────────────────
 # POST /api/variante decide laquelle « la » designe : « agrandis-la », « rends-la
 # fluide », « le meme personnage ». Sans ce geste dans la page, les quatre

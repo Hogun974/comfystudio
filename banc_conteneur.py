@@ -117,7 +117,15 @@ CODE = "\n".join(lire(f) for f in FICHIERS)
 # une hypothese, c'est le verdict de banc_mutations.py avant de monter ce
 # chiffre-ci. Le seuil suit le nombre de modules importes, ou il ne mesure
 # plus rien.
-FICHIERS_SUIVIS = 7
+#
+# HUIT le 3 septembre 2026, avec le QR code de l'enrolement : serveur.py importe
+# qr.py. Et le defaut annonce quatre paragraphes plus haut est arrive une
+# TROISIEME fois, mot pour mot — laisse a sept, retirer comptes.py du suivi en
+# laissait encore sept, la mutation « un module suivi charge par importlib »
+# passait au vert, et banc_mutations.py l'a dit avant que ce chiffre-ci ne
+# monte. Trois fois le meme oubli en deux jours : ce seuil n'est pas un
+# reglage, c'est une ligne a bouger a CHAQUE import ajoute a serveur.py.
+FICHIERS_SUIVIS = 8
 dit(len(FICHIERS) >= FICHIERS_SUIVIS,
     f"les {len(FICHIERS)} fichiers du conteneur sont suivis",
     ", ".join(FICHIERS[1:]) or "aucun module importe")

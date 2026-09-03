@@ -72,14 +72,20 @@ service, n'envoie aucun SMS, et n'a rien à installer pour ça.
 
 1. **Commencer.** Tu donnes ton mot de passe courant ; le studio tire un secret
    et te l'affiche.
-2. **Le recopier** dans ton application. Il n'y a **pas de QR code** : le
-   dessiner demanderait une bibliothèque, et la page du studio n'a aucune
-   dépendance. Deux façons de faire à la place :
-   - recopier le secret à la main. Il est affiché par groupes de quatre pour
-     qu'on ne se perde pas ; **les espaces ne comptent pas**, la casse non plus,
-     et le studio les pardonne quand tu le retapes.
-   - ou ouvrir le lien `otpauth://` juste en dessous, que le téléphone passe
-     directement à l'application.
+2. **Le donner** à ton application. Trois chemins s'affichent ensemble, et ce
+   n'est pas de la redondance — ils ne servent pas les mêmes situations :
+   - **scanner le QR code.** Le studio le calcule lui-même, en Python nu :
+     aucune bibliothèque, aucun CDN, rien à installer. Il est dessiné en noir
+     sur blanc **même en thème sombre**, avec sa marge blanche — un QR inversé
+     ou sans marge n'est lu par presque aucun téléphone, et l'appareil photo
+     ne dit pas pourquoi il ne trouve rien.
+   - **recopier le secret à la main**, écrit juste en dessous. C'est le seul
+     chemin quand tu enrôles depuis la machine même qui affiche l'écran — un
+     téléphone ne se photographie pas lui-même. Il est affiché par groupes de
+     quatre pour qu'on ne se perde pas ; **les espaces ne comptent pas**, la
+     casse non plus, et le studio les pardonne quand tu le retapes.
+   - **ou ouvrir le lien `otpauth://`**, utile quand tu lis cette page *sur*
+     ton téléphone : il passe directement à l'application.
 3. **Confirmer** avec un code. Tant que ce n'est pas fait, **rien n'est armé** :
    ton mot de passe seul continue d'ouvrir le studio.
 

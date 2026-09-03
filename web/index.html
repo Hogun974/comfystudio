@@ -199,11 +199,35 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
 .entree .rang{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 .entree .mal{color:var(--rouge);font:11px var(--mono);min-height:14px}
 /* ── le second facteur ─────────────────────────────────────────────
-   LE SECRET SE RECOPIE A LA MAIN, chiffre par chiffre, et il n'y a pas de QR
-   code pour l'eviter : le dessiner demanderait une bibliotheque, et la page
-   n'a aucune dependance. « user-select:all » fait qu'un seul clic prend les
-   trente-deux caracteres au lieu du groupe de quatre sous le curseur, et
-   « word-break » evite qu'ils sortent de la boite sur un telephone. */
+   LE QR CODE NE SUIT PAS LE THEME, ET C'EST LA REGLE LA PLUS IMPORTANTE DE
+   CE BLOC. Un QR se lit sur fond CLAIR avec des modules SOMBRES. Dessine avec
+   « var(--encre) » sur « var(--plan) », il serait juste en theme clair et
+   INVERSE en theme sombre — qui est le defaut de cette page — et beaucoup de
+   lecteurs echouent alors en silence : l'appareil photo ne montre rien, aucun
+   message, et l'utilisateur croit que son telephone est en cause. Le blanc et
+   le noir sont donc ecrits en clair ici ET dans les attributs « fill » du SVG,
+   des deux cotes, parce qu'une seule des deux ecritures suffirait a etre
+   oubliee au prochain remaniement du theme.
+   LA ZONE DE SILENCE EST DANS LE DESSIN, PAS DANS LA MISE EN PAGE : quatre
+   modules de marge blanche, ce que la norme exige, poses dans le viewBox du
+   SVG. Une marge CSS ne la donnerait pas — un « padding » se supprime, se
+   recouvre, et disparait quand la boite retrecit, alors que le viewBox
+   l'emporte partout avec l'image.
+   240 px de cote : le code le plus grand qu'un enrolement produise est un
+   9-M, soit 53 modules avec sa marge, ce qui fait 4,5 px par module. En
+   dessous de trois, les appareils photo de telephone decrochent.
+   « line-height:0 » sur la boite : sans lui, la ligne de base ajoute quatre
+   pixels sous le SVG et la marge blanche n'est plus symetrique. */
+.entree .qr{width:min(240px,100%);margin:0 auto;background:#fff;
+  border-radius:7px;line-height:0}
+.entree .qr svg{display:block;width:100%;height:auto}
+/* LE SECRET RESTE ECRIT EN TOUTES LETTRES SOUS LE CODE, et ce n'est pas de la
+   redondance : un QR ne se recopie pas a la main quand l'appareil photo ne
+   marche pas, et c'est le SEUL chemin pour quelqu'un qui enrole depuis la
+   machine meme qui affiche l'ecran — le telephone ne peut pas se photographier.
+   « user-select:all » fait qu'un seul clic prend les trente-deux caracteres au
+   lieu du groupe de quatre sous le curseur, et « word-break » evite qu'ils
+   sortent de la boite sur un telephone. */
 .entree .secret{font:600 14px var(--mono);letter-spacing:.06em;user-select:all;
   background:var(--creux);border:1px solid var(--trait);border-radius:7px;
   padding:8px 10px;word-break:break-all}
@@ -2065,11 +2089,12 @@ function formulaireEntree() {
 }
 
 /* ── l'enrolement du second facteur ───────────────────────────────────
-   PAS DE QR CODE, ET C'EST UNE DECISION. Le dessiner demanderait une
-   bibliotheque ; la page n'a aucune dependance, et le studio doit demarrer sur
-   un NAS ou pip n'a jamais servi. Restent les deux formes qu'une application
-   d'authentification sait lire sans appareil photo : le secret recopie a la
-   main, et le lien « otpauth:// » que le telephone ouvre directement.
+   UN QR CODE, SANS BIBLIOTHEQUE NI CDN. La matrice arrive calculee par le
+   serveur (qr.py, Python nu) : une ligne par rangee, « 1 » pour un module
+   sombre. La page ne fait que la dessiner, et TROIS formes cohabitent parce
+   qu'elles ne servent pas les memes gens — le code a scanner, le secret ecrit
+   en toutes lettres pour qui enrole depuis la machine qui affiche l'ecran, et
+   le lien « otpauth:// » pour qui lit cette page SUR son telephone.
 
    L'ENROLEMENT EST EN DEUX TEMPS, et le second n'est pas une politesse : armer
    au moment ou l'on tire le secret enferme dehors quiconque a mal recopie,
@@ -2084,6 +2109,58 @@ function formulaireEntree() {
    decoder, et banc_mfa.py le mesure. Ce qui s'affiche est donc exactement ce
    qui se colle. */
 const groupeQuatre = s => String(s || "").replace(/(.{4})(?=.)/g, "$1 ");
+
+/* La zone de silence de la norme : quatre modules clairs tout autour. Sans
+   elle, un lecteur pose contre un fond sombre ne trouve pas les trois coins de
+   reperage et n'affiche rien — c'est la panne silencieuse la plus banale d'un
+   QR code affiche a l'ecran. */
+const MARGE_QR = 4;
+
+/* UN SVG D'UN SEUL CHEMIN, ET PAS UNE GRILLE DE DIV. Trois raisons, dans
+   l'ordre ou elles ont compte :
+     - un 9-M fait 53 lignes de 53, soit 2809 elements a poser et a styler ;
+       le chemin unique en fait UN, et le navigateur n'a rien a assembler ;
+     - entre deux div voisines, l'arrondi sous-pixel laisse un liset clair a
+       certains niveaux de zoom, et ce liset casse la lecture d'un module sur
+       deux. Un chemin unique n'a pas de joint ;
+     - le SVG se redimensionne sans flou, ce qu'un damier de div ne fait pas.
+   « shape-rendering="crispEdges" » interdit l'anticrenelage : un module gris
+   entre deux modules noirs est exactement ce qu'un lecteur refuse.
+
+   LES COULEURS SONT ECRITES ICI, EN CLAIR, ET NE VIENNENT PAS DU THEME. Voir
+   la regle « .entree .qr » de la feuille de style : un code dessine a l'encre
+   de la page sur son fond sombre est INVERSE, et beaucoup de lecteurs echouent
+   dessus sans le dire.
+
+   LA MATRICE EST VERIFIEE AVANT D'ETRE ECRITE. Elle passe par innerHTML : on
+   n'y admet que « 0 » et « 1 », et seulement en carre. Un caractere de plus et
+   l'on rend null — la page retombe alors sur le secret ecrit, qui suffit.
+   Caractere par caractere et NON par une expression reguliere : celle-ci
+   demanderait un second parcours des 2809 caracteres d'un 9-M, et banc_page.py
+   refuse toute expression reguliere qui ne porte pas sur un nom de fichier —
+   une regle nee de trois defauts ou l'on decoupait un message lisible. */
+function dessinerQR(lignes) {
+  const n = Array.isArray(lignes) ? lignes.length : 0;
+  if (!n) return null;
+  let chemin = "";
+  for (let l = 0; l < n; l++) {
+    if (typeof lignes[l] !== "string" || lignes[l].length !== n) return null;
+    for (let c = 0; c < n; c++) {
+      const module = lignes[l][c];
+      if (module !== "0" && module !== "1") return null;
+      if (module === "1") chemin += `M${c + MARGE_QR} ${l + MARGE_QR}h1v1h-1z`;
+    }
+  }
+  const cote = n + 2 * MARGE_QR;
+  const boite = document.createElement("div");
+  boite.className = "qr";
+  boite.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" role="img"`
+    + ` viewBox="0 0 ${cote} ${cote}" shape-rendering="crispEdges"`
+    + ` aria-label="${ech(T("page.mfa.qr.alt"))}">`
+    + `<rect width="${cote}" height="${cote}" fill="#ffffff"/>`
+    + `<path d="${chemin}" fill="#000000"/></svg>`;
+  return boite;
+}
 
 function formulaireFacteur() {
   const voile = document.createElement("div");
@@ -2190,6 +2267,14 @@ function formulaireFacteur() {
     const lien = document.createElement("a");
     lien.className = "otp"; lien.href = d.uri;
     lien.textContent = T("page.mfa.lien");
+    // LE CODE D'ABORD, LE SECRET ENSUITE, ET LES DEUX TOUJOURS. L'ordre est
+    // celui des gestes : on scanne, et si l'appareil photo ne marche pas — ou
+    // si l'on enrole depuis la machine meme qui affiche l'ecran, cas ou le
+    // telephone ne peut pas se photographier — on recopie. Le dessin qui echoue
+    // ne coute donc rien : dessinerQR() rend null et il ne reste que le chemin
+    // qui existait avant, entier.
+    const image = dessinerQR(d.qr);
+    if (image) corps.append(dire("page.mfa.scanne"), image);
     corps.append(dire("page.mfa.recopie"), secret, lien);
     // Le champ du code est ouvert ici sans que le serveur l'ait demande : on
     // sait ce qu'on attend, on vient de tirer le secret.

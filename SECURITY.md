@@ -167,6 +167,28 @@ l'enrôlement qui vient de le tirer. Les **codes de secours**, eux, se comparent
 ils sont empreints avec scrypt, exactement comme des mots de passe, et ne sont
 jamais relisibles.
 
+**Le QR code de l'enrôlement *est* le secret.** Depuis le 3 septembre 2026, la
+réponse d'enrôlement porte aussi la matrice d'un QR code, calculée par
+`qr.py` — du Python nu, aucune dépendance ajoutée, rien qui parte sur le réseau,
+et le calcul se fait **sur le serveur du studio**, jamais chez un service
+d'images tiers. Deux conséquences à connaître :
+
+- Il encode exactement l'URI `otpauth://`, donc **le secret en clair sous une
+  autre forme**. Une photo de l'écran, une capture partagée, un écran filmé par
+  une caméra de bureau valent le secret lui-même. C'est aussi vrai du secret
+  écrit en toutes lettres à côté ; le QR ne change pas la nature du risque, il
+  le rend simplement plus facile à emporter.
+- Il n'ajoute **aucune surface d'attaque côté serveur** : `qr.py` ne lit rien,
+  n'écrit rien, ne prend que du texte et rend une grille de booléens. La page,
+  elle, n'accepte de la matrice que des « 0 » et des « 1 » en carré avant de la
+  dessiner, et retombe sur le secret écrit si elle reçoit autre chose.
+
+Un encodeur QR écrit à la main peut être parfaitement cohérent avec lui-même et
+produire une image qu'aucun téléphone ne lit ; `banc_qr.py` le compare donc
+**module par module** à quatre matrices produites par une implémentation
+indépendante (segno), et recalcule les syndromes de Reed-Solomon avec sa propre
+arithmétique. Même raisonnement que les vecteurs de la RFC 6238 pour le TOTP.
+
 **Dix codes de secours, à usage unique**, affichés **une seule fois**. Un second
 facteur sans porte de sortie enferme son propriétaire : téléphone perdu,
 remplacé ou réinitialisé, et le compte serait mort — personne ne pourrait le

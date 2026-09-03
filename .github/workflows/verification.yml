@@ -389,6 +389,24 @@ jobs:
       - name: Le second facteur, le stockage et la porte
         run: python banc_comptes.py
 
+      # L'ENCODEUR QR, MESURE CONTRE SEGNO ET CONTRE L'ALGEBRE. Le depot n'a
+      # aucune dependance, ni serveur ni page : le QR code de l'enrolement est
+      # donc calcule par du Python nu ecrit ici. Un encodeur QR maison peut etre
+      # parfaitement coherent avec lui-meme et produire une image qu'aucun
+      # telephone ne lit — un masque mal choisi, un octet de correction dans le
+      # mauvais ordre, un motif d'alignement a un pixel pres. Rien de tout cela
+      # ne leve, et l'image ressemble a un QR code dans tous les cas.
+      #
+      # Ce banc compare les 6364 modules de quatre matrices produites par segno,
+      # une implementation independante capturee le 3 septembre 2026
+      # (etalons_qr.py) — meme raisonnement que les vecteurs de la RFC 6238 pour
+      # le TOTP. Et il ne s'arrete pas la : il recalcule les syndromes de
+      # Reed-Solomon avec sa PROPRE arithmetique, ce qui prouve les blocs de
+      # correction sans rien connaitre de segno, et permettra d'ajouter un cas
+      # sans etalon. Segno n'est pas au depot et n'y entrera pas.
+      - name: Le QR code de l'enrolement, module par module
+        run: python banc_qr.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

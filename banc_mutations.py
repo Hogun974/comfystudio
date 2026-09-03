@@ -373,6 +373,13 @@ BESOINS = {
     # branchees. Il n'a besoin d'aucune dependance : ni comptes.py ni mfa.py
     # n'importent autre chose que la bibliotheque standard.
     "banc_comptes.py": ["banc_comptes.py", "comptes.py", "mfa.py", "serveur.py"],
+    # L'ENCODEUR QR ET SES ETALONS, et rien d'autre : qr.py n'importe que
+    # « collections », etalons_qr.py n'importe rien du tout. mfa.py est la pour
+    # la derniere section du banc, qui encode cinq URI d'enrolement REELLES —
+    # celles que le studio produit, et pas seulement les quatre des etalons.
+    # Sans lui, le banc meurt a l'import, ce qui ressemblerait a une mutation
+    # attrapee.
+    "banc_qr.py": ["banc_qr.py", "qr.py", "etalons_qr.py", "mfa.py"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
@@ -3389,10 +3396,290 @@ DEMARRAGE = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  banc_qr.py et banc_page.py — le QR code de l'enrolement, seize mutations
+# ──────────────────────────────────────────────────────────────────────
+# LES MUTATIONS D'UN ENCODEUR SONT FACILES A ECRIRE ET REDOUTABLES, et c'est
+# exactement pour cela qu'elles sont ici. Aucune de ces seize ne fait LEVER quoi
+# que ce soit : la matrice sort carree, les trois coins de reperage sont a leur
+# place, l'image ressemble a un QR code dans tous les cas. Elles produisent
+# simplement un code qu'aucun telephone ne lit — la panne la plus silencieuse
+# qu'on puisse poser dans ce depot, puisque le seul symptome est un appareil
+# photo qui n'affiche rien.
+#
+# Douze visent qr.py, quatre le dessin dans la page. Elles disent la PANNE et
+# non la manipulation : « les octets de correction sont dans le mauvais ordre »
+# se relit dans les deux lignes en dessous, « le code ne se corrige plus » non.
+#
+# LE SENS INVERSE, MENE LE 3 SEPTEMBRE 2026, ET IL SE PARTAGE EN DEUX.
+#
+#   - LES QUATRE DE banc_page.py SONT PROUVEES DANS LES DEUX SENS. La page
+#     d'AVANT a ete reconstituee — la regle « .entree .qr », dessinerQR(), son
+#     appel dans peindreEnrolement, le champ « qr » de la route et les deux cles
+#     de traduction retires —, et le banc NEUF lance dessus rougit sur QUATRE
+#     lignes et QUATRE seulement, exactement celles que ces mutations nomment :
+#     54 vertes, 4 rouges. Chacune a donc ete vue rougir sur le vrai defaut, pas
+#     seulement sur son imitation.
+#   - LES DOUZE DE banc_qr.py NE SONT PAS PROUVABLES AINSI, et il faut le dire.
+#     Le banc est NE avec qr.py, comme banc_durees.py et banc_adulte.py avant
+#     lui : il n'existe pas de filet d'avant a leur opposer, et l'autre facon de
+#     prendre le sens inverse — le banc neuf sur le code d'avant — ne donne rien
+#     ici non plus, puisque le code d'avant n'a pas de qr.py du tout : le banc
+#     MEURT sur « ModuleNotFoundError: No module named 'qr' » au lieu de rougir.
+#     Mesure faite, et c'est un plantage, pas un verdict. Elles restent donc des
+#     mutations rouges dont on ne sait pas ce qu'elles mesurent d'AUTRE.
+#     CE QUI LIMITE LE DOUTE : chacune nomme une ligne DIFFERENTE, et elles ne
+#     se recouvrent pas — les quatre etages du banc rougissent sur des cas
+#     distincts, du bloc d'essai en Reed-Solomon jusqu'a l'invariant de
+#     structure. Une mutation qui rougirait « pour une autre raison » rougirait
+#     sur la ligne d'une autre, et verdict() refuse justement ce cas-la : il
+#     exige la ligne NOMMEE, pas un code de retour non nul.
+QR = [
+    dict(
+        nom="deux octets de correction sont echanges",
+        banc="banc_qr.py",
+        imite="le defaut qui ne se voit sur AUCUNE image : les mots de code sont "
+              "tous la, a leur place, et le polynome n'est plus divisible par le "
+              "generateur. Le lecteur eclaire le code, ne corrige rien, et "
+              "n'affiche rien",
+        rougit="un bloc juste a ses dix-huit syndromes nuls",
+        editions=[
+            ("qr.py", brut(
+                "    return reste[len(donnees):]\n",
+                "    sortie = reste[len(donnees):]\n"
+                "    sortie[0], sortie[1] = sortie[1], sortie[0]\n"
+                "    return sortie\n")),
+        ]),
+    dict(
+        nom="un motif d'alignement est saute",
+        banc="banc_qr.py",
+        imite="le lecteur perd le quadrillage des que le code n'est pas "
+              "parfaitement de face : les motifs d'alignement sont ce qui lui "
+              "permet de redresser une photo prise de biais, et il n'y en a "
+              "aucun avant la version 2",
+        rougit="reperage, separateurs, synchronisation, module sombre, alignement",
+        editions=[
+            ("qr.py", brut(
+                "    for l in centres:\n        for c in centres:\n",
+                "    for l in centres[:-1]:\n        for c in centres:\n")),
+        ]),
+    dict(
+        nom="le masque 0 est force au lieu d'etre choisi",
+        banc="banc_qr.py",
+        imite="un code parfaitement valide et moins lisible : les grandes "
+              "plages uniformes et les faux motifs de reperage egarent les "
+              "lecteurs, et c'est tout ce que les regles de penalite servent a "
+              "eviter. Rien ne leve, et la comparaison aux etalons ne le voit "
+              "pas non plus puisqu'elle force le masque",
+        rougit="le masque rendu est celui de plus petite penalite parmi les huit",
+        editions=[
+            ("qr.py", brut(
+                "    candidats = range(8) if masque is None else (masque,)\n",
+                "    candidats = (0,) if masque is None else (masque,)\n")),
+        ]),
+    dict(
+        nom="la colonne de synchronisation n'est plus sautee dans le zigzag",
+        banc="banc_qr.py",
+        imite="toute la moitie gauche du code decale d'une colonne. La matrice "
+              "reste carree, les motifs sont a leur place, et rien ne se lit",
+        rougit="se refait module par module depuis ses mots de code",
+        editions=[
+            ("qr.py", brut(
+                "    while droite >= 1:\n"
+                "        if droite == 6:\n"
+                "            droite = 5\n"
+                "        monte = ((droite + 1) & 2) == 0\n",
+                "    while droite >= 1:\n"
+                "        monte = ((droite + 1) & 2) == 0\n")),
+        ]),
+    dict(
+        nom="le module sombre obligatoire n'est plus pose",
+        banc="banc_qr.py",
+        imite="un module clair la ou la norme en exige un sombre. Certains "
+              "lecteurs acceptent quand meme, d'autres non : le defaut ne se "
+              "reproduit pas d'un telephone a l'autre, ce qui est le pire cas "
+              "pour qui cherche la panne",
+        rougit="reperage, separateurs, synchronisation, module sombre, alignement",
+        editions=[
+            ("qr.py", brut(
+                "    modules[taille - 8][8] = True\n"
+                "    fixe[taille - 8][8] = True\n",
+                "    modules[taille - 8][8] = False\n"
+                "    fixe[taille - 8][8] = True\n")),
+        ]),
+    dict(
+        nom="les blocs sont ecrits a la suite au lieu d'etre entrelaces",
+        banc="banc_qr.py",
+        imite="une eclaboussure locale abime alors dix octets du MEME bloc au "
+              "lieu d'un octet dans chacun. La correction en supporte quelques-"
+              "uns par bloc, pas dix : le code se lit tant qu'il est propre, et "
+              "cesse de se lire des qu'il est un peu sali",
+        rougit="se refait module par module depuis son TEXTE",
+        editions=[
+            ("qr.py", brut(
+                "    flux = []\n"
+                "    for i in range(max(len(d) for d, _ in parts)):\n"
+                "        for d, _ in parts:\n"
+                "            if i < len(d):\n"
+                "                flux.append(d[i])\n",
+                "    flux = []\n"
+                "    for d, _ in parts:\n"
+                "        flux.extend(d)\n")),
+        ]),
+    dict(
+        nom="le remplissage revient a la lettre de la norme",
+        banc="banc_qr.py",
+        imite="l'ecart assume avec segno referme sans le dire. Le code reste "
+              "parfaitement lisible — ces mots-la sont du remplissage —, mais "
+              "les trois etalons en mode octet cessent tous de correspondre, et "
+              "l'on ne saurait plus lequel des deux a raison",
+        rougit="et le remplissage commence apres",
+        editions=[
+            ("qr.py", brut(
+                "    bits += [0] * min(8 - len(bits) % 8, place - len(bits))\n",
+                "    bits += [0] * min(-len(bits) % 8, place - len(bits))\n")),
+        ]),
+    dict(
+        nom="la version choisie monte d'un cran",
+        banc="banc_qr.py",
+        imite="des codes plus gros que necessaire a chaque enrolement : plus de "
+              "modules pour la meme surface d'ecran, donc moins de pixels par "
+              "module, donc un code que les appareils photo lisent moins bien. "
+              "Personne ne le remarque, tout continue de marcher — un peu moins",
+        rougit="ni plus ni moins",
+        editions=[
+            ("qr.py", brut(
+                "        if bits <= 8 * octets_utiles(version):\n"
+                "            return version\n",
+                "        if bits <= 8 * octets_utiles(version):\n"
+                "            return min(version + 1, 40)\n")),
+        ]),
+    dict(
+        nom="le format d'information n'est plus brouille",
+        banc="banc_qr.py",
+        imite="le format du niveau M avec le masque 0 vaut alors zero : quinze "
+              "modules clairs d'affilee a cote du reperage, que le lecteur prend "
+              "pour une zone vide. Et sur les autres masques, il defait le "
+              "mauvais numero",
+        rougit="les huit masques s'annoncent juste et se defont pour rendre les "
+               "memes mots",
+        editions=[
+            ("qr.py", brut(
+                "    return ((donnee << 10) | reste) ^ 0b101010000010010\n",
+                "    return (donnee << 10) | reste\n")),
+        ]),
+    dict(
+        nom="le bloc d'information de version n'est jamais ecrit",
+        banc="banc_qr.py",
+        imite="a partir de la version 7, le lecteur doit deviner la taille du "
+              "code au lieu de la lire. Beaucoup y arrivent, certains non : le "
+              "meme code marche sur un telephone et pas sur l'autre. Et il "
+              "n'existe pas en dessous de la 7, donc les petits codes ne le "
+              "montrent jamais",
+        rougit="« reel » (7-M) se refait module par module depuis ses mots de code",
+        # L'ANCRE NE PREND PAS LA LIGNE « def », ET C'EST UNE MESURE. Elle la
+        # prenait ; le 3 septembre 2026, une docstring ajoutee a
+        # _ecrire_version() a gliss'e entre la signature et le test, et le
+        # passage suivant de ce banc a rendu « MUTATION PERIMEE, 0 occurrence ».
+        # C'est le bon sens de l'erreur — mais la lecon est que l'ancre doit
+        # tenir sur la DECISION (le seuil de version) et non sur ce qui
+        # l'entoure, qui se commente et se reformule.
+        editions=[
+            ("qr.py", brut(
+                "    if version < 7:\n"
+                "        return\n",
+                "    if version < 41:\n"
+                "        return\n")),
+        ]),
+    dict(
+        nom="la frontiere du champ de longueur passe de 9 a 10",
+        banc="banc_qr.py",
+        imite="a la version 10, le champ « combien d'octets » compte 8 bits au "
+              "lieu de 16 : tout le flux decale de huit bits et le lecteur lit "
+              "une longueur absurde. Aucun etalon ne va jusque-la — c'est le "
+              "balayage des quarante versions qui l'attrape, et lui seul",
+        rougit="ne devrait PAS prendre",
+        editions=[
+            ("qr.py", brut(
+                "    return 8 if version <= 9 else 16\n",
+                "    return 8 if version <= 10 else 16\n")),
+        ]),
+    dict(
+        nom="la seconde copie du format d'information disparait",
+        banc="banc_qr.py",
+        imite="le format n'est plus ecrit qu'une fois. Le code se lit — jusqu'au "
+              "jour ou le coin haut-gauche est sali, et ce jour-la il ne se lit "
+              "plus du tout, alors que la redondance existe exactement pour ce "
+              "cas",
+        rougit="« ascii » (1-M) se refait module par module depuis ses mots de code",
+        editions=[
+            ("qr.py", brut(
+                "    for i in range(8):\n"
+                "        modules[8][taille - 1 - i] = bit(i)\n"
+                "    for i in range(8, 15):\n"
+                "        modules[taille - 15 + i][8] = bit(i)\n",
+                "")),
+        ]),
+    dict(
+        nom="les modules du QR prennent la couleur du theme",
+        banc="banc_page.py",
+        imite="LE PIEGE DU THEME SOMBRE, et c'est la panne la plus silencieuse "
+              "de cet ecran. La page est sombre par defaut : dessiner les "
+              "modules avec la couleur de texte INVERSE le code, et beaucoup de "
+              "lecteurs echouent sur un code inverse sans rien afficher. En "
+              "theme clair, tout marche — donc celui qui developpe ne le voit "
+              "jamais",
+        rougit="le QR code ne suit PAS le theme",
+        editions=[
+            ("web/index.html", brut(
+                '<path d="${chemin}" fill="#000000"/>',
+                '<path d="${chemin}" fill="var(--encre)"/>')),
+        ]),
+    dict(
+        nom="la zone de silence tombe a zero module",
+        banc="banc_page.py",
+        imite="le code colle au fond de la boite. Un lecteur ne retrouve plus "
+              "les trois coins de reperage sans les quatre modules clairs que la "
+              "norme exige autour, et l'appareil photo reste ouvert sur l'ecran "
+              "sans rien trouver",
+        rougit="et sa zone de silence fait quatre modules, posee dans le viewBox",
+        editions=[
+            ("web/index.html", brut(
+                "const MARGE_QR = 4;\n",
+                "const MARGE_QR = 0;\n")),
+        ]),
+    dict(
+        nom="le secret ecrit disparait sous le QR code",
+        banc="banc_page.py",
+        imite="il ne reste que le code a scanner. Quiconque enrole depuis la "
+              "machine qui affiche l'ecran est enferme dehors — un telephone ne "
+              "se photographie pas lui-meme — et rien a l'ecran ne le lui dit",
+        rougit="l'ecran d'enrolement offre les TROIS chemins",
+        editions=[
+            ("web/index.html", brut(
+                'corps.append(dire("page.mfa.recopie"), secret, lien);',
+                "corps.append(secret, lien);")),
+        ]),
+    dict(
+        nom="la route d'enrolement renomme le champ que la page dessine",
+        banc="banc_page.py",
+        imite="la meme derive que MARQUE_MFA, et la meme panne muette : "
+              "dessinerQR() recoit « undefined », rend null, et le QR "
+              "disparait de l'ecran sans qu'une ligne de la page ni du serveur "
+              "ait l'air fautive",
+        rougit="et la page dessine le champ « qr » que la route d'enrolement sert",
+        editions=[
+            ("serveur.py", brut(
+                "                                  qr=matrice))",
+                "                                  code_qr=matrice))")),
+        ]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + FACTEUR
-             + DEMARRAGE)
+             + DEMARRAGE + QR)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
