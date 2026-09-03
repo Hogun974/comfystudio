@@ -1025,8 +1025,16 @@ async def sonder_noeud(x):
         # Ce ComfyUI vient de revenir : s'il avait refuse /free, la question se
         # rouvre. C'est le seul evenement apres lequel un 404 peut avoir cesse
         # d'etre vrai — c'est celui qui suit une mise a jour de ComfyUI.
+        #
+        # ET LA CONSIGNE EN COURS EST ANNULEE, parce qu'un redemarrage vide la
+        # carte par construction : sans cette ligne, le bilan comparait
+        # l'apres-redemarrage a l'avant-consigne et ecrivait « a rendu 9,6 Go »
+        # pour un ComfyUI qui venait simplement de se relever. La seule preuve
+        # que la liberation fonctionne etait donc fabricable par un
+        # redemarrage.
         if not etat.get("repond"):
             etat.pop("liberation_refusee", None)
+            _consigne_annulee(x["id"])
         etat.update(repond=True, carte=dev.get("name"),
                     vram=round(dev.get("vram_total", 0) / 1024 ** 3, 1),
                     libre=round(dev.get("vram_free", 0) / 1024 ** 3, 1))
@@ -12476,9 +12484,11 @@ def _horloge_repos(ident):
         # qui borne la boucle : au plus une consigne par periode de repos. Sans
         # cette remise a zero, une carte qui ne rend rien serait relancee toutes
         # les dix secondes jusqu'a la fin des temps.
-        e.pop("libere_demande", None)
-        e.pop("libere_avant", None)
-        e.pop("libere_dit", None)
+        # _consigne_annulee() et non trois pop recopies : la liste des cles
+        # d'une consigne est ecrite UNE fois, la ou elle est posee. Elle etait
+        # ici en double, et c'est le quatrieme comptage a la main pris en
+        # defaut dans ce depot en deux jours.
+        _consigne_annulee(ident)
     elif not e.get("repos_depuis"):
         e["repos_depuis"] = time.time()
 
@@ -12507,7 +12517,15 @@ def _doit_liberer(ident):
     if PREFERENCES["vram_repos_min"] <= 0:
         return False
     e = ETAT_NOEUDS.get(ident) or {}
-    if not e.get("repond") or e.get("liberation_refusee") or e.get("libere_demande"):
+    # « is not None » ET NON LA VERACITE : le statut rapporte par l'agent vaut
+    # 0 quand ComfyUI est injoignable, et zero est FAUX en Python. La porte ne
+    # se fermait donc pas — le studio ecrivait « la carte ne sera plus liberee
+    # sur cette machine » et redemandait au battement suivant. Un audit adverse
+    # l'a reproduit le 3 septembre 2026. Le statut 0 ne passe plus par ici (voir
+    # api_noeud_annonce), mais on ne laisse pas la garde dependre de la
+    # veracite d'un code de retour.
+    if (not e.get("repond") or e.get("liberation_refusee") is not None
+            or e.get("libere_demande")):
         return False
     if not _tient_quelque_chose(ident) or not _au_repos(ident):
         return False
@@ -12527,6 +12545,31 @@ def _consigne_envoyee(ident):
     e["libere_demande"] = time.time()
     e["libere_avant"] = e.get("libre")
     e.pop("libere_dit", None)
+
+
+def _consigne_annulee(ident):
+    """Defait ce que _consigne_envoyee() a note. Trois cas l'exigent.
+
+    UNE CONSIGNE NOTEE MAIS JAMAIS PARTIE FAIT MENTIR LE BILAN. _consigne_envoyee
+    precede l'envoi — il faut bien relever la VRAM d'AVANT avant de demander —
+    et si l'envoi echoue, la marque reste : au tour suivant, _juger_liberation
+    lit une VRAM inchangee et ACCUSE ComfyUI d'« accepter /free sans rien
+    liberer ». Deux lignes du meme journal, a trente secondes d'ecart, qui se
+    contredisent — et la periode de repos est brulee, puisque « libere_demande »
+    interdit une seconde tentative.
+
+    Les trois cas, mesures par un audit adverse le 3 septembre 2026 :
+      - le POST leve (machine injoignable, delai depasse) ;
+      - l'agent rapporte un echec qui n'est pas un refus de route ;
+      - la machine cesse de repondre entre la consigne et le bilan — et
+        celui-la est le pire : au retour de son ComfyUI la carte est vide par
+        construction, et le studio portait le redemarrage au CREDIT de la
+        consigne. « On sait si ca a marche » etait donc une preuve fabricable
+        par un simple redemarrage.
+    """
+    e = ETAT_NOEUDS.get(ident) or {}
+    for cle in ("libere_demande", "libere_avant", "libere_dit"):
+        e.pop(cle, None)
 
 
 def _refuser_liberation(ident, statut):
@@ -12625,9 +12668,14 @@ async def liberer_noeuds_a_url():
             # ferme donc pas la porte, la prochaine periode de repos reessaiera.
             print(f"  {x.get('titre') or x['id']} : /free injoignable "
                   f"({type(e).__name__})", flush=True)
+            _consigne_annulee(x["id"])
             continue
         if not 200 <= statut < 300:
             _refuser_liberation(x["id"], statut)
+            # RIEN N'A ETE LIBERE : sans cela, le bilan du tour suivant
+            # accuserait ComfyUI d'avoir accepte la consigne sans rien rendre,
+            # trente secondes apres avoir dit qu'il l'avait refusee.
+            _consigne_annulee(x["id"])
 
 
 async def api_noeud_annonce(req):
@@ -12672,6 +12720,12 @@ async def api_noeud_annonce(req):
     # reste vrai, et le repartiteur doit continuer a l'ecarter.
     if d.get("comfy") is False:
         etat.update(vu=time.time(), agent=True, repond=False)
+        # SA CARTE DISPARAIT : ce que la consigne en cours a pu faire devient
+        # inconnaissable, et la garder ferait porter le prochain bilan sur une
+        # carte qu'on a cessee de voir. On l'annule ici plutot qu'a son retour :
+        # au retour, la carte est vide par construction, et c'est deja trop
+        # tard pour distinguer un redemarrage d'une liberation reussie.
+        _consigne_annulee(x["id"])
     else:
         # SON ComfyUI VIENT DE REVENIR : on rouvre la question de /free. C'est
         # le seul evenement apres lequel un refus peut avoir cesse d'etre vrai,
@@ -12681,6 +12735,9 @@ async def api_noeud_annonce(req):
         # ailleurs.
         if not etat.get("repond"):
             etat.pop("liberation_refusee", None)
+            # Meme raison que dans sonder_noeud : une carte qui revient est
+            # vide, et ce n'est pas la consigne qui l'a videe.
+            _consigne_annulee(x["id"])
         etat.update(repond=True, vu=time.time(), agent=True,
                     carte=d.get("carte"), vram=float(d.get("vram") or 0),
                     # NONE ET NON ZERO QUAND LA CLE MANQUE. « float(x or 0) »
@@ -12698,7 +12755,33 @@ async def api_noeud_annonce(req):
     # deja vide ». Les deux lectures se completent, elles ne se remplacent pas.
     rendu = d.get("libere")
     if isinstance(rendu, dict) and not rendu.get("ok"):
-        _refuser_liberation(x["id"], rendu.get("statut"))
+        # INJOIGNABLE N'EST PAS REFUSE, et le chemin local le disait deja —
+        # « la machine peut revenir, on ne ferme donc pas la porte ». Celui-ci
+        # ne le disait pas : appeler() rend 0 quand ComfyUI ne repond pas ou
+        # depasse les vingt secondes, et le studio ecrivait alors « son ComfyUI
+        # a refuse /free (0) — un ComfyUI trop ancien ne connait pas cette
+        # route ». Un diagnostic faux sur un simple delai, et une porte qui ne
+        # se fermait pas puisque zero est faux. Les deux moities du meme
+        # garde-fou ne traitaient pas le meme cas de la meme facon.
+        statut_ = rendu.get("statut")
+        if isinstance(statut_, int) and statut_ >= 400:
+            _refuser_liberation(x["id"], statut_)
+            _consigne_annulee(x["id"])
+        else:
+            # Une ligne, et pas a chaque battement : _consigne_annulee efface
+            # « libere_demande », donc on ne repassera ici qu'apres une
+            # nouvelle periode de repos.
+            print(f"  {x.get('titre') or x['id']} : /free injoignable "
+                  f"(statut {statut_}) — on reessaiera au prochain repos",
+                  flush=True)
+            _consigne_annulee(x["id"])
+            # ET L'HORLOGE REPART, sinon « au prochain repos » est un mensonge :
+            # _doit_liberer() est evalue plus bas DANS CE MEME BATTEMENT, et
+            # l'annulation qu'on vient de faire lui rendrait aussitot le droit
+            # de redemander — six tentatives par minute contre un ComfyUI
+            # injoignable, et une ligne de journal a chaque fois. Le banc l'a
+            # dit avant moi.
+            ETAT_NOEUDS.setdefault(x["id"], {})["repos_depuis"] = time.time()
     dossiers = d.get("modeles") or {}
     # Un dictionnaire de listes VIDES est bien forme et ne veut rien dire : il
     # arrive pendant que ComfyUI se releve. L'enregistrer effacait tout ce

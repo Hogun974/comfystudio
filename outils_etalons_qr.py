@@ -34,6 +34,26 @@ import segno
 #            premiers se ressemblent trop, un defaut commun leur echapperait
 CAS = [
     ("court", "otpauth://totp/A:b?secret=JBSWY3DPEHPK3PXP&issuer=A"),
+    # ══ LE SEUL CAS QUE LE STUDIO EMETTE VRAIMENT ═══════════════════════
+    # AJOUTE LE 3 SEPTEMBRE 2026, ET IL MANQUAIT. Le cas « reel » ci-dessous
+    # s'annonce comme « exactement ce que mfa.uri() produit » et emploie le
+    # secret de la RFC, long de SEIZE caracteres — quand mfa.secret_neuf() en
+    # rend TRENTE-DEUX. Toute URI d'enrolement reelle fait donc 123 a 150
+    # caracteres et sort en 8-M, 49x49, pour n'importe quel nom de compte
+    # (mesure : « a », « jordan » et un nom de vingt-huit lettres donnent les
+    # trois 49x49).
+    #
+    # Les quatre etalons couvraient les versions 1, 4, 7 et 9. LA HUITIEME —
+    # la seule qui part chez l'utilisateur — n'etait comparee a segno nulle
+    # part, et les « 6 364 modules, zero ecart » du commit mesuraient quatre
+    # versions dont aucune n'etait celle-la. Demonstration de l'audit : un
+    # chiffre change dans la table des alignements de la version 8 laisse
+    # banc_qr.py a 50/50 vert pendant qu'aucun telephone ne lit plus une URI
+    # d'enrolement — exactement « un motif d'alignement a un pixel pres », la
+    # panne que le commit nomme en premier.
+    ("emis", "otpauth://totp/ComfyStudio:jordan"
+             "?secret=MFRGGZDFMZTWQ2LKNNWG23TPOBYXE43U"
+             "&issuer=ComfyStudio&algorithm=SHA1&digits=6&period=30"),
     ("reel", "otpauth://totp/ComfyStudio:jordan?secret=JBSWY3DPEHPK3PXP"
              "&issuer=ComfyStudio&algorithm=SHA1&digits=6&period=30"),
     ("long", "otpauth://totp/ComfyStudio:un-nom-de-compte-plutot-long"

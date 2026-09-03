@@ -3792,6 +3792,35 @@ DEMARRAGE = [
 #     exige la ligne NOMMEE, pas un code de retour non nul.
 QR = [
     dict(
+        # LA PANNE QUE L'EN-TETE DE banc_qr.py NOMME EN PREMIER — « un motif
+        # d'alignement place a un pixel pres » — et elle etait INVISIBLE
+        # jusqu'au 3 septembre 2026. Les quatre etalons couvraient les versions
+        # 1, 4, 7 et 9 ; or toute URI d'enrolement reelle sort en version 8, et
+        # elle seule : mesure du 3 septembre, les noms de compte « a »,
+        # « jordan » et un nom de vingt-huit lettres donnent les trois 49x49.
+        # La seule version que le studio emette n'etait donc comparee a segno
+        # NULLE PART, et cette mutation-ci laissait le banc a 50/50 vert
+        # pendant qu'aucun telephone ne lisait plus un enrolement.
+        #
+        # La cause etait dans outils_etalons_qr.py : son cas « reel » se donne
+        # pour « exactement ce que mfa.uri() produit » et emploie le secret de
+        # la RFC, long de SEIZE caracteres, quand mfa.secret_neuf() en rend
+        # TRENTE-DEUX. Un etalon « emis » a ete ajoute, avec un secret de la
+        # vraie longueur ; la mutation rougit desormais sur trois lignes, et les
+        # trois nomment ce cas-la.
+        nom="l'alignement de la version 8 decale d'un module",
+        banc="banc_qr.py",
+        imite="un motif d'alignement a un pixel pres sur la SEULE version que "
+              "le studio emette. Rien ne leve, l'image ressemble a un QR code, "
+              "et elle ne se lit plus. C'est la panne que ce banc nomme en "
+              "premier, et celle qu'il ne voyait pas",
+        rougit="« emis » (8-M) se refait module par module depuis son TEXTE",
+        editions=[
+            ("qr.py", brut(
+                "7: (6, 22, 38), 8: (6, 24, 42), 9: (6, 26, 46), 10: (6, 28, 50),",
+                "7: (6, 22, 38), 8: (6, 22, 42), 9: (6, 26, 46), 10: (6, 28, 50),")),
+        ]),
+    dict(
         nom="deux octets de correction sont echanges",
         banc="banc_qr.py",
         imite="le defaut qui ne se voit sur AUCUNE image : les mots de code sont "

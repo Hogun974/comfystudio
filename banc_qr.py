@@ -340,7 +340,7 @@ for nom, texte, designation, lignes in ETALONS:
         f"de code",
         ecart or f"{len(attendu)}x{len(attendu)} = {len(attendu) ** 2} modules")
 dit(compares == sum(len(m) ** 2 for _, _, _, m in ETALONS) and compares > 6000,
-    "et le compte des modules compares est bien celui des quatre etalons",
+    "et le compte des modules compares est bien celui de TOUS les etalons",
     f"{compares} modules")
 
 print("\n  ── et depuis le TEXTE, pour les trois cas en mode octet ──")
@@ -350,9 +350,23 @@ print("\n  ── et depuis le TEXTE, pour les trois cas en mode octet ──")
 # studio emprunte reellement.
 octet = [(n, t, d, m) for n, t, d, m in ETALONS
          if relire(en_booleens(m))[0] >> 4 == 0b0100]
-dit(len(octet) == 3,
-    "trois etalons sur quatre sont en mode octet, et le quatrieme en dit la raison",
-    "« ascii » porte l'indicateur 0010, alphanumerique — segno choisit le mode "
+# LE COMPTE SE DEDUIT, IL NE S'ECRIT PAS. Cette ligne disait « trois etalons
+# sur quatre » : le nombre etait recopie a cote de la liste qui le donne, et
+# ajouter le cinquieme etalon — celui de la version que le studio emet
+# vraiment — l'a fait rougir alors que RIEN n'etait casse. C'est le troisieme
+# comptage a la main pris en defaut dans ce depot en deux jours, apres
+# FICHIERS_SUIVIS et SEUIL_TENU.
+#
+# CE QU'ON EXIGE VRAIMENT est autre chose que le nombre : que tous les etalons
+# soient en mode octet SAUF ceux dont on sait pourquoi. Un etalon neuf qui
+# sortirait en alphanumerique sans qu'on l'ait voulu doit rougir ici ; en
+# ajouter un en mode octet ne doit rien changer.
+_autres = [n for n, _t, _d, m in ETALONS
+           if relire(en_booleens(m))[0] >> 4 != 0b0100]
+dit(_autres == ["ascii"] and len(octet) == len(ETALONS) - 1,
+    "tous les etalons sont en mode octet, sauf « ascii » qui en dit la raison",
+    f"{len(octet)}/{len(ETALONS)} en octet ; hors mode octet : {_autres} — "
+    "« ascii » porte l'indicateur 0010, alphanumerique : segno choisit le mode "
     "le plus court, qr.py n'en connait qu'un")
 for nom, texte, designation, lignes in octet:
     attendu = en_booleens(lignes)

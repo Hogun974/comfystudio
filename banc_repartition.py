@@ -968,6 +968,82 @@ async def _liberation():
     finally:
         S.aiohttp.ClientSession = _vraie_session
 
+    # ══ TROIS COURSES QUI FAISAIENT ECRIRE AU STUDIO DES FAUSSETES ══════
+    # Trouvees par un audit adverse le 3 septembre 2026, chacune reproduite par
+    # une experience. Elles ont ceci de commun qu'aucune ne casse la
+    # liberation : elles font MENTIR le journal, qui est la seule chose par
+    # laquelle on sait si la fonctionnalite marche.
+
+    # ── 1. INJOIGNABLE N'EST PAS REFUSE, et zero est faux ───────────────
+    # appeler() rend 0 quand ComfyUI ne repond pas. Le studio ecrivait alors
+    # « son ComfyUI a refuse /free (0) — la carte ne sera plus liberee sur
+    # cette machine », puis REDEMANDAIT au battement suivant : « liberation_
+    # refusee = 0 » est faux en Python, la garde ne mordait pas. Un diagnostic
+    # faux sur un simple delai, et une porte qui ne se ferme pas.
+    poser_repos()
+    d, temoin = await battre("pc")
+    assert d.get("liberer") is True
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        await battre("pc", libere={"ok": False, "statut": 0})
+    e = S.ETAT_NOEUDS["pc"]
+    dit(temoin and e.get("liberation_refusee") is None
+        and "injoignable" in sortie.getvalue().lower(),
+        "un /free injoignable n'est pas un refus, et le journal ne dit pas le "
+        "contraire",
+        f"refus={e.get('liberation_refusee')!r} ; "
+        f"journal={sortie.getvalue().strip()[:90]!r}")
+    # ET LA PERIODE DE REPOS N'EST PAS BRULEE : la consigne est annulee, donc
+    # une nouvelle tentative part. Sans cette moitie, le cas ci-dessus serait
+    # vrai d'un studio qui aurait simplement cesse de s'occuper de la machine.
+    e["repos_depuis"] = S.time.time() - 300
+    d2, temoin2 = await battre("pc")
+    dit(temoin2 and d2.get("liberer") is True,
+        "et la consigne repart au repos suivant, au lieu d'etre perdue",
+        str(d2.get("liberer")))
+
+    # ── 2. UN 404 FERME LA PORTE, ET N'ACCUSE PAS ENSUITE ───────────────
+    # Le vrai refus doit, lui, fermer — et ne pas laisser derriere lui une
+    # consigne en cours dont le bilan accuserait ComfyUI d'« accepter /free
+    # sans rien liberer », trente secondes apres avoir dit qu'il l'avait
+    # refusee.
+    poser_repos()
+    await battre("pc")
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        await battre("pc", libere={"ok": False, "statut": 404})
+    e = S.ETAT_NOEUDS["pc"]
+    dit(e.get("liberation_refusee") == 404 and not e.get("libere_demande"),
+        "un 404 ferme la porte ET ne laisse pas de consigne a juger",
+        f"refus={e.get('liberation_refusee')}, "
+        f"consigne={e.get('libere_demande') is not None}")
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        await battre("pc")
+    dit("n'a rendu que" not in sortie.getvalue(),
+        "et le tour suivant n'accuse pas ComfyUI de n'avoir rien rendu",
+        sortie.getvalue().strip()[:80] or "rien dit")
+
+    # ── 3. UN REDEMARRAGE N'EST PAS PORTE AU CREDIT DE LA CONSIGNE ──────
+    # C'est le plus genant des trois, parce que « on sait si ca a marche » est
+    # l'argument de la fonctionnalite : une carte qui revient est vide par
+    # construction, et le studio ecrivait « a rendu 9,6 Go » pour un ComfyUI
+    # qui venait de se relever. La preuve etait fabricable par un redemarrage.
+    poser_repos()
+    await battre("pc")
+    assert S.ETAT_NOEUDS["pc"].get("libere_demande")
+    await battre("pc", comfy=False)          # sa carte ne repond plus
+    dit(not S.ETAT_NOEUDS["pc"].get("libere_demande"),
+        "une machine qui perd son ComfyUI perd aussi la consigne en cours",
+        f"consigne={S.ETAT_NOEUDS['pc'].get('libere_demande') is not None}")
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        # elle revient, carte vide — ce que fait tout redemarrage
+        await battre("pc", libre=10.0)
+    dit("a rendu" not in sortie.getvalue(),
+        "et son retour n'est pas compte comme une liberation reussie",
+        sortie.getvalue().strip()[:80] or "rien dit")
+
     # LE VEILLEUR L'APPELLE VRAIMENT. Sans cette ligne, tout ce qui precede
     # mesurerait une fonction que personne n'appelle — « sept bancs sont restes
     # verts pendant que les reglages par conversation etaient morts ».
