@@ -1055,6 +1055,28 @@ dit("langue" not in menu and "#langue" not in cle
     "et il reste hors des reglages : le serveur ne le retient pas la",
     f"{sorted(menu)} / {sorted(cle)}")
 
+# ET IL EST DANS L'EN-TETE, PAS SOUS LE BOUTON « REGLAGES ». Il y a vecu une
+# heure, dans le pied de page, et deux choses le rendaient inutilisable la :
+# ce panneau ne s'ouvre que pour changer de moteur ou de taille — donc la
+# langue etait cachee derriere un geste sans rapport — et il ne s'ouvre PAS DU
+# TOUT tant qu'on n'est pas connecte, alors que l'ecran de connexion est
+# justement la premiere chose qu'un lecteur etranger doit pouvoir traduire.
+#
+# On releve la POSITION et non la presence : « <select id="langue"> existe »
+# resterait vrai partout dans la page, y compris a l'endroit d'ou on vient de
+# le sortir.
+_avant_entete, _, _apres = PAGE.partition("</header>")
+dit('id="langue"' in _avant_entete and "<header" in _avant_entete,
+    "et il est dans l'EN-TETE, visible sans ouvrir quoi que ce soit",
+    "dans l'en-tete" if 'id="langue"' in _avant_entete
+    else "il est retombe plus bas dans la page")
+# Le globe est son etiquette, et « for » est ce qui les relie : sans lui, le
+# clic sur l'icone n'ouvre rien et un lecteur d'ecran annonce un caractere
+# decoratif au lieu du menu. C'est un mot dans le HTML, et il se perd en
+# reindentant.
+dit('for="langue"' in _avant_entete,
+    "et le globe lui est attache par « for » : cliquer l'icone ouvre le menu")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

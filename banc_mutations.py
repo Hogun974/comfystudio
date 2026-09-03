@@ -2612,6 +2612,53 @@ LANGUES = [
 # nomme et elle seule, et le depot sain reste vert sur les trente-huit.
 PAGE_LANGUES = [
     dict(
+        nom="le menu de langue retombe sous le bouton « reglages »",
+        banc="banc_page.py",
+        imite="l'endroit ou il a vecu une heure, et qui le rendait inutilisable "
+              "par ceux a qui il sert. Le panneau du pied de page ne s'ouvre "
+              "que pour changer de moteur ou de taille — la langue s'y cachait "
+              "derriere un geste sans rapport — et surtout il ne s'ouvre PAS "
+              "DU TOUT tant qu'on n'est pas connecte, alors que l'ecran de "
+              "connexion est la premiere chose qu'un lecteur etranger doit "
+              "pouvoir traduire. Le menu existe toujours, la page reste juste, "
+              "et personne ne le trouve",
+        rougit="et il est dans l'EN-TETE, visible sans ouvrir quoi que ce soit",
+        # UN VRAI DEPLACEMENT, ET NON UNE SUPPRESSION. La premiere ecriture de
+        # cette mutation retirait simplement le menu — ce que « le menu de
+        # langue disparait de la page » fait deja, plus bas dans ce fichier.
+        # Deux mutations pour un seul geste : la seconde n'aurait rien mesure
+        # de plus, et le cas de POSITION serait reste non eprouve, puisqu'un
+        # menu absent est absent de l'en-tete comme de partout ailleurs. On le
+        # remet donc a l'endroit d'ou il vient, sous le bouton « reglages », et
+        # c'est la seule facon de montrer que le banc lit la POSITION et pas la
+        # presence.
+        editions=[
+            ("web/index.html", brut(
+                '      <select id="langue" data-t-aria-label="page.langue.aria"\n'
+                '              aria-label="Langue"></select>\n',
+                "")),
+            ("web/index.html", brut(
+                '    <div class="jointe" id="jointe"',
+                '      <select id="langue" data-t-aria-label="page.langue.aria"\n'
+                '              aria-label="Langue"></select>\n'
+                '    <div class="jointe" id="jointe"')),
+        ]),
+    dict(
+        nom="le globe perd son « for »",
+        banc="banc_page.py",
+        imite="un caractere decoratif a cote d'un menu, au lieu de son "
+              "etiquette. Le clic sur l'icone n'ouvre plus rien — il faut "
+              "viser les onze pixels du menu lui-meme — et un lecteur d'ecran "
+              "annonce un globe sans dire a quoi il sert. Rien ne se voit a "
+              "l'oeil : le menu est toujours la, au bon endroit, et il marche "
+              "encore pour qui vise juste",
+        rougit="et le globe lui est attache par « for »",
+        editions=[
+            ("web/index.html", brut(
+                '<label for="langue" aria-hidden="true"',
+                '<label aria-hidden="true"')),
+        ]),
+    dict(
         nom="le francais de la page derive de celui du dictionnaire",
         banc="banc_page.py",
         imite="la page francaise reste juste, rien ne leve, et le lecteur "
@@ -2830,10 +2877,16 @@ PAGE_LANGUES = [
               "serveur, lui, continue de poser le cookie que plus personne ne "
               "lui demande — tout marche, sauf qu'on ne peut pas choisir",
         rougit="la page offre le choix de la langue, et le poste au serveur",
+        # REANCREE le 3 septembre 2026 : le menu a demenage du pied de page vers
+        # l'en-tete, et cette ancre tenait sur son ancienne indentation.
+        # banc_mutations l'a dit tout seul — « MUTATION PERIMEE, elle ne mesure
+        # plus rien » — au lieu de se compter verte. C'est le comportement
+        # voulu, et c'est la seule raison pour laquelle ce deplacement n'a pas
+        # laisse un filet mort derriere lui.
         editions=[
             ("web/index.html", brut(
-                '      <select id="langue" data-t-aria-label="page.langue.aria"'
-                ' aria-label="Langue"></select>\n', "")),
+                '      <select id="langue" data-t-aria-label="page.langue.aria"\n'
+                '              aria-label="Langue"></select>\n', "")),
         ]),
 ]
 

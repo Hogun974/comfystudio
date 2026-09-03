@@ -170,6 +170,24 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   background:transparent;
   border:1px solid var(--trait);border-radius:7px;padding:2px 8px}
 .lien-admin:hover{border-color:var(--braise);color:var(--braise)}
+/* LE GLOBE ET SON MENU, d'un seul tenant. Le <select> n'a ni bordure ni fond
+   propres : c'est l'ensemble qui porte le cadre, sinon on voyait deux boites
+   emboitees a cote des boutons voisins qui n'en ont qu'une.
+   « appearance:none » retire la fleche que le systeme ajoute — a onze pixels
+   elle mangeait la moitie de la largeur — et le globe la remplace. */
+.choix-langue{display:inline-flex;align-items:center;gap:4px;
+  border:1px solid var(--trait);border-radius:7px;padding:1px 6px}
+.choix-langue:hover{border-color:var(--braise)}
+.choix-langue label{cursor:pointer;font-size:12px;line-height:1}
+.choix-langue select{font:11px var(--mono);color:var(--encre-douce);
+  background:transparent;border:0;padding:1px 0;cursor:pointer;
+  appearance:none;-webkit-appearance:none}
+.choix-langue:hover select{color:var(--braise)}
+/* Le focus clavier doit rester VISIBLE : « appearance:none » efface aussi
+   l'anneau que le systeme dessinait, et sans cette regle on ne sait plus ou
+   l'on est en naviguant a la tabulation. */
+.choix-langue select:focus-visible{outline:2px solid var(--braise);
+  outline-offset:2px;border-radius:4px}
 .voile-entree{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;
   align-items:center;justify-content:center;z-index:50}
 .entree{background:var(--plan);border:1px solid var(--trait);border-radius:12px;
@@ -620,6 +638,31 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     <span id="etatFile"></span>
     <span id="jaugeModeles"><b data-t="page.moteurs.connexion">connexion…</b></span>
     <span class="nuages" id="nuages"></span>
+    <!-- LE MENU DE LANGUE, DANS L'EN-TETE ET NON DANS LES REGLAGES. Il y a
+         vecu une heure, sous le bouton « reglages » du pied de page, et c'est
+         un mauvais domicile pour deux raisons. La premiere se voit : ce
+         panneau ne s'ouvre que pour changer de moteur ou de taille, si bien
+         que la langue etait cachee derriere un geste qui n'a rien a voir. La
+         seconde est un fait de code, et c'est elle qui tranche : les quatre
+         reglages de ce panneau sont portes par LA CONVERSATION, et la langue
+         ne l'est pas — elle vit dans le cookie « studio_langue ». Les ranger
+         ensemble promettait un murmure de reglage qui ne viendrait jamais.
+
+         LE GLOBE EST UN LABEL, PAS UN BOUTON. Cliquer dessus ouvre le menu
+         natif, un lecteur d'ecran annonce l'etiquette, et il n'y a aucun
+         gestionnaire a ecrire : « for » suffit. Un bouton avec son propre
+         menu aurait demande du clavier, du focus et une fermeture au clic
+         dehors — trois choses qu'un <select> fait deja bien.
+
+         Ses options sont ecrites en une fois par peindreMenuLangue(), comme
+         garnirChoix() le fait pour les quatre menus de la mediatheque : ce
+         n'est pas un menu de reglage, il n'a donc pas de libelle court. -->
+    <span class="choix-langue">
+      <label for="langue" aria-hidden="true" title="langue de l'interface"
+             data-t-title="page.langue.title">🌐</label>
+      <select id="langue" data-t-aria-label="page.langue.aria"
+              aria-label="Langue"></select>
+    </span>
     <button type="button" class="lien-admin" id="ouvrirMedia"
             data-t-title="page.media.ouvrir.title" data-t="page.media.nom"
             title="tout ce que tu as produit">médiathèque</button>
@@ -779,20 +822,6 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
         <option value="4" data-t-data-court="page.variantes.4" data-court="4 variantes"
                 data-t="page.variantes.4">4 variantes</option>
       </select>
-      <!-- LE MENU DE LANGUE, ET IL N'EST PAS UN REGLAGE DE CONVERSATION.
-           REGLAGES_CONV est par conversation, alors que l'en-tete, la
-           mediatheque et le panneau de file ne le sont pas : la langue de
-           l'ombrelle serait celle de la derniere conversation ouverte. Et le
-           mot est deja pris — « plan["langue"] » est la langue des PAROLES
-           d'un morceau. Le choix vit donc dans le cookie « studio_langue »,
-           pose par POST /api/textes (docs/plusieurs-langues.md).
-           Il reste HORS de REGLAGES, MENU_REGLAGE et CLE_REGLAGE : y entrer
-           le ferait poster sur une route qui ne le lit pas, et promettrait un
-           murmure qui ne viendrait jamais.
-           Ses options sont ecrites en une fois par peindreMenuLangue(), comme
-           garnirChoix() le fait pour les quatre menus de la mediatheque : ce
-           n'est pas un menu de reglage, il n'a donc pas de libelle court. -->
-      <select id="langue" data-t-aria-label="page.langue.aria" aria-label="Langue"></select>
     </div>
     <div class="jointe" id="jointe" style="display:none">
       <span id="apercu-zone"></span>

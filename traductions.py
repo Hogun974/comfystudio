@@ -761,6 +761,15 @@ TEXTES = {
     "page.langue.aria": {
         "fr": "Langue",
         "en": "Language"},
+    # L'infobulle du globe. Elle dit « de l'interface » et non « du studio » :
+    # la langue des MENUS et la langue de la DEMANDE sont deux choses, et le
+    # studio comprend toujours les deux. Quelqu'un qui met l'interface en
+    # anglais peut continuer a taper ses demandes en francais — c'est meme le
+    # cas le plus frequent, et le laisser croire l'inverse ferait renoncer au
+    # menu ceux a qui il sert.
+    "page.langue.title": {
+        "fr": "langue de l'interface",
+        "en": "interface language"},
     "page.langue.fr": {
         "fr": "français",
         "en": "français"},
