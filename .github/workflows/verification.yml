@@ -307,6 +307,36 @@ jobs:
       - name: Une demande etrangere n'est pas executee de travers en silence
         run: python banc_multilingue.py
 
+      # UNE TRADUCTION NE PLANTE PAS, ELLE MENT. Un « {titre} » oublie dans la
+      # version anglaise ne leve aucune exception : la phrase s'affiche,
+      # entiere, sans le nom du moteur qu'elle annonce. Une cle qui manque dans
+      # une langue ne casse rien non plus — le repli rend le francais, et
+      # l'utilisateur anglais voit une phrase francaise au milieu de son
+      # interface sans que personne au studio ne l'apprenne jamais. Ce banc
+      # mesure ce qui ne se voit pas, des deux cotes du dictionnaire : il lit
+      # aussi serveur.py par l'arbre de syntaxe, pour qu'un site de panne ne
+      # s'ajoute pas sans sa cle.
+      - name: Aucune traduction ne ment
+        run: python banc_traductions.py
+
+      # LE SECOND FACTEUR, MESURE CONTRE LA RFC 6238 ET NON CONTRE LUI-MEME. Un
+      # TOTP maison peut etre parfaitement coherent et refuser tous les codes
+      # que les applications d'authentification produisent — un pas de temps
+      # decale, le bit de signe oublie. Les six vecteurs de la RFC repondent de
+      # l'arithmetique ; le second banc repond du stockage, du rejeu, et de ce
+      # qu'un appelant distrait obtient.
+      #
+      # LES TROIS BANCS CI-DESSUS N'ETAIENT DANS AUCUNE CI jusqu'au 2 septembre
+      # 2026 au soir : 109 verifications que rien ne lançait. C'est le defaut
+      # que ce fichier existe pour empecher — un filet qu'on ne leve jamais ne
+      # garde rien — et il s'est glisse par le chemin le plus banal, trois
+      # bancs neufs ecrits le meme jour.
+      - name: Le second facteur, l'arithmetique
+        run: python banc_mfa.py
+
+      - name: Le second facteur, le stockage et la porte
+        run: python banc_comptes.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.
