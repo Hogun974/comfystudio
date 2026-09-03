@@ -329,11 +329,23 @@ def fichiers_du_conteneur():
     """
     fichiers = ["banc_conteneur.py", "serveur.py",
                 "docker-compose.yml", "Dockerfile", ".env.exemple"]
+    # ET « importlib.import_module("x") », depuis le 3 septembre 2026. Le motif
+    # ci-dessous ne voit qu'un mot-clef ; serveur.py charge pourtant
+    # « entrainer_aiguilleur » par un appel, pour le reentrainement depuis
+    # /admin. Le module n'etait donc pas copie, banc_conteneur.py ne le trouvait
+    # pas dans le dossier d'essai, et sa regle « aucun lecteur d'environnement
+    # n'echappe au suivi » n'avait rien a mesurer : la mutation qui la vise
+    # passait au VERT — non par un trou du filet, mais parce que le lanceur ne
+    # lui donnait pas de quoi travailler. Le meme angle mort que celui qu'on
+    # vient de fermer dans banc_conteneur.py, un cran plus loin.
+    _APPEL = r'import_module\(\s*["\']([a-z_][a-z0-9_]*)["\']\s*\)'
     a_lire, vus = ["serveur.py"], {"serveur.py"}
     while a_lire:
         source = a_lire.pop()
-        for mod in re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)',
-                              lire(source)):
+        texte = lire(source)
+        for mod in (re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)',
+                               texte)
+                    + re.findall(_APPEL, texte)):
             nom = mod + ".py"
             if nom in vus or not os.path.exists(os.path.join(ICI, nom)):
                 continue
@@ -699,16 +711,32 @@ CONTENEUR = [
                 'SEL_TOUR = os.environ.get("STUDIO_SEL_TOUR", "")\n')),
         ]),
     dict(
-        nom="un module suivi charge par importlib",
+        # REECRITE LE 3 SEPTEMBRE 2026, ET LE DEFAUT QU'ELLE IMITAIT EST FERME.
+        # Elle remplaçait un « import comptes » par un import_module au nom
+        # LITTERAL, et cela suffisait a faire sortir le module du suivi : le
+        # releve se faisait par motif de texte, qui ne voit pas un appel.
+        # banc_conteneur lit desormais l'ARBRE DE SYNTAXE, et un import_module
+        # litteral y est aussi visible qu'un import — la mutation d'avant
+        # passait donc au vert, non parce que le filet a un trou mais parce
+        # qu'elle a cesse d'imiter un defaut.
+        #
+        # Elle vise maintenant le seul angle mort qui reste, et que la docstring
+        # de _modules_charges() nomme : un module dont le NOM EST CALCULE. Aucun
+        # n'existe dans le depot, et l'on n'a pas voulu faire semblant de le
+        # voir — un ast qui evaluerait des expressions serait un interpreteur.
+        nom="un module suivi charge sous un nom CALCULE",
         banc="banc_conteneur.py",
-        imite="aucun import a relever, le module disparait du suivi sans qu'un "
-              "seul chiffre bouge : les 25 variables sont toutes dans "
-              "serveur.py, donc le releve ne peut pas s'en apercevoir",
-        rougit="fichiers du conteneur sont suivis",
+        imite="l'angle mort assume du suivi. Le module sort de CODE, donc les "
+              "variables d'environnement qu'il lit ne sont plus confrontees au "
+              "compose — et c'est tout l'objet de ce banc. Ici comptes.py n'en "
+              "lit aucune, donc le degat est nul aujourd'hui ; il ne le serait "
+              "pas d'un module qui en lit",
+        rougit="aucun fichier qui lit l'environnement n'echappe au suivi",
         editions=[
             ("serveur.py", brut(
-                "import comptes as _comptes\n",
-                '_comptes = importlib.import_module("comptes")\n')),
+                '    entrainer = importlib.import_module("entrainer_aiguilleur")',
+                '    entrainer = importlib.import_module("entrainer_" '
+                '+ "aiguilleur")')),
         ]),
     dict(
         nom="COMFY_MODELES en double, dans le compose ET dans .env.exemple",
@@ -2625,6 +2653,24 @@ LANGUES = [
 # l'ISOLEMENT a la place : chaque mutation, SEULE, allume la ligne qu'elle
 # nomme et elle seule, et le depot sain reste vert sur les trente-huit.
 PAGE_LANGUES = [
+    dict(
+        nom="la page repart sans en-tete de cache",
+        banc="banc_page.py",
+        imite="l'etat d'avant le 3 septembre 2026, et le defaut ne se voit pas "
+              "au deploiement : il se voit chez celui qui avait deja ouvert la "
+              "page. Sans « Cache-Control », le navigateur s'autorise a "
+              "reutiliser une reponse pendant environ un dixieme de son age — "
+              "une journee pour un fichier vieux de dix jours. Sa page continue "
+              "de marcher, elle lit simplement des champs que le serveur ne "
+              "pose plus, ou en ignore de nouveaux. Les cinq contrats que ce "
+              "banc mesure sont alors vrais dans le depot et faux a l'ecran",
+        rougit="et chacune dit au navigateur de REDEMANDER avant de servir",
+        editions=[
+            ("serveur.py", brut(
+                '    return web.FileResponse(os.path.join(ICI, "web", "index.html"),\n'
+                "                            headers=SANS_CACHE)",
+                '    return web.FileResponse(os.path.join(ICI, "web", "index.html"))')),
+        ]),
     dict(
         nom="le menu de langue retombe sous le bouton « reglages »",
         banc="banc_page.py",

@@ -43,6 +43,8 @@ fermee ici, et chaque fermeture a sa mutation :
 Toute exception se nomme ici, avec sa raison. C'est le seul endroit ou l'on peut
 en ajouter une, et il faut l'ecrire.
 """
+import ast
+import fnmatch
 import io
 import os
 import re
@@ -89,46 +91,121 @@ SRV = lire("serveur.py")
 # fonction (import av, import struct, import socket...). Un module neuf importe
 # a cote de l'un d'eux echappait au suivi, et sa variable absente du compose ne
 # faisait rougir personne — le commit f6a30ba, rejoue sous le nez du filet.
-FICHIERS = ["serveur.py"]
-for mod in re.findall(r'(?m)^\s*(?:import|from)\s+([a-z_][a-z0-9_]*)', SRV):
-    if os.path.exists(os.path.join(ICI, mod + ".py")) and mod + ".py" not in FICHIERS:
-        FICHIERS.append(mod + ".py")
+# L'ARBRE DE SYNTAXE ET NON UN MOTIF DE TEXTE, depuis le 3 septembre 2026 — et
+# le motif avait un angle mort OCCUPE. serveur.py charge
+# « entrainer_aiguilleur » par importlib.import_module (le reentrainement
+# depuis /admin) : neuf modules chargés, huit suivis. Le neuvieme echappait donc
+# aussi au controle des variables d'environnement, qui est tout l'objet de ce
+# banc — et le motif ne pouvait pas le voir, par construction.
+#
+# C'est la forme meme que la mutation « un module suivi charge par importlib »
+# imitait depuis des semaines pour montrer le danger. Elle imitait un defaut qui
+# existait deja, dix lignes plus loin, en vrai.
+def _modules_charges(source):
+    """Les modules du depot que serveur.py charge, vus par ast.
+
+    « import x », « from x import y », ET « importlib.import_module("x") » avec
+    un argument litteral : c'est la seule forme dynamique du depot. Un nom
+    CALCULE resterait invisible — on ne pretend pas le voir, et il n'en existe
+    aucun ici.
+    """
+    vus = set()
+    for n in ast.walk(ast.parse(source)):
+        noms = []
+        if isinstance(n, ast.Import):
+            noms = [a.name.split(".")[0] for a in n.names]
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            noms = [n.module.split(".")[0]]
+        elif (isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "import_module"
+                and n.args and isinstance(n.args[0], ast.Constant)
+                and isinstance(n.args[0].value, str)):
+            noms = [n.args[0].value.split(".")[0]]
+        for nom in noms:
+            if os.path.exists(os.path.join(ICI, nom + ".py")):
+                vus.add(nom + ".py")
+    return vus
+
+
+FICHIERS = ["serveur.py"] + sorted(_modules_charges(SRV))
 CODE = "\n".join(lire(f) for f in FICHIERS)
 
-# Le COMPTE, et pas seulement le contenu. Le releve de variables ne protege pas
-# le suivi : aucun des cinq modules importes ne lit d'environnement, les 25
-# variables sont toutes dans serveur.py. Passer « import comptes as _comptes »
-# en try/except, ou le remplacer par un import_module — deux nettoyages banals
-# — faisait tomber le suivi a quatre fichiers, puis a un, sans changer un seul
-# chiffre de la ligne qui les compte.
+# L'HISTOIRE DE CE PASSAGE, parce qu'elle explique la forme actuelle. Un
+# « FICHIERS_SUIVIS » ecrit a la main a garde ce suivi de fin aout au
+# 3 septembre 2026 : il fallait le monter a CHAQUE module ajoute a serveur.py,
+# faute de quoi retirer un module du suivi en laissait encore assez, le seuil
+# restait atteint, et la mutation « un module suivi charge par importlib »
+# passait au VERT. Il s'est fait oublier trois fois en deux jours — cinq a six,
+# six a sept, sept a huit — et chaque fois c'est banc_mutations.py qui l'a dit.
 #
-# CINQ, PUIS SIX le 2 septembre 2026 au soir : serveur.py importe desormais
-# traductions.py. Ce chiffre se monte a chaque module ajoute, et il DOIT se
-# monter — laisse a cinq, il rendait vraie la mutation « un module suivi
-# charge par importlib » : le suivi tombait a cinq fichiers, le seuil etait
-# atteint, et le filet ecrit exactement pour ce nettoyage-la passait au vert.
-#
-# SEPT le 3 septembre 2026, avec le branchement du second facteur : serveur.py
-# nomme mfa.py directement, pour la seule chose que ses routes lui demandent —
-# COMBIEN de codes de secours un jeu compte. Et le defaut annonce deux lignes
-# plus haut est arrive une SECONDE fois, exactement comme ecrit : laisse a six,
-# la mutation « un module suivi charge par importlib » passait au vert, parce
-# que retirer comptes.py du suivi laissait encore six fichiers. Ce n'est pas
-# une hypothese, c'est le verdict de banc_mutations.py avant de monter ce
-# chiffre-ci. Le seuil suit le nombre de modules importes, ou il ne mesure
-# plus rien.
-#
-# HUIT le 3 septembre 2026, avec le QR code de l'enrolement : serveur.py importe
-# qr.py. Et le defaut annonce quatre paragraphes plus haut est arrive une
-# TROISIEME fois, mot pour mot — laisse a sept, retirer comptes.py du suivi en
-# laissait encore sept, la mutation « un module suivi charge par importlib »
-# passait au vert, et banc_mutations.py l'a dit avant que ce chiffre-ci ne
-# monte. Trois fois le meme oubli en deux jours : ce seuil n'est pas un
-# reglage, c'est une ligne a bouger a CHAQUE import ajoute a serveur.py.
-FICHIERS_SUIVIS = 8
-dit(len(FICHIERS) >= FICHIERS_SUIVIS,
+# Ce n'etait pas un reglage mal tenu : c'etait un SECOND COMPTAGE de ce que la
+# ligne du dessus venait de calculer, et deux ecritures du meme fait divergent.
+# La lecon est la meme que RE_DEVIS, que la marque du « deja refait » et que le
+# libelle des reglages ; elle a simplement mis plus longtemps a se voir ici,
+# parce qu'un nombre ne ressemble pas a une recopie.
+
+# SANS CE PLANCHER, TOUT CE QUI SUIT SERAIT VRAI DE RIEN. Le controle des
+# variables d'environnement lit « CODE », c'est-a-dire ces fichiers-la : un jeu
+# vide n'a aucune variable non declaree, et le banc se compterait vert sur un
+# serveur.py qui n'importerait plus rien — ou sur un ast.parse qui aurait cesse
+# de rendre quoi que ce soit. Quatre, et non le compte exact : ce nombre-ci ne
+# suit AUCUN ajout de module, il dit seulement « le suivi n'est pas tombe a
+# rien ». C'est ce qui le distingue du seuil qu'il remplace, oublie trois fois
+# en deux jours parce qu'il recomptait a la main ce que le code venait de
+# compter.
+dit(len(FICHIERS) >= 4,
     f"les {len(FICHIERS)} fichiers du conteneur sont suivis",
     ", ".join(FICHIERS[1:]) or "aucun module importe")
+
+# ET AUCUN LECTEUR D'ENVIRONNEMENT NE S'ECHAPPE. Voila la verification que le
+# seuil ecrit a la main essayait de rendre, sans y arriver : ce qui compte n'est
+# pas COMBIEN de fichiers sont suivis, c'est qu'aucun de ceux qui lisent
+# l'environnement ne sorte du suivi — puisque c'est leur lecture, et elle seule,
+# que ce banc confronte au compose.
+#
+# La liste des dispenses ne grandit PAS a chaque module ajoute au studio : elle
+# nomme ce qui ne tourne pas dans CE conteneur, et cela ne bouge presque jamais.
+# C'est ce qui la distingue d'un nombre a monter a chaque import.
+HORS_CONTENEUR = {
+    "agent_noeud.py": "tourne sur la machine a carte, pas ici — l'image le "
+                      "copie pour le SERVIR aux noeuds, jamais pour l'executer",
+    "installation.py": "l'installeur natif ; en conteneur, c'est le Dockerfile "
+                       "qui installe",
+    "outils_etalons_qr.py": "un outil de developpement, lance a la main avec "
+                            "une dependance qui n'est pas au depot",
+}
+_lecteurs = []
+for _f in sorted(os.listdir(ICI)):
+    if not _f.endswith(".py") or _f in FICHIERS or _f in HORS_CONTENEUR:
+        continue
+    # Les bancs et les recettes ne tournent pas dans le conteneur non plus, et
+    # les nommer un par un ferait exactement la liste qui rouille. Le motif du
+    # nom suffit, et il est la convention du depot.
+    if _f.startswith(("banc_", "recette_", "verifier_")):
+        continue
+    if re.search(r"environ\.get|environ\[|os\.getenv", lire(_f)):
+        _lecteurs.append(_f)
+dit(not _lecteurs,
+    "et aucun fichier qui lit l'environnement n'echappe au suivi",
+    ", ".join(_lecteurs) + " — lu par personne ici" if _lecteurs
+    else f"{len(HORS_CONTENEUR)} dispense(s) nommee(s)")
+
+# ET L'IMAGE LES EMPORTE TOUS. C'est la moitie qui manquait : suivre un module
+# ne sert a rien s'il n'arrive pas dans le conteneur, et le Dockerfile pourrait
+# tres bien nommer ses fichiers un par un — c'est ce qu'il fait deja pour les
+# scripts d'enrolement, ligne « COPY noeud.sh noeud.bat … ». La regle se lit
+# donc dans le Dockerfile, jamais dans une liste ecrite ici.
+_copies = []
+for ligne in lire("Dockerfile").splitlines():
+    if ligne.strip().startswith("COPY "):
+        _copies += ligne.split()[1:-1]
+_absents = [f for f in FICHIERS
+            if not any(fnmatch.fnmatch(f, m) for m in _copies)]
+dit(not _absents,
+    "et l'image emporte chacun d'eux",
+    ", ".join(_absents) + " — absent(s) des lignes COPY" if _absents
+    else " ".join(_copies[:3]) + " …")
 
 # AUCUN prefixe de nom, les DEUX sortes de guillemets, et « os.getenv » autant
 # que « os.environ.get ». Chacune de ces trois largesses ferme une mutation qui

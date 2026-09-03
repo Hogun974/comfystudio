@@ -1324,6 +1324,50 @@ dit('id="langue"' in _avant_entete and "<header" in _avant_entete,
 dit('for="langue"' in _avant_entete,
     "et le globe lui est attache par « for » : cliquer l'icone ouvre le menu")
 
+# ══ CE QUE LE NAVIGATEUR A LE DROIT DE GARDER ══════════════════════════
+# LES CONTRATS ENTRE LA PAGE ET LE SERVEUR NE SURVIVENT PAS A UNE PAGE PERIMEE.
+# Ce banc en mesure cinq — MARQUE_DEJA, MARQUE_DEVIS, MARQUE_PANNE, MARQUE_MFA,
+# MARQUE_ARRET_DIFFERE — plus le dictionnaire de /api/textes, et il les mesure
+# tous DANS LE DEPOT, ou les deux moities sont forcement du meme jour. A
+# l'execution, elles ne le sont pas : sans « Cache-Control », un navigateur
+# s'autorise a reutiliser une reponse pendant environ un dixieme de son age,
+# soit une JOURNEE pour un fichier vieux de dix jours. Une page d'hier contre un
+# serveur d'aujourd'hui, c'est la divergence silencieuse que tout ce banc existe
+# pour empecher, reintroduite la ou il ne regarde pas.
+#
+# Constate le 3 septembre 2026 : apres un deploiement, le navigateur servait
+# encore la page d'avant, sans son menu de langue.
+#
+# ON LIT L'ARBRE ET NON UN MOTIF : une FileResponse s'ecrit sur une ou trois
+# lignes, avec ou sans os.path.join, et « une expression reguliere decrit UNE
+# facon d'ecrire la panne, jamais la panne ».
+print("\n  ── la page ne se sert pas de memoire ──")
+_pages_html, _sans_entete = 0, []
+for _n in ast.walk(ast.parse(SERVEUR)):
+    if not (isinstance(_n, ast.Call)
+            and isinstance(_n.func, ast.Attribute)
+            and _n.func.attr == "FileResponse"):
+        continue
+    _arg = ast.unparse(_n.args[0]) if _n.args else ""
+    if ".html" not in _arg:
+        continue
+    _pages_html += 1
+    if not any(k.arg == "headers" for k in _n.keywords):
+        _sans_entete.append(_arg)
+# LE COMPTE D'ABORD : zero page servie rendrait « aucune n'oublie l'en-tete »
+# vrai de rien, et c'est l'etat qu'on obtient le jour ou quelqu'un renomme
+# FileResponse ou sert les pages autrement.
+dit(_pages_html >= 3,
+    "le studio sert bien ses pages en fichier",
+    f"{_pages_html} pages html")
+dit(not _sans_entete,
+    "et chacune dit au navigateur de REDEMANDER avant de servir",
+    ", ".join(_sans_entete) + " — sans en-tete" if _sans_entete
+    else "toutes portent leurs en-tetes")
+dit("no-cache" in SERVEUR,
+    "et cet en-tete est bien « no-cache » : garder, mais revalider",
+    "l'ETag rend alors un 304 sans corps")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

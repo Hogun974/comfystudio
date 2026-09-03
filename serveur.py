@@ -9915,6 +9915,33 @@ def local(req):
     hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
     return hote in ADRESSES_MACHINE
 
+# ── Ce que le navigateur a le droit de garder ───────────────────────────
+# « no-cache » NE VEUT PAS DIRE « ne garde rien » : il veut dire « garde, mais
+# REDEMANDE avant de servir ». Avec l'ETag qu'aiohttp pose deja, la
+# revalidation rend un 304 sans corps — quelques centaines d'octets, une fois
+# par chargement.
+#
+# SANS CET EN-TETE, LE NAVIGATEUR DECIDE SEUL, et sa regle est une heuristique :
+# faute de Cache-Control, il s'autorise a reutiliser une reponse pendant environ
+# un dixieme de son age. Une page dont le fichier date de dix jours peut donc
+# etre servie de memoire pendant UNE JOURNEE sans qu'on redemande rien.
+#
+# CE N'ETAIT PAS GRAVE TANT QUE LA PAGE NE FAISAIT QU'AFFICHER. Ca l'est
+# devenu : la page et le serveur partagent maintenant des contrats nommes —
+# MARQUE_DEJA, MARQUE_DEVIS, MARQUE_PANNE, MARQUE_MFA, MARQUE_ARRET_DIFFERE — et
+# le dictionnaire de /api/textes. Une page d'hier contre un serveur
+# d'aujourd'hui, c'est exactement la divergence silencieuse que cinq bancs
+# passent leur temps a empecher DANS LE DEPOT, reintroduite a l'execution, la ou
+# aucun banc ne regarde. Constate le 3 septembre 2026 : apres un deploiement, le
+# navigateur servait encore la page d'avant, sans le menu de langue.
+#
+# Les trois pages du studio, et elles seules. Les fichiers produits — images,
+# videos, sons — gardent leur cache : leur nom porte deja un identifiant unique,
+# ils ne changent jamais sous le meme nom, et les redemander a chaque affichage
+# de la mediatheque couterait cher pour rien.
+SANS_CACHE = {"Cache-Control": "no-cache"}
+
+
 async def page(req):
     # L'adoption se joue ici, et seulement ici : au chargement de l'interface,
     # depuis la machine qui heberge le studio. Un appel d'API ou un visiteur du
@@ -9924,7 +9951,8 @@ async def page(req):
     # apercu de lien attribuait tout l'historique a une identite jetable.
     if local(req) and _PID.fullmatch(req.cookies.get("studio") or ""):
         adopter(qui(req))
-    return web.FileResponse(os.path.join(ICI, "web", "index.html"))
+    return web.FileResponse(os.path.join(ICI, "web", "index.html"),
+                            headers=SANS_CACHE)
 
 
 async def api_textes(req):
@@ -13001,7 +13029,8 @@ async def api_admin_entrer(req):
 
 
 async def page_admin(req):
-    return web.FileResponse(os.path.join(ICI, "web", "admin.html"))
+    return web.FileResponse(os.path.join(ICI, "web", "admin.html"),
+                            headers=SANS_CACHE)
 
 
 # ══════════════════ la premiere mise en route ══════════════════════════
@@ -13337,7 +13366,8 @@ def etat_demarrage(req):
 
 
 async def page_demarrage(req):
-    return web.FileResponse(os.path.join(ICI, "web", "demarrage.html"))
+    return web.FileResponse(os.path.join(ICI, "web", "demarrage.html"),
+                            headers=SANS_CACHE)
 
 
 async def api_demarrage(req):
