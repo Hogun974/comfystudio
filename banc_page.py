@@ -69,13 +69,20 @@ import traductions as TR  # noqa: E402
 PAGE = io.open(os.path.join(ICI, "web", "index.html"), encoding="utf-8").read()
 
 # SERVEUR.PY EST LU, PAS IMPORTE — il tirerait aiohttp derriere lui, que la
-# machine du releve n'a pas. Une seule chose y est cherchee : le NOM du champ
-# par lequel il dit « il manque le second facteur ». C'est la moitie de contrat
-# qui manquait a MARQUE_DEJA et a MARQUE_DEVIS, et qu'il fallait aller chercher
-# dans un banc a studio ; ici le champ est une constante, donc les deux moities
-# se relevent au meme endroit.
+# machine du releve n'a pas. Ce qu'on y cherche est toujours la MOITIE SERVEUR
+# d'un contrat dont la page porte l'autre : le nom du champ « il manque le
+# second facteur », celui de la panne, les etats qu'il ecrit, l'en-tete de
+# cache qu'il pose. C'est la moitie qui manquait a MARQUE_DEJA et a
+# MARQUE_DEVIS, et qu'il fallait aller chercher dans un banc a studio ; ici ce
+# sont des constantes, donc les deux moities se relevent au meme endroit.
 SERVEUR = io.open(os.path.join(ICI, "serveur.py"), encoding="utf-8",
                   newline=None).read()
+# L'ARBRE PLUTOT QUE LE TEXTE, ET UNE SEULE FOIS. Un motif sur le texte de
+# serveur.py lit aussi ses COMMENTAIRES — c'est ce qui a rendu creux le releve
+# de « no-cache » pendant une journee, le mot etant dans la prose qui explique
+# la constante. Le texte brut ne sert donc plus qu'aux declarations ancrees en
+# colonne 0, qu'aucun commentaire ne peut imiter.
+ARBRE_SERVEUR = ast.parse(SERVEUR)
 ok, rate = [], []
 
 
@@ -1203,6 +1210,68 @@ dit(_valeurs_etat == ETATS_DU_SERVEUR,
     "la page declare les six etats que le serveur ECRIT, et pas d'autres",
     f"{sorted(_valeurs_etat)}")
 
+# ET LES SIX SONT CELLES QUE serveur.py ECRIT VRAIMENT. Le cas ci-dessus dit
+# « que le serveur ECRIT » et n'ouvrait pas serveur.py : la liste etait un
+# souvenir, recopie a la main, et les deux moities du contrat pouvaient donc
+# deriver du cote qui ne se relit pas. Mesure du 3 septembre 2026, mutation
+# posee dans un dossier temporaire : les quinze « en cours » de serveur.py
+# renommes en « en_cours » laissaient le banc 65/65 VERT, alors que toute
+# bulle serait restee sur « en cours », chronometre montant, indefiniment —
+# et que le pouce en bas aurait cesse de proposer « refaire sur la grosse
+# carte » a la premiere tache finie.
+#
+# ON LIT L'ARBRE ET NON UN MOTIF : l'etat se POSE de trois facons — une cle
+# « etat » dans un dictionnaire, « t["etat"] = ... », et le mot-clef « etat= »
+# de journal() et de update(). Une expression reguliere en decrirait une, et
+# c'est la faute que ce banc a deja faite cinq fois.
+#
+# ET L'ON NE DESCEND PAS DANS LES APPELS : « {"etat": tour.get("etat")} » ne
+# pose rien, il recopie, et compter son argument ferait entrer « etat »
+# lui-meme dans le releve. Ce qu'une expression peut VALOIR s'arrete donc a la
+# constante, au « si » ternaire et au « ou » — les trois formes du fichier.
+#
+# « en attente » EN PLUS DES SIX, et il faut la nommer ici : c'est l'etat que
+# la LIGNE DE FILE invente quand la tache n'en a pas encore, et la page le
+# rend par son repli (« attend ») sans lui donner de nom dans ETAT. L'oublier
+# ferait rougir le depot sain.
+ETAT_DE_LA_FILE = "en attente"
+
+
+def valeurs_possibles(noeud):
+    """Ce qu'une expression peut VALOIR, sans entrer dans un appel."""
+    if isinstance(noeud, ast.Constant):
+        return {noeud.value} if isinstance(noeud.value, str) else set()
+    if isinstance(noeud, ast.IfExp):
+        return valeurs_possibles(noeud.body) | valeurs_possibles(noeud.orelse)
+    if isinstance(noeud, ast.BoolOp):
+        return set().union(*(valeurs_possibles(v) for v in noeud.values))
+    return set()
+
+
+_etats_ecrits = set()
+for _n in ast.walk(ARBRE_SERVEUR):
+    _poses = []
+    if isinstance(_n, ast.Dict):
+        _poses = [v for k, v in zip(_n.keys, _n.values)
+                  if isinstance(k, ast.Constant) and k.value == "etat"]
+    elif isinstance(_n, ast.Assign):
+        if any(isinstance(c, ast.Subscript) and isinstance(c.slice, ast.Constant)
+               and c.slice.value == "etat" for c in _n.targets):
+            _poses = [_n.value]
+    elif isinstance(_n, ast.keyword) and _n.arg == "etat":
+        _poses = [_n.value]
+    for _p in _poses:
+        _etats_ecrits |= valeurs_possibles(_p)
+# L'EGALITE ET NON L'INCLUSION, dans les deux sens et pour deux fautes
+# differentes : un etat que la page nomme et que le serveur n'ecrit plus (la
+# comparaison est fausse pour toujours), et un etat que le serveur ecrit et
+# que la page ne nomme pas (la file l'affiche « en attente », et personne ne
+# sait qu'il attend une machine en pause). Un releve VIDE echoue de lui-meme,
+# puisqu'il est compare a un jeu nomme et non a « inclus dans ».
+dit(_etats_ecrits == ETATS_DU_SERVEUR | {ETAT_DE_LA_FILE},
+    "et serveur.py n'ecrit toujours que ces etats-la",
+    f"{sorted(_etats_ecrits)}")
+
 # ET PLUS AUCUNE COMPARAISON NE PORTE LE LITTERAL. Ce qui fait le degat n'est
 # pas l'endroit ou l'etat est ecrit, c'est qu'il soit ecrit DEUX fois : une
 # comparaison restee en clair survit a la table, et se tait le jour ou la
@@ -1239,12 +1308,24 @@ dit(len(_soins) == 1 and _soins[0] and _soins[0] in _options_soin,
 # phrase. Meme patron que MARQUE_DEJA : la page NOMME le champ, et zero
 # declaration compte comme un NON — plusieurs aussi, on ne saurait plus
 # laquelle elle applique.
+#
+# ET LES DEUX MOITIES, comme pour MARQUE_MFA. Ce cas ne lisait que la page :
+# mesure du 3 septembre 2026, mutation posee dans un dossier temporaire —
+# « MARQUE_PANNE = "echec" » dans serveur.py laissait le banc 65/65 VERT.
+# Rien n'aurait leve : le serveur pose un champ que la page ne lit plus, la
+# bulle retombe sur la ligne de journal francaise, et c'est exactement le
+# defaut que cette section existe pour empecher, retabli par l'autre bout. Le
+# champ est une CONSTANTE des deux cotes, donc les deux se relevent ici.
 print("\n  ── la panne se lit sur la marque, et le journal reste le repli ──")
 pannes = re.findall(r'const\s+MARQUE_PANNE\s*=\s*"([^"]*)"\s*;', CORPS)
-dit(len(pannes) == 1 and bool(pannes[0]),
+pannes_serveur = re.findall(r'(?m)^MARQUE_PANNE\s*=\s*"([^"]*)"\s*$', SERVEUR)
+dit(len(pannes) == 1 and len(pannes_serveur) == 1 and bool(pannes[0])
+    and pannes == pannes_serveur,
     "la page NOMME le champ par lequel le serveur dit CE QUI a echoue",
-    f"{len(pannes)} declaration(s) de MARQUE_PANNE : ce banc NE MESURE PLUS le "
-    "couplage page/serveur" if len(pannes) != 1 else pannes[0])
+    f"{len(pannes)} declaration(s) cote page, {len(pannes_serveur)} cote "
+    "serveur : ce banc NE MESURE PLUS le couplage page/serveur"
+    if len(pannes) != 1 or len(pannes_serveur) != 1
+    else f"page {pannes} / serveur {pannes_serveur}")
 
 # LA MARQUE EST LUE, ET LE REPLI EST OBLIGATOIRE. Une tache relue apres
 # redemarrage n'a pas de marque, et trois arguments de echouer() sur cinq n'en
@@ -1327,9 +1408,19 @@ dit('for="langue"' in _avant_entete,
 # ══ CE QUE LE NAVIGATEUR A LE DROIT DE GARDER ══════════════════════════
 # LES CONTRATS ENTRE LA PAGE ET LE SERVEUR NE SURVIVENT PAS A UNE PAGE PERIMEE.
 # Ce banc en mesure cinq — MARQUE_DEJA, MARQUE_DEVIS, MARQUE_PANNE, MARQUE_MFA,
-# MARQUE_ARRET_DIFFERE — plus le dictionnaire de /api/textes, et il les mesure
-# tous DANS LE DEPOT, ou les deux moities sont forcement du meme jour. A
-# l'execution, elles ne le sont pas : sans « Cache-Control », un navigateur
+# MARQUE_ARRET_DIFFERE — plus le dictionnaire de /api/textes, et il les releve
+# tous DANS LE DEPOT.
+#
+# DEUX SEULEMENT Y ONT LEURS DEUX MOITIES : MARQUE_PANNE et MARQUE_MFA, dont
+# le champ est une CONSTANTE des deux cotes et se lit donc sans studio. La
+# moitie serveur des trois autres demande une route qui reponde, et ce sont
+# banc_refaire.py et banc_variantes.py qui la tiennent. Cette phrase disait
+# « toutes », et elle etait fausse pour MARQUE_PANNE le jour ou elle a ete
+# ecrite : ce banc n'en lisait alors que le cote page.
+#
+# Ce qu'ils ont en commun est ce qui compte ici : le releve confronte des
+# fichiers du MEME JOUR. A l'execution, ils ne le sont pas : sans
+# « Cache-Control », un navigateur
 # s'autorise a reutiliser une reponse pendant environ un dixieme de son age,
 # soit une JOURNEE pour un fichier vieux de dix jours. Une page d'hier contre un
 # serveur d'aujourd'hui, c'est la divergence silencieuse que tout ce banc existe
@@ -1365,7 +1456,7 @@ dit(bool(ADMIN), "la console d'administration est lisible",
     f"{len(ADMIN)} octets" if ADMIN else "web/admin.html absent")
 
 _BORNES = set()
-for _n in ast.walk(ast.parse(SERVEUR)):
+for _n in ast.walk(ARBRE_SERVEUR):
     if (isinstance(_n, ast.Assign) and len(_n.targets) == 1
             and getattr(_n.targets[0], "id", "") == "BORNES_REGLAGES"
             and isinstance(_n.value, ast.Dict)):
@@ -1392,8 +1483,38 @@ dit(_BORNES <= _ECRITS,
 
 
 print("\n  ── la page ne se sert pas de memoire ──")
-_pages_html, _sans_entete = 0, []
-for _n in ast.walk(ast.parse(SERVEUR)):
+# LES DICTIONNAIRES DE MODULE, PAR LEUR NOM. Les trois pages passent
+# « headers=SANS_CACHE » : sans cette table, l'en-tete pose reste un NOM, et
+# ce qu'il VAUT n'est jamais lu.
+DICTS_SERVEUR = {}
+for _n in ARBRE_SERVEUR.body:
+    if (isinstance(_n, ast.Assign) and len(_n.targets) == 1
+            and isinstance(_n.targets[0], ast.Name)
+            and isinstance(_n.value, ast.Dict)):
+        DICTS_SERVEUR[_n.targets[0].id] = {
+            k.value: v.value for k, v in zip(_n.value.keys, _n.value.values)
+            if isinstance(k, ast.Constant) and isinstance(v, ast.Constant)}
+
+
+def entetes_de(noeud):
+    """Ce que vaut l'expression passee en « headers= », ou None.
+
+    Les deux ecritures qu'on peut rencontrer : la constante nommee, qui est
+    celle du depot, et le dictionnaire pose sur place. Tout le reste — un
+    appel, une concatenation, une variable locale — rend None, c'est-a-dire un
+    NON : ce banc ne devine pas la valeur d'une expression qu'il n'evalue pas,
+    et se taire serait ici le pire des deux.
+    """
+    if isinstance(noeud, ast.Dict):
+        return {k.value: v.value for k, v in zip(noeud.keys, noeud.values)
+                if isinstance(k, ast.Constant) and isinstance(v, ast.Constant)}
+    if isinstance(noeud, ast.Name):
+        return DICTS_SERVEUR.get(noeud.id)
+    return None
+
+
+_pages_html, _sans_entete, _caches = 0, [], []
+for _n in ast.walk(ARBRE_SERVEUR):
     if not (isinstance(_n, ast.Call)
             and isinstance(_n.func, ast.Attribute)
             and _n.func.attr == "FileResponse"):
@@ -1402,8 +1523,11 @@ for _n in ast.walk(ast.parse(SERVEUR)):
     if ".html" not in _arg:
         continue
     _pages_html += 1
-    if not any(k.arg == "headers" for k in _n.keywords):
+    _pose = [k.value for k in _n.keywords if k.arg == "headers"]
+    if not _pose:
         _sans_entete.append(_arg)
+        continue
+    _caches.append((_arg, (entetes_de(_pose[0]) or {}).get("Cache-Control")))
 # LE COMPTE D'ABORD : zero page servie rendrait « aucune n'oublie l'en-tete »
 # vrai de rien, et c'est l'etat qu'on obtient le jour ou quelqu'un renomme
 # FileResponse ou sert les pages autrement.
@@ -1414,9 +1538,24 @@ dit(not _sans_entete,
     "et chacune dit au navigateur de REDEMANDER avant de servir",
     ", ".join(_sans_entete) + " — sans en-tete" if _sans_entete
     else "toutes portent leurs en-tetes")
-dit("no-cache" in SERVEUR,
+# ON LIT LA VALEUR QUE LES PAGES POSENT, ET NON LE MOT QUELQUE PART DANS LE
+# FICHIER. « "no-cache" in SERVEUR » etait vrai du COMMENTAIRE qui explique la
+# constante — SERVEUR n'est jamais decommente, contrairement a la page — et ce
+# cas ne mesurait donc que de la prose. Mesure du 3 septembre 2026, mutation
+# posee dans un dossier temporaire : « Cache-Control: max-age=604800,
+# immutable » a la place de l'en-tete laissait le banc 65/65 VERT, et
+# « {"X-Studio": "1"} » aussi. Seul l'effacement du mot dans les deux
+# commentaires le faisait rougir, c'est-a-dire jamais quand ca compte.
+#
+# _caches VIDE EST UN NON, et c'est le meme sol que les deux cas au-dessus :
+# le jour ou les en-tetes se poseront autrement — un middleware, un appel qui
+# les calcule — entetes_de() rendra None, et une liste vide dirait « toutes
+# celles que j'ai lues sont bonnes » en n'en ayant lu aucune.
+dit(bool(_caches) and all(c and "no-cache" in c for _a, c in _caches),
     "et cet en-tete est bien « no-cache » : garder, mais revalider",
-    "l'ETag rend alors un 304 sans corps")
+    ", ".join(f"{a} porte {c!r}" for a, c in _caches
+              if not (c and "no-cache" in c))
+    or f"{len(_caches)} pages, l'ETag rend alors un 304 sans corps")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

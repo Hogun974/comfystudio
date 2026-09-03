@@ -257,6 +257,23 @@ juste. Il compare desormais a l'instant OBSERVE de fin d'attente, et son voisin
 porte les deux arrondis au dixieme de /api/etat. Une CI qui rougit pour rien
 finit ignoree ; c'est le meme argument que TROUS_CONNUS, pris a l'envers.
 
+LES TROIS MOITIES SERVEUR, 3 septembre 2026. Une relecture adverse a trouve
+trois assertions de banc_page.py qui ne mesuraient qu'une moitie — ou du
+commentaire —, et les trois venaient du commit qui pretendait REPARER deux
+filets de ce banc-la. Le detail est au-dessus de MOITIES_SERVEUR ; ce qu'il
+faut retenir ici est la FORME, parce qu'elle a desormais quatre exemples dans
+ce fichier : un banc qui relit UN seul fichier d'un contrat qui en compte deux
+ne mesure que la moitie qui ne bouge pas. La variante creuse est pire encore —
+« "no-cache" in SERVEUR » etait vraie du COMMENTAIRE qui explique la constante,
+et l'en-tete pouvait valoir « max-age=604800, immutable » sans que rien ne
+rougisse.
+
+Le sens inverse se prend comme pour « le repli de taille REFUSE au lieu de
+reprendre » : ce n'est pas le code qui a ete corrige, c'est le BANC. On remet
+l'assertion creuse, et les trois mutations passent au vert. banc_page.py passe
+de 65 a 66 verifications — la moitie serveur des etats est un cas de plus, les
+deux autres se sont ajoutees a un cas qui existait deja.
+
 CE QUE LE PARALLELISME DES LANCEMENTS COUTERAIT, mesure le 2 septembre et
 refuse. Les huit bancs sans sommeil pourraient tourner ensemble, et l'ordre des
 resultats se garderait sans peine — il suffit de collecter les verdicts dans
@@ -3262,6 +3279,104 @@ PAGE_LANGUES = [
 
 
 # ──────────────────────────────────────────────────────────────────────
+#  Les trois moities serveur — 3 septembre 2026
+# ──────────────────────────────────────────────────────────────────────
+# TROIS ASSERTIONS DE banc_page.py NE MESURAIENT QU'UNE MOITIE, et les trois
+# venaient du commit qui pretendait REPARER deux filets — ce qui les rend plus
+# genantes que la moyenne : le fichier qui reproche aux bancs de ne pas voir ce
+# qu'ils gardent en avait pose trois de plus. Elles ne mutent que serveur.py,
+# et c'est tout leur sujet : la page etait relue, le serveur non.
+#
+#   1. « "no-cache" in SERVEUR ». Le mot est AUSSI dans le commentaire qui
+#      explique la constante, et SERVEUR n'est jamais decommente — la page,
+#      elle, l'est depuis le premier jour (CODE). Le cas ne mesurait donc que
+#      de la prose : mesure du 3 septembre, l'en-tete remplace par
+#      « max-age=604800, immutable » laissait le banc 65/65 VERT, et
+#      « {"X-Studio": "1"} » aussi.
+#   2. MARQUE_PANNE n'etait relevee que cote page. Renommer la constante dans
+#      serveur.py laissait le banc VERT, et la bulle retombait en silence sur
+#      la ligne de journal francaise — le defaut meme que la marque a ferme.
+#   3. ETATS_DU_SERVEUR disait « les six etats que le serveur ECRIT » sans
+#      jamais ouvrir serveur.py : la liste etait un souvenir recopie a la
+#      main. Les quinze « en cours » du serveur renommes « en_cours »
+#      laissaient le banc VERT, alors que toute bulle serait restee « en
+#      cours », chronometre montant, indefiniment.
+#
+# LE SENS INVERSE se prend ici comme pour « le repli de taille REFUSE au lieu
+# de reprendre » : ce n'est pas le code qui a ete corrige, c'est le BANC. On
+# remet donc l'assertion creuse, et les trois mutations passent au VERT — les
+# trois ont ete jouees ainsi avant la reparation, dans un dossier temporaire,
+# et le banc rendait 65/65 sur chacune. Pour la troisieme, la ligne qu'elle
+# nomme n'existait meme pas.
+#
+# ET L'ISOLEMENT : chacune, jouee seule sur le depot repare, allume SA ligne
+# et une seule, 65/66. Les quatre mutations qui visaient deja ces trois
+# sections par le cote PAGE — l'en-tete retire, « fini » traduit, MARQUE_PANNE
+# videe, la comparaison en litteral — allument toujours la leur, et pas celles
+# d'a cote : les deux moities se relevent separement, comme pour MARQUE_MFA.
+#
+# « attente machine » PLUTOT QUE « en cours » POUR LA TROISIEME, et il faut
+# dire pourquoi : « en cours » s'ecrit a quinze endroits de serveur.py, donc
+# quinze ancres, et appliquer() en exige une par edition. « attente machine »
+# ne s'ecrit qu'a UN seul, et le defaut est le meme mot pour mot — la page
+# compare a une valeur que le serveur n'ecrit plus. Il est meme deja arrive :
+# le commentaire de la table des etats, dans la page, dit que sans cette
+# entree la demande « s'affichait en attente, comme celles qui partent dans
+# deux minutes », alors que c'est le seul etat dont l'attente se compte en
+# HEURES. La variante a quinze sites a ete jouee a la main, et elle rougit sur
+# la meme ligne.
+MOITIES_SERVEUR = [
+    dict(
+        nom="l'en-tete de cache garde la page une semaine",
+        banc="banc_page.py",
+        imite="l'en-tete est bien la — le cas d'a cote reste vert — et il dit "
+              "l'inverse de ce qu'il doit dire : le navigateur garde la page "
+              "sept jours sans rien redemander. Les six contrats que ce banc "
+              "mesure sont alors vrais dans le depot et faux a l'ecran, ce qui "
+              "est exactement l'etat d'avant le 3 septembre, en pire : "
+              "« immutable » supprime meme la revalidation au rafraichissement",
+        rougit="et cet en-tete est bien « no-cache » : garder, mais revalider",
+        editions=[
+            ("serveur.py", brut('SANS_CACHE = {"Cache-Control": "no-cache"}',
+                                'SANS_CACHE = {"Cache-Control": '
+                                '"max-age=604800, immutable"}')),
+        ]),
+    dict(
+        nom="MARQUE_PANNE renommee du seul cote serveur",
+        banc="banc_page.py",
+        imite="le mensonge de MARQUE_DEJA pris par l'autre bout : le serveur "
+              "pose « echec », la page lit « panne », et rendrePanne ne recoit "
+              "plus jamais rien. La bulle retombe sur la derniere ligne de "
+              "JOURNAL — le repli, qui ne se traduit pas — et le lecteur "
+              "anglais relit du francais apres chaque panne. Rien ne leve, "
+              "rien ne manque a l'ecran : c'est le defaut que la marque a "
+              "ferme, remis par le cote qu'aucun banc ne relisait",
+        rougit="la page NOMME le champ par lequel le serveur dit CE QUI a echoue",
+        editions=[
+            ("serveur.py", brut('\nMARQUE_PANNE = "panne"\n',
+                                '\nMARQUE_PANNE = "echec"\n')),
+        ]),
+    dict(
+        nom="un etat de protocole renomme cote serveur",
+        banc="banc_page.py",
+        imite="la page compare a « attente machine », le serveur ecrit "
+              "« attente_machine » : la ligne de file retombe sur son repli et "
+              "affiche « en attente », comme une demande qui part dans deux "
+              "minutes. C'est le seul etat dont l'attente se compte en HEURES "
+              "— la machine est en pause, la demande repartira seule — et le "
+              "commentaire de la page dit que c'est pour cela qu'il a fallu "
+              "l'ecrire. Rien ne leve, et la file ment sur la seule attente "
+              "qu'il faille nommer",
+        rougit="et serveur.py n'ecrit toujours que ces etats-la",
+        editions=[
+            ("serveur.py", brut(
+                '"etat": ("attente machine" if tid in ARMEES',
+                '"etat": ("attente_machine" if tid in ARMEES')),
+        ]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
 #  Le second facteur — onze mutations, sur DEUX bancs
 # ──────────────────────────────────────────────────────────────────────
 # La seule liste de ce fichier qui vise deux bancs a la fois, et c'est le sujet
@@ -4063,8 +4178,8 @@ QR = [
 
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
-             + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + FACTEUR
-             + FACTEUR_MFA + DEMARRAGE + QR)
+             + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
+             + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
