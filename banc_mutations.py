@@ -423,6 +423,18 @@ BESOINS = {
     # chiffre ouvrait la porte 27 fois sur 100, le banc rendait 41/0, et deux de
     # ses cas passaient PAR CHANCE au-dessus du trou.
     "banc_mfa.py": ["banc_mfa.py", "mfa.py"],
+    # agent_noeud.py N'ETAIT COPIE PAR AUCUN BANC, et c'est ce qui rendait
+    # PERIMEES les deux mutations qui le visaient — « MUTATION PERIMEE,
+    # agent_noeud.py n'est pas copie pour banc_repartition.py ». Aucune de ses
+    # lignes n'etait sous filet : « free_memory » coupe du corps de /free, et
+    # les dix-sept bancs restaient verts.
+    #
+    # LUI SEUL, ET C'EST TOUT CE QU'IL FAUT : l'agent tourne sur la machine a
+    # carte, n'importe pas serveur.py, et sa premiere page promet « aucune
+    # dependance, seulement la bibliotheque standard ». banc_agent.py remplace
+    # son unique porte sur le monde — appeler() — et fait tourner le VRAI code
+    # contre un faux ComfyUI et un faux studio.
+    "banc_agent.py": ["banc_agent.py", "agent_noeud.py"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
@@ -4176,10 +4188,154 @@ QR = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  Les deux dernieres trouvailles de la relecture adverse — quatre mutations
+# ──────────────────────────────────────────────────────────────────────
+# DEUX DEFAUTS DE FILET, ET NON DEUX DEFAUTS DE CODE. Le premier est un cas
+# ECRIT POUR CE COUPLAGE qui ne comparait que la moitie de ce qu'il nomme ; le
+# second est un fichier entier hors de portee de ce banc-ci.
+#
+# ── 1. LES BORNES DE /admin, ET PAS SEULEMENT SES NOMS ────────────────
+# banc_page.py releve depuis le 3 septembre que /admin et BORNES_REGLAGES
+# nomment les memes reglages. Il ne relevait QUE les noms : les quatre paires
+# « min/max » de la page sont recopiees a la main face au dictionnaire du
+# serveur, et muter l'un ou l'autre cote laissait le banc VERT. Mesure du
+# 3 septembre 2026, avant reparation : « max="1440" » passe a « max="720" » sur
+# #vramReposMin, banc_page.py rend 66/0, pas une ligne rouge. Le cas ecrit pour
+# ce couplage ne voyait pas ce couplage — la faute que ce fichier existe pour
+# trouver, une fois de plus.
+#
+# LE SENS INVERSE, et il faut l'ecrire plutot que de le mimer : ce releve-la
+# est un FILET NEUF, comme le couplage des noms avant lui. Sur le depot
+# d'avant, les quatre paires s'accordaient deja — il aurait ete vert. Ce n'est
+# pas un defaut qu'on repare, c'est une moitie de mesure qui manquait. Ce qui
+# EST montre : la mutation rougit sur la page ET sur le serveur, dans les deux
+# sens de la derive (0-720 contre 0-1440, puis l'inverse), et sur la ligne
+# nommee.
+#
+# ── 2. UN POST REFUSE ETAIT SILENCIEUX ────────────────────────────────
+# Celui-la est un vrai defaut de code, et le commentaire du cas de banc_page.py
+# le decrivait DEJA sans que rien ne le mesure : « le POST repond 400, le champ
+# se remet a sa valeur d'avant au rafraichissement suivant, et l'administrateur
+# croit simplement que son chiffre a ete refuse ». C'etait pire : il ne croyait
+# rien du tout, rien ne s'affichait. « poserPause » et « poserRepos »
+# appelaient api() sans regarder ce qu'elle rendait ; seul « poserPlafond »
+# lisait le refus.
+#
+# LA REPARATION EST CELLE DE raccourci_ecrit(), APPLIQUEE A LA PAGE : tant
+# qu'il y avait trois ecritures du meme geste, deux avaient derive. Il n'y en a
+# plus qu'une, poserReglages(corps, "#zone"), et les trois cartes l'empruntent.
+# Le banc ne releve donc pas « chaque bouton regarde r.ok » — ce serait relever
+# UNE facon d'ecrire la garde — mais qu'il n'y a qu'un seul ecrivain et qu'il
+# lit le refus.
+#
+# LE SENS INVERSE, PRIS COMME POUR banc_refaire.py : les cinq cas sont nes avec
+# la correction, donc pas de filet d'avant. banc_page.py NEUF lance sur la page
+# d'AVANT — les trois cartes restaurees mot pour mot, sans poserReglages ni
+# zones d'alerte — rend 66/5, et les deux lignes que ces mutations nomment y
+# sont toutes les deux. Sur le depot du jour, 71/0.
+#
+# ── 3 et 4. agent_noeud.py, ENFIN SOUS FILET ──────────────────────────
+# Voir BESOINS. Le sens inverse a ete pris comme pour banc_refaire.py :
+# banc_agent.py NEUF lance sur un agent_noeud.py d'ou la liberation est retiree
+# rend 4/9, et « ET la liberation du cache » y est rouge. La mutation du
+# « not EN_COURS_ICI », elle, ne peut PAS s'y montrer rouge et il faut le dire :
+# sur un agent qui ne libere jamais, « une machine qui CALCULE ne la rend pas »
+# est vraie de rien. La ligne qui rougit la-bas pour cette regle est sa jumelle,
+# « une machine au repos … la REND » — c'est pour cela que les deux sont
+# relevees, l'une sans l'autre etant verte d'un agent qui libere toujours ou
+# d'un agent qui ne libere jamais.
+ADVERSE = [
+    dict(
+        nom="la borne de /admin derive de celle du serveur",
+        banc="banc_page.py",
+        imite="ce que le cas voisin ne voyait pas : les quatre « min/max » de "
+              "la page sont recopies a la main face a BORNES_REGLAGES. Une "
+              "page plus etroite que le serveur cache un reglage qu'il "
+              "accepte ; plus large, elle laisse taper un chiffre que le POST "
+              "refusera. Le nom, lui, reste juste des deux cotes — et c'est "
+              "tout ce que le banc regardait",
+        rougit="et les bornes de /admin sont CELLES du serveur, chiffre pour "
+               "chiffre",
+        editions=[("web/admin.html", brut(
+            'id="vramReposMin" min="0" max="1440"',
+            'id="vramReposMin" min="0" max="720"'))]),
+    dict(
+        nom="une carte repose son reglage toute seule, et redevient muette",
+        banc="banc_page.py",
+        imite="le code d'AVANT, mot pour mot : la carte du repos poste "
+              "elle-meme et jette la reponse. Un 400 n'affiche RIEN, "
+              "rafraichir() remet la valeur d'avant dans le champ, et "
+              "l'administrateur lit son ancien chiffre en croyant que le "
+              "nouveau a ete pris. C'est le symptome que le cas voisin decrit "
+              "dans son propre commentaire depuis le premier jour",
+        rougit="un seul endroit de /admin poste les reglages",
+        editions=[("web/admin.html", brut(
+            '$("#poserRepos").onclick = async () => {' + chr(10)
+            + '  if (await poserReglages(' + chr(10)
+            + '        { vram_repos_min: Number($("#vramReposMin").value) },'
+            + ' "#alerteRepos"))' + chr(10)
+            + '    rafraichir();' + chr(10) + '};',
+            '$("#poserRepos").onclick = async () => {' + chr(10)
+            + '  await api("/api/admin/reglages", "POST",' + chr(10)
+            + '            { vram_repos_min:'
+            + ' Number($("#vramReposMin").value) });' + chr(10)
+            + '  rafraichir();' + chr(10) + '};'))]),
+    dict(
+        nom="l'ecrivain unique jette le refus du serveur",
+        banc="banc_page.py",
+        imite="la meme panne muette, mais posee la ou elle atteint les TROIS "
+              "cartes d'un coup : l'unique fonction qui poste les reglages "
+              "cesse de regarder ce que le serveur repond. Rien ne leve, rien "
+              "ne s'affiche, et le studio a l'air d'accepter tout ce qu'on lui "
+              "donne",
+        rougit="et il MONTRE le refus du serveur au lieu de le jeter",
+        editions=[("web/admin.html", brut(
+            '  if (!r.ok) {' + chr(10)
+            + '    if (zone) zone.textContent = (r.d && r.d.erreur)'
+            + ' || "réglage refusé";' + chr(10)
+            + '    return false;' + chr(10) + '  }' + chr(10)
+            + '  return true;',
+            '  return true;'))]),
+    dict(
+        nom="/free ne demande plus que la moitie de la memoire",
+        banc="banc_agent.py",
+        imite="la mutation qui revenait « PERIMEE » faute d'un banc qui copie "
+              "agent_noeud.py. Le commentaire de liberer_carte() porte pourtant "
+              "la mesure : « l'un sans l'autre laisse plusieurs gigaoctets, ce "
+              "qui donne exactement l'apparence d'un /free qui ne marche pas ». "
+              "La carte rend ses modeles et garde son cache, la colonne « carte "
+              "» de /admin ne bouge presque pas, et l'on cherche le defaut du "
+              "cote du studio",
+        rougit="ET la liberation du cache : l'une sans l'autre laisse des "
+               "gigaoctets",
+        editions=[("agent_noeud.py", brut(
+            'corps={"unload_models": True,' + chr(10)
+            + '                                            "free_memory": True},'
+            + ' secondes=20',
+            'corps={"unload_models": True}, secondes=20'))]),
+    dict(
+        nom="l'agent libere la carte pendant qu'il calcule",
+        banc="banc_agent.py",
+        imite="l'autre mutation perimee, et c'est la moitie du garde-fou que "
+              "le studio NE PEUT PAS tenir a sa place : il decide sur ce qu'il "
+              "savait au debut du battement, et la boucle a pu prendre un "
+              "travail entre sa decision et l'arrivee de sa reponse. Sans cette "
+              "ligne, ComfyUI decharge un modele qu'il vient de charger et "
+              "l'image part avec une minute de retard, sans que personne ne "
+              "comprenne pourquoi",
+        rougit="une machine qui CALCULE ne la rend pas, meme si le studio la "
+               "reclame",
+        editions=[("agent_noeud.py", brut(
+            'if d.get("liberer") and not EN_COURS_ICI:',
+            'if d.get("liberer"):'))]),
+]
+
+
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
-             + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR)
+             + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

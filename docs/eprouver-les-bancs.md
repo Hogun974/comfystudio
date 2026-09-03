@@ -240,6 +240,23 @@ ajoutée à son tour. **Une mutation aussi s'éprouve.**
   plus : un banc qui redit le code au lieu de l'emprunter ne mesure que
   lui-même.
 
+- **Un fichier entier hors de portée.** `agent_noeud.py` n'était copié par
+  **aucun** banc, donc aucune de ses lignes n'était sous filet : les deux
+  mutations qui le visaient revenaient « MUTATION PÉRIMÉE — `agent_noeud.py`
+  n'est pas copié pour `banc_repartition.py` ». On pouvait couper `free_memory`
+  du corps de `/free` et les dix-sept bancs restaient verts, alors que le
+  commentaire de `liberer_carte()` dit que l'un sans l'autre laisse plusieurs
+  gigaoctets, « ce qui donne exactement l'apparence d'un `/free` qui ne marche
+  pas ». La périmée n'est **pas** un succès silencieux : c'est ce message-là,
+  répété, qui a nommé le trou. `banc_agent.py` le ferme le 3 septembre 2026.
+- **Un cas écrit pour un couplage qui n'en voyait que la moitié.** Le relevé
+  « /admin et le serveur nomment les mêmes réglages » comparait les **noms** et
+  pas les **bornes**, alors que les quatre paires `min`/`max` de la page sont
+  recopiées à la main face à `BORNES_REGLAGES`. Mesuré : `max="1440"` passé à
+  `max="720"` sur `#vramReposMin`, `banc_page.py` rend 66/0 sans une ligne
+  rouge. Le même motif que `priorite,` — un banc écrit pour un défaut qui ne
+  voit pas ce défaut — sur le couplage suivant.
+
 Voir [Qui prend le travail](qui-prend-le-travail.md) pour les règles que ces
 mutations éprouvent.
 

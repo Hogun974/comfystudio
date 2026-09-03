@@ -1455,17 +1455,33 @@ except OSError:
 dit(bool(ADMIN), "la console d'administration est lisible",
     f"{len(ADMIN)} octets" if ADMIN else "web/admin.html absent")
 
-_BORNES = set()
+# LES BORNES AVEC LE NOM, et non le nom tout seul. La version d'avant ne
+# relevait que les CLES de BORNES_REGLAGES, et c'est ce qui rendait ce cas
+# borgne : les quatre paires « min/max » de /admin sont recopiees a la main
+# face a ce dictionnaire, et muter l'un ou l'autre cote laissait le banc VERT
+# — mesure du 3 septembre 2026, « max="1440" » passe a « max="720" » sur
+# #vramReposMin, 66/0 sans une ligne rouge. Le meme defaut que MENU_REGLAGE
+# contre CLE_REGLAGE, sur le couple suivant.
+_BORNES = {}
 for _n in ast.walk(ARBRE_SERVEUR):
     if (isinstance(_n, ast.Assign) and len(_n.targets) == 1
             and getattr(_n.targets[0], "id", "") == "BORNES_REGLAGES"
             and isinstance(_n.value, ast.Dict)):
-        _BORNES = {k.value for k in _n.value.keys
-                   if isinstance(k, ast.Constant) and isinstance(k.value, str)}
-# Les corps d'objet passes au POST des reglages, et les noms qu'ils portent.
-_CORPS = re.findall(r'"/api/admin/reglages",\s*"POST",\s*\{(.*?)\}', ADMIN, re.S)
+        for _k, _v in zip(_n.value.keys, _n.value.values):
+            if not (isinstance(_k, ast.Constant) and isinstance(_k.value, str)):
+                continue
+            if not (isinstance(_v, ast.Tuple) and len(_v.elts) >= 2
+                    and all(isinstance(_e, ast.Constant)
+                            for _e in _v.elts[:2])):
+                continue
+            _BORNES[_k.value] = (_v.elts[0].value, _v.elts[1].value)
+_NOMS = set(_BORNES)
+# UN SEUL ECRIVAIN, ET C'EST LUI QU'ON LIT. La page appelait api() en trois
+# endroits ; elle passe desormais par poserReglages(corps, "#zone"), et les
+# corps d'objet se relevent a ses sites d'appel.
+_CORPS = re.findall(r'poserReglages\(\s*\{(.*?)\}\s*,\s*"([^"]*)"', ADMIN, re.S)
 _ECRITS = set()
-for _c in _CORPS:
+for _c, _z in _CORPS:
     _ECRITS |= set(re.findall(r"(\w+)\s*:", _c))
 # LE COMPTE D'ABORD, DES DEUX COTES. « inclus dans » est vrai de l'ensemble
 # vide : sans ces deux nombres, le cas serait vert le jour ou le releve cesse
@@ -1474,12 +1490,119 @@ for _c in _CORPS:
 dit(len(_BORNES) >= 3 and len(_ECRITS) >= 3,
     "on releve bien des reglages des deux cotes",
     f"{len(_BORNES)} au serveur, {len(_ECRITS)} dans la page")
-dit(_ECRITS <= _BORNES,
+dit(_ECRITS <= _NOMS,
     "aucun champ de /admin ne pose un reglage que le serveur ignore",
-    ", ".join(sorted(_ECRITS - _BORNES)) or "aucun")
-dit(_BORNES <= _ECRITS,
+    ", ".join(sorted(_ECRITS - _NOMS)) or "aucun")
+dit(_NOMS <= _ECRITS,
     "et aucun reglage du serveur n'est hors d'atteinte de /admin",
-    ", ".join(sorted(_BORNES - _ECRITS)) or "aucun")
+    ", ".join(sorted(_NOMS - _ECRITS)) or "aucun")
+
+# ── ET LES MEMES CHIFFRES, PAS SEULEMENT LES MEMES NOMS ───────────────
+# Le champ qui pose un reglage porte « min » et « max » : c'est ce que le
+# navigateur fait respecter avant meme d'envoyer, et c'est aussi ce que
+# l'administrateur LIT quand il cherche jusqu'ou il peut monter. Le serveur,
+# lui, refuse en 400 hors de BORNES_REGLAGES. Les deux se sont ecrits a la
+# main, a quatre cents lignes et un langage l'un de l'autre.
+#
+# Les deux sens de la derive coutent, et differemment : une page PLUS LARGE que
+# le serveur laisse taper un chiffre que le POST refuse — sans le message qu'on
+# vient de brancher, l'administrateur ne voyait rien du tout ; une page plus
+# ETROITE cache un reglage que le serveur accepte, et le petit compteur du
+# champ s'arrete avant. On les releve donc ensemble.
+#
+# LE COUPLE NOM ↔ CHAMP SE LIT DANS L'APPEL, pas dans une table a part : c'est
+# « pause_propose: Number($("#pauseMinutes").value) » qui dit lequel des champs
+# porte le reglage, et c'est la seule ecriture de ce lien dans le depot.
+_PAIRES = re.findall(r'(\w+)\s*:\s*Number\(\$\("#([\w-]+)"\)\.value\)', ADMIN)
+_ecarts, _apparies = [], 0
+for _clef, _champ in _PAIRES:
+    if _clef not in _BORNES:
+        continue                      # deja rouge au cas des noms, plus haut
+    _bal = re.search(r'<input\b[^>]*\bid="' + re.escape(_champ) + r'"[^>]*>',
+                     ADMIN)
+    if not _bal:
+        _ecarts.append(f"{_champ} : aucun <input> de cet identifiant")
+        continue
+    _min = re.search(r'\bmin="(-?\d+)"', _bal.group(0))
+    _max = re.search(r'\bmax="(-?\d+)"', _bal.group(0))
+    if not _min or not _max:
+        _ecarts.append(f"{_champ} : le champ ne borne rien")
+        continue
+    _apparies += 1
+    _vu = (int(_min.group(1)), int(_max.group(1)))
+    if _vu != _BORNES[_clef]:
+        _ecarts.append(f"{_clef} : la page dit {_vu[0]}-{_vu[1]}, "
+                       f"le serveur {_BORNES[_clef][0]}-{_BORNES[_clef][1]}")
+# LE COMPTE D'ABORD, une troisieme fois et pour la meme raison : « aucun ecart »
+# est vrai de zero champ apparie, et c'est l'etat qu'on obtient le jour ou
+# quelqu'un ecrit « Number(champ.value) » au lieu de « Number($("#x").value) ».
+dit(_apparies == len(_BORNES),
+    "chaque reglage du serveur se retrouve dans un champ borne de /admin",
+    f"{_apparies} champs apparies sur {len(_BORNES)} reglages")
+dit(not _ecarts,
+    "et les bornes de /admin sont CELLES du serveur, chiffre pour chiffre",
+    " ; ".join(_ecarts) or f"{_apparies} champs, aucun ecart")
+
+# ── UN POST REFUSE NE PEUT PAS ETRE SILENCIEUX ────────────────────────
+# Le defaut, mesure le 3 septembre 2026 : « poserPause » et « poserRepos »
+# appelaient api() sans regarder ce qu'elle rendait. Un 400 — chiffre hors
+# bornes, nom de reglage inconnu — n'affichait RIEN, le champ se remettait a sa
+# valeur d'avant au rafraichissement suivant, et l'administrateur croyait son
+# chiffre pris. Seul « poserPlafond » lisait le refus.
+#
+# ON NE RELEVE PAS « CHAQUE BOUTON REGARDE r.ok » : ce serait relever une facon
+# d'ecrire la garde, et la garde suivante s'ecrirait autrement. On releve qu'il
+# n'y a QU'UN SEUL ECRIVAIN — tant qu'il y en avait trois, deux avaient derive
+# — et que celui-la lit le refus. C'est la lecon de raccourci_ecrit() appliquee
+# a la page : une seule ecriture d'un meme geste ne peut pas diverger d'elle.
+_POSTS = len(re.findall(r'api\(\s*"/api/admin/reglages"\s*,\s*"POST"', ADMIN))
+dit(_POSTS == 1,
+    "un seul endroit de /admin poste les reglages",
+    f"{_POSTS} appels — les cartes divergeraient de nouveau" if _POSTS != 1
+    else "poserReglages(), et les cartes l'empruntent")
+
+
+def _corps_de(texte, nom):
+    """Le corps de la fonction « nom », par comptage d'accolades.
+
+    Une expression reguliere s'arreterait a la premiere accolade fermante, qui
+    est celle du « if » interieur : elle rendrait un corps tronque, donc un
+    releve qui ne voit pas la ligne d'apres. On compte, et l'on rend "" quand
+    la fonction n'est pas la — un NON, jamais un silence.
+    """
+    depart = texte.find("function " + nom)
+    if depart < 0:
+        return ""
+    ouvre = texte.find("{", depart)
+    if ouvre < 0:
+        return ""
+    creux = 0
+    for i in range(ouvre, len(texte)):
+        if texte[i] == "{":
+            creux += 1
+        elif texte[i] == "}":
+            creux -= 1
+            if creux == 0:
+                return texte[ouvre:i + 1]
+    return ""
+
+
+_ECRIVAIN = _corps_de(ADMIN, "poserReglages")
+dit(bool(_ECRIVAIN) and ".ok" in _ECRIVAIN and "erreur" in _ECRIVAIN,
+    "et il MONTRE le refus du serveur au lieu de le jeter",
+    f"{len(_ECRIVAIN)} octets de corps" if _ECRIVAIN
+    else "poserReglages() est introuvable")
+# La zone d'alerte est un argument : une carte qui l'oublierait poserait son
+# reglage en silence malgre l'ecrivain unique. On exige donc que chaque site
+# d'appel nomme une zone, et que cette zone EXISTE dans la page — « #alerteX »
+# mal orthographie rend un $() nul, c'est-a-dire le silence d'avant.
+_zones = [_z for _c, _z in _CORPS]
+_perdues = [_z for _z in _zones
+            if not (_z.startswith("#")
+                    and re.search(r'\bid="' + re.escape(_z[1:]) + r'"', ADMIN))]
+dit(len(_zones) >= 3 and not _perdues,
+    "et chaque carte lui nomme une zone d'alerte qui existe vraiment",
+    ", ".join(_perdues) or f"{len(_zones)} cartes : {', '.join(_zones)}")
 
 
 print("\n  ── la page ne se sert pas de memoire ──")

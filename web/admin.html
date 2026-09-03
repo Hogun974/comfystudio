@@ -192,6 +192,7 @@ td .detail{display:block;max-width:34ch}
         <input type="number" id="armeeHeures" min="0" max="168" step="1"
                style="width:5em"> heures</label>
       <button id="poserPause">enregistrer</button>
+      <div class="alerte" id="alertePause"></div>
     </div>
 
     <div class="carte">
@@ -217,6 +218,7 @@ td .detail{display:block;max-width:34ch}
         <input type="number" id="vramReposMin" min="0" max="1440" step="1"
                style="width:5em"> minutes sans travail</label>
       <button id="poserRepos">enregistrer</button>
+      <div class="alerte" id="alerteRepos"></div>
       <p class="aide">La colonne « carte » ci-dessus dit ce que chaque machine a
         de libre : c'est là qu'on voit si ça marche.</p>
     </div>
@@ -806,15 +808,34 @@ async function rafraichirCouts() {
   }
 }
 
-$("#poserPlafond").onclick = async () => {
-  $("#alertePlafond").textContent = "";
-  const r = await api("/api/admin/reglages", "POST",
-                      { plafond_nuage: Number($("#plafondNuage").value) });
+/* UN SEUL ENDROIT POSTE LES REGLAGES, et c'est celui-ci.
+   Il y en avait trois, et deux d'entre eux jetaient la reponse : « poserPause »
+   et « poserRepos » appelaient api() sans regarder ce qu'elle rendait. Un POST
+   refuse en 400 — un chiffre hors des bornes, un nom de reglage que le serveur
+   ne connait pas — etait donc PARFAITEMENT SILENCIEUX : rafraichir() reposait
+   dans le champ la valeur d'avant, et l'administrateur lisait son ancien
+   chiffre en croyant que le nouveau avait ete pris. Seul « poserPlafond »
+   affichait le refus, et c'est de lui que cette fonction est tiree.
+   Tant qu'il y avait trois ecritures du meme geste, elles divergeaient ; il
+   n'y en a plus qu'une, et banc_page.py verifie qu'il n'en revient pas une
+   seconde. La zone d'alerte est un ARGUMENT et non un defaut : une carte qui
+   oublierait de la nommer se verrait tout de suite au banc, alors qu'un
+   « $("#alerte" ) » optionnel serait retombe dans le silence d'avant. */
+async function poserReglages(corps, alerte) {
+  const zone = $(alerte);
+  if (zone) zone.textContent = "";
+  const r = await api("/api/admin/reglages", "POST", corps);
   if (!r.ok) {
-    $("#alertePlafond").textContent = (r.d && r.d.erreur) || "réglage refusé";
-    return;
+    if (zone) zone.textContent = (r.d && r.d.erreur) || "réglage refusé";
+    return false;
   }
-  rafraichirCouts();
+  return true;
+}
+
+$("#poserPlafond").onclick = async () => {
+  if (await poserReglages(
+        { plafond_nuage: Number($("#plafondNuage").value) }, "#alertePlafond"))
+    rafraichirCouts();
 };
 
 async function rafraichir() {
@@ -930,10 +951,10 @@ async function rafraichir() {
 }
 
 $("#poserPause").onclick = async () => {
-  await api("/api/admin/reglages", "POST",
-            { pause_propose: Number($("#pauseMinutes").value),
-              armee_heures: Number($("#armeeHeures").value) });
-  rafraichir();
+  if (await poserReglages({ pause_propose: Number($("#pauseMinutes").value),
+                            armee_heures: Number($("#armeeHeures").value) },
+                          "#alertePause"))
+    rafraichir();
 };
 
 /* Son propre bouton, et non celui de la pause : les deux cartes ne parlent pas
@@ -941,9 +962,9 @@ $("#poserPause").onclick = async () => {
    — et chaque clef du POST est facultative, exprès, pour que chaque carte
    n'envoie que la sienne. */
 $("#poserRepos").onclick = async () => {
-  await api("/api/admin/reglages", "POST",
-            { vram_repos_min: Number($("#vramReposMin").value) });
-  rafraichir();
+  if (await poserReglages(
+        { vram_repos_min: Number($("#vramReposMin").value) }, "#alerteRepos"))
+    rafraichir();
 };
 
 document.addEventListener("click", async e => {

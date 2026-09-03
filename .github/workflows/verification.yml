@@ -164,6 +164,54 @@ jobs:
       # l'un des deux le prend en defaut. Sans cela, une regle trop laxiste se
       # compterait verte sur tout le depot sans que personne ne le sache —
       # exactement la symetrie de la faute qu'on repare.
+      # CE FICHIER ENUMERE SES BANCS UN PAR UN, et cette liste a ROUILLE DEUX
+      # FOIS en deux jours : le 2 septembre il manquait banc_traductions,
+      # banc_mfa et banc_comptes — 109 verifications que rien ne levait — et le
+      # 3 il a fallu y ajouter banc_qr, puis banc_agent. A chaque fois, le banc
+      # neuf etait vert en local et jamais lance ici.
+      #
+      # C'est le defaut que CONTRIBUTING.md vient de corriger DANS SA PROSE en
+      # nommant le motif « banc_*.py » plutot que la liste ; ici, la liste est
+      # necessaire — chaque banc a son nom d'etape, qui dit ce qu'il garde — et
+      # ce sont donc les DEUX qui doivent s'accorder. On ne remplace pas
+      # l'enumeration, on la CONFRONTE au repertoire : un banc pose sans etape
+      # rougit, et le message dit lequel.
+      #
+      # Le fichier se relit lui-meme par GITHUB_WORKFLOW_REF, sans nom ecrit en
+      # dur : renomme, deplace, il continue de se mesurer.
+      - name: Chaque banc du depot a son etape dans cette verification
+        run: |
+          python - <<'PY'
+          import glob, os, re, sys
+
+          ici = os.environ.get("GITHUB_WORKFLOW_REF", "")
+          # « owner/depot/.github/workflows/x.yml@refs/heads/main » -> le chemin
+          chemin = ici.split("@")[0].split("/", 2)[-1] if ici else ""
+          if not chemin or not os.path.exists(chemin):
+              chemin = ".github/workflows/verification.yml"
+          texte = open(chemin, encoding="utf-8").read()
+
+          lances = set(re.findall(r"python\s+(banc_[a-z_]+\.py|verifier_[a-z_]+\.py)",
+                                  texte))
+          poses = set(glob.glob("banc_*.py")) | set(glob.glob("verifier_*.py"))
+          # banc_mutations lance les autres : il est dans les deux ensembles et
+          # ne demande rien de particulier.
+          manquants = sorted(poses - lances)
+          fantomes = sorted(lances - poses)
+          for b in manquants:
+              print(f"  SANS ETAPE  {b} — ecrit, vert en local, jamais lance ici")
+          for b in fantomes:
+              print(f"  FANTOME     {b} — une etape le lance, le fichier n'existe pas")
+          if not manquants and not fantomes:
+              print(f"  ok          les {len(poses)} bancs du depot ont leur etape")
+          # Sans ce plancher, un glob qui ne trouverait plus rien rendrait les
+          # deux ensembles vides et cette verification serait vraie DE RIEN.
+          if len(poses) < 10:
+              print(f"  SEUL {len(poses)} banc(s) trouve(s) : le releve ne mesure plus rien")
+              sys.exit(1)
+          sys.exit(1 if manquants or fantomes else 0)
+          PY
+
       - name: Aucun nom n'est defini deux fois au niveau d'un module
         run: |
           python - <<'PY'
@@ -406,6 +454,20 @@ jobs:
       # sans etalon. Segno n'est pas au depot et n'y entrera pas.
       - name: Le QR code de l'enrolement, module par module
         run: python banc_qr.py
+
+      # L'AGENT, QUI NE TOURNE PAS DANS LE STUDIO ET N'ETAIT DONC SOUS AUCUN
+      # FILET. agent_noeud.py vit sur la machine a carte : il n'importe pas
+      # serveur.py, aucun banc ne le copiait, et banc_mutations.py rendait
+      # « MUTATION PERIMEE » aux deux mutations qui le visaient. On pouvait
+      # couper « free_memory » du corps de /free — la moitie du garde-fou que
+      # le studio ne peut pas tenir a sa place — et les dix-sept bancs
+      # restaient verts.
+      #
+      # Il n'a aucune dependance et une seule porte sur le monde, appeler() :
+      # un faux a cet endroit fait tourner le VRAI code contre un faux ComfyUI
+      # et un faux studio. Aucun reseau, aucune carte, une fraction de seconde.
+      - name: L'agent de noeud, contre un faux ComfyUI
+        run: python banc_agent.py
 
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
