@@ -114,8 +114,27 @@ def code(secret, quand=None, pas=None, chiffres=CHIFFRES):
     return str(tronque % (10 ** chiffres)).zfill(chiffres)
 
 
-def verifie(secret, saisie, quand=None, fenetre=FENETRE, dernier_pas=None):
+def verifie(secret, saisie, quand=None, fenetre=FENETRE, dernier_pas=None,
+            chiffres=CHIFFRES):
     """Rend le PAS accepte, ou None. Jamais un booleen, et c'est le point.
+
+    LA LONGUEUR ATTENDUE NE VIENT PAS DE CE QUE L'ATTAQUANT TAPE. Cette
+    fonction a compare, du 2 au 3 septembre 2026, le code attendu tronque a
+    « len(saisie) » — de sorte qu'une saisie a UN chiffre etait comparee au
+    code modulo dix. Mesure du 3 septembre : 549 saisies a un chiffre acceptees
+    sur 2 000 instants tires au hasard, soit 27,4 %, et 25 sessions ouvertes sur
+    25 avec le seul mot de passe, en 4,8 essais de moyenne. Le freinage — trois
+    essais gratuits, puis 1 s, 2 s, 4 s — laissait sept secondes pour 85 % de
+    reussite.
+
+    La garantie que tout le reste invoque — « six chiffres font un million » —
+    etait donc fausse : le studio en acceptait un. Elle est ecrite dans
+    _ouvrir_porte(), dans banc_comptes.py et dans le message du commit qui a
+    branche le facteur ; aucune de ces trois phrases n'etait vraie.
+
+    « chiffres » reste un parametre, parce que la RFC 6238 publie ses vecteurs
+    sur huit et que banc_mfa.py les rejoue — mais il est POSE par l'appelant,
+    jamais deduit de l'entree. C'est toute la difference.
 
     L'APPELANT DOIT GARDER CE PAS ET LE REPASSER. Un code TOTP reste valable
     pendant toute sa fenetre : sans memoire, le meme code rejoue trois fois de
@@ -132,7 +151,11 @@ def verifie(secret, saisie, quand=None, fenetre=FENETRE, dernier_pas=None):
     parmi un million.
     """
     propre = "".join((saisie or "").split())
-    if not propre.isdigit():
+    # LA LONGUEUR D'ABORD, ET AVANT TOUT CALCUL. « isdigit() » seul laissait
+    # passer « 7 » comme « 1234567 » : le premier ouvrait une chance sur dix par
+    # pas, le second ne pouvait rien ouvrir mais faisait calculer trois HMAC
+    # pour rien.
+    if not propre.isdigit() or len(propre) != chiffres:
         return None
     maintenant = pas_de(quand)
     # On balaie du plus recent au plus ancien : le cas normal est le pas
@@ -146,7 +169,7 @@ def verifie(secret, saisie, quand=None, fenetre=FENETRE, dernier_pas=None):
             # refuserait un code juste a quelqu'un qui se reconnecte trente
             # secondes apres.
             continue
-        if hmac.compare_digest(code(secret, pas=p, chiffres=len(propre)),
+        if hmac.compare_digest(code(secret, pas=p, chiffres=chiffres),
                                propre):
             return p
     return None

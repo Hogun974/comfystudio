@@ -399,6 +399,13 @@ BESOINS = {
     # Sans lui, le banc meurt a l'import, ce qui ressemblerait a une mutation
     # attrapee.
     "banc_qr.py": ["banc_qr.py", "qr.py", "etalons_qr.py", "mfa.py"],
+    # banc_mfa.py n'a eu AUCUNE mutation du 2 au 3 septembre 2026, et c'etait le
+    # seul banc du depot dans ce cas — celui qui garde la seule porte du studio.
+    # CONTRIBUTING l'exige pourtant en toutes lettres : « si tu ajoutes un banc,
+    # ajoute-lui sa mutation ». Le prix de cet oubli est mesure : une saisie a UN
+    # chiffre ouvrait la porte 27 fois sur 100, le banc rendait 41/0, et deux de
+    # ses cas passaient PAR CHANCE au-dessus du trou.
+    "banc_mfa.py": ["banc_mfa.py", "mfa.py"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
     "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
@@ -491,6 +498,22 @@ MARQUE_ROUGE = {"banc_cout.py": "  RATE ", "banc_adulte.py": "    ",
                 "banc_multilingue.py": "  RATE ",
                 "banc_traductions.py": "  RATE ",
                 "banc_comptes.py": "  RATE ",
+                # banc_mfa.py imprime « RATE », et il manquait ici parce qu'il
+                # n'avait AUCUNE mutation jusqu'au 3 septembre 2026 : ses trois
+                # premieres se sont declarees « le banc s'est casse au lieu de
+                # rougir » alors qu'il rougissait parfaitement, sur la ligne
+                # nommee. Un verdict faux dans le sens le moins dangereux —
+                # mais qui aurait fait croire les mutations mal ecrites et
+                # conduit a les affaiblir jusqu'a ce qu'elles « passent ».
+                #
+                # banc_qr.py, LUI, IMPRIME « NON » et n'a rien a faire ici. Je
+                # l'y ai ajoute par symetrie, sur un « grep RATE » qui trouvait
+                # le mot ailleurs dans le fichier, et ses DOUZE mutations sont
+                # tombees d'un coup. Le releve d'un mot n'est pas le releve de
+                # ce que la fonction imprime : c'est la faute que ce fichier
+                # reproche aux bancs depuis le premier jour, commise dans le
+                # fichier qui la reproche.
+                "banc_mfa.py": "  RATE ",
                 "verifier_formulations.py": "    "}
 
 
@@ -2866,6 +2889,79 @@ LANGUES = [
 # — « ecris-le quand tu ne peux ni l'un ni l'autre » — et l'on a mesure
 # l'ISOLEMENT a la place : chaque mutation, SEULE, allume la ligne qu'elle
 # nomme et elle seule, et le depot sain reste vert sur les trente-huit.
+# ── LE SECOND FACTEUR, ET LE BANC QUI N'AVAIT PAS DE FILET ────────────
+# banc_mfa.py est ne le 2 septembre 2026 sans une seule mutation, et il est
+# reste le seul banc du depot dans ce cas. Ce qu'il gardait, pourtant, c'est la
+# porte : le prix de l'oubli est mesure a 27,4 % — la proportion de saisies a un
+# chiffre que le studio acceptait.
+FACTEUR_MFA = [
+    dict(
+        nom="la longueur du code se deduit de la SAISIE",
+        banc="banc_mfa.py",
+        imite="la porte telle qu'elle a ete livree, du 2 au 3 septembre 2026. "
+              "verifie() comparait le code attendu TRONQUE a la longueur de ce "
+              "qu'on tape : « 7 » etait donc confronte au code modulo dix, une "
+              "chance sur dix par pas et trois pas dans la fenetre. Mesure : "
+              "549 acceptations sur 2 000 instants au hasard, 25 sessions "
+              "ouvertes sur 25 avec le seul mot de passe, 4,8 essais de "
+              "moyenne — le freinage laisse trois essais gratuits puis 1, 2 et "
+              "4 s, soit sept secondes pour 85 % de reussite. La garantie que "
+              "tout le reste invoque, « six chiffres font un million », etait "
+              "fausse : le studio en acceptait un",
+        rougit="aucune longueur autre que six n'ouvre",
+        editions=[
+            ("mfa.py", brut(
+                "    if not propre.isdigit() or len(propre) != chiffres:",
+                "    if not propre.isdigit():")),
+            ("mfa.py", brut(
+                "        if hmac.compare_digest(code(secret, pas=p, chiffres=chiffres),",
+                "        if hmac.compare_digest(code(secret, pas=p, "
+                "chiffres=len(propre)),")),
+        ]),
+    dict(
+        nom="le rejeu d'un code TOTP",
+        banc="banc_mfa.py",
+        imite="un second facteur qu'on peut rejouer ne protege plus contre "
+              "quelqu'un qui a vu l'ecran ou relu un journal. Un code reste "
+              "valable toute sa fenetre : sans memoire du dernier pas accepte, "
+              "le meme code ouvre autant de sessions qu'on veut. C'est la faute "
+              "la plus courante des implementations maison, parce qu'elles "
+              "verifient le code — le facile — et s'arretent la",
+        rougit="le meme code repasse avec ce pas en memoire est REFUSE",
+        editions=[
+            ("mfa.py", brut(
+                "        if dernier_pas is not None and p <= dernier_pas:",
+                "        if False:")),
+        ]),
+    dict(
+        nom="la fenetre s'elargit a deux pas",
+        banc="banc_mfa.py",
+        imite="deux fois plus de codes valides a chaque instant, pour un "
+              "confort que personne n'a demande : la RFC 6238 ecrit « at most "
+              "one time step ». Rien ne se voit — les codes justes passent "
+              "toujours, et ceux d'il y a deux minutes aussi",
+        rougit="DEUX pas en arriere, non",
+        editions=[
+            ("mfa.py", brut("FENETRE = 1", "FENETRE = 2")),
+        ]),
+    dict(
+        nom="un code de secours qui ressert",
+        banc="banc_comptes.py",
+        imite="un second mot de passe permanent, note sur un papier. Le code "
+              "de secours est retire APRES avoir rendu vrai, au lieu d'avant : "
+              "rien ne se voit tant qu'on ne le retape pas",
+        rougit="LE MEME NE SERT PAS DEUX FOIS",
+        editions=[
+            ("comptes.py", brut(
+                '                m["secours"].pop(i)\n'
+                "                self.sauver()\n"
+                "                return True",
+                "                self.sauver()\n"
+                "                return True")),
+        ]),
+]
+
+
 PAGE_LANGUES = [
     dict(
         nom="la page repart sans en-tete de cache",
@@ -3939,7 +4035,7 @@ QR = [
 MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + FACTEUR
-             + DEMARRAGE + QR)
+             + FACTEUR_MFA + DEMARRAGE + QR)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

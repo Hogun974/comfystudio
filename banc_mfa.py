@@ -38,6 +38,7 @@ n'importe que la bibliotheque standard.
 """
 import base64
 import os
+import random
 import sys
 import time
 
@@ -171,6 +172,55 @@ print("\n  ── ce qui n'est pas un code ──")
 for saisie in ("", "   ", "abcdef", "12345", "1234567", None):
     dit(mfa.verifie(SECRET_RFC, saisie, quand=T) is None,
         f"« {saisie if saisie is not None else 'None'} » ne passe pas")
+
+# ══ UNE SAISIE PLUS COURTE N'EST PAS UN CODE PLUS FACILE ═══════════════
+# LES DEUX CAS CI-DESSUS PASSAIENT DEJA PENDANT QUE LA PORTE ETAIT OUVERTE, et
+# c'est la lecon. verifie() a compare, du 2 au 3 septembre 2026, le code attendu
+# TRONQUE A LA LONGUEUR DE LA SAISIE : « 7 » etait donc confronte au code modulo
+# dix, une chance sur dix par pas de temps, trois pas dans la fenetre. Mesure :
+# 549 acceptations sur 2 000 instants tires au hasard — 27,4 % — et 25 sessions
+# ouvertes sur 25 avec le seul mot de passe, en 4,8 essais de moyenne.
+#
+# « 12345 » ne l'a pas vu parce qu'une saisie a cinq chiffres n'avait qu'une
+# chance sur cent mille de tomber juste : le cas etait vrai PAR CHANCE, et il
+# aurait fallu le relancer cent mille fois pour qu'il mente une fois. Un cas
+# qui eprouve une porte probabiliste avec UN tirage ne l'eprouve pas.
+#
+# ON PROBE DONC LA PORTE EXACTE. Pour chaque longueur fautive, on calcule ce que
+# le code d'avant aurait ACCEPTE — le vrai code tronque a cette longueur-la —
+# et on exige qu'il soit refuse. Deterministe, et ca rougit a coup sur.
+print("\n  ── une saisie plus courte n'est pas un code plus facile ──")
+_ouvertes = []
+for n in (1, 2, 3, 4, 5, 7, 8):
+    # mfa.code(..., chiffres=n) est litteralement la valeur que verifie()
+    # calculait quand elle deduisait la longueur de la saisie.
+    ce_qui_ouvrait = mfa.code(SECRET_RFC, quand=T, chiffres=n)
+    if mfa.verifie(SECRET_RFC, ce_qui_ouvrait, quand=T) is not None:
+        _ouvertes.append(f"{n} chiffres : « {ce_qui_ouvrait} »")
+dit(not _ouvertes,
+    "aucune longueur autre que six n'ouvre, meme avec le bon prefixe",
+    ", ".join(_ouvertes) or "sept longueurs fautives, toutes refusees")
+
+# ET LA MESURE EN GRAND, parce qu'un seul instant ne dit rien d'une porte qui
+# s'ouvre une fois sur quatre. Deux cents instants, un chiffre au hasard : la
+# porte d'avant en laissait passer une cinquantaine.
+_hasard = random.Random(20260903)
+_passees = sum(
+    1 for _ in range(200)
+    if mfa.verifie(SECRET_RFC, _hasard.choice("0123456789"),
+                   quand=_hasard.randint(1_600_000_000, 1_800_000_000))
+    is not None)
+dit(_passees == 0,
+    "et deux cents saisies a un chiffre, a deux cents instants, n'ouvrent rien",
+    f"{_passees}/200 — la version du 2 septembre en laissait passer ~55")
+
+# LA LONGUEUR EST POSEE PAR L'APPELANT, JAMAIS DEDUITE. C'est ce qui permet a
+# la RFC de rester verifiable sur huit chiffres sans rouvrir la porte : le banc
+# le demande explicitement, une saisie ne peut pas le demander.
+dit(mfa.verifie(SECRET_RFC, mfa.code(SECRET_RFC, quand=T, chiffres=8),
+                quand=T, chiffres=8) is not None,
+    "mais huit chiffres passent quand l'APPELANT les demande",
+    "c'est ainsi que les vecteurs de la RFC restent verifiables")
 # UN CODE JUSTE MAIS D'UN AUTRE SECRET. Sans ce cas, une fonction qui accepte
 # tout ce qui a six chiffres passerait tous les cas ci-dessus.
 autre = mfa.secret_neuf()
