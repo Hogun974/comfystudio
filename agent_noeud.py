@@ -351,9 +351,20 @@ def trouver_ollama(prefere):
     Le reglage d'abord — s'il a ete pose, c'est qu'on sait ou l'on va. Les
     voisins de conteneur ensuite, et seulement en dernier recours : les essayer
     d'emblee masquerait une faute de frappe dans le reglage.
+
+    « OK » ET NON LA VERACITE DU DICTIONNAIRE, depuis le 4 septembre 2026.
+    etat_ollama() rend {"ok": False, "modeles": []} pour un Ollama installe et
+    VIDE : un dictionnaire non vide, donc vrai, et la recherche s'arretait la.
+    Le cas n'a rien de rare — en conteneur, OLLAMA_URL pointe souvent sur un
+    Ollama voisin qu'on vient d'installer et ou l'on n'a encore rien tire ;
+    host.docker.internal, ou vivent les modeles de l'hote, n'etait alors JAMAIS
+    essaye. La machine s'annoncait avec « 0 modele(s), pretes au studio ».
+
+    Un Ollama sans modele ne repond a rien : rendre "" est la verite, et le
+    studio saura que cette machine ne prete pas de langage.
     """
     for adresse in (prefere,) + VOISINS_OLLAMA:
-        if adresse and etat_ollama(adresse.rstrip("/")):
+        if adresse and (etat_ollama(adresse.rstrip("/")) or {}).get("ok"):
             return adresse.rstrip("/")
     return ""
 
@@ -818,15 +829,36 @@ def insister(url, jeton, corps=None, brut=None, secondes=60):
     On ne recommence que sur un studio MUET ou en panne (0, ou 5xx). Un refus
     franc — jeton invalide, extension refusee, fichier trop gros — ne se repare
     pas en le repetant : on rend la main tout de suite.
+
+    LA CONDITION DISAIT AUTRE CHOSE QUE CETTE PHRASE, du 31 aout au 4 septembre
+    2026 : « st == 200 or (400 <= st < 500) ». Tout le reste passait pour un
+    studio muet. Mesure du 4 septembre — un 204 et un 202 partent chacun
+    VINGT-QUATRE fois sur dix minutes, puis le travail est declare perdu, en
+    annoncant « studio muet (204) » d'une reponse qui dit « c'est fait ».
+    204 n'a rien d'hypothetique : le studio le sert deja sur
+    /api/noeud/question, et c'est la reponse naturelle pour « recu, rien a
+    dire ». Une redirection, elle, ne passe presque jamais par ici — urllib la
+    SUIT (mesure du meme jour : un 301 avec Location rend 200) ; seule une
+    boucle de redirections ressort en 301.
+
+    Une reponse qui n'est pas 200 et n'a pas ete reessayee se DIT desormais.
+    Elle etait rendue en silence, et le seul appelant qui la lise vraiment est
+    celui qui compte les battements.
     """
     fin = time.time() + LIVRAISON_MINUTES * 60
     attente, dit = 2, False
     while True:
         st, _ = appeler(url, jeton, corps, brut=brut, secondes=secondes)
-        if st == 200 or (400 <= st < 500):
+        # Repondre, c'est repondre : seuls le silence (0) et la panne franche
+        # (5xx) valent qu'on recommence.
+        if st and not 500 <= st < 600:
             if dit:
                 print(f"  studio revenu — {url.split('/')[-1].split('?')[0]} "
                       f"livre ({st})", flush=True)
+            elif st != 200:
+                print(f"  studio a repondu {st} a "
+                      f"{url.split('/')[-1].split('?')[0]} — ce n'est ni un "
+                      f"accord ni une panne, on ne recommence pas", flush=True)
             return st
         if time.time() >= fin:
             print(f"  studio injoignable depuis {LIVRAISON_MINUTES} min — "

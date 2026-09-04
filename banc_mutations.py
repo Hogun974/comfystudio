@@ -444,6 +444,18 @@ BESOINS = {
     # son unique porte sur le monde — appeler() — et fait tourner le VRAI code
     # contre un faux ComfyUI et un faux studio.
     "banc_agent.py": ["banc_agent.py", "agent_noeud.py"],
+    # LES MEMES DEUX FICHIERS, et pour la meme raison : banc_boucle.py couvre
+    # les six fonctions que banc_agent.py a nommees en les laissant dehors —
+    # boucle(), insister(), servir_le_langage(), trouver_ollama(),
+    # modeles_comfy() et main(). Il n'importe que agent_noeud.py, qui
+    # n'importe que la bibliotheque standard.
+    #
+    # PAS DE TROISIEME FICHIER, ET C'EST VERIFIABLE : il n'ouvre rien d'autre
+    # que ses propres bacs temporaires, et AGENT.CONFIG y est deplace le temps
+    # de chaque appel a main() — sans quoi il ecrirait agent_noeud.json a cote
+    # du vrai agent du depot. C'est la meme precaution que banc_agent.py prend
+    # pour AGENT.__file__.
+    "banc_boucle.py": ["banc_boucle.py", "agent_noeud.py"],
     # LE SEUL BANC QUI LANCE UN SCRIPT SHELL. Il n'importe rien du studio : il
     # fait tourner noeud.sh et maj_noeud.sh dans un bac a sable, contre un faux
     # curl et un faux nvidia-smi qu'il ecrit lui-meme. Il lui faut donc les deux
@@ -645,6 +657,22 @@ def appliquer(texte, edition):
 # imite, pas la manipulation : « OLLAMA_URL disparait du compose » se relit dans
 # les deux lignes en dessous, « le studio ne trouve plus aucun Ollama » non.
 CONTENEUR = [
+    dict(
+        nom="un defaut du compose qui repete un defaut CALCULE par le code",
+        banc="banc_conteneur.py",
+        imite="DEUX MAITRES POUR COMFY_MODELES, et c'est le piege que ce banc "
+              "existe pour attraper — il l'a laisse passer des semaines. Le "
+              "defaut du code n'est pas litteral : « os.path.join(BASE_COMFY, "
+              "\"models\") », qui vaut /comfy/models dans l'image. Le releve "
+              "le lisait sans l'evaluer, donc il ne pouvait etre egal a rien. "
+              "Le jour ou le code change de chemin, l'image garde l'ancien "
+              "sans un mot",
+        rougit="pas deux defauts pour un meme reglage dans le compose",
+        editions=[
+            ("docker-compose.yml", brut(
+                '      COMFY_MODELES: "${COMFY_MODELES:-}"',
+                '      COMFY_MODELES: "${COMFY_MODELES:-/comfy/models}"')),
+        ]),
     dict(
         nom="OLLAMA_URL retiree du compose et du Dockerfile",
         banc="banc_conteneur.py",
@@ -1061,22 +1089,20 @@ PAGE = [
 # parties dans FORMULATIONS le 2 septembre : elles tenaient toutes a la meme
 # cause — le banc recopiait la sequence de serveur.py au lieu de l'emprunter —
 # et il l'emprunte desormais.
-TROUS_CONNUS = [
-    dict(
-        nom="un defaut du compose qui repete un defaut CALCULE par le code",
-        banc="banc_conteneur.py",
-        imite="deux maitres pour COMFY_MODELES, et la verification ecrite pour "
-              "ce piege ne peut pas le voir : le defaut du code est "
-              "« os.path.join(BASE_COMFY, \"models\") », que le banc lit sans "
-              "l'evaluer. Rendre None est honnete, mais quatre chemins et un "
-              "port restent hors de portee de « pas deux defauts »",
-        rougit="pas deux defauts pour un meme reglage dans le compose",
-        editions=[
-            ("docker-compose.yml", brut(
-                '      COMFY_MODELES: "${COMFY_MODELES:-}"',
-                '      COMFY_MODELES: "${COMFY_MODELES:-/comfy/models}"')),
-        ]),
-]
+# VIDE DEPUIS LE 4 SEPTEMBRE 2026, et c'est la premiere fois. Le dernier —
+# « un defaut du compose qui repete un defaut CALCULE par le code » — est parti
+# dans CONTENEUR : banc_conteneur.py EVALUE desormais les defauts calcules au
+# lieu de rendre None des qu'une expression n'est pas litterale. Il les evalue
+# comme l'IMAGE les verrait — posixpath, et les lignes ENV du Dockerfile pour
+# environnement — parce que le compose decrit un conteneur Linux et non la
+# machine du contributeur.
+#
+# Cette liste doit pouvoir se remplir de nouveau sans que personne n'hesite :
+# une mutation qu'on trouve et que le banc vise ne voit pas se met ICI, nommee,
+# et le banc la signale sans compter d'echec. La cacher serait pire ; la
+# compter en echec rendrait la CI rouge en permanence, et une CI qui rougit
+# pour rien finit ignoree.
+TROUS_CONNUS = []
 
 # ──────────────────────────────────────────────────────────────────────
 #  banc_repartition.py — le studio sans carte se choisissait lui-meme
@@ -5347,12 +5373,1170 @@ VERSION = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  banc_boucle.py — soixante-huit mutations, les six fonctions qui DECIDENT
+# ──────────────────────────────────────────────────────────────────────
+# banc_agent.py a ferme le trou du fichier agent_noeud.py, et son en-tete a
+# nomme ce qu'il laissait dehors : « boucle(), qui ne rend jamais la main […]
+# insister(), servir_le_langage(), trouver_ollama() et main() » — plus
+# modeles_comfy(). Six fonctions, et ce sont celles qui decident : boucle()
+# prend le travail, declare la machine occupee, livre les fichiers et choisit
+# l'instant ou l'agent se remplace ; insister() est tout ce qui separe un rendu
+# de trois minutes DEJA FAIT d'un « echec » affiche a l'utilisateur ; main() est
+# la porte de l'enrolement.
+#
+# LE SENS INVERSE, ET IL A FALLU REPARER LE BANC POUR L'OBTENIR. Ces gardes
+# sont toutes plus vieilles que banc_boucle.py : il n'y a pas de filet d'avant
+# a rejouer, donc c'est le second chemin — le banc NEUF sur l'agent d'AVANT.
+# Au premier essai, le banc MOURAIT sur cinq des six commits repris, en
+# « AttributeError: module 'agent_noeud' has no attribute 'PREMIERE_ANNONCE' » :
+# un banc qui meurt sur le code d'avant ne mesure pas le sens inverse, et
+# banc_mutations aurait rendu « le banc s'est casse au lieu de rougir ». Chaque
+# nom y est desormais lu par un accesseur tolerant et chaque absence pose un
+# CAS NOMME — le meme tour que le « try » de banc_page.py sur
+# web/demarrage.html. Releve le 4 septembre 2026, agent repris a neuf commits
+# depuis le premier du depot :
+#
+#     811677b   115 lignes rouges, dont 54 que ces mutations nomment
+#     b717f11^  111 lignes rouges, dont 53
+#     ea06397^   95 lignes rouges, dont 45
+#     aeee626^   83 lignes rouges, dont 36
+#     f9b3051^   46 lignes rouges, dont 22
+#     adca444^    8 lignes rouges, dont  5 — et le banc rend 130/8, il
+#                 DISTINGUE les deux depots au lieu de mourir sur l'un
+#
+# CINQUANTE-SIX des soixante-huit lignes nommees rougissent ainsi sur au
+# moins un agent d'avant. Les douze autres gardent des regles aussi vieilles
+# que le depot — le refus d'un studio sans adresse, les dossiers de
+# l'inventaire, le menage sans dossier de sorties : pour celles-la, la
+# mutation EST la correction defaite, et « banc_boucle.py est vert sur le depot
+# sain » en tete de ce fichier tient l'autre moitie.
+#
+# L'ISOLEMENT a ete releve mutation par mutation le 4 septembre 2026 :
+# QUARANTE-CINQ des soixante-huit rougissent leur ligne et elle SEULE. Les
+# vingt-trois autres en entrainent une a huit de plus, et c'est la meme
+# distinction qu'a la liberation de la VRAM : couper un TRANSPORT fait tomber
+# tout ce qui en depend, couper une GARDE ne fait tomber qu'elle. Les trois
+# plus larges le montrent — « le delai de livraison est nul » (+8) coupe la
+# reprise entiere d'insister(), « l'agent decharge la carte a chaque
+# battement » (+7) coupe la LECTURE de la consigne, « un refus franc est repete
+# pendant dix minutes » (+4) tient les cinq statuts du meme « if ».
+#
+# TROIS DE CES MUTATIONS ONT TROUVE UN TROU DANS LE BANC, et c'est pour cela
+# qu'elles existent : « la boucle reclame du travail sans carte » et « ... a un
+# studio qui l'a refusee » etaient VERTES — le faux reseau retirait de sa trace
+# la demande qui l'arrete, si bien que « aucun travail reclame » restait vrai
+# d'une boucle qui en reclamait un ; et « un fichier illisible interrompt le
+# depot des suivants » l'etait aussi, parce que le fichier illisible etait
+# ECRIT EN SECOND et que le break n'avait plus rien a couper. Le motif de
+# « priorite, », trois fois, dans le banc qui vient le fermer.
+BOUCLE_AGENT = [
+    # ── LES DEUX DEFAUTS TROUVES EN COUVRANT, ET CORRIGES LE MEME JOUR ──
+    # Ils vivaient tous les deux dans l'ecart entre une docstring et son code.
+    # Ce n'est pas un hasard : une promesse ecrite au-dessus d'une condition est
+    # ce qu'on relit, et la condition est ce qui s'execute.
+    dict(
+        nom="insister() reprend tout ce qui n'est ni 200 ni 4xx",
+        banc="banc_boucle.py",
+        imite="L'ETAT REEL DU DEPOT JUSQU'AU 4 SEPTEMBRE 2026, pendant que la "
+              "docstring promettait « on ne recommence que sur un studio MUET "
+              "ou en panne ». Un 204 — « recu, rien a dire », que le studio "
+              "sert deja sur /api/noeud/question — repart VINGT-QUATRE fois "
+              "sur dix minutes, puis le travail est declare perdu, en "
+              "annoncant « studio muet (204) » d'une reponse qui disait oui",
+        rougit="un 204 — « recu, rien a dire » — est une reponse",
+        editions=[
+            ("agent_noeud.py", brut(
+                "        if st and not 500 <= st < 600:",
+                "        if st == 200 or 400 <= st < 500:")),
+        ]),
+    dict(
+        nom="trouver_ollama() se contente d'un Ollama joignable",
+        banc="banc_boucle.py",
+        imite="etat_ollama() rend {\"ok\": False, \"modeles\": []} pour un "
+              "Ollama installe et VIDE : un dictionnaire non vide, donc vrai, "
+              "et la recherche s'arrete dessus. En conteneur, OLLAMA_URL "
+              "pointe souvent sur un Ollama qu'on vient d'installer et ou l'on "
+              "n'a rien tire ; host.docker.internal, ou vivent les modeles de "
+              "l'hote, n'est alors JAMAIS essaye, et la machine s'annonce avec "
+              "« 0 modele(s) » sans que rien ne dise pourquoi",
+        rougit="un Ollama joignable mais VIDE ne masque plus le voisin",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        if adresse and (etat_ollama(adresse.rstrip("/")) or {}).get("ok"):',
+                '        if adresse and etat_ollama(adresse.rstrip("/")):')),
+        ]),
+    dict(
+        nom='la boucle reclame du travail sans attendre le premier battement',
+        banc="banc_boucle.py",
+        imite="la machine prend un rendu avant de savoir si sa carte repond "
+              "et si le studio l'accepte. Au demarrage d'un parc, chaque "
+              "agent prend un travail qu'il ne peut pas faire et le rend en "
+              "erreur",
+        rougit="la boucle attend le premier battement AVANT de reclamer le "
+               "moindre travail",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    PREMIERE_ANNONCE.wait(60)' + chr(10),
+                '')),
+        ]),
+    dict(
+        nom="le fil des questions n'est plus daemon",
+        banc="banc_boucle.py",
+        imite="ctrl+C rend la main a la boucle, et le processus attend un fil "
+              "qui ne finit jamais. L'utilisateur tue la machine au lieu de "
+              "l'arreter, et un rendu en cours part avec",
+        rougit="et tous en daemon — sinon l'agent ne s'arreterait jamais",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        threading.Thread(target=servir_le_langage, args=(studio, jeton, ollama),' + chr(10)
+                + '                         daemon=True).start()',
+                '        threading.Thread(target=servir_le_langage, args=(studio, jeton, ollama),' + chr(10)
+                + '                         daemon=False).start()')),
+        ]),
+    dict(
+        nom="le fil d'annonce ne sait plus qu'il y a un Ollama ici",
+        banc="banc_boucle.py",
+        imite="la machine s'annonce sans son modele de langage. Le studio ne "
+              "sait pas qu'elle peut servir de repli, et repond « aucun "
+              "modele de langage » le jour ou le sien tombe — alors qu'une "
+              "machine du parc en porte un",
+        rougit="chaque fil recoit ce qu'il lui faut, et rien de plus",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    threading.Thread(target=battre_annonce, args=(studio, jeton, comfy, ollama),',
+                '    threading.Thread(target=battre_annonce, args=(studio, jeton, comfy, ""),')),
+        ]),
+    dict(
+        nom='le fil des questions part meme sans Ollama',
+        banc="banc_boucle.py",
+        imite="une machine sans modele de langage interroge quand meme le "
+              "studio toutes les trois secondes pour des questions qu'elle ne "
+              "saurait pas traiter — et si une lui est confiee, elle repond « "
+              "ollama a repondu 0 » au lieu de laisser une autre la prendre",
+        rougit="sans modele de langage local, le fil des questions ne part "
+               "pas",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    if ollama:' + chr(10)
+                + '        threading.Thread(target=servir_le_langage,',
+                '    if True:' + chr(10)
+                + '        threading.Thread(target=servir_le_langage,')),
+        ]),
+    dict(
+        nom='la boucle reclame du travail sans carte',
+        banc="banc_boucle.py",
+        imite="une machine dont ComfyUI est arrete prend le rendu et le rate. "
+              "Il aurait pu partir sur l'autre carte du parc ; l'utilisateur "
+              "lit un echec la ou il aurait eu son image",
+        rougit="une machine dont ComfyUI ne repond pas ne reclame aucun "
+               "travail",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if DEPUIS_L_ANNONCE["comfy"] is None or not DEPUIS_L_ANNONCE["studio"]:',
+                '            if not DEPUIS_L_ANNONCE["studio"]:')),
+        ]),
+    dict(
+        nom="la boucle reclame du travail a un studio qui l'a refusee",
+        banc="banc_boucle.py",
+        imite="jeton revoque, studio en panne : l'agent va quand meme "
+              "reclamer du travail toutes les trois secondes au lieu de "
+              "vingt. Une machine ecartee de l'administration continue de "
+              "frapper a la porte mille fois par heure",
+        rougit="un studio qui n'a pas repondu 200 au dernier battement non "
+               "plus",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if DEPUIS_L_ANNONCE["comfy"] is None or not DEPUIS_L_ANNONCE["studio"]:',
+                '            if DEPUIS_L_ANNONCE["comfy"] is None:')),
+        ]),
+    dict(
+        nom="la machine ne se declare occupee qu'apres le depot des entrees",
+        banc="banc_boucle.py",
+        imite="le fil d'annonce recopie EN_COURS_ICI a chaque battement. Pose "
+              "trop tard, la machine s'annonce LIBRE pendant tout le depot "
+              "des entrees — jusqu'a deux minutes pour une image lourde — et "
+              "un studio qui redemarre dans cette fenetre relance une demande "
+              "que cette carte va rendre : deux fois le meme travail",
+        rougit="le travail est annonce EN COURS avant meme le depot des "
+               "entrees",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            tid = travail["tid"]' + chr(10)
+                + '            EN_COURS_ICI[:] = [tid]' + chr(10)
+                + '            print(f"  travail {tid[:8]} recu", flush=True)' + chr(10)
+                + '            erreur = deposer_entrees(comfy, travail.get("entrees"),' + chr(10)
+                + '                                     travail["graphe"])',
+                '            tid = travail["tid"]' + chr(10)
+                + '            print(f"  travail {tid[:8]} recu", flush=True)' + chr(10)
+                + '            erreur = deposer_entrees(comfy, travail.get("entrees"),' + chr(10)
+                + '                                     travail["graphe"])' + chr(10)
+                + '            EN_COURS_ICI[:] = [tid]')),
+        ]),
+    dict(
+        nom="le nom du fichier n'est plus encode dans l'adresse du depot",
+        banc="banc_boucle.py",
+        imite="un « & » dans un nom de sortie coupe le parametre en deux : le "
+              "studio enregistre un fichier qui n'a plus le nom que ComfyUI "
+              "lui a donne, et le graphe qui le rappelle ne le retrouve pas. "
+              "Une espace passe encore, une esperluette non",
+        rougit="le tid et le NOM ENCODE voyagent dans l'adresse du depot",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                q = urllib.parse.urlencode({"tid": tid, "nom": f["filename"]})',
+                '                q = f"tid={tid}&nom={f[\'filename\']}"')),
+        ]),
+    dict(
+        nom="le registre note un depot qui n'est pas arrive",
+        banc="banc_boucle.py",
+        imite="le registre est la seule garantie qu'on n'effacera pas le "
+              "travail personnel du proprietaire de la machine : on ne "
+              "supprime que ce qui y figure. Y noter un envoi refuse fait "
+              "effacer, vingt-quatre heures plus tard, un fichier que le "
+              "studio n'a jamais recu — il n'existe alors nulle part",
+        rougit="et rien n'entre au registre : on n'effacera pas ici ce qui "
+               "n'est pas la-bas",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                st = insister(f"{studio}/api/noeud/fichier?{q}", jeton,' + chr(10)
+                + '                              brut=octets, secondes=600)' + chr(10)
+                + '                if st == 200:',
+                '                st = insister(f"{studio}/api/noeud/fichier?{q}", jeton,' + chr(10)
+                + '                              brut=octets, secondes=600)' + chr(10)
+                + '                noter_depot(sorties, f, time.time())' + chr(10)
+                + '                if st == 200:')),
+        ]),
+    dict(
+        nom='un fichier illisible interrompt le depot des suivants',
+        banc="banc_boucle.py",
+        imite="une video rend dix images et la troisieme a ete effacee a la "
+              "main : les sept dernieres ne partent jamais. L'utilisateur "
+              "recoit deux images sur dix pour un rendu qui a bel et bien "
+              "abouti, et rien ne dit que les autres existent encore ici",
+        rougit="un fichier illisible sur le disque n'emporte pas les SUIVANTS",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                    erreur = erreur or f"fichier illisible : {f[\'filename\']}"' + chr(10)
+                + '                    continue',
+                '                    erreur = erreur or f"fichier illisible : {f[\'filename\']}"' + chr(10)
+                + '                    break')),
+        ]),
+    dict(
+        nom='la derniere erreur ecrase la premiere',
+        banc="banc_boucle.py",
+        imite="la cause est remplacee par sa consequence. Un disque plein "
+              "donne d'abord « fichier illisible », puis dix « envoi refuse » "
+              ": c'est le premier qui dit ou regarder, et c'est celui qu'on "
+              "perd",
+        rougit="deux echecs de suite : c'est le PREMIER qui remonte, pas le "
+               "dernier",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                    erreur = erreur or f"fichier illisible : {f[\'filename\']}"',
+                '                    erreur = f"fichier illisible : {f[\'filename\']}"')),
+        ]),
+    dict(
+        nom="une entree refusee n'empeche plus le rendu",
+        banc="banc_boucle.py",
+        imite="ComfyUI n'a pas recu l'image de depart, et le graphe pointe "
+              "sur un nom qu'il n'a pas retenu. La carte calcule quand meme, "
+              "trois minutes, pour une erreur au dernier noeud — ou pire, "
+              "pour une image sans rapport avec la demande",
+        rougit="une entree qui n'a pas pu etre deposee n'envoie RIEN a la "
+               "carte",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if erreur:' + chr(10)
+                + '                fichiers, secondes = [], 0' + chr(10)
+                + '            else:',
+                '            if False:' + chr(10)
+                + '                fichiers, secondes = [], 0' + chr(10)
+                + '            else:')),
+        ]),
+    dict(
+        nom='une annulation est imputee a la machine comme une panne',
+        banc="banc_boucle.py",
+        imite="le studio compte les pannes par machine et ecarte celles qui "
+              "en accumulent. Une salle ou l'on annule beaucoup viderait son "
+              "parc d'elle-meme, pour des incidents qui ne sont pas les siens",
+        rougit="un travail annule est rendu « annule », sans erreur a imputer "
+               "a la machine",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                        {"tid": tid, "etat": "annule", "erreur": None,',
+                '                        {"tid": tid, "etat": "erreur", "erreur": ANNULE,')),
+        ]),
+    dict(
+        nom='la machine reste occupee apres une annulation',
+        banc="banc_boucle.py",
+        imite="EN_COURS_ICI garde un tid mort. La machine s'annonce occupee "
+              "pour toujours, le repartiteur ne lui envoie plus rien, et la "
+              "carte reste inutilisee jusqu'au redemarrage de l'agent",
+        rougit="la machine se libere et fait remesurer sa carte, comme apres "
+               "un rendu",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                print(f"  travail {tid[:8]} annule par le studio apres "' + chr(10)
+                + '                      f"{secondes:.0f} s", flush=True)' + chr(10)
+                + '                EN_COURS_ICI.clear()',
+                '                print(f"  travail {tid[:8]} annule par le studio apres "' + chr(10)
+                + '                      f"{secondes:.0f} s", flush=True)')),
+        ]),
+    dict(
+        nom="la carte n'est pas remesuree apres un rendu",
+        banc="banc_boucle.py",
+        imite="le travail suivant est reclame sur un etat vieux de dix a "
+              "trente secondes. Un ComfyUI mort en fin de rendu — l'OOM sur "
+              "le dernier noeud, le cas classique — fait prendre PUIS rater "
+              "le travail suivant, au lieu de le laisser partir sur l'autre "
+              "carte",
+        rougit="la carte est remesuree tout de suite, pas au prochain cache",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            print(f"  travail {tid[:8]} {\'echoue\' if erreur else \'rendu\'} "' + chr(10)
+                + '                  f"en {secondes:.0f} s — {len(deposes)} fichier(s)", flush=True)' + chr(10)
+                + '            EN_COURS_ICI.clear()' + chr(10)
+                + '            # La carte est rendue : que le fil la remesure tout de' + chr(10)
+                + '            # suite, pour que le travail suivant ne soit pas reclame' + chr(10)
+                + '            # sur un etat vieux de trente secondes.' + chr(10)
+                + '            DEPUIS_L_ANNONCE["remesurer"] = True',
+                '            print(f"  travail {tid[:8]} {\'echoue\' if erreur else \'rendu\'} "' + chr(10)
+                + '                  f"en {secondes:.0f} s — {len(deposes)} fichier(s)", flush=True)' + chr(10)
+                + '            EN_COURS_ICI.clear()')),
+        ]),
+    dict(
+        nom='un incident laisse la machine declaree occupee',
+        banc="banc_boucle.py",
+        imite="c'est la panne la plus silencieuse de l'agent : la carte est "
+              "libre, la machine s'annonce en train de calculer, et le studio "
+              "attend un resultat qui ne viendra jamais. Elle sort du "
+              "repartiteur sans qu'une seule ligne le dise",
+        rougit="et la liste des travaux est VIDEE",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            EN_COURS_ICI.clear()' + chr(10)
+                + '            # La carte est rendue : que le fil la remesure tout de' + chr(10)
+                + '            # suite, pour que le travail suivant ne soit pas reclame' + chr(10)
+                + '            # sur un etat vieux de trente secondes.' + chr(10)
+                + '            DEPUIS_L_ANNONCE["remesurer"] = True' + chr(10)
+                + '            print(f"  incident : {type(e).__name__} {str(e)[:160]}", flush=True)',
+                '            # La carte est rendue : que le fil la remesure tout de' + chr(10)
+                + '            # suite, pour que le travail suivant ne soit pas reclame' + chr(10)
+                + '            # sur un etat vieux de trente secondes.' + chr(10)
+                + '            DEPUIS_L_ANNONCE["remesurer"] = True' + chr(10)
+                + '            print(f"  incident : {type(e).__name__} {str(e)[:160]}", flush=True)')),
+        ]),
+    dict(
+        nom='ctrl+C est avale comme un incident ordinaire',
+        banc="banc_boucle.py",
+        imite="l'agent ne s'arrete plus. Chaque ctrl+C est note « incident », "
+              "l'agent dort vingt secondes et repart — il faut le tuer. Sur "
+              "une machine de travail qu'on eteint le soir, c'est un rendu "
+              "perdu a chaque fois",
+        rougit="ctrl+C n'est PAS avale par le filet a incidents",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        except KeyboardInterrupt:' + chr(10)
+                + '            raise',
+                '        except KeyboardInterrupt:' + chr(10)
+                + '            time.sleep(PAUSE_LONGUE)')),
+        ]),
+    dict(
+        nom='le menage repasse a chaque tour de boucle',
+        banc="banc_boucle.py",
+        imite="le registre des sorties est relu et reecrit toutes les trois "
+              "secondes, avec ses cinq mille entrees. Sur un disque lent, la "
+              "boucle passe son temps a faire le menage au lieu de reclamer "
+              "du travail",
+        rougit="le menage passe entre deux travaux, au plus une fois par dix "
+               "minutes",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if sorties and maintenant - dernier_menage > PURGE_TOUS_LES:',
+                '            if sorties:')),
+        ]),
+    dict(
+        nom='le menage passe sans dossier de sorties',
+        banc="banc_boucle.py",
+        imite="l'agent efface sur une machine dont on ne lui a JAMAIS donne "
+              "le dossier de sorties. Le registre s'y lit a cote du fichier "
+              "de l'agent, et les chemins qu'il porte viennent d'ailleurs : "
+              "c'est le seul garde-fou entre l'agent et le disque de "
+              "quelqu'un d'autre",
+        rougit="sans dossier de sorties, RIEN n'est efface sur la machine de "
+               "l'utilisateur",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if sorties and maintenant - dernier_menage > PURGE_TOUS_LES:',
+                '            if maintenant - dernier_menage > PURGE_TOUS_LES:')),
+        ]),
+    dict(
+        nom='la mise a jour est tentee a chaque tour de boucle',
+        banc="banc_boucle.py",
+        imite="le defaut exact que le compteur de battements a corrige : "
+              "l'empreinte est relue toutes les trois secondes, et un studio "
+              "qui sert un agent que l'on refuse — empreinte epinglee, "
+              "telechargement tronque — noie la console sous deux lignes "
+              "toutes les trois secondes",
+        rougit="la mise a jour n'est tentee qu'UNE FOIS PAR BATTEMENT, pas a "
+               "chaque tour",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if maj_auto and battement != dernier_battement:',
+                '            if maj_auto:')),
+        ]),
+    dict(
+        nom='--sans-maj-auto est ignore par la boucle',
+        banc="banc_boucle.py",
+        imite="la machine se remplace toute seule alors qu'on le lui a "
+              "explicitement interdit. C'est le drapeau que l'on pose sur une "
+              "machine de production dont on veut figer la version — et un "
+              "os.execv non voulu coupe le rendu en cours",
+        rougit="--sans-maj-auto : la machine ne se remplace jamais toute "
+               "seule",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if maj_auto and battement != dernier_battement:',
+                '            if battement != dernier_battement:')),
+        ]),
+    dict(
+        nom='la mise a jour est tentee APRES avoir pris un travail',
+        banc="banc_boucle.py",
+        imite="se_mettre_a_jour_seul() finit par un os.execv, qui remplace le "
+              "processus d'un bloc, sans deroulement ni fils survivants. Tire "
+              "un travail deja pris, il emporte l'image avec le processus : "
+              "l'utilisateur attend un rendu que plus personne ne fera, et le "
+              "studio attend un resultat qui ne viendra pas",
+        rougit="et jamais pendant un travail : aucun rendu en cours, rien "
+               "encore reclame",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            battement = DEPUIS_L_ANNONCE["battements"]' + chr(10)
+                + '            if maj_auto and battement != dernier_battement:' + chr(10)
+                + '                dernier_battement = battement' + chr(10)
+                + '                se_mettre_a_jour_seul(studio,' + chr(10)
+                + '                                      DEPUIS_L_ANNONCE["empreinte_agent"],' + chr(10)
+                + '                                      epinglee)' + chr(10),
+                '')),
+            ("agent_noeud.py", brut(
+                '            EN_COURS_ICI[:] = [tid]' + chr(10),
+                '            EN_COURS_ICI[:] = [tid]' + chr(10)
+                + '            battement = DEPUIS_L_ANNONCE["battements"]' + chr(10)
+                + '            if maj_auto and battement != dernier_battement:' + chr(10)
+                + '                dernier_battement = battement' + chr(10)
+                + '                se_mettre_a_jour_seul(studio,' + chr(10)
+                + '                                      DEPUIS_L_ANNONCE["empreinte_agent"],' + chr(10)
+                + '                                      epinglee)' + chr(10))),
+        ]),
+    dict(
+        nom='le pourcentage part sans son tid',
+        banc="banc_boucle.py",
+        imite="le studio recoit un pourcentage qu'il ne peut rattacher a "
+              "aucune demande. La barre de la file reste a zero pendant tout "
+              "le rendu, et l'annulation — qui revient PAR CE MEME appel — "
+              "n'a plus de chemin pour arriver",
+        rougit="dire() rapporte au studio le tid, le fait et le total, sans "
+               "attendre",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                                       {"tid": tid, "fait": fait, "total": total},',
+                '                                       {"fait": fait, "total": total},')),
+        ]),
+    dict(
+        nom='le frein du pourcentage saute',
+        banc="banc_boucle.py",
+        imite="une carte rapide poste un pourcentage a chaque pas de "
+              "debruitage. Pour un rendu de cinquante pas, cinquante appels "
+              "HTTP la ou trois suffisent — et le studio ecrit son parc a "
+              "chacun",
+        rougit="un frein de 1,5 s : une carte bavarde ne noie pas le studio "
+               "de pourcentages",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                    if time.time() - dernier[0] < 1.5:',
+                '                    if False:')),
+        ]),
+    dict(
+        nom='un studio en panne suffit a annuler un rendu',
+        banc="banc_boucle.py",
+        imite="« on ne jette pas un rendu sur un doute ». Sans le controle du "
+              "statut, une reponse d'erreur qui porte le mot « annule » — un "
+              "cache de proxy, un studio qui repond 500 avec un corps ancien "
+              "— jette un rendu de trois minutes deja fait aux deux tiers",
+        rougit="un studio en panne dont le corps dirait « annule » ne vaut "
+               "jamais « annule »",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                    return (st_ == 200 and isinstance(rep, dict)' + chr(10)
+                + '                            and bool(rep.get("annule")))',
+                '                    return (isinstance(rep, dict)' + chr(10)
+                + '                            and bool(rep.get("annule")))')),
+        ]),
+    dict(
+        nom="une reponse qui n'est pas un objet fait lever dire()",
+        banc="banc_boucle.py",
+        imite="appeler() rend une CHAINE quand le reseau echoue, et des "
+              "OCTETS quand la reponse n'est pas du JSON. « .get » sur l'un "
+              "ou l'autre leve, la levee remonte a travers executer(), et le "
+              "rendu en cours devient un « incident » : la carte a tourne "
+              "pour rien, et le message ne parle meme pas du bon defaut",
+        rougit="une reponse qui n'est pas un objet ne vaut jamais « annule »",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                    return (st_ == 200 and isinstance(rep, dict)' + chr(10)
+                + '                            and bool(rep.get("annule")))',
+                '                    return (st_ == 200' + chr(10)
+                + '                            and bool(rep.get("annule")))')),
+        ]),
+    dict(
+        nom='toute reponse sans erreur vaut « annule »',
+        banc="banc_boucle.py",
+        imite="le studio n'a plus besoin de dire quoi que ce soit : le "
+              "premier battement de progression qui aboutit arrete le rendu. "
+              "Tous les rendus du parc s'interrompent au bout d'une seconde "
+              "et demie, et le journal dit « annule par le studio »",
+        rougit="un 200 sans le mot ne vaut jamais « annule »",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                            and bool(rep.get("annule")))',
+                '                            and not rep.get("erreur"))')),
+        ]),
+    dict(
+        nom="l'annulation ne parvient plus jusqu'a la carte",
+        banc="banc_boucle.py",
+        imite="le bouton « annuler » de la page n'a plus aucun effet sur une "
+              "machine a agent : le studio marque la demande annulee, la "
+              "carte continue jusqu'au bout, et le fichier arrive quand meme. "
+              "C'est le SEUL chemin par lequel une annulation atteigne "
+              "l'agent — le studio n'a pas son adresse",
+        rougit="mais un « annule » franc du studio arrete bien le rendu",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                            and bool(rep.get("annule")))',
+                '                            and False)')),
+        ]),
+    dict(
+        nom='un refus franc est repete pendant dix minutes',
+        banc="banc_boucle.py",
+        imite="un fichier trop gros (413) ou une extension refusee (400) ne "
+              "se repare pas en le repetant. La machine reste bloquee dix "
+              "minutes sur un refus definitif, sans reclamer de travail, "
+              "avant d'afficher l'erreur qu'elle connaissait au premier essai",
+        rougit="un refus franc (400) rend la main tout de suite",
+        editions=[
+            ("agent_noeud.py", brut(
+                "        if st and not 500 <= st < 600:",
+                "        if st == 200:")),
+        ]),
+    dict(
+        nom='le delai de livraison est nul : un hoquet perd le travail',
+        banc="banc_boucle.py",
+        imite="LE DEFAUT D'ORIGINE, remis en place : un seul appel, et si le "
+              "studio ne repond pas, la carte a tourne pour rien. "
+              "L'utilisateur lit « echec » pour un travail que sa machine a "
+              "bel et bien mene a terme — parce que le studio redemarrait a "
+              "la seconde ou l'on rendait",
+        rougit="un studio MUET est rappele jusqu'a ce qu'il revienne — le "
+               "travail est garde",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    fin = time.time() + LIVRAISON_MINUTES * 60',
+                '    fin = time.time() - 1')),
+        ]),
+    dict(
+        nom="l'attente entre deux essais ne plafonne plus",
+        banc="banc_boucle.py",
+        imite="la neuvieme attente fait huit minutes : on depasse le delai de "
+              "livraison en ayant reessaye six fois au lieu de vingt-quatre. "
+              "Un studio revenu au bout de deux minutes n'est retrouve "
+              "qu'apres quatre, et le travail est declare perdu pendant qu'il "
+              "repond",
+        rougit="l'attente double a chaque essai, et plafonne a trente "
+               "secondes",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            dit = True' + chr(10)
+                + '        time.sleep(attente)' + chr(10)
+                + '        attente = min(attente * 2, 30)',
+                '            dit = True' + chr(10)
+                + '        time.sleep(attente)' + chr(10)
+                + '        attente = attente * 2')),
+        ]),
+    dict(
+        nom='le studio muet est annonce a chaque essai',
+        banc="banc_boucle.py",
+        imite="vingt-quatre lignes identiques dans la console pour une seule "
+              "coupure. Sur une machine ou l'on suit le journal, l'incident "
+              "reel qui suit est pousse hors de l'ecran",
+        rougit="le studio muet n'est annonce QU'UNE FOIS, pas a chaque essai",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        if not dit:' + chr(10)
+                + '            print(f"  studio muet ({st}) — on garde le travail et l\'on insiste",' + chr(10)
+                + '                  flush=True)' + chr(10)
+                + '            dit = True',
+                '        if True:' + chr(10)
+                + '            print(f"  studio muet ({st}) — on garde le travail et l\'on insiste",' + chr(10)
+                + '                  flush=True)' + chr(10)
+                + '            dit = True')),
+        ]),
+    dict(
+        nom="le retour du studio n'est plus annonce",
+        banc="banc_boucle.py",
+        imite="la console dit que le studio est muet et ne dit jamais qu'il "
+              "est revenu. Celui qui regarde croit la livraison perdue alors "
+              "qu'elle a abouti, et va chercher un defaut qui n'existe pas",
+        rougit="et son retour est annonce, avec ce qui vient d'etre livre",
+        editions=[
+            # L'ANCRE S'ARRETE AVANT LE « elif », depuis que la correction du
+            # 4 septembre 2026 a ajoute la ligne qui nomme une reponse ni 200
+            # ni reessayee. Retirer seulement l'annonce du retour laisse le
+            # reste en place : c'est bien ce defaut-la qu'on imite, et non un
+            # bloc entier qu'on ampute.
+            ("agent_noeud.py", brut(
+                '            if dit:' + chr(10)
+                + '                print(f"  studio revenu — {url.split(\'/\')[-1].split(\'?\')[0]} "' + chr(10)
+                + '                      f"livre ({st})", flush=True)' + chr(10)
+                + '            elif st != 200:',
+                '            if False:' + chr(10)
+                + '                pass' + chr(10)
+                + '            elif st != 200:')),
+        ]),
+    dict(
+        nom="la perte du travail n'est plus ecrite",
+        banc="banc_boucle.py",
+        imite="dix minutes de carte disparaissent en silence. C'est la seule "
+              "ligne qui permette, apres coup, de distinguer « le studio "
+              "etait tombe » de « la machine n'a jamais rien rendu » — et "
+              "sans elle, on cherche du cote de la carte",
+        rougit="la perte est ecrite en clair, avec la duree — sinon personne "
+               "ne la voit",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            print(f"  studio injoignable depuis {LIVRAISON_MINUTES} min — "' + chr(10)
+                + '                  f"travail perdu ({st})", flush=True)' + chr(10)
+                + '            return st',
+                '            return st')),
+        ]),
+    dict(
+        nom='les octets ne repartent pas au deuxieme essai',
+        banc="banc_boucle.py",
+        imite="insister() rappelle le studio SANS le fichier. Les vingt- "
+              "quatre essais deposent un corps vide, le studio enregistre une "
+              "sortie de zero octet, et le travail est compte comme reussi",
+        rougit="et l'on renvoie EXACTEMENT les memes octets, le meme jeton, "
+               "le meme delai",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        st, _ = appeler(url, jeton, corps, brut=brut, secondes=secondes)',
+                '        st, _ = appeler(url, jeton, corps, secondes=secondes)')),
+        ]),
+    dict(
+        nom='le delai de livraison tombe a une minute',
+        banc="banc_boucle.py",
+        imite="un studio qui redemarre met plus d'une minute a revenir — le "
+              "temps de relire son parc et ses conversations. Le travail est "
+              "declare perdu juste avant qu'il ne reponde, a chaque "
+              "redemarrage",
+        rougit="et ce delai vaut dix minutes quand l'environnement ne dit "
+               "rien",
+        editions=[
+            ("agent_noeud.py", brut(
+                'LIVRAISON_MINUTES = int(os.environ.get("AGENT_LIVRAISON_MINUTES") or 10)',
+                'LIVRAISON_MINUTES = int(os.environ.get("AGENT_LIVRAISON_MINUTES") or 1)')),
+        ]),
+    dict(
+        nom="la question du studio est reecrite avant d'aller au modele",
+        banc="banc_boucle.py",
+        imite="le studio compose sa question entiere — modele, temperature, "
+              "format attendu, « stream: false ». L'agent qui n'en relaie "
+              "qu'une partie fait repondre un autre modele, a une autre "
+              "temperature, en flux : le studio recoit du JSON tronque et "
+              "l'aiguillage part de travers",
+        rougit="la question du studio part TELLE QUELLE au modele local",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            corps = q.get("corps") or {}',
+                '            corps = {"prompt": (q.get("corps") or {}).get("prompt", "")}')),
+        ]),
+    dict(
+        nom='la reponse revient au studio sans son qid',
+        banc="banc_boucle.py",
+        imite="le studio garde un futur par qid. Sans lui, la reponse n'est "
+              "rattachee a rien : la question reste en attente jusqu'a son "
+              "delai, et l'utilisateur regarde une conversation qui ne repond "
+              "pas — alors que le modele a repondu",
+        rougit="et la reponse revient au studio sous le MEME qid — sinon elle "
+               "est perdue",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                        {"qid": q["qid"], "reponse": d.get("response", "")},',
+                '                        {"reponse": d.get("response", "")},')),
+        ]),
+    dict(
+        nom='le jeton du noeud part chez Ollama',
+        banc="banc_boucle.py",
+        imite="la clef qui autorise cette machine a prendre du travail est "
+              "postee a un Ollama — qui peut etre un conteneur voisin ou une "
+              "machine du LAN. Elle se retrouve dans les journaux d'un "
+              "service qui n'en a aucun besoin, et rien ne le dit",
+        rougit="le jeton du noeud va au studio et JAMAIS a Ollama",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            st2, d = appeler(f"{ollama}/api/generate", corps=corps, secondes=900)',
+                '            st2, d = appeler(f"{ollama}/api/generate", jeton, corps=corps,' + chr(10)
+                + '                             secondes=900)')),
+        ]),
+    dict(
+        nom="l'echec d'Ollama n'est plus rapporte au studio",
+        banc="banc_boucle.py",
+        imite="le studio attend son delai entier sur une question a laquelle "
+              "personne ne repondra jamais. La machine, elle, reprend "
+              "tranquillement la question suivante : rien ne dit que son "
+              "modele est tombe, et le studio continue de lui en confier",
+        rougit="un Ollama en panne est RAPPORTE au studio, qui n'attend pas "
+               "pour rien",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            else:' + chr(10)
+                + '                appeler(f"{studio}/api/noeud/reponse", jeton,' + chr(10)
+                + '                        {"qid": q["qid"],' + chr(10)
+                + '                         "erreur": f"ollama a repondu {st2}"}, secondes=60)',
+                '            else:' + chr(10)
+                + '                pass')),
+        ]),
+    dict(
+        nom="l'espacement ne se remet pas a zero apres une reprise",
+        banc="banc_boucle.py",
+        imite="le studio revient et le fil continue de l'interroger toutes "
+              "les vingt secondes, pour toujours. Une question posee juste "
+              "apres une coupure attend vingt secondes de plus que "
+              "necessaire, a chaque fois",
+        rougit="et l'espacement est remis a zero des que le studio repond",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            attente = PAUSE_COURTE' + chr(10)
+                + '            if not isinstance(q, dict) or "qid" not in q:',
+                '            if not isinstance(q, dict) or "qid" not in q:')),
+        ]),
+    dict(
+        nom="l'espacement du fil des questions ne plafonne plus",
+        banc="banc_boucle.py",
+        imite="apres une heure de studio absent, le fil ne repasse plus "
+              "qu'une fois par jour. Le studio revient, et cette machine ne "
+              "sert plus aucune question jusqu'au redemarrage de l'agent",
+        rougit="un jeton refuse espace les demandes, en doublant, jusqu'a "
+               "vingt secondes",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                attente = min(attente * 2, PAUSE_LONGUE)',
+                '                attente = attente * 2')),
+        ]),
+    dict(
+        nom='une file de questions vide est prise pour une panne',
+        banc="banc_boucle.py",
+        imite="204 est ce que le studio repond quand sa file est vide, c'est- "
+              "a-dire presque toujours. Le compter comme une panne espace le "
+              "fil jusqu'a vingt secondes en une minute : la premiere "
+              "question posee apres un calme attend vingt secondes avant meme "
+              "d'etre vue",
+        rougit="pas de question (204) : on repasse dans trois secondes, sans "
+               "s'espacer",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if st not in (200, 204):',
+                '            if st != 200:')),
+        ]),
+    dict(
+        nom='le fil des questions meurt sur la premiere exception',
+        banc="banc_boucle.py",
+        imite="la machine cesse silencieusement de servir le langage, et "
+              "continue de s'annoncer capable de le faire. Le studio lui "
+              "confie des questions qui expirent une par une, et rien nulle "
+              "part ne dit que le fil est mort",
+        rougit="une exception au milieu ne tue pas le fil : il revient au "
+               "tour suivant",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        except Exception:' + chr(10)
+                + "            # Ce fil ne doit jamais emporter l'agent : au pire le studio se" + chr(10)
+                + '            # passe de cette machine pour ses questions.' + chr(10)
+                + '            time.sleep(PAUSE_LONGUE)',
+                '        except Exception:' + chr(10)
+                + '            raise')),
+        ]),
+    dict(
+        nom="le delai de generation tombe a celui d'une demande",
+        banc="banc_boucle.py",
+        imite="un modele de sept milliards de parametres sur une carte "
+              "occupee met plusieurs minutes a repondre. Trente secondes, et "
+              "CHAQUE question est rapportee au studio comme « ollama a "
+              "repondu 0 » — alors que le modele repond, plus tard, dans le "
+              "vide",
+        rougit="quinze minutes pour generer, trente secondes pour demander, "
+               "une pour rendre",
+        editions=[
+            ("agent_noeud.py", brut(
+                'appeler(f"{ollama}/api/generate", corps=corps, secondes=900)',
+                'appeler(f"{ollama}/api/generate", corps=corps, secondes=30)')),
+        ]),
+    dict(
+        nom='les voisins de conteneur sont essayes avant le reglage',
+        banc="banc_boucle.py",
+        imite="une faute de frappe dans OLLAMA_URL devient invisible : la "
+              "machine marche, par le voisin, et le reglage est mort sans que "
+              "personne ne l'apprenne. Le jour ou le voisin disparait, le "
+              "langage tombe et le reglage qu'on relit a l'air juste",
+        rougit="le reglage est essaye AVANT les voisins de conteneur, et seul "
+               "s'il repond",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    for adresse in (prefere,) + VOISINS_OLLAMA:',
+                '    for adresse in VOISINS_OLLAMA + (prefere,):')),
+        ]),
+    dict(
+        nom='les voisins de conteneur disparaissent',
+        banc="banc_boucle.py",
+        imite="en conteneur, l'Ollama de l'hote se joint par "
+              "host.docker.internal ou par 172.17.0.1, et par rien d'autre. "
+              "Sans ce repli, une machine a agent en conteneur ne trouve "
+              "jamais le modele qui tourne pourtant sur son hote",
+        rougit="puis les deux voisins de conteneur, dans l'ordre, en dernier "
+               "recours",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    for adresse in (prefere,) + VOISINS_OLLAMA:',
+                '    for adresse in (prefere,):')),
+        ]),
+    dict(
+        nom='un reglage vide est quand meme interroge',
+        banc="banc_boucle.py",
+        imite="l'agent demande « /api/tags » a l'adresse vide. Selon la "
+              "machine, cela leve ou attend le delai complet avant de passer "
+              "au voisin — huit secondes de demarrage pour rien, a chaque "
+              "lancement",
+        rougit="un reglage vide n'est pas interroge — on ne demande pas a « "
+               "/api/tags »",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        if adresse and (etat_ollama(adresse.rstrip("/")) or {}).get("ok"):',
+                '        if (etat_ollama(adresse.rstrip("/")) or {}).get("ok"):')),
+        ]),
+    dict(
+        nom="la barre finale reste sur l'adresse rendue",
+        banc="banc_boucle.py",
+        imite="l'adresse est essayee sans sa barre et rendue AVEC : toutes "
+              "les requetes suivantes portent un double slash — « "
+              "http://x//api/generate ». Certains serveurs l'acceptent, "
+              "d'autres rendent 404, et l'essai qui a reussi ne ressemble "
+              "plus a ce qu'on envoie ensuite",
+        rougit="la barre finale du reglage est retiree, a l'essai comme au "
+               "retour",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            return adresse.rstrip("/")' + chr(10)
+                + '    return ""',
+                '            return adresse' + chr(10)
+                + '    return ""')),
+        ]),
+    dict(
+        nom="les trois moteurs ajoutes apres coup quittent l'inventaire",
+        banc="banc_boucle.py",
+        imite="le defaut d'origine, remis en place : une machine distante ne "
+              "peut jamais servir l'agrandissement, le detourage ni la "
+              "fluidite video, MEME avec les fichiers sur son disque. Le "
+              "studio ne les voit pas, donc il ne lui envoie rien, et rien ne "
+              "le dit",
+        rougit="y compris les trois moteurs ajoutes apres coup",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            "upscale_models", "background_removal", "frame_interpolation"]',
+                '            ]')),
+        ]),
+    dict(
+        nom="les dossiers virtuels du noeud GGUF quittent l'inventaire",
+        banc="banc_boucle.py",
+        imite="les .gguf n'apparaissent QUE dans unet_gguf et clip_gguf. Une "
+              "machine qui ne sert que du GGUF — le montage courant sur une "
+              "carte de huit gigaoctets — est declaree sans aucun modele, et "
+              "le studio ne lui confie plus rien",
+        rougit="et les deux dossiers virtuels du noeud GGUF",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            "unet_gguf", "clip_gguf",' + chr(10),
+                '')),
+        ]),
+    dict(
+        nom="une reponse qui n'est pas une liste entre dans l'inventaire",
+        banc="banc_boucle.py",
+        imite="ComfyUI repond parfois un objet d'erreur avec un 200, et un "
+              "portail captif repond du HTML. L'agent annonce alors au studio "
+              "un dossier dont le contenu est une page web, et manquants() en "
+              "tire n'importe quoi — la machine passe pour porter des modeles "
+              "qui n'existent pas",
+        rougit="une reponse 200 qui n'est pas une liste n'entre pas dans "
+               "l'inventaire",
+        editions=[
+            ("agent_noeud.py", brut(
+                '        if st == 200 and isinstance(liste, list):',
+                '        if st == 200:')),
+        ]),
+    dict(
+        nom="un dossier vide est retire de l'inventaire",
+        banc="banc_boucle.py",
+        imite="le studio ne distingue plus « cette machine a le dossier et il "
+              "est vide » de « je ne sais rien de ce dossier ». Les deux se "
+              "lisent « clef absente », et manquants() croit l'inventaire "
+              "incomplet la ou il est complet et vide",
+        rougit="un dossier VIDE reste dans l'inventaire",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            trouve[d] = liste',
+                '            if liste:' + chr(10)
+                + '                trouve[d] = liste')),
+        ]),
+    dict(
+        nom="l'adresse du studio manquante n'arrete plus rien",
+        banc="banc_boucle.py",
+        imite="l'agent demarre sans studio et va battre contre l'adresse "
+              "vide, sans un mot d'explication. Celui qui installe une "
+              "machine voit une banniere, puis rien — et cherche du cote du "
+              "reseau",
+        rougit="sans adresse de studio, rien ne demarre — et l'on dit quoi "
+               "taper",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    if not studio:' + chr(10)
+                + '        print("  Il manque l\'adresse du studio : --studio http://...:8199")' + chr(10)
+                + '        return 1' + chr(10),
+                '')),
+        ]),
+    dict(
+        nom="le jeton manquant n'arrete plus rien",
+        banc="banc_boucle.py",
+        imite="l'agent ecrit ses reglages avec un jeton VIDE, puis bat contre "
+              "un studio qui le refuse toutes les trente secondes. Le fichier "
+              "de reglages fautif survit au lancement suivant, qui ne demande "
+              "donc plus rien : la machine est enrolee de travers, "
+              "durablement",
+        rougit="sans jeton non plus, et AUCUN reglage n'est ecrit sur cette "
+               "machine",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    if not args.jeton:' + chr(10)
+                + '        print("  Il manque le jeton : --jeton XXXX (cree dans /admin du studio)")' + chr(10)
+                + '        return 1' + chr(10),
+                '')),
+        ]),
+    dict(
+        nom='--maj enchaine sur la boucle',
+        banc="banc_boucle.py",
+        imite="« python agent_noeud.py --maj » ne rend plus la main : il "
+              "telecharge, puis se met en service. Le script de mise a jour "
+              "qui l'appelle ne se termine jamais, et sur une machine ou "
+              "l'agent tourne deja, deux agents reclament du travail avec le "
+              "meme jeton",
+        rougit="--maj se passe de jeton, rend le code de la mise a jour, et "
+               "ne lance rien",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    if args.maj:' + chr(10)
+                + '        return se_mettre_a_jour(studio, args.empreinte)',
+                '    if args.maj:' + chr(10)
+                + '        se_mettre_a_jour(studio, args.empreinte)')),
+        ]),
+    dict(
+        nom="la barre finale du studio n'est plus retiree",
+        banc="banc_boucle.py",
+        imite="l'adresse collee depuis /admin porte souvent une barre finale. "
+              "Toutes les routes deviennent alors « http://s:8199//api/noeud/ "
+              "annonce » — et le jour ou un proxy les refuse, la machine est "
+              "invisible sans qu'aucun reglage n'ait l'air faux",
+        rougit="la barre finale du studio ET celle de ComfyUI sont retirees "
+               "avant la boucle",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    studio = args.studio.rstrip("/")',
+                '    studio = args.studio')),
+        ]),
+    dict(
+        nom="le fichier de reglages passe avant l'environnement",
+        banc="banc_boucle.py",
+        imite="en conteneur, STUDIO_URL ne peut plus rien contre un "
+              "agent_noeud.json reste dans le volume. La machine repart sur "
+              "l'adresse d'hier a chaque redemarrage, et le compose qu'on "
+              "vient de corriger n'a aucun effet",
+        rougit="l'environnement passe AVANT le fichier de reglages, pour le "
+               "conteneur",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    cfg = {"studio": os.environ.get("STUDIO_URL") or cfg.get("studio", ""),',
+                '    cfg = {"studio": cfg.get("studio", "") or os.environ.get("STUDIO_URL", ""),')),
+        ]),
+    dict(
+        nom="un dossier de sorties introuvable n'est plus refuse",
+        banc="banc_boucle.py",
+        imite="l'agent annonce au demarrage qu'il effacera les sorties, et "
+              "n'efface jamais rien : le chemin n'existe pas. Le disque de la "
+              "machine a carte se remplit pendant des semaines, sous une "
+              "ligne qui affirme le contraire",
+        rougit="un dossier de sorties introuvable est refuse TOUT DE SUITE",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    if sorties and not os.path.isdir(sorties):',
+                '    if False:')),
+        ]),
+    dict(
+        nom='les reglages ne sont plus enregistres',
+        banc="banc_boucle.py",
+        imite="chaque lancement redemande studio, jeton, ComfyUI et sorties. "
+              "Le service Windows et l'unite systemd, qui lancent l'agent "
+              "sans aucun argument, ne demarrent plus du tout apres le "
+              "premier redemarrage de la machine",
+        rougit="les reglages sont ecrits pour le prochain lancement, sans "
+               "arguments",
+        editions=[
+            ("agent_noeud.py", brut(
+                '    ecrire_config({"studio": studio, "jeton": args.jeton, "comfy": args.comfy,' + chr(10)
+                + '                   "sorties": sorties, "garder_heures": args.garder,' + chr(10)
+                + '                   "ollama": args.ollama})' + chr(10),
+                '')),
+        ]),
+    dict(
+        nom="c'est le reglage demande qui part a la boucle, pas l'Ollama trouve",
+        banc="banc_boucle.py",
+        imite="la boucle demarre le fil des questions sur une adresse dont on "
+              "vient de mesurer qu'elle ne repond pas, et le voisin de "
+              "conteneur qu'on avait trouve est jete. Le fil interroge un "
+              "Ollama mort pour toujours, en rapportant au studio « ollama a "
+              "repondu 0 » a chaque question",
+        rougit="aucun Ollama joignable : la boucle demarre quand meme, sans "
+               "fil de langage",
+        editions=[
+            ("agent_noeud.py", brut(
+                '           ollama, args.empreinte, not args.sans_maj_auto)',
+                '           args.ollama, args.empreinte, not args.sans_maj_auto)')),
+        ]),
+    dict(
+        nom="--sans-maj-auto n'arrive pas jusqu'a la boucle",
+        banc="banc_boucle.py",
+        imite="le drapeau est accepte sur la ligne de commande, affiche dans "
+              "l'aide, et sans aucun effet. La machine qu'on voulait figer se "
+              "remplace a la premiere version servie — c'est le pire des cas "
+              ": un garde-fou qui a l'air pose",
+        rougit="--sans-maj-auto arrive jusqu'a la boucle, qui ne se "
+               "remplacera pas",
+        editions=[
+            ("agent_noeud.py", brut(
+                '           ollama, args.empreinte, not args.sans_maj_auto)',
+                '           ollama, args.empreinte, True)')),
+        ]),
+    dict(
+        nom="l'empreinte epinglee n'arrive pas jusqu'a la boucle",
+        banc="banc_boucle.py",
+        imite="--empreinte ne protege que le « --maj » lance a la main, et "
+              "pas la mise a jour AUTOMATIQUE — la seule qui tourne sans "
+              "personne pour regarder. Le seul garde-fou de celui qui heberge "
+              "contre un agent servi par autre chose que son studio devient "
+              "decoratif",
+        rougit="l'empreinte epinglee descend jusqu'a la boucle, qui la "
+               "passera a la maj",
+        editions=[
+            ("agent_noeud.py", brut(
+                '           ollama, args.empreinte, not args.sans_maj_auto)',
+                '           ollama, "", not args.sans_maj_auto)')),
+        ]),
+    dict(
+        nom="l'agent avale l'echec du /free au lieu de le rapporter",
+        banc="banc_boucle.py",
+        imite="le studio ne remplit plus liberation_refusee, et ne distingue "
+              "plus « ComfyUI trop ancien » de « la carte etait deja vide ». "
+              "C'est exactement le diagnostic pour lequel ce rapport existe, "
+              "et il ne remonte plus que quand tout va bien",
+        rougit="un ComfyUI qui REFUSE le /free est rapporte au studio, avec "
+               "son statut",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                rapport_liberation = {"ok": abouti, "statut": statut}',
+                '                rapport_liberation = ({"ok": abouti, "statut": statut}' + chr(10)
+                + '                                      if abouti else None)')),
+        ]),
+    dict(
+        nom="le diagnostic de liberation est jete avant d'etre recu",
+        banc="banc_boucle.py",
+        imite="un studio qui redemarre a la seconde ou l'on rapporte fait "
+              "perdre le diagnostic pour toujours : la consigne a ete suivie, "
+              "le refus a eu lieu, et plus rien nulle part ne le dit. Le "
+              "studio reclamera la carte au battement suivant, et au suivant",
+        rougit="un studio muet ne fait pas perdre le diagnostic : il est "
+               "GARDE et repropose",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if rapport_liberation is not None:' + chr(10)
+                + '                corps["libere"] = rapport_liberation' + chr(10)
+                + '            st, d = appeler(f"{studio}/api/noeud/annonce", jeton, corps)',
+                '            if rapport_liberation is not None:' + chr(10)
+                + '                corps["libere"] = rapport_liberation' + chr(10)
+                + '            rapport_liberation = None' + chr(10)
+                + '            st, d = appeler(f"{studio}/api/noeud/annonce", jeton, corps)')),
+        ]),
+    dict(
+        nom="la carte n'est pas remesuree apres avoir ete rendue",
+        banc="banc_boucle.py",
+        imite="la VRAM annoncee au battement suivant est celle d'AVANT la "
+              "liberation, prise dans le cache d'une minute. Le studio lit "
+              "que le /free n'a rien rendu, et va chercher le defaut du cote "
+              "de ComfyUI — alors que la carte est vide",
+        rougit="la carte est remesuree au battement SUIVANT, et une seule "
+               "fois",
+        editions=[
+            ("agent_noeud.py", brut(
+                "                # Remesurer tout de suite : c'est la VRAM du battement SUIVANT" + chr(10)
+                + '                # qui dit au studio ce que la liberation a rendu, et sans cela' + chr(10)
+                + "                # elle serait celle d'avant, prise dans le cache d'une minute." + chr(10)
+                + '                DEPUIS_L_ANNONCE["remesurer"] = True',
+                "                # Remesurer tout de suite : c'est la VRAM du battement SUIVANT" + chr(10)
+                + '                # qui dit au studio ce que la liberation a rendu, et sans cela' + chr(10)
+                + "                # elle serait celle d'avant, prise dans le cache d'une minute.")),
+        ]),
+    dict(
+        nom="l'agent decharge la carte a chaque battement",
+        banc="banc_boucle.py",
+        imite="la consigne du studio n'est plus lue : l'agent rend la carte "
+              "toutes les dix secondes des qu'il est au repos. Chaque rendu "
+              "recommence par un rechargement complet du modele — dix a "
+              "trente secondes de carte, a chaque image",
+        rougit="et une seule fois : un ordre unique ne vaut pas une "
+               "liberation par battement",
+        editions=[
+            ("agent_noeud.py", brut(
+                '            if d.get("liberer") and not EN_COURS_ICI:',
+                '            if not EN_COURS_ICI:')),
+        ]),
+    dict(
+        nom="le refus du /free n'est plus nomme dans la console",
+        banc="banc_boucle.py",
+        imite="la console annonce « carte rendue au systeme » alors que "
+              "ComfyUI a repondu 404. Celui qui heberge lit que tout va bien, "
+              "et le seul endroit ou le chiffre apparaissait disparait",
+        rougit="et la console nomme le refus, avec le chiffre qui dit ou "
+               "regarder",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                print("  carte rendue au systeme" if abouti' + chr(10)
+                + '                      else f"  ComfyUI a refuse /free ({statut}) — version trop "' + chr(10)
+                + '                           f"ancienne ?", flush=True)',
+                '                print("  carte rendue au systeme", flush=True)')),
+        ]),
+]
+
+
 MUTATIONS = (FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
-             + NOEUD + VERSION)
+             + NOEUD + VERSION + BOUCLE_AGENT)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

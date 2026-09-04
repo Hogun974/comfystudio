@@ -315,6 +315,62 @@ ajoutée à son tour. **Une mutation aussi s'éprouve.**
   rouge. Le même motif que `priorite,` — un banc écrit pour un défaut qui ne
   voit pas ce défaut — sur le couplage suivant.
 
+- **Trois trous dans un banc, trouvés par ses propres mutations, le jour de son
+  écriture.** `banc_boucle.py` couvre les six fonctions que `banc_agent.py`
+  avait nommées en les laissant dehors. Il rendait 128/0, et trois de ses
+  soixante-huit mutations sont revenues **vertes** :
+
+  - deux cas de « pas de carte, pas de studio » : le faux réseau **retirait de
+    sa trace** la demande de travail qui l'arrête, si bien que « aucun travail
+    réclamé » restait vrai d'une boucle qui en réclamait un. Le filet ne
+    pouvait pas voir le trou qu'il nomme ;
+  - « un fichier illisible n'emporte pas les autres » : l'illisible était écrit
+    **en second**, et remplacer le `continue` par un `break` ne changeait donc
+    plus rien — le premier fichier était déjà parti.
+
+  C'est trois fois le motif de `priorite,`, dans le banc qui vient le fermer.
+  Deux autres trous du même banc ont été trouvés à la relecture et non par
+  mutation, ce qui redit la leçon de `banc_multilingue` : une assertion sur
+  l'espacement du fil des questions mesurait en réalité un `sleep` écrit en
+  dur, et cinq corps de réponse trop anodins ne donnaient rien à refuser à la
+  garde « on ne jette pas un rendu sur un doute ».
+
+- **Et le même banc mourait sur le code d'avant.** `banc_boucle.py` naît bien
+  après les six fonctions qu'il garde : la seule preuve inverse possible est le
+  second chemin, le banc **neuf** sur l'agent d'**avant**. Au premier essai il
+  s'arrêtait sur `AttributeError: module 'agent_noeud' has no attribute
+  'PREMIERE_ANNONCE'` — **cinq commits sur six**, et « le banc s'est cassé au
+  lieu de rougir » ne mesure rien. Chaque nom y est désormais lu par un
+  accesseur tolérant, dont le défaut est un **témoin impossible** et jamais la
+  valeur d'aujourd'hui — souffler la réponse rendrait le cas vert au lieu de
+  rouge — et chaque absence pose un cas nommé. Repris à neuf commits, le
+  4 septembre 2026 : `811677b` **115 lignes rouges**, `b717f11^` 111,
+  `adca444^` **8 seulement, et 130 vertes** — le banc *distingue* les deux
+  dépôts au lieu de mourir sur l'un des deux. **Cinquante-six** des
+  soixante-huit lignes que ses mutations nomment y rougissent ; les douze
+  autres gardent des règles aussi vieilles que le dépôt.
+
+- **Et il a trouvé deux vrais défauts, corrigés le jour même.** C'est ce qu'on
+  attend d'une couverture neuve, et cela se dit : couvrir n'est pas décrire ce
+  que le code fait, c'est comparer ce qu'il fait à ce qu'il promet. Les deux
+  vivaient exactement dans cet écart — une docstring et sa condition.
+
+  `insister()` promettait « on ne recommence que sur un studio MUET ou en panne
+  (0, ou 5xx) » et testait `st == 200 or (400 <= st < 500)` : un **204**, que le
+  studio sert déjà ailleurs, repartait vingt-quatre fois sur dix minutes avant
+  que le travail ne soit déclaré perdu. `trouver_ollama()` promettait
+  « l'adresse où un modèle répond **vraiment** » et se contentait d'un
+  dictionnaire non vide : un Ollama installé et **vide** arrêtait la recherche
+  et masquait le voisin qui portait les modèles.
+
+  **Une des deux explications était fausse, et la corriger valait le défaut.**
+  Le premier était illustré par « un reverse proxy qui redirige http vers https
+  répond 301 ». Mesure du 4 septembre 2026 contre un serveur d'essai : `urllib`
+  **suit** les redirections, un 301 avec `Location` rend 200 à `appeler()`, et
+  seule une *boucle* de redirections ressort en 301. Le déclencheur réel était
+  204 — plus banal, moins spectaculaire, et bien plus probable. Un défaut qu'on
+  explique de travers se corrige de travers.
+
 Voir [Qui prend le travail](qui-prend-le-travail.md) pour les règles que ces
 mutations éprouvent.
 

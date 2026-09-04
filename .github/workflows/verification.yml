@@ -493,6 +493,29 @@ jobs:
       - name: L'agent de noeud, contre un faux ComfyUI
         run: python banc_agent.py
 
+      # LES SIX FONCTIONS QUE banc_agent.py A NOMMEES EN LAISSANT DEHORS. Son
+      # en-tete les enumere : « boucle(), qui ne rend jamais la main […]
+      # insister(), servir_le_langage(), trouver_ollama() et main() », plus
+      # modeles_comfy(). Ce sont celles qui DECIDENT — boucle() prend le
+      # travail, declare la machine occupee, livre les fichiers et choisit
+      # l'instant ou l'agent se remplace ; insister() est tout ce qui separe un
+      # rendu de trois minutes deja fait d'un « echec » affiche a
+      # l'utilisateur ; main() est la porte de l'enrolement.
+      #
+      # « INJOIGNABLE D'ICI » ETAIT UNE CONCLUSION TROP RAPIDE, et c'est la
+      # meme lecon que « une seule porte sur le monde » deux etapes plus haut :
+      # banc_agent.py declarait la fermeture « dire » hors de portee, alors que
+      # boucle() la PASSE a executer(), qui est un global du module. Elle est
+      # exercee ici, frein de 1,5 s compris, avec sa regle « on ne jette pas un
+      # rendu sur un doute ».
+      #
+      # Le monde est faux a quatre endroits — appeler(), le module time
+      # (l'horloge est SIMULEE : insister() attend dix minutes pour de vrai),
+      # threading, et PREMIERE_ANNONCE. Aucun reseau, aucune carte, aucun fil
+      # reellement lance : un quart de seconde.
+      - name: La boucle de l'agent, son horloge et sa porte d'entree
+        run: python banc_boucle.py
+
       # LA MISE EN SERVICE D'UNE MACHINE, QUE « sh -n » CROYAIT GARDER. Le pas
       # « analyse syntaxique » ci-dessus lit noeud.sh sans jamais l'executer :
       # il ne peut donc pas voir une fonction DEFINIE DANS UNE BRANCHE NON

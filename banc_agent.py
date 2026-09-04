@@ -79,21 +79,30 @@ CE QU'IL NE VOIT PAS, et il faut l'ecrire :
   - Que os.execv remplace vraiment le processus, ni qu'un ComfyUI reel accepte
     le multipart tel qu'on le lui construit. On mesure ce qui SORT, pas ce que
     l'autre bout en fait.
-  - boucle(), qui ne rend jamais la main. Trois de ses regles restent
-    decouvertes, et il vaut mieux les nommer que les taire :
-      * sa fonction « dire » — celle qui refuse de croire un studio muet quand
-        il s'agit d'annuler, « on ne jette pas un rendu sur un doute » — est
-        une fermeture interieure, injoignable d'ici ;
-      * la mise a jour n'y est tentee qu'UNE FOIS PAR BATTEMENT, et seulement
-        entre deux travaux ;
-      * une machine dont le ComfyUI ne repond pas n'incremente jamais
-        « battements » dans battre_annonce(), et ne se met donc JAMAIS a jour
-        toute seule. C'est peut-etre voulu — la boucle ne reclame pas de
-        travail non plus — mais rien ne le dit, et aucune mesure ne le tranche.
-  - insister(), servir_le_langage(), trouver_ollama() et main(). Le premier
-    garde dix minutes un travail DEJA FAIT pendant qu'un studio redemarre ; les
-    trois autres n'ecrivent ni n'effacent rien. Ils passent apres ce qui est
-    couvert ici, et ils passent.
+  - boucle(), insister(), servir_le_langage(), trouver_ollama(),
+    modeles_comfy() et main(). CE PARAGRAPHE LES DECLARAIT HORS DE PORTEE, et
+    banc_boucle.py les couvre depuis le 4 septembre 2026 — 138 cas, 68
+    mutations. Ce qui reste vrai : ce banc-ci ne les mesure pas.
+
+    UNE DE SES TROIS RAISONS ETAIT FAUSSE, et elle merite d'etre gardee ecrite.
+    « Sa fonction dire — celle qui refuse de croire un studio muet quand il
+    s'agit d'annuler, on ne jette pas un rendu sur un doute — est une fermeture
+    interieure, injoignable d'ici. » Elle ne l'est pas : boucle() la PASSE a
+    executer(), qui est un global du module, et un faux executer() la recoit
+    telle quelle. C'est le meme motif que « une seule porte sur le monde » plus
+    haut — ce qu'un banc declare hors de portee merite d'etre reessaye une
+    fois, et les deux erreurs de ce fichier sont des affirmations de
+    couverture, jamais des oublis.
+
+    Les deux autres tenaient : la mise a jour n'est tentee qu'UNE FOIS PAR
+    BATTEMENT et seulement entre deux travaux, et une machine dont le ComfyUI
+    ne repond pas ne se met JAMAIS a jour toute seule. La seconde est
+    desormais TRANCHEE, et en deux moities : banc_boucle.py mesure que la
+    boucle, elle, ne retient rien — elle tente la mise a jour meme sans carte,
+    des que le compteur bouge. La retenue est donc ICI, dans battre_annonce(),
+    ou « battements » n'est incremente qu'apres une annonce a 200, laquelle
+    exige un etat_comfy() reussi. C'est le « continue » du « if not etat »,
+    et rien n'ecrit que c'est voulu.
 """
 import atexit
 import hashlib
