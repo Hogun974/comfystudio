@@ -81,13 +81,32 @@ if exist agent_noeud.py copy /y agent_noeud.py agent_noeud.py.precedent >nul
 move /y agent_noeud.py.neuf agent_noeud.py >nul
 echo   agent a jour - sha256 %EMP%
 
+REM LE JETON N'ARRIVE PAS SUR LA LIGNE DE COMMANDE DE L'AGENT. Celle d'un
+REM processus se lit sans droit particulier ("wmic process get commandline",
+REM le gestionnaire des taches), et l'agent tourne des semaines : le jeton y
+REM serait affiche tout ce temps. noeud.sh et maj_noeud.sh l'ecrivent dans
+REM agent_noeud.json depuis le debut ; ce fichier-ci etait le seul a ne pas le
+REM faire. Il y va donc lui aussi, par l'ENVIRONNEMENT du seul python jetable
+REM qui l'ecrit : un environnement n'est pas lisible par les autres comptes.
+REM Ecrit, il sert aussi aux lancements suivants, ou l'on ne repasse rien.
+set "ECRIRE=import io,json,os;p='agent_noeud.json';c=json.load(io.open(p,encoding='utf-8')) if os.path.exists(p) else {};c.update(studio=os.environ['STUDIO_A_ECRIRE'],jeton=os.environ['JETON_A_ECRIRE']);json.dump(c,io.open(p,'w',encoding='utf-8'),indent=1)"
 if not "%JETON%"=="" (
-  "%PY%" agent_noeud.py --studio %STUDIO% --jeton %JETON%
+  set "STUDIO_A_ECRIRE=%STUDIO%"
+  set "JETON_A_ECRIRE=%JETON%"
+  "%PY%" -c "!ECRIRE!"
+  if errorlevel 1 (
+    echo   impossible d'ecrire agent_noeud.json - rien demarre
+    pause & exit /b 1
+  )
+  set "JETON_A_ECRIRE="
+  set "STUDIO_A_ECRIRE="
+  "%PY%" agent_noeud.py
   pause & exit /b 0
 )
 echo.
 echo   Pour le demarrer :
-echo     %PY% agent_noeud.py --studio %STUDIO% --jeton TON_JETON
-echo   (le jeton se cree dans %STUDIO%/admin)
+echo     maj_noeud.bat %STUDIO% TON_JETON
+echo   (le jeton se cree dans %STUDIO%/admin ; il est ecrit dans
+echo    agent_noeud.json, jamais sur la ligne de commande de l'agent)
 echo.
 pause

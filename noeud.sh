@@ -307,9 +307,14 @@ ecrire_reglages() {
   # L'adresse d'Ollama est retenue comme les autres : sans elle, une machine qui
   # a bien un modele de langage ne le pretait pas au studio des le second
   # lancement, celui ou l'on ne repasse plus d'arguments.
-  "$PY" - "$CONFIG" "$STUDIO" "$JETON" "$COMFY_URL" "${SORTIES:-}" "$OLLAMA_URL" <<'PYFIN'
+  # Le jeton passe par l'ENVIRONNEMENT et non par argv, meme ici ou le
+  # processus ne vit qu'un instant : /proc/PID/cmdline est lisible par tout le
+  # monde, /proc/PID/environ par le seul proprietaire. La regle ecrite six
+  # lignes plus haut etait contredite par la ligne qui la suivait.
+  JETON_A_ECRIRE="$JETON"   "$PY" - "$CONFIG" "$STUDIO" "$COMFY_URL" "${SORTIES:-}" "$OLLAMA_URL" <<'PYFIN'
 import json, io, os, sys
-p, studio, jeton, comfy, sorties, ollama = sys.argv[1:7]
+p, studio, comfy, sorties, ollama = sys.argv[1:6]
+jeton = os.environ.get("JETON_A_ECRIRE", "")
 c = json.load(io.open(p, encoding="utf-8")) if os.path.exists(p) else {}
 c.update(studio=studio, jeton=jeton, comfy=comfy)
 if sorties:

@@ -105,9 +105,10 @@ if [ -n "$JETON" ]; then
   # telechargement, celui de l'agent reste lisible dans « ps » tant que la
   # machine sert, c'est-a-dire des semaines. Un jeton de noeud vaut droit de
   # faire travailler sa carte.
-  "$PY" - agent_noeud.json "$STUDIO" "$JETON" <<'PYFIN'
+  JETON_A_ECRIRE="$JETON" "$PY" - agent_noeud.json "$STUDIO" <<'PYFIN'
 import io, json, os, sys
-p, studio, jeton = sys.argv[1:4]
+p, studio = sys.argv[1:3]
+jeton = os.environ.get("JETON_A_ECRIRE", "")
 c = json.load(io.open(p, encoding="utf-8")) if os.path.exists(p) else {}
 c.update(studio=studio, jeton=jeton)
 json.dump(c, io.open(p, "w", encoding="utf-8"), indent=1)

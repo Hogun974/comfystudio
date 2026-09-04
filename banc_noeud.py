@@ -615,6 +615,36 @@ for _bat in ("LANCER ComfyStudio.bat",
         f"au lieu de le coder en dur",
         "releve de texte : cmd.exe n'est pas sur les runners de la CI")
 
+# ══════════════════ 6. le jeton, sur Windows aussi ═══════════════════
+# maj_noeud.sh est mesure plus haut POUR DE VRAI : on lit la ligne de commande
+# de l'agent qu'il lance, et le jeton n'y est pas. maj_noeud.bat fait le meme
+# travail sur Windows et ne pouvait pas etre mesure de la meme facon — cmd.exe
+# n'est pas sur les runners. Il a donc vecu avec « --jeton %JETON% » en clair
+# sur la ligne de commande d'un processus qui tourne des semaines, pendant que
+# le commentaire de noeud.sh interdisait la chose « en toutes lettres ». Un
+# releve de texte ne vaut pas une mesure, mais il vaut mieux que le vide qui
+# l'a laisse passer.
+with io.open(os.path.join(ICI, "maj_noeud.bat"), encoding="utf-8",
+             errors="replace") as f:
+    _bat = f.read()
+_lance = [l for l in _bat.splitlines()
+          if "agent_noeud.py" in l and l.lstrip().startswith('"%PY%"')]
+dit(bool(_lance) and not any("--jeton" in l for l in _lance),
+    "maj_noeud.bat ne met pas le jeton sur la ligne de commande de l'agent",
+    "releve de texte : cmd.exe n'est pas sur les runners de la CI ; "
+    + " / ".join(l.strip() for l in _lance))
+# UNE PRESENCE NE GARDE RIEN. La premiere ecriture de ce cas se contentait de
+# « "JETON_A_ECRIRE" in _bat » : le nom apparait trois fois dans le fichier, et
+# n'importe laquelle des trois suffisait a le rendre vert — y compris celle qui
+# EFFACE la variable. On exige donc la propriete elle-meme, sur la ligne qui
+# ecrit vraiment : le jeton y est lu dans l'environnement, et pas dans argv.
+_ecrit = [l for l in _bat.splitlines()
+          if "agent_noeud.json" in l and "json.dump" in l]
+dit(bool(_ecrit) and all("os.environ[" in l and "sys.argv" not in l
+                         for l in _ecrit),
+    "il l'ecrit dans agent_noeud.json, en lisant le jeton dans l'environnement",
+    f"releve de texte : {len(_ecrit)} ligne(s) d'ecriture")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees "
       f"— {time.time() - _depart:.1f} s")
 sys.exit(1 if rate else 0)
