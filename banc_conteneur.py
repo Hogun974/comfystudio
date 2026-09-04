@@ -47,6 +47,7 @@ import ast
 import fnmatch
 import io
 import os
+import posixpath
 import re
 import sys
 
@@ -316,11 +317,129 @@ dit(not inutiles, "aucune exception inutile",
 _LITTERAL = r'(?:[\'"]([^\'"]*)[\'"]|(-?\d+(?:[.]\d+)?))(?!\s*[-+*/%.\w])'
 
 
-def defaut_du_code(n):
-    """La valeur LITTERALE que le code retient quand la variable est absente.
+# ── EVALUER LES DEFAUTS CALCULES, PARCE QUE CE SONT EUX QUI PIEGENT ────
+# Le trou connu du 3 septembre 2026, ferme ici : « pas deux defauts pour un
+# meme reglage » ne voyait que les defauts LITTERAUX. Or COMFY_MODELES vaut
+# « os.path.join(BASE_COMFY, "models") », que le releve rendait tel quel — donc
+# jamais egal a « /comfy/models » ecrit dans le compose. Le piege exact que la
+# verification existe pour attraper lui echappait, et quatre chemins et un port
+# avec lui.
+#
+# ON EVALUE COMME L'IMAGE, PAS COMME CETTE MACHINE. Deux consequences, et les
+# deux comptent :
+#
+#   - posixpath et non os.path. Le compose decrit un conteneur Linux. Sur
+#     Windows, os.path.join rendrait « /comfy\\models » et os.path.abspath
+#     collerait « C:\\ » devant : le banc serait vert ici et rouge sur la CI,
+#     ou l'inverse, pour une raison qui n'a rien a voir avec le depot.
+#   - l'environnement est celui des lignes ENV du Dockerfile, pas le notre.
+#     BASE_COMFY lit COMFY_DIR, que l'image pose a « /comfy » ; sans cela on
+#     evaluerait le defaut Windows — « ComfyUI_windows_portable » — et l'on
+#     comparerait au compose une valeur qu'aucun conteneur n'a jamais vue.
+DOCKERFILE = lire("Dockerfile")
+_TRAVAIL = (re.search(r"^WORKDIR\s+(\S+)", DOCKERFILE, re.M) or [None, "/"])[1]
 
-    Rend None des que le defaut est calcule : on ne sait pas l'evaluer, et
-    pretendre le contraire est ce qui rendait les deux pieges invisibles.
+
+def _env_de_l_image():
+    """Ce que les lignes ENV du Dockerfile posent, continuations comprises."""
+    dedans, brut = {}, DOCKERFILE.replace("\\\n", " ")
+    for ligne in re.findall(r"^ENV\s+(.*)$", brut, re.M):
+        for cle, val in re.findall(r"([A-Z][A-Z0-9_]*)=(\S*)", ligne):
+            dedans[cle] = val.strip('"').strip("'")
+    return dedans
+
+
+ENV_IMAGE = _env_de_l_image()
+
+_ARBRE_CODE = ast.parse(CODE)
+# Les affectations de PREMIER NIVEAU seulement : une variable posee dans une
+# fonction n'est pas un reglage du studio, et la confondre avec un ferait
+# resoudre un nom par la mauvaise valeur.
+_POSES = {}
+for _n in _ARBRE_CODE.body:
+    if isinstance(_n, ast.Assign):
+        for _c in _n.targets:
+            if isinstance(_c, ast.Name):
+                _POSES.setdefault(_c.id, _n.value)
+
+
+class _Inconnu(Exception):
+    """Ce qu'on ne sait pas evaluer. Mieux vaut le dire que le deviner."""
+
+
+def _evaluer(noeud, sans, vus=()):
+    """La valeur de cette expression quand la variable « sans » est absente.
+
+    « sans » et elle seule : les AUTRES variables gardent ce que l'image leur
+    donne. C'est bien la question posee — « que vaut ce reglage si personne ne
+    le pose » — et non « que vaut-il dans le vide ».
+    """
+    if isinstance(noeud, ast.Constant):
+        return noeud.value
+    if isinstance(noeud, ast.Name):
+        if noeud.id in vus or noeud.id not in _POSES:
+            raise _Inconnu(noeud.id)
+        return _evaluer(_POSES[noeud.id], sans, vus + (noeud.id,))
+    if isinstance(noeud, ast.BoolOp) and isinstance(noeud.op, ast.Or):
+        val = None
+        for morceau in noeud.values:
+            val = _evaluer(morceau, sans, vus)
+            if val:
+                return val
+        return val
+    if isinstance(noeud, ast.Call):
+        quoi = ast.unparse(noeud.func)
+        args = [_evaluer(a, sans, vus) for a in noeud.args]
+        if quoi in ("os.environ.get", "os.getenv"):
+            if not args or not isinstance(args[0], str):
+                raise _Inconnu(quoi)
+            if args[0] == sans:
+                return args[1] if len(args) > 1 else None
+            return ENV_IMAGE.get(args[0], args[1] if len(args) > 1 else None)
+        if quoi == "os.path.join":
+            return posixpath.join(*[str(a) for a in args])
+        if quoi == "os.path.abspath":
+            return posixpath.normpath(posixpath.join(_TRAVAIL, str(args[0])))
+        if quoi in ("int", "float", "str", "bool"):
+            return {"int": int, "float": float, "str": str, "bool": bool}[quoi](args[0])
+        if quoi in ("max", "min"):
+            return {"max": max, "min": min}[quoi](*args)
+        if quoi.endswith((".strip", ".lower", ".rstrip", ".upper")):
+            socle = _evaluer(noeud.func.value, sans, vus)
+            return getattr(str(socle), quoi.rsplit(".", 1)[1])(*args)
+    raise _Inconnu(ast.dump(noeud)[:40])
+
+
+def defaut_du_code(n):
+    """La valeur que le code retient quand la variable est absente.
+
+    Rend None quand on ne sait toujours pas evaluer : c'est honnete, et c'est
+    ce que faisait la version d'avant pour TOUT ce qui n'etait pas litteral.
+    """
+    for nom, expression in _POSES.items():
+        texte = ast.unparse(expression)
+        if f'"{n}"' not in texte and f"'{n}'" not in texte:
+            continue
+        if not re.search(r"os[.](?:environ[.]get|getenv)", texte):
+            continue
+        try:
+            valeur = _evaluer(expression, n)
+        except (_Inconnu, TypeError, ValueError, RecursionError):
+            break
+        # « bool(os.environ.get(X)) » rend False quand X manque, et « False »
+        # n'est pas un defaut qu'un compose puisse recopier : on ne compare que
+        # ce qui s'ecrit dans un YAML.
+        if isinstance(valeur, bool) or valeur is None:
+            break
+        return str(valeur)
+    return _defaut_litteral(n)
+
+
+def _defaut_litteral(n):
+    """L'ancien releve, garde comme repli.
+
+    Il attrape ce que l'evaluateur ne voit pas : un « os.environ.get » ecrit
+    dans une fonction, donc absent des affectations de premier niveau.
     """
     appel = r'os[.](?:environ[.]get|getenv)[(]\s*[\'"]' + n + r'[\'"]\s*'
     for motif in (appel + r',\s*' + _LITTERAL,
