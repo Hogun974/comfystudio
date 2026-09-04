@@ -282,3 +282,64 @@ refermé. C'est une liste de contrôle qui **mesure** ce qui manque encore — l
 mot de passe d'origine, une carte qui répond, les fichiers des moteurs, la
 langue de l'interface — et qui distingue ce qui bloque de ce qui n'y ressemble
 que : [La première mise en route](premiere-mise-en-route.md).
+
+## Quelle version tourne
+
+Le studio le dit lui-même, aux **deux mêmes endroits** quelle que soit la façon
+dont il a été installé :
+
+- la ligne `Version` de la bannière, au démarrage, dans la console ;
+- en haut de <http://127.0.0.1:8199/admin>, à côté du titre.
+
+```
+==============================================================
+  ComfyStudio
+  Version   : bd9fc88   (dépôt git)
+  ComfyUI   : http://127.0.0.1:8188
+```
+
+**La source est dite avec la valeur, et elle compte autant.** `bd9fc88 (dépôt
+git)` a été *mesuré* sur un dépôt, et se retrouve dans l'historique ;
+`bd9fc88 (gravée à la construction)` a été *recopié* par celui qui a construit
+l'image ou l'exécutable, et ne vaut que ce que valait sa source.
+
+Les installations n'ont pas les mêmes moyens de savoir, et c'est toute la
+difficulté :
+
+| Installation | Ce qu'elle peut offrir |
+|---|---|
+| **native** (Windows, macOS, Linux) | c'est un clone : `git rev-parse --short HEAD`, mesuré au démarrage — 0,017 s. L'installeur ne recopie rien ailleurs, le `.git` reste à côté du code |
+| **conteneur** | rien à mesurer : `.git/` est dans `.dockerignore`. La valeur est gravée par `--build-arg VERSION=…`, voir [En conteneur](en-conteneur.md#dire-à-limage-ce-quelle-est) |
+| **exécutable Windows** | rien à mesurer non plus : PyInstaller déplie le code dans un dossier temporaire. `paquet/comfystudio.spec` grave la valeur à la construction, et `construire_windows.bat` annonce laquelle |
+| **aucun des trois** | `inconnue`, écrit en toutes lettres |
+
+**`inconnue` est une réponse, pas un trou.** Recopie-le tel quel dans un
+rapport de bogue : un identifiant inventé — une date de fichier, un « 1.0 »,
+une chaîne vide affichée comme si c'était une valeur — serait pire, parce que
+personne ne pourrait savoir qu'il est faux.
+
+**Il n'y a pas de numéro de version, et c'est délibéré.** Le projet n'a pas de
+tags : la branche principale, et elle seule, pas de rétroportage — voir
+[SECURITY.md](../SECURITY.md). Ce qui manquait n'était pas une politique de
+sortie, c'était un identifiant lisible.
+
+Deux pièges, mesurés le 4 septembre 2026, expliquent la forme retenue :
+
+- **git remonte les dossiers parents.** Depuis
+  `D:\ComfyStudio\paquet\build\essai_version`, qui n'est pas un dépôt,
+  `git rev-parse --short HEAD` rend `bd9fc88` — le commit du dépôt du dessus.
+  Un studio posé dans un sous-dossier d'un *autre* dépôt annoncerait donc le
+  commit de cet autre dépôt. Le studio exige `.git` **dans son propre dossier**
+  avant d'appeler git.
+- **L'exécutable ne lit pas le dépôt où il est posé.**
+  `construire_windows.bat` recommande de poser l'exe dans `D:\ComfyStudio`, qui
+  *est* un clone : l'exécutable construit le 30 août à 15 h 22 y annoncerait le
+  commit du jour, **187 commits plus loin**. Il n'annonce donc que ce qui a été
+  gravé en lui.
+
+L'identifiant est calculé **une fois**, au premier besoin, et ne change plus de
+la vie du processus : un `git pull` en cours d'exécution change `.git` sans
+changer une ligne du code déjà chargé.
+
+`banc_version.py` garde ces règles — dix-neuf vérifications, dix-neuf mutations
+dans `banc_mutations.py`.

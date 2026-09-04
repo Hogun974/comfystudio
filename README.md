@@ -228,11 +228,17 @@ première page servie (mesuré le 30 août 2026 sur une machine sans carte).
 
 ```bash
 cp .env.exemple .env       # y mettre au moins STUDIO_ADMIN_MDP
-docker compose up -d --build
+VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
 ```
 
 `.env` n'est créé par personne : sans lui, tout prend ses valeurs par défaut et
 le mot de passe `admin` est tiré au sort — voir plus bas où le lire.
+
+Le `VERSION=` en tête grave le commit dans l'image : une fois construite, elle
+n'a plus aucun moyen de savoir d'où elle sort — `.git/` n'y entre pas, et doit
+rester dehors. Sans lui le studio annonce `inconnue`, ce qui reste honnête mais
+ne remplit pas un rapport de bogue. Hors d'un clone, la commande échoue en
+silence et retombe sur `inconnue`.
 
 #### Trois montages, et c'est le compose qui les porte
 

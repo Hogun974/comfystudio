@@ -332,6 +332,17 @@ jobs:
       - name: Tout ce que le studio lit arrive au conteneur
         run: python banc_conteneur.py
 
+      # Le studio n'avait aucune notion de version, et le modele d'issue
+      # reclamait pourtant « Version du studio (commit, ou date) » — impossible
+      # a remplir pour qui a installe par executable ou par conteneur, soit
+      # DEUX chemins sur quatre. Ce banc garde l'identifiant et, surtout, la
+      # moitie qu'on perd sans s'en apercevoir : quand aucune source ne repond,
+      # le studio ecrit « inconnue » et non une chaine vide ni une date
+      # inventee. Il garde aussi le piege de git, qui REMONTE les dossiers
+      # parents et fait annoncer le commit du depot voisin.
+      - name: Le studio sait dire ce qu'il est, ou qu'il l'ignore
+        run: python banc_version.py
+
       # La page est un seul fichier : HTML, CSS et JS ensemble, et rien ne
       # relisait l'ensemble. « .puce.moteur » colorait une pastille du nom du
       # panneau des machines, deux regles dormaient sans element, et les deux

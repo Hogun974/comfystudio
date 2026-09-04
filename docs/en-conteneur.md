@@ -16,7 +16,7 @@ commencer](installation.md#avant-de-commencer)) :
 
 ```bash
 cp .env.exemple .env       # y mettre au moins STUDIO_ADMIN_MDP
-docker compose up -d --build
+VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
 ```
 
 `.env.exemple` est un fichier caché : un `ls` ne le montre pas, `ls -a` si.
@@ -98,6 +98,42 @@ dossiers ne sont pas là où ComfyUI les met d'habitude.
 comptes, clés, registre des machines, avis, journal des appels distants
 (`nuage.jsonl`), sorties rapatriées. **Sans lui, tout disparaît au redémarrage
 du conteneur.**
+
+## Dire à l'image ce qu'elle est
+
+Un conteneur n'a **aucun moyen de mesurer sa version** : `.git/` est dans
+`.dockerignore`, et doit y rester. Il faut donc la lui graver à la
+construction. C'est ce que fait le `VERSION=` de la commande d'installation
+ci-dessus : le compose le passe à l'image, et il suffit de le poser devant.
+
+```bash
+VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
+# construire sans démarrer :
+VERSION=$(git rev-parse --short HEAD) docker compose build
+# sans compose du tout :
+docker build --build-arg VERSION=$(git rev-parse --short HEAD) -t comfystudio .
+```
+
+Le détour par la variable n'est pas une coquetterie : **`docker compose up
+--build` n'accepte pas `--build-arg`**. Sans le câblage du compose, nommer sa
+version demandait de construire en deux temps — et personne ne l'aurait fait.
+
+Le studio l'annonce alors au démarrage et en haut de `/admin` :
+
+```
+  Version   : bd9fc88   (gravée à la construction)
+```
+
+**Sans l'argument, il écrit `inconnue`**, et c'est voulu : un numéro inventé
+serait pire, parce que rien ne dirait qu'il est faux. C'est aussi pour cela que
+la valeur est refusée quand elle est vide — `ARG VERSION=` non renseigné grave
+un fichier qui ne porte qu'un retour à la ligne, et « `Version :` » suivi de
+rien se lit comme une panne d'affichage, jamais comme une ignorance.
+
+L'identifiant est **figé pour la vie du conteneur** : un `git pull` sur l'hôte
+ne change pas le code déjà dans l'image, et l'annoncer autrement serait mentir.
+Voir [Quelle version tourne](installation.md#quelle-version-tourne) pour les
+trois autres chemins d'installation.
 
 ## Variables reconnues
 

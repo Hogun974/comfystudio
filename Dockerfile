@@ -55,6 +55,23 @@ COPY corpus_aiguillage.jsonl corpus_llm.jsonl corpus_llm2.jsonl banc_aiguillage.
 COPY noeud.sh noeud.bat modeles.sh maj_noeud.sh maj_noeud.bat ./
 COPY zimaos-comfyui.yml zimaos-registry.yml ./
 
+# CE QUE CETTE IMAGE EST. « .git/ » est dans .dockerignore, et doit y rester :
+# l'image serait plus lourde et le studio irait interroger un depot qui n'est
+# pas le sien. Le conteneur n'a donc AUCUN moyen de mesurer sa version — il
+# faut la lui graver, et c'est ce que fait cette ligne.
+#
+#     docker build --build-arg VERSION=$(git rev-parse --short HEAD) .
+#
+# Sans l'argument, le fichier ne porte qu'un retour a la ligne, _version_gravee()
+# le refuse comme vide et le studio annonce « inconnue ». C'est voulu : un
+# numero invente serait pire, parce que personne ne saurait qu'il est faux.
+#
+# En fin de Dockerfile, apres les COPY : l'argument change a chaque commit et
+# invaliderait sinon le cache de toutes les couches au-dessus, dont le pip
+# install de trois paquets.
+ARG VERSION=
+RUN printf '%s\n' "$VERSION" > /app/version.txt
+
 # Point de montage de ComfyUI s'il tourne sur la MEME machine. Sans ce
 # reglage, le chemin par defaut serait « ComfyUI_windows_portable », qui n'a
 # aucun sens ici et s'affichait tel quel dans le journal du conteneur.

@@ -43,6 +43,159 @@ ICI        = os.path.dirname(os.path.abspath(__file__))
 # comptes admin differents. Hors gel, les deux sont identiques et rien ne change.
 ICI_DATA   = (os.path.dirname(os.path.abspath(sys.executable))
               if getattr(sys, "frozen", False) else ICI)
+
+# ── Ce que ce studio EST, et par quoi il le sait ──────────────────────
+# Le studio n'avait aucune notion de version : ni dans la banniere, ni dans
+# /admin, nulle part. Et .github/ISSUE_TEMPLATE demandait « Version du studio
+# (commit, ou date) » — impossible a remplir pour qui a installe par
+# executable ou par conteneur, c'est-a-dire DEUX chemins sur quatre.
+#
+# Ce qui manque n'est pas une politique de sortie : SECURITY.md justifie
+# l'absence de tags (« la branche principale, et elle seule, pas de
+# retroportage ») et rien ici ne la remet en cause. Ce qui manque est un
+# IDENTIFIANT LISIBLE, et chaque chemin d'installation n'a pas les memes
+# moyens de le produire. Mesures du 4 septembre 2026, sur cette machine :
+#
+#   clone            git rev-parse --short HEAD -> bd9fc88 en 0,017 s
+#   conteneur        .git est dans .dockerignore : RIEN a lire dans l'image
+#   executable       ICI pointe sur le _MEIxxx temporaire de PyInstaller,
+#                    et DONNEES ne liste pas .git : rien a lire non plus
+#   aucun des trois  il faut le DIRE, pas l'inventer
+#
+# Le fichier que la CONSTRUCTION grave, et le seul moyen des deux
+# empaquetages : le Dockerfile l'ecrit depuis son « ARG VERSION »,
+# paquet/comfystudio.spec l'embarque. Il n'existe dans aucun clone.
+FICHIER_VERSION = "version.txt"
+
+# Un sha complet fait 40 caracteres. Au-dela ce n'est plus un identifiant, mais
+# un fichier tombe la par accident — et l'imprimer entier noierait la banniere.
+# On REFUSE plutot que de tronquer : un identifiant tronque se recopierait dans
+# une issue et ne designerait aucun code.
+VERSION_MAX = 40
+
+
+def _identifiant_acceptable(valeur):
+    """Ce qu'on accepte d'annoncer — et c'est un refus plus qu'un accord.
+
+    UN SEUL ENDROIT POUR CETTE REGLE, et ce n'est pas de l'elegance : deux
+    garde-fous qui refusent la meme chose se couvrent l'un l'autre, et l'on ne
+    peut plus faire rougir ni l'un ni l'autre. Un filet qu'on ne peut pas voir
+    rougir ne mesure rien.
+
+    VIDE EST LE CAS QUI COMPTE. « ARG VERSION= » sans argument grave un fichier
+    qui ne porte qu'un retour a la ligne ; l'accepter ferait annoncer
+    « Version : » suivi de rien, ce qui se lit comme une panne d'affichage et
+    jamais comme une ignorance — et ne se recopie pas dans une issue.
+    """
+    return 0 < len(valeur) <= VERSION_MAX
+
+
+# Ecrit en toutes lettres, et c'est une reponse acceptable. Inventer un numero
+# — une date de fichier, un « 1.0 » — remplirait le modele d'issue avec quelque
+# chose qui ne designe rien : pire que de ne rien remplir, parce que personne
+# ne saurait que c'est faux.
+VERSION_INCONNUE = "inconnue"
+
+
+def _version_du_depot(racine):
+    """L'identifiant lu dans un CLONE, ou "" si ce n'en est pas un.
+
+    « .git dans racine » AVANT d'appeler git, et ce n'est pas une economie de
+    sous-processus : GIT REMONTE LES DOSSIERS PARENTS. Mesure du 4 septembre
+    2026 — depuis D:\\ComfyStudio\\paquet\\build\\essai_version, qui n'est pas
+    un depot, « git rev-parse --short HEAD » rend bd9fc88, le commit du depot
+    du dessus. Un studio pose dans un sous-dossier d'un AUTRE depot annoncerait
+    donc le commit de cet autre depot, avec l'aplomb d'une valeur mesuree.
+
+    « -C racine » pour la meme raison, en second garde-fou : le repertoire
+    courant n'est pas celui du studio (un service, ou un double-clic depuis
+    l'explorateur, le posent sur C:\\Windows\\system32).
+
+    RACINE EST ICI ET NON ICI_DATA. Gele, ICI est le _MEIxxx temporaire — sans
+    .git, donc muet, ce qui est la verite. ICI_DATA, lui, est le dossier de
+    l'exe, et construire_windows.bat recommande de poser l'exe dans
+    D:\\ComfyStudio, qui EST un clone : l'executable du 30 aout 15 h 22 y
+    annoncerait le commit d'aujourd'hui, 187 commits plus loin (mesure).
+    """
+    if not os.path.exists(os.path.join(racine, ".git")):
+        return ""
+    try:
+        # Cinq secondes quand la commande en met 0,017 : ce n'est pas une
+        # assertion de vitesse, c'est un garde-fou contre un depot pose sur un
+        # montage reseau endormi. Le studio ne doit pas rater son demarrage
+        # pour une ligne de banniere.
+        fini = subprocess.run(["git", "-C", racine, "rev-parse", "--short", "HEAD"],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              timeout=5)
+    except Exception:
+        # git manquant : FileNotFoundError en 0,004 s, mesure du meme jour. Un
+        # clone sans git installe est un cas reel — le Python embarque de
+        # ComfyUI arrive souvent seul sur la machine.
+        return ""
+    if fini.returncode != 0:
+        return ""
+    return fini.stdout.decode("utf-8", "replace").strip()
+
+
+def _version_gravee(racine):
+    """L'identifiant qu'une CONSTRUCTION a grave a cote du code, ou "".
+
+    La premiere ligne, et seulement elle. Ce qu'elle vaut est juge par
+    _identifiant_acceptable(), comme celle du depot : la source rapporte, elle
+    ne tranche pas.
+    """
+    try:
+        with open(os.path.join(racine, FICHIER_VERSION), encoding="utf-8",
+                  errors="replace") as f:
+            return f.readline().strip()
+    except OSError:
+        return ""
+
+
+# L'ORDRE, et la raison de chaque rang. Le depot d'abord : dans un clone, git
+# est la seule source qui ne se perime pas, et un fichier grave par une
+# construction passee y mentirait. Le fichier ensuite, seul moyen du conteneur
+# et de l'executable, qui n'ont pas de .git. Rien en troisieme.
+SOURCES_VERSION = (("depot git", _version_du_depot),
+                   ("gravee a la construction", _version_gravee))
+
+
+def version_du_studio(racine=None):
+    """(identifiant, source). Jamais ("", …) : voir VERSION_INCONNUE.
+
+    On NOMME la source autant que la valeur. « a1b2c3d » seul ne dit pas si le
+    studio l'a mesure sur un depot ou recopie ce qu'on lui a grave, et c'est
+    exactement ce que celui qui lit une issue a besoin de savoir : le premier
+    se retrouve dans l'historique, le second depend de qui a construit.
+    """
+    racine = ICI if racine is None else racine
+    for nom, source in SOURCES_VERSION:
+        valeur = source(racine)
+        if _identifiant_acceptable(valeur):
+            return valeur, nom
+    return VERSION_INCONNUE, "aucune source"
+
+
+_VERSION_ANNONCEE = []
+
+
+def version_annoncee():
+    """La meme reponse pendant toute la vie du processus, et c'est voulu.
+
+    Un « git pull » en cours d'execution change .git sans changer une ligne du
+    code DEJA CHARGE : relire a chaque appel ferait annoncer un commit que ce
+    studio-ci ne fait pas tourner. La mise en cache n'est donc pas une
+    optimisation, c'est la seule reponse juste.
+
+    Elle en est une aussi, accessoirement : /api/admin/noeuds est interroge
+    toutes les 5 s par la console, et cela ferait un sous-processus git par
+    battement (0,017 s mesure) pour une valeur qui ne peut pas bouger.
+    """
+    if not _VERSION_ANNONCEE:
+        _VERSION_ANNONCEE.extend(version_du_studio())
+    return _VERSION_ANNONCEE[0], _VERSION_ANNONCEE[1]
+
+
 COMFY      = os.environ.get("COMFY_URL", "http://127.0.0.1:8188")
 # Une adresse, ou plusieurs separees par des virgules. Plusieurs, parce qu'une
 # seule obligeait a choisir une fois pour toutes la machine qui pense — et celle
@@ -13196,6 +13349,15 @@ async def api_admin_noeuds(req):
                                   + ((noeud(cerveau(u).get('noeud')) or {})
                                      .get("titre") or u): p
                                   for (u, nom), p in MODELES_CASSES.items()},
+                              # LA SECONDE PLACE OU LIRE L'IDENTIFIANT, et la
+                              # seule qui reste quand la console de demarrage a
+                              # ete refermee — c'est le cas de l'executable
+                              # lance par un double-clic et du conteneur dont
+                              # personne ne relit le journal. On rend la SOURCE
+                              # avec la valeur : la page ne doit pas avoir a
+                              # deviner si « inconnue » est un identifiant.
+                              "version": version_annoncee()[0],
+                              "version_source": version_annoncee()[1],
                               "pause_propose": PREFERENCES["pause_propose"],
                               "armee_heures": PREFERENCES["armee_heures"],
                               "vram_repos_min": PREFERENCES["vram_repos_min"],
@@ -14075,6 +14237,14 @@ if __name__ == "__main__":
              if AIGUILLEUR else "absent — tout passe par le modele de langage"))
     print("=" * 64)
     print("  ComfyStudio")
+    # CE QUE CE STUDIO EST, sur la premiere ligne apres son nom. La banniere
+    # annoncait son adresse, sa VRAM, son jeton et son mot de passe d'admin, et
+    # ne disait nulle part QUEL code tournait — ce que le modele d'issue
+    # reclame pourtant en premier. La source est dite avec la valeur : « depot
+    # git » se retrouve dans l'historique, « gravee a la construction » depend
+    # de qui a construit, et « inconnue » est une reponse, pas un trou.
+    _version, _source_version = version_annoncee()
+    print(f"  Version   : {_version}   ({_source_version})")
     print(f"  ComfyUI   : {COMFY}")
     # Une ligne par adresse, avec le modele d'ecriture de CHACUNE. La ligne
     # unique annonçait celui de la premiere et laissait croire que c'etait

@@ -13,10 +13,16 @@ Passe par le signalement privé de GitHub :
 
 Le fil est privé entre toi et le mainteneur jusqu'à publication.
 
-Ce qui aide, dans l'ordre : la version (le commit), ce qu'un attaquant obtient,
+Ce qui aide, dans l'ordre : la version, ce qu'un attaquant obtient,
 et de quoi il a besoin au départ — être sur le même réseau, avoir un compte,
 avoir déjà le jeton d'administration. Un exploit minimal vaut mieux qu'une
 longue description.
+
+La version, le studio la donne lui-même : elle est écrite au démarrage dans la
+console et en haut de `/admin`. Recopie-la telle quelle, **`inconnue` comprise**
+— c'est une réponse, elle dit que l'installation ne vient pas d'un clone git et
+n'a pas été construite avec son identifiant. Ne va pas la deviner : un numéro
+inventé coûte plus cher qu'une case vide.
 
 Ce projet est tenu par une seule personne, sur son temps libre : compte en jours
 plutôt qu'en heures. Il n'y a pas de programme de récompense.

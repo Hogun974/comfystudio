@@ -20,7 +20,21 @@
 
 services:
   comfystudio:
-    build: .
+    build:
+      context: .
+      args:
+        # QUELLE VERSION L'IMAGE PORTE. Un conteneur ne peut pas la mesurer :
+        # « .git/ » est dans .dockerignore et doit y rester. Sans cet argument,
+        # le studio annonce « inconnue » — honnete, mais inutilisable dans un
+        # rapport de bogue. Cable ici, il suffit de le poser devant la commande
+        # d'installation du README, qui construit et demarre d'un seul geste :
+        #
+        #   VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
+        #
+        # « docker compose up --build » n'accepte pas « --build-arg » : sans
+        # cette ligne, il fallait construire en deux temps pour nommer sa
+        # version, et personne ne l'aurait fait.
+        VERSION: "${VERSION:-}"
     # Le nom et le tag se laissent changer. Figes, ils rendaient toute seconde
     # installation impossible sur la meme machine : « docker compose -p autre »
     # ne les touche pas, et un « --build » naif retaguait l'image d'un studio EN

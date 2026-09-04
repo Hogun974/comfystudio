@@ -87,6 +87,17 @@ if errorlevel 1 (
 echo.
 echo Termine : %PAQUET%dist\ComfyStudio.exe
 for %%F in ("%PAQUET%dist\ComfyStudio.exe") do echo Taille : %%~zF octets
+
+REM CE QUE CET EXE ANNONCERA. On RELIT le fichier que la spec vient de graver
+REM plutot que de relancer git : c'est ce qui est reellement dans l'exe, et non
+REM ce que le depot vaut a la seconde ou l'on regarde. Un fichier vide -- git
+REM absent, ou source qui n'est pas un clone -- ne remplit pas la variable, et
+REM l'exe dira « inconnue » au demarrage : c'est la verite, pas une panne.
+set "VERSION=inconnue"
+if exist "%PAQUET%build\version.txt" (
+    for /f "usebackq delims=" %%v in ("%PAQUET%build\version.txt") do set "VERSION=%%v"
+)
+echo Version gravee : %VERSION%   (ligne « Version » de la banniere, et /admin)
 echo.
 echo Rappel : l'exe ecrit ses donnees (dossier conversations, noeuds.json,
 echo   avis.jsonl, dossier sorties) A COTE DE LUI -- c'est ICI_DATA dans

@@ -460,6 +460,7 @@ BESOINS = {
     # lignes qui ecrit ce qu'il a lu dans agent_noeud.json. Copier le vrai ne
     # mesurerait rien de plus et le ferait chercher un studio.
     "banc_noeud.py": ["banc_noeud.py", "noeud.sh", "maj_noeud.sh",
+                      "maj_noeud.bat",
                       "installer.py", "installation.py", "catalogue.py",
                       "LANCER ComfyStudio.bat",
                       "paquet/construire_windows.bat"],
@@ -511,6 +512,30 @@ BESOINS = {
                              "corpus_aiguillage.jsonl", "corpus_llm.jsonl",
                              "corpus_llm2.jsonl"]
                             + fichiers_du_conteneur()[1:]),
+    # LE BANC QUI LIT LE PLUS DE MONDES A LA FOIS, et c'est dans sa nature : la
+    # question « quelle version tourne ? » n'a pas la meme reponse selon le
+    # chemin d'installation, et les quatre chemins vivent dans quatre fichiers
+    # differents. Il lui faut donc, en plus du studio et de ce qu'il importe :
+    #
+    #   Dockerfile                        deja dans fichiers_du_conteneur()
+    #   paquet/comfystudio.spec           l'executable, qui grave le meme nom
+    #   paquet/construire_windows.bat     qui doit dire ce qu'il a grave
+    #   web/admin.html                    la seconde place ou lire la valeur
+    #   .github/ISSUE_TEMPLATE/bogue.md   la raison de tout ceci
+    #
+    # C'EST LA QUATRIEME FOIS qu'une lecture neuve doit etre declaree ici —
+    # apres aiguilleur.json pour banc_multilingue, web/index.html pour
+    # banc_refaire et paquet/comfystudio.spec pour banc_conteneur. Chaque oubli
+    # a coute la meme chose : le banc meurt sur un FileNotFoundError dans le
+    # dossier d'essai, et TOUTES les mutations qui le visent se declarent « le
+    # banc s'est casse au lieu de rougir » d'un seul coup. Ici, la moitie
+    # d'entre elles auraient survecu sans se faire remarquer, parce que
+    # banc_version.py ouvre ses fichiers sous try et pose un cas nomme : elles
+    # seraient devenues rouges POUR LA MAUVAISE RAISON, ce qui est pire.
+    "banc_version.py": (["banc_version.py", "paquet/comfystudio.spec",
+                         "paquet/construire_windows.bat", "web/admin.html",
+                         ".github/ISSUE_TEMPLATE/bogue.md"]
+                        + fichiers_du_conteneur()[1:]),
     # LE SEUL BANC QUI LIT serveur.py SANS L'IMPORTER, avec banc_adulte.py.
     # Il n'a besoin d'aucune dependance — traductions.py n'importe rien — et
     # aiohttp lui serait meme nuisible : il tourne sur la machine de celui qui
@@ -541,10 +566,15 @@ BESOINS = {
 
 
 # ── Ou se lit la ligne rouge ──────────────────────────────────────────
-# Dix bancs sur quatorze impriment « NON » ; banc_cout.py, banc_multilingue.py
-# et banc_traductions.py
-# impriment « RATE », et
-# banc_adulte.py comme verifier_formulations.py n'ont pas de dit() du tout —
+# LA PLUPART des bancs impriment « NON » — c'est le defaut, et cette table ne
+# nomme que les autres. Le compte est parti d'ici le 4 septembre 2026 : il
+# disait « dix bancs sur quatorze » quand la table en connaissait sept et
+# BESOINS vingt, et un nombre qu'aucune ligne ne recalcule est exactement
+# l'enumeration que ce depot a vue rouiller quatre fois. On nomme le motif.
+#
+# banc_cout.py, banc_multilingue.py, banc_traductions.py, banc_comptes.py et
+# banc_mfa.py impriment « RATE » ; banc_adulte.py comme verifier_formulations.py
+# n'ont pas de dit() du tout —
 # ils listent leurs fautes indentees sous leur compte. Sans cette table, TOUTE
 # mutation qui les vise serait rendue « le banc s'est casse au lieu de
 # rougir » alors qu'il l'a parfaitement attrapee : le faux positif que ce
@@ -4941,6 +4971,252 @@ NOEUD = [
             ("installation.py", brut(
                 '    force = os.environ.get("STUDIO_PYTHON")\n    if force:',
                 '    force = ""\n    if force:'))]),
+    # LES DEUX SUIVANTES VISENT UN RELEVE DE TEXTE, ET C'EST ASSUME. Ailleurs
+    # dans ce fichier une mutation qui ne change qu'un mot d'un fichier lu au
+    # texte serait de la triche — elle prouverait que le banc sait lire, pas
+    # qu'il garde quelque chose. Ici le releve EST la garde : cmd.exe n'existe
+    # pas sur les runners, et la seule chose qu'on puisse tenir de maj_noeud.bat
+    # sur une machine Linux, c'est ce qui y est ecrit. La mutation rejoue donc
+    # exactement l'etat dans lequel le fichier a vecu jusqu'au 4 septembre 2026.
+    dict(
+        nom="le jeton repart sur la ligne de commande, cote Windows",
+        banc="banc_noeud.py",
+        imite="L'ETAT REEL DU DEPOT JUSQU'AU 4 SEPTEMBRE 2026 : maj_noeud.sh "
+              "ecrivait le jeton dans agent_noeud.json, maj_noeud.bat le "
+              "passait en clair a un processus qui tourne des semaines. "
+              "« wmic process get commandline » suffit a le lire, sans droit "
+              "particulier, et un jeton de noeud vaut droit de faire "
+              "travailler la carte",
+        rougit="maj_noeud.bat ne met pas le jeton sur la ligne de commande",
+        editions=[
+            ("maj_noeud.bat", brut(
+                '"%PY%" agent_noeud.py',
+                '"%PY%" agent_noeud.py --studio %STUDIO% --jeton %JETON%'))]),
+    dict(
+        nom="le jeton Windows passe par argv au lieu de l'environnement",
+        banc="banc_noeud.py",
+        imite="l'ecriture d'agent_noeud.json redevient un argv : le jeton est "
+              "lisible le temps du python jetable, la ou un environnement "
+              "n'appartient qu'a son proprietaire",
+        rougit="il l'ecrit dans agent_noeud.json, en lisant le jeton dans "
+               "l'environnement",
+        editions=[
+            ("maj_noeud.bat", brut("jeton=os.environ['JETON_A_ECRIRE']",
+                                   "jeton=sys.argv[1]"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_version.py — dix-neuf mutations, une par regle
+# ──────────────────────────────────────────────────────────────────────
+# « Le studio doit pouvoir dire ce qu'il est. » Il ne le disait nulle part, et
+# .github/ISSUE_TEMPLATE demandait pourtant « Version du studio (commit, ou
+# date) » — une question a laquelle DEUX chemins d'installation sur quatre ne
+# pouvaient pas repondre.
+#
+# Le banc est ne avec la correction : pas de filet d'avant, donc pas de
+# diagonale. Le sens inverse a ete pris par l'autre chemin — le banc NEUF sur
+# le code d'AVANT — et il est ecrit dans docs/eprouver-les-bancs.md.
+#
+# Chaque mutation dit la PANNE et pas la manipulation, et la moitie d'entre
+# elles imite la meme famille : ANNONCER QUELQUE CHOSE PLUTOT QUE DE DIRE
+# « inconnue ». C'est la seule facon de se tromper qui soit pire que de se
+# taire, parce que rien, dans une issue, ne dira que le chiffre est faux.
+VERSION = [
+    dict(
+        nom="le studio n'a plus de mot pour son ignorance",
+        banc="banc_version.py",
+        imite="la banniere annonce « Version :  » suivi de rien, ce qui se lit "
+              "comme une panne d'affichage et jamais comme une ignorance",
+        rougit="le studio a de quoi dire ce qu'il est",
+        editions=[("serveur.py", brut('VERSION_INCONNUE = "inconnue"',
+                                      'VERSION_INCONNUE = ""'))]),
+    dict(
+        nom="une date du jour inventee a la place de « inconnue »",
+        banc="banc_version.py",
+        imite="le studio remplit le modele d'issue avec un nombre qui ne "
+              "designe AUCUN code, et personne ne peut savoir qu'il est faux — "
+              "exactement ce que « (commit, ou date) » obtenait deja",
+        rougit="aucune source ne repond : le studio dit « inconnue »",
+        editions=[("serveur.py", brut(
+            '    return VERSION_INCONNUE, "aucune source"',
+            '    return time.strftime("%Y-%m-%d"), "aucune source"'))]),
+    dict(
+        nom="l'ignorance rendue comme une chaine vide",
+        banc="banc_version.py",
+        imite="tout ce qui affiche l'identifiant affiche « » — et « la version "
+              "est affichee » reste vrai, ce qui est l'assertion creuse que ce "
+              "depot traque depuis le premier jour",
+        rougit="et il ne rend JAMAIS une chaine vide",
+        editions=[("serveur.py", brut(
+            '    return VERSION_INCONNUE, "aucune source"',
+            '    return "", "aucune source"'))]),
+    dict(
+        nom="un identifiant vide est accepte comme une valeur",
+        banc="banc_version.py",
+        imite="le cas REEL du conteneur construit sans --build-arg : le "
+              "fichier grave ne porte qu'un retour a la ligne, et le studio "
+              "l'annonce comme s'il savait",
+        rougit="un identifiant vide est refuse, d'ou qu'il vienne",
+        editions=[("serveur.py", brut(
+            "    return 0 < len(valeur) <= VERSION_MAX",
+            "    return len(valeur) <= VERSION_MAX"))]),
+    dict(
+        nom="plus aucune limite de longueur sur l'identifiant",
+        banc="banc_version.py",
+        imite="un fichier tombe par accident a la place du fichier grave "
+              "devient la banniere, et se recopie dans une issue ou il ne "
+              "designe rien",
+        rougit="un identifiant demesure est refuse, et la limite tient",
+        editions=[("serveur.py", brut(
+            "    return 0 < len(valeur) <= VERSION_MAX",
+            "    return 0 < len(valeur)"))]),
+    dict(
+        nom="le fichier grave par la construction n'est plus lu",
+        banc="banc_version.py",
+        imite="le conteneur et l'executable perdent leur SEULE source — ni "
+              "l'un ni l'autre n'a de .git — et redisent « inconnue » pour "
+              "toujours : les deux chemins que ce travail existe pour reparer",
+        rougit="un identifiant grave normal repond, et se nomme",
+        editions=[("serveur.py", brut(
+            'SOURCES_VERSION = (("depot git", _version_du_depot),\n'
+            '                   ("gravee a la construction", _version_gravee))',
+            'SOURCES_VERSION = (("depot git", _version_du_depot),)'))]),
+    dict(
+        nom="git interroge meme quand le dossier n'est pas un clone",
+        banc="banc_version.py",
+        imite="GIT REMONTE LES DOSSIERS PARENTS : un studio pose dans un "
+              "sous-dossier d'un AUTRE depot annonce le commit de cet autre "
+              "depot, avec l'aplomb d'une valeur mesuree. Verifie le "
+              "4 septembre 2026 depuis paquet/build, qui rend bd9fc88",
+        rougit="git n'est pas interroge hors d'un clone",
+        editions=[("serveur.py", brut(
+            '    if not os.path.exists(os.path.join(racine, ".git")):\n'
+            '        return ""\n',
+            ""))]),
+    dict(
+        nom="git n'est plus dirige sur le dossier du code",
+        banc="banc_version.py",
+        imite="git resout depuis le REPERTOIRE COURANT, que le studio ne "
+              "choisit pas : un service, ou un double-clic depuis "
+              "l'explorateur, le posent sur C:\\Windows\\system32",
+        rougit="dans un clone, git est interroge sur CE dossier",
+        editions=[("serveur.py", brut(
+            '["git", "-C", racine, "rev-parse", "--short", "HEAD"]',
+            '["git", "rev-parse", "--short", "HEAD"]'))]),
+    dict(
+        nom="le fichier grave passe avant le depot",
+        banc="banc_version.py",
+        imite="un exe construit une fois, puis un « git pull » : le clone "
+              "annonce l'identifiant de la vieille construction au lieu du "
+              "sien, et il n'a aucune facon de se corriger",
+        rougit="et le depot passe AVANT le fichier grave",
+        editions=[("serveur.py", brut(
+            'SOURCES_VERSION = (("depot git", _version_du_depot),\n'
+            '                   ("gravee a la construction", _version_gravee))',
+            'SOURCES_VERSION = (("gravee a la construction", _version_gravee),\n'
+            '                   ("depot git", _version_du_depot))'))]),
+    dict(
+        nom="l'identifiant est recalcule a chaque appel",
+        banc="banc_version.py",
+        imite="un « git pull » pendant que le studio tourne lui fait annoncer "
+              "un commit qu'il ne fait PAS tourner — et /api/admin/noeuds, "
+              "interroge toutes les 5 s, lance un sous-processus git par "
+              "battement pour une valeur qui ne peut pas bouger",
+        rougit="l'identifiant annonce est fige pour la duree du processus",
+        editions=[("serveur.py", brut(
+            "    if not _VERSION_ANNONCEE:\n"
+            "        _VERSION_ANNONCEE.extend(version_du_studio())\n"
+            "    return _VERSION_ANNONCEE[0], _VERSION_ANNONCEE[1]",
+            "    return version_du_studio()"))]),
+    dict(
+        nom="la banniere annonce l'identifiant sans sa source",
+        banc="banc_version.py",
+        imite="« bd9fc88 » seul ne dit pas si le studio l'a MESURE sur un "
+              "depot ou recopie ce qu'on lui a grave : le premier se retrouve "
+              "dans l'historique, le second depend de qui a construit",
+        rougit="la banniere de demarrage annonce l'identifiant ET sa source",
+        editions=[("serveur.py", brut(
+            'print(f"  Version   : {_version}   ({_source_version})")',
+            'print(f"  Version   : {_version}")'))]),
+    dict(
+        nom="/admin annonce une source ecrite en dur",
+        banc="banc_version.py",
+        imite="la console jure « depot git » a un conteneur qui n'a pas de "
+              ".git : la source est justement ce qui devait dire si "
+              "l'identifiant se retrouve quelque part",
+        rougit="/api/admin/noeuds rend l'identifiant et sa source, calcules",
+        editions=[("serveur.py", brut(
+            '"version_source": version_annoncee()[1],',
+            '"version_source": "depot git",'))]),
+    dict(
+        nom="la page lit une clef que le serveur ne rend pas",
+        banc="banc_version.py",
+        imite="le defaut que ce depot a paye trois fois : les deux cotes sont "
+              "verts, la clef ne se rejoint pas, et /admin affiche « version "
+              "bd9fc88 (undefined) »",
+        rougit="la page /admin lit ces memes clefs, et a ou les poser",
+        editions=[("web/admin.html", brut("d.version_source || ",
+                                          "d.source_version || "))]),
+    dict(
+        nom="la page pose la valeur sans repli",
+        banc="banc_version.py",
+        imite="un studio plus ancien ne rend pas ces clefs : la page ecrit "
+              "« version undefined (undefined) », ce qui se lit comme une "
+              "panne de la page et non comme une ignorance du studio",
+        rougit="et elle ne pose jamais un identifiant vide",
+        editions=[("web/admin.html", brut(
+            '`version ${d.version || "inconnue"} (${d.version_source || "source inconnue"})`',
+            '`version ${d.version} (${d.version_source})`'))]),
+    dict(
+        nom="le conteneur ne grave plus rien",
+        banc="banc_version.py",
+        imite="l'image n'a aucun moyen de savoir ce qu'elle est — .git est "
+              "dans .dockerignore — et le studio en conteneur redit "
+              "« inconnue » a chaque demarrage, sans que la construction ait "
+              "eu la moindre chance de le lui dire",
+        rougit="le conteneur grave l'identifiant dans le fichier que le studio lit",
+        editions=[("Dockerfile", brut(
+            'RUN printf \'%s\\n\' "$VERSION" > /app/version.txt\n', ""))]),
+    dict(
+        nom="l'executable n'embarque plus l'identifiant grave",
+        banc="banc_version.py",
+        imite="la spec le calcule et l'ecrit, mais ne le met pas dans le "
+              "paquet : le fichier reste dans build/ sur la machine qui a "
+              "construit, et l'exe distribue dit « inconnue »",
+        rougit="et l'executable embarque le meme, calcule a la construction",
+        editions=[("paquet/comfystudio.spec",
+                   brut('DONNEES.append((VERSION_GRAVEE, "."))\n', ""))]),
+    dict(
+        nom="la construction Windows ne dit plus ce qu'elle a grave",
+        banc="banc_version.py",
+        imite="celui qui construit l'exe ne sait pas ce qu'il distribue, et "
+              "n'a aucune facon de s'apercevoir que git manquait sur sa "
+              "machine et que l'exe dira « inconnue »",
+        rougit="et la construction Windows dit ce qu'elle a grave",
+        editions=[("paquet/construire_windows.bat", brut(
+            "echo Version gravee : %VERSION%   "
+            "(ligne \u00ab Version \u00bb de la banniere, et /admin)\n", ""))]),
+    dict(
+        nom="le modele d'issue redemande une valeur introuvable",
+        banc="banc_version.py",
+        imite="le point de depart, remis en place : « (commit, ou date) » est "
+              "impossible a remplir pour qui a installe par executable ou par "
+              "conteneur, c'est-a-dire deux chemins sur quatre",
+        rougit="le modele d'issue ne demande plus une valeur introuvable",
+        editions=[(".github/ISSUE_TEMPLATE/bogue.md",
+                   brut("- **Version du studio** :",
+                        "- **Version du studio** (commit, ou date) :"))]),
+    dict(
+        nom="le modele d'issue ne dit plus ou lire la valeur",
+        banc="banc_version.py",
+        imite="le studio SAIT sa version et l'affiche a deux endroits, et "
+              "celui qui ouvre l'issue ne sait toujours pas ou regarder : "
+              "l'identifiant existe, la question reste sans reponse",
+        rougit="et il dit ou la lire, pour les quatre installations",
+        editions=[(".github/ISSUE_TEMPLATE/bogue.md", brut(
+            "       - en haut de <http://127.0.0.1:8199/admin>, "
+            "\u00e0 c\u00f4t\u00e9 du titre.\n", ""))]),
 ]
 
 
@@ -4949,7 +5225,7 @@ MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX 
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
-             + NOEUD)
+             + NOEUD + VERSION)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

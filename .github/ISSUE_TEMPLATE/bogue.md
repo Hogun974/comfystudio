@@ -32,7 +32,18 @@ assignees: ''
 - **VRAM** :
 - **RAM** :
 - **Système** :
-- **Version du studio** (commit, ou date) :
+- **Version du studio** :
+
+<!-- Le studio la dit lui-même, aux deux mêmes endroits quelle que soit la
+     façon dont tu l'as installé :
+
+       - la ligne « Version » de la bannière, au démarrage, dans la console ;
+       - en haut de <http://127.0.0.1:8199/admin>, à côté du titre.
+
+     Recopie la ligne entière, source comprise : « bd9fc88 (dépôt git) » et
+     « bd9fc88 (gravée à la construction) » ne se cherchent pas de la même
+     façon. Et s'il écrit « inconnue », recopie-le tel quel — c'est une
+     information, pas un champ à deviner. -->
 
 ## Reproductible ?
 

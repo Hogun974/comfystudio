@@ -4,7 +4,7 @@
 Construire depuis paquet\\ :
     ..\\..\\ComfyUI_windows_portable\\python_embeded\\python.exe -m PyInstaller comfystudio.spec
 
-Trois choses ne se devinent pas et sont donc ecrites ici :
+Quatre choses ne se devinent pas et sont donc ecrites ici :
 
 1. serveur.py fait « from catalogue import ... » sur des modules VOISINS, pas
    installes. Sans pathex, l'analyse ne les trouve pas et l'exe plante a la
@@ -16,6 +16,10 @@ Trois choses ne se devinent pas et sont donc ecrites ici :
 3. entrainer_aiguilleur est charge par importlib.import_module() (serveur.py
    ligne 3593), un nom construit a l'execution que l'analyse statique ne suit
    pas. D'ou hiddenimports.
+4. L'exe n'a AUCUN moyen de savoir quelle version il est : pas de .git, et le
+   code est deplie dans un dossier temporaire. La spec grave donc l'identifiant
+   a la construction, dans le fichier que serveur.py lit — voir « Ce que l'exe
+   annoncera » plus bas, et docs/installation.md.
 """
 import os
 
@@ -82,6 +86,49 @@ for _corpus in ("corpus_aiguillage.jsonl", "corpus_llm.jsonl",
                 "corpus_llm2.jsonl", "banc_aiguillage.jsonl",
                 "banc_neuf.jsonl"):
     DONNEES.append(_f(_corpus))
+
+# ── Ce que l'exe annoncera ────────────────────────────────────────────
+# Un exe n'emporte pas .git, et sous PyInstaller ICI pointe sur un _MEIxxx
+# temporaire ou il n'y a rien a lire : _version_du_depot() y est muet, ce qui
+# est la verite. La seule facon pour l'executable de savoir ce qu'il est, c'est
+# qu'on le lui grave ICI, a la construction.
+#
+# ET SURTOUT PAS RELU A L'EXECUTION dans le dossier de l'exe. Ce .bat
+# recommande de poser l'exe dans D:\ComfyStudio, qui EST un clone : mesure du
+# 4 septembre 2026, l'executable construit le 30 aout a 15 h 22 y annoncerait
+# le commit du jour, 187 commits plus loin. Un identifiant faux est pire que
+# « inconnue ».
+def _identifiant_de_construction():
+    """Le commit court de la SOURCE, ou "" si on ne peut pas savoir.
+
+    On ne casse PAS la construction quand git manque, contrairement a _f() :
+    une donnee absente donne un 404 des mois plus tard et se cache, alors qu'un
+    identifiant absent se voit du premier coup — le studio imprime « Version :
+    inconnue » a chaque demarrage. Le refus tardif n'a rien a garder ici.
+    """
+    import subprocess
+    try:
+        fini = subprocess.run(["git", "-C", SOURCE, "rev-parse", "--short", "HEAD"],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              timeout=5)
+    except Exception:
+        return ""
+    return (fini.stdout.decode("utf-8", "replace").strip()
+            if fini.returncode == 0 else "")
+
+
+# Dans build\, qui est deja hors du depot (.gitignore) et que
+# construire_windows.bat efface avant chaque construction : ecrire a la racine
+# de la source y laisserait un fichier que le studio LU DEPUIS LE CLONE
+# prefererait un jour a son propre depot. Le nom du fichier est celui que
+# serveur.py lit — FICHIER_VERSION — et le Dockerfile grave le meme.
+VERSION_GRAVEE = os.path.join(ICI, "build", "version.txt")
+os.makedirs(os.path.dirname(VERSION_GRAVEE), exist_ok=True)
+with open(VERSION_GRAVEE, "w", encoding="utf-8") as _sortie_version:
+    _sortie_version.write(_identifiant_de_construction() + "\n")
+# Pas _f() : ce fichier vient d'etre ecrit, il ne peut pas manquer, et son
+# absence ne serait de toute facon pas une raison de casser la construction.
+DONNEES.append((VERSION_GRAVEE, "."))
 
 CACHES = [
     # importlib.import_module("entrainer_aiguilleur") : nom en chaine, invisible

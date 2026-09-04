@@ -200,6 +200,37 @@ suite. **Une mutation verte n'est pas la seule façon qu'un filet a d'avoir un
 trou** — et c'est une raison de plus de prendre le sens inverse même quand les
 mutations sont toutes rouges.
 
+### Le cas le plus net : rougir sur toutes les lignes, sans mourir
+
+Les dix-neuf mutations de [l'identifiant du studio](installation.md#quelle-version-tourne)
+sont nées avec `banc_version.py`, donc par ce second chemin. Le résultat est le
+plus franc que ce dépôt ait relevé, le **4 septembre 2026** : `serveur.py`,
+`web/admin.html`, le `Dockerfile`, `paquet/comfystudio.spec`,
+`construire_windows.bat` et le modèle d'issue repris **au commit d'avant**, le
+banc neuf lancé dessus —
+
+```
+  0 verifications passees, 19 echouees
+```
+
+**Dix-neuf lignes rouges sur dix-neuf, et aucune mort.** Les dix-neuf que les
+mutations nomment sont exactement celles-là. Ce n'est pas une chance : le banc
+est écrit pour cela, comme `web/demarrage.html` sous `try` avant lui. La
+fonction est cherchée par `getattr` et non importée, chaque fichier est ouvert
+sous `try`, et toute absence pose **un cas nommé** au lieu d'une trace de pile —
+« version_du_studio() n'existe pas », « serveur.py ne nomme aucun fichier ». Un
+banc qui meurt sur le code d'avant ne mesure pas le sens inverse ; celui-ci en
+mesure la totalité.
+
+L'isolement a été relevé dans la foulée, mutation par mutation : **douze des
+dix-neuf rougissent leur ligne et elle seule.** Les sept autres en entraînent
+une à cinq de plus, et c'est voulu — elles touchent la **porte d'acceptation**,
+`_identifiant_acceptable()`, que les deux sources traversent. Cette porte est
+unique **exprès** : deux refus écrits à deux endroits se couvriraient l'un
+l'autre, et l'on ne pourrait plus faire rougir ni l'un ni l'autre. Un filet
+qu'on ne peut pas voir rougir ne mesure rien — c'est la phrase de ce fichier,
+appliquée cette fois au code gardé et non au banc.
+
 ## Les trous qu'on connaît et qu'on n'a pas encore bouchés
 
 `TROUS_CONNUS` rassemble les mutations qu'une relecture adverse a trouvées et que
