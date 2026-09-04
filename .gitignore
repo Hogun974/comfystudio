@@ -57,3 +57,9 @@ etude_parallelisme.md
 essai_annulation_chaine.md
 essai_modeles_ecriture.md
 banc_ecriture/resultats.jsonl
+
+# L'identifiant grave par une CONSTRUCTION, jamais par un clone. Le studio
+# prefere toujours git quand il y a un .git, mais un clone sans git installe
+# — le Python embarque de ComfyUI arrive souvent seul — lirait ce fichier et
+# annoncerait le commit de celui qui l'a construit. Il n'a rien a faire ici.
+version.txt

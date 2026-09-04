@@ -118,6 +118,15 @@ Le détour par la variable n'est pas une coquetterie : **`docker compose up
 --build` n'accepte pas `--build-arg`**. Sans le câblage du compose, nommer sa
 version demandait de construire en deux temps — et personne ne l'aurait fait.
 
+**Si tu préfixes par `sudo`, la variable se met après lui** : `sudo` remet
+l'environnement à zéro, et `VERSION=… sudo docker compose …` grave une version
+vide sans un mot. C'est ainsi que la première image de ce studio a été déployée
+le 4 septembre 2026, annonçant `inconnue` alors que la commande semblait juste.
+
+```bash
+sudo VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
+```
+
 Le studio l'annonce alors au démarrage et en haut de `/admin` :
 
 ```

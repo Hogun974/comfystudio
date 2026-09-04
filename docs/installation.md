@@ -35,6 +35,15 @@ sudo docker compose up -d          # préfixer chaque commande
 sudo usermod -aG docker "$USER"    # ou entrer dans le groupe, une fois
 ```
 
+**Avec `sudo`, la variable se met après lui, jamais avant.** `sudo` remet
+l'environnement à zéro : `VERSION=… sudo docker compose up -d --build` grave une
+version **vide** et le studio annonce `inconnue`, sans que rien ne signale la
+perte. Mesuré le 4 septembre 2026 en déployant ce studio-ci.
+
+```bash
+sudo VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
+```
+
 Le groupe n'est pas ajouté par l'installeur, et ce n'est pas un oubli :
 appartenir au groupe `docker` équivaut à être root sur la machine — la socket
 suffit à monter n'importe quel dossier dans un conteneur privilégié. C'est un
