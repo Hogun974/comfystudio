@@ -62,3 +62,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 - [Clés d'API : LLM et images](cles-api.md) — les fournisseurs distants, le choix demande par demande, et le local comme repli de tout.
 - [Ce que le nuage a coûté](cout-du-nuage.md) — le compteur d'appels distants par compte et par fournisseur, le plafond mensuel, et pourquoi aucun euro n'y figure.
 - [Télécharger les modèles](telecharger-les-modeles.md) — la récupération en HTTPS direct, la reprise après coupure, la vérification de taille.
+
+## Ce qui a été mesuré une fois, un jour
+
+- [Le journal des essais](journal/README.md) — six comptes rendus datés du 30 août 2026, gardés tels quels : installation par un inconnu, exécutable Windows, retouche localisée et ses limites, masque depuis une description, retouche d'un morceau. **Ce ne sont pas des pages de documentation** : ils décrivent un état, pas une règle, et l'un d'eux porte un verdict que le code a démenti depuis. Le tableau en tête du journal dit, pour chacun, ce qui a bougé.

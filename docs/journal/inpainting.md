@@ -1,5 +1,12 @@
 # Retouche localisee (inpainting) — ce que la mesure decide
 
+> **Compte rendu daté du 30 août 2026, gardé tel quel.**
+> Rien n'a bougé sur le fond. Suivi par
+> [Un masque depuis une description](masque_texte.md) puis
+> [Où la retouche casse](retouche_limites.md).
+> Voir [le journal des essais](README.md) pour ce qui a bougé depuis, et
+> [la documentation](../README.md) pour l'état actuel.
+
 Essai mene le 30/08/2026 sur la machine du studio (RTX 2080 Ti 11 Go, ComfyUI
 0.33.1, torch 2.13 / cu130). Aucun fichier du depot n'a ete modifie, aucun
 commit. Les fichiers deposes dans `input/` et `output/` de ComfyUI ont ete

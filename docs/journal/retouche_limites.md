@@ -1,5 +1,13 @@
 # Retouche localisee — ou elle casse
 
+> **Compte rendu daté du 30 août 2026, gardé tel quel.**
+> Rien n'a bougé sur le fond. Suite de
+> [Retouche localisée](inpainting.md) et de
+> [Un masque depuis une description](masque_texte.md). Le lanceur qu'il
+> cite était un fichier local de l'auteur, absent du dépôt.
+> Voir [le journal des essais](README.md) pour ce qui a bougé depuis, et
+> [la documentation](../README.md) pour l'état actuel.
+
 Essai mene le 30/08/2026 sur la machine du studio (RTX 2080 Ti 11 Go, ComfyUI
 0.33.1, torch 2.13.0+cu130, python 3.13.14). Suite de `essai_inpainting.md` et
 `essai_masque_texte.md`, cette fois contre le code livre : les graphes mesures

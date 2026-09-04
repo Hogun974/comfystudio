@@ -1,5 +1,10 @@
 # Retouche d'un morceau existant (audio2audio) — essai et mesures
 
+> **Compte rendu daté du 30 août 2026, gardé tel quel.**
+> Rien n'a bougé sur le fond.
+> Voir [le journal des essais](README.md) pour ce qui a bougé depuis, et
+> [la documentation](../README.md) pour l'état actuel.
+
 Question posee : peut-on reprendre un morceau deja rendu et lui changer de style
 en gardant sa structure, comme on fait de l'img2img sur une image ?
 

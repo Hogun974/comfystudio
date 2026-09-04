@@ -1,5 +1,11 @@
 # Essai du chemin « exécutable Windows »
 
+> **Compte rendu daté du 30 août 2026, gardé tel quel.**
+> Les chiffres tiennent. Depuis, le script de construction ne code plus
+> le chemin de Python en dur.
+> Voir [le journal des essais](README.md) pour ce qui a bougé depuis, et
+> [la documentation](../README.md) pour l'état actuel.
+
 Tout ce qui suit a été mesuré le **30 août 2026 entre 15 h 12 et 15 h 30**, sur
 ce poste (Windows 11 Pro 26200, `D:\ComfyUI_windows_portable\python_embeded\python.exe`
 3.13.14, PyInstaller 6.22.2), à partir de l'état du dépôt à cette heure-là.

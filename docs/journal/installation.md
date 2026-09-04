@@ -1,5 +1,12 @@
 # Essai d'installation de ComfyStudio par un inconnu
 
+> **Compte rendu daté du 30 août 2026, gardé tel quel.**
+> **Son verdict est périmé** : les trois blocages d'installation qu'il
+> décrit ont été corrigés le 4 septembre 2026 et sont tenus par
+> `banc_noeud.py`. Ce qu'il mesure reste vrai du dépôt de ce jour-là.
+> Voir [le journal des essais](README.md) pour ce qui a bougé depuis, et
+> [la documentation](../README.md) pour l'état actuel.
+
 **Date** : 30 août 2026
 **Machine d'essai** : une machine Linux sans carte graphique (Ubuntu 24.04, 4 cœurs, 15,6 Go de RAM, 164 Go libres, **aucune carte NVIDIA**)
 **Méthode** : clone git propre du dépôt dans `/tmp/essai-neuf`, lecture du README à partir de « Installer », puis exécution du chemin Docker.

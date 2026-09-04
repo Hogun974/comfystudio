@@ -1,5 +1,12 @@
 # Un masque a partir d'une description — ce que la mesure decide
 
+> **Compte rendu daté du 30 août 2026, gardé tel quel.**
+> Rien n'a bougé sur le fond. Suite de
+> [Retouche localisée](inpainting.md) ; suivi par
+> [Où la retouche casse](retouche_limites.md).
+> Voir [le journal des essais](README.md) pour ce qui a bougé depuis, et
+> [la documentation](../README.md) pour l'état actuel.
+
 Essai mene le 30/08/2026 sur la machine du studio (RTX 2080 Ti 11 Go, ComfyUI
 0.33.1, torch 2.13.0+cu130). Suite directe de `essai_inpainting.md`, qui avait
 etabli que la retouche localisee tient et que le seul verrou restant etait le
