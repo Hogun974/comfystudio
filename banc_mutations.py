@@ -3049,6 +3049,133 @@ FACTEUR_MFA = [
 ]
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  Desarmer le facteur d'un AUTRE — six mutations
+# ══════════════════════════════════════════════════════════════════════
+# CE QUE CETTE FAMILLE GARDE : une commodite qui ne doit pas rogner une
+# promesse. Rouvrir un compte dont le telephone ET les codes de secours etaient
+# perdus demandait, jusqu'au 4 septembre 2026, d'arreter le studio et d'editer
+# _comptes.json a la main. /admin sait le faire — et la question n'est plus
+# « est-ce que ca marche » mais « est-ce que ca coute encore la meme chose ».
+FACTEUR_ADMIN = [
+    dict(
+        nom="le retrait s'ouvre a tout compte administrateur",
+        banc="banc_comptes.py",
+        imite="LA COMMODITE QUI MANGE LA PROMESSE, et elle se defend tres bien "
+              "a l'ecrit : « c'est /admin, donc un administrateur suffit ». Un "
+              "compte administrateur peut deja imposer un mot de passe a "
+              "n'importe qui ; s'il peut AUSSI desarmer, il prend n'importe "
+              "quel compte en deux gestes, et le second facteur ne protege "
+              "plus que d'un mot de passe qui fuit. Le jeton, lui, ne se lit "
+              "que sur la machine",
+        rougit="admin_par_jeton() ne connait QUE le jeton",
+        editions=[
+            ("serveur.py", brut(
+                '    jeton = (req.headers.get("X-Admin") or '
+                'req.cookies.get("studio_admin") or "")\n'
+                "    return bool(ADMIN_JETON) and secrets.compare_digest(jeton, "
+                "ADMIN_JETON)\n\n\ndef _facteur_du_compte(nom):",
+                '    nom_connecte = req.get("compte") or ""\n'
+                "    if nom_connecte and COMPTES and COMPTES.est_admin(nom_connecte):\n"
+                "        return True\n"
+                '    jeton = (req.headers.get("X-Admin") or '
+                'req.cookies.get("studio_admin") or "")\n'
+                "    return bool(ADMIN_JETON) and secrets.compare_digest(jeton, "
+                "ADMIN_JETON)\n\n\ndef _facteur_du_compte(nom):")),
+        ]),
+    dict(
+        nom="le jeton est verifie APRES avoir desarme",
+        banc="banc_comptes.py",
+        imite="l'ordre inverse, qui se lit comme une garde et n'en est pas "
+              "une : le facteur est deja tombe quand le refus part. La reponse "
+              "dit « refuse », et le compte est ouvert",
+        rougit="elle exige le JETON, et le verifie AVANT de desarmer",
+        editions=[
+            ("serveur.py", brut(
+                "    if not admin_par_jeton(req):\n"
+                "        return web.json_response(\n"
+                '            {"erreur": "il faut le jeton d\'administration, pas '
+                'seulement un "\n'
+                '                       "compte administrateur : desarmer le facteur '
+                'de "\n'
+                '                       "quelqu\'un d\'autre demande la main sur la '
+                'machine"},\n'
+                "            status=403)\n",
+                "")),
+            # LE COMMENTAIRE EST DANS L'ANCRE, et ce n'est pas un ornement :
+            # « COMPTES.mfa_retirer(nom) » seul apparait DEUX fois dans
+            # serveur.py — ici, et dans la route du proprietaire, qui n'a rien
+            # a voir. Une ancre en double rend « perimee » et la mutation ne
+            # mesure plus rien.
+            ("serveur.py", brut(
+                "    COMPTES.mfa_retirer(nom)\n"
+                "    # LA CONSOLE DU STUDIO EST LE JOURNAL.",
+                "    COMPTES.mfa_retirer(nom)\n"
+                "    if not admin_par_jeton(req):\n"
+                '        return web.json_response({"erreur": "jeton"}, status=403)\n'
+                "    # LA CONSOLE DU STUDIO EST LE JOURNAL.")),
+        ]),
+    dict(
+        nom="la route qui desarme n'est plus branchee",
+        banc="banc_comptes.py",
+        imite="une fonctionnalite morte que rien ne signale : /admin montre le "
+              "bouton, le clic rend 404, et le seul remede documente ne marche "
+              "plus. C'est le defaut qui a fait naitre ce fichier",
+        rougit="la route qui desarme pour autrui est branchee",
+        editions=[
+            ("serveur.py", brut(
+                '    a.router.add_delete("/api/admin/comptes/{nom}/mfa", '
+                "api_admin_mfa_retirer)\n",
+                "")),
+        ]),
+    dict(
+        nom="l'etat du facteur emmene le secret avec lui",
+        banc="banc_comptes.py",
+        imite="le secret TOTP sort par une route. Il est en clair dans "
+              "_comptes.json — il ne peut pas en etre autrement, il faut le "
+              "relire pour calculer le code attendu — et la seule chose qui "
+              "l'empeche de sortir, c'est que personne ne le mette dans une "
+              "reponse. Une ligne suffit",
+        rougit="l'etat servi a /admin ne porte qu'un mot et un nombre",
+        editions=[
+            ("serveur.py", brut(
+                '    return {"mfa": etat,\n',
+                '    return {"mfa": etat,\n'
+                '            "secret": (COMPTES.gens.get(nom.lower(), {})\n'
+                '                       .get("mfa", {}).get("secret", "")),\n')),
+        ]),
+    dict(
+        nom="le retrait laisse l'enrolement en attente",
+        banc="banc_comptes.py",
+        imite="le compte reste coince dans l'etat exact qu'on venait "
+              "debloquer : « en attente » interdit de recommencer un "
+              "enrolement, et il n'y a plus rien pour l'effacer. Celui qui a "
+              "mal scanne son QR code n'a plus AUCUN chemin, ni le sien ni "
+              "celui de l'administrateur",
+        rougit="le retrait efface AUSSI l'attente",
+        editions=[
+            ("comptes.py", brut(
+                '        c.pop("mfa", None)\n        c.pop("mfa_attente", None)\n',
+                '        c.pop("mfa", None)\n')),
+        ]),
+    dict(
+        nom="le retrait ne laisse plus de trace",
+        banc="banc_comptes.py",
+        imite="une protection posee par quelqu'un d'autre tombe en silence. "
+              "docs/comptes.md promet la ligne de console ; sans elle, le "
+              "proprietaire du studio n'a aucun moyen d'apprendre qu'on s'est "
+              "servi de cette porte — et c'est le propre d'une trace de "
+              "disparaitre sans que personne ne le remarque",
+        rougit="le retrait laisse une trace dans la console",
+        editions=[
+            ("serveur.py", brut(
+                '    print(f"  second facteur DESARME sur le compte « {nom} » "\n'
+                '          f"depuis la console d\'administration", flush=True)\n',
+                "")),
+        ]),
+]
+
+
 PAGE_LANGUES = [
     dict(
         nom="la page repart sans en-tete de cache",
@@ -5220,7 +5347,7 @@ VERSION = [
 ]
 
 
-MUTATIONS = (CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
+MUTATIONS = (FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE

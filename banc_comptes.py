@@ -543,6 +543,149 @@ try:
     dit(not manquantes, "et les cinq routes du second facteur sont branchees",
         ", ".join(manquantes) or f"{len(attendues)} sur {len(poses)} routes")
 
+    print("\n  ── desarmer le facteur d'un AUTRE : le jeton, pas un role ──")
+    # CE QUE CETTE SECTION GARDE. Jusqu'au 4 septembre 2026, rouvrir un compte
+    # dont le telephone ET les codes de secours etaient perdus demandait
+    # d'arreter le studio et d'editer conversations/_comptes.json a la main.
+    # /admin sait le faire maintenant — et c'est precisement le genre de
+    # commodite qui rogne une promesse sans qu'une ligne de documentation ne
+    # bouge, si on ne la tient pas.
+    #
+    # LA PROMESSE : un compte administrateur peut deja imposer un mot de passe
+    # a n'importe qui. S'il pouvait AUSSI desarmer, il prendrait n'importe quel
+    # compte en deux gestes, et le second facteur ne protegerait plus de rien
+    # d'autre que d'un mot de passe qui fuit. Le jeton, lui, ne se lit que sur
+    # la machine : l'exiger coute ce que coutait le remede d'avant.
+    # LES DEUX SORTES DE DEFINITION. Les routes sont « async def », donc des
+    # AsyncFunctionDef : ne ramasser que FunctionDef rendait un dictionnaire ou
+    # api_admin_mfa_retirer n'existait pas, et trois cas rougissaient sur un
+    # « None » plutot que sur le code. Un banc qui se trompe de noeud mesure sa
+    # propre erreur.
+    defs = {n.name: n for n in ast.walk(arbre)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    porte_jeton = defs.get("admin_par_jeton")
+    retirer = defs.get("api_admin_mfa_retirer")
+    VIDE = ast.Module(body=[], type_ignores=[])
+
+    def code_de(fn):
+        """Le corps SANS la docstring — ce qui s'execute, pas ce qui s'explique.
+
+        Les deux cas « ce mot n'apparait nulle part » portaient sur le texte
+        entier : ils rougissaient parce que la docstring de _facteur_du_compte
+        dit « le secret ne passe pas par la », et celle d'admin_par_jeton
+        « compte administrateur ». Une garde qu'une explication peut casser
+        peut aussi bien etre satisfaite par une explication.
+        """
+        if fn is None:
+            return ""
+        corps = list(fn.body)
+        if (corps and isinstance(corps[0], ast.Expr)
+                and isinstance(corps[0].value, ast.Constant)
+                and isinstance(corps[0].value.value, str)):
+            corps = corps[1:]
+        return "\n".join(ast.unparse(x) for x in corps)
+
+    dit("/api/admin/comptes/{nom}/mfa" in poses,
+        "la route qui desarme pour autrui est branchee",
+        "sinon /admin propose un bouton qui n'existe pas")
+
+    appels_jeton = [n for n in ast.walk(retirer or VIDE)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                    and n.func.id == "admin_par_jeton"]
+    coupe = [n for n in ast.walk(retirer or VIDE)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+             and n.func.attr == "mfa_retirer"]
+    dit(retirer is not None and len(appels_jeton) == 1 and len(coupe) == 1
+        and appels_jeton[0].lineno < coupe[0].lineno,
+        "elle exige le JETON, et le verifie AVANT de desarmer",
+        f"jeton ligne {appels_jeton[0].lineno if appels_jeton else '?'}, "
+        f"retrait ligne {coupe[0].lineno if coupe else '?'}")
+
+    # LE REFUS EST UN RETOUR, PAS UN AVERTISSEMENT. Verifier le jeton puis
+    # continuer quand meme est le defaut le plus facile a ecrire de tous : le
+    # code se lit comme s'il gardait quelque chose.
+    gardes = [n for n in ast.walk(retirer or VIDE)
+              if isinstance(n, ast.If) and "admin_par_jeton" in ast.unparse(n.test)
+              and any(isinstance(x, ast.Return) for x in ast.walk(n))]
+    dit(len(gardes) == 1,
+        "et ce controle SORT de la fonction quand il echoue",
+        f"{len(gardes)} branche(s) qui refusent")
+
+    # LE JETON SEUL, ET RIEN QUI RESSEMBLE A UN ROLE. On cherche le contraire
+    # de ce qu'on veut : si un jour quelqu'un « repare » admin_par_jeton en y
+    # remettant le compte connecte, pour que le bouton marche sans coller le
+    # jeton, ce cas rougit.
+    dans_jeton = code_de(porte_jeton)
+    dit(porte_jeton is not None and "est_admin" not in dans_jeton
+        and "compte" not in dans_jeton and "compare_digest" in dans_jeton,
+        "admin_par_jeton() ne connait QUE le jeton : ni role, ni compte "
+        "connecte, et la comparaison est a temps constant",
+        "est_admin" if "est_admin" in dans_jeton else
+        ("compte" if "compte" in dans_jeton else "jeton seul"))
+
+    # LE TEMOIN, sans lequel le cas du dessus serait vrai d'un serveur qui
+    # aurait perdu la notion de compte administrateur.
+    dans_ok = code_de(defs.get("admin_ok"))
+    dit("est_admin" in dans_ok,
+        "alors que admin_ok(), lui, ouvre bien aux comptes administrateurs : "
+        "le cas ci-dessus n'est pas vrai de rien",
+        "admin_ok consulte est_admin")
+
+    # CETTE PORTE-LA NE SERT QU'A CA. Posee sur d'autres routes, elle
+    # deviendrait une gene ordinaire qu'on finirait par retirer partout.
+    tous_appels = [n for n in ast.walk(arbre)
+                   if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                   and n.func.id == "admin_par_jeton"]
+    dit(len(tous_appels) == 2,
+        "elle garde le retrait, et sert a dire d'avance a la console si le "
+        "bouton sera cliquable — deux endroits, pas un de plus",
+        f"{len(tous_appels)} appel(s)")
+
+    # CE QUE LA CONSOLE APPREND DU FACTEUR : un mot et un nombre.
+    facteur = defs.get("_facteur_du_compte")
+    clefs = {c.value for n in ast.walk(facteur or VIDE)
+             if isinstance(n, ast.Dict) for c in n.keys
+             if isinstance(c, ast.Constant)}
+    dit(facteur is not None and clefs == {"mfa", "secours"},
+        "l'etat servi a /admin ne porte qu'un mot et un nombre",
+        ", ".join(sorted(clefs)) or "aucune clef")
+    dit(facteur is not None and "secret" not in code_de(facteur)
+        and "mfa_preparer" not in code_de(facteur),
+        "et il ne va chercher ni le secret ni de quoi le retirer",
+        "rien de secret n'y est nomme")
+
+    # LA TRACE, PARCE QUE LA DOCUMENTATION LA PROMET. docs/comptes.md dit que
+    # le studio ecrit une ligne dans sa console a chaque retrait : c'est le
+    # seul endroit ou le proprietaire verra qu'une protection posee par
+    # quelqu'un d'autre a ete levee. Une promesse qui n'est gardee par rien se
+    # perd au premier remaniement, et personne ne s'apercoit de sa disparition
+    # — c'est le propre d'une trace.
+    traces = [n for n in ast.walk(retirer or VIDE)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+              and n.func.id == "print" and "DESARME" in ast.unparse(n)]
+    dit(len(traces) == 1 and coupe and traces[0].lineno > coupe[0].lineno,
+        "le retrait laisse une trace dans la console, ecrite APRES coup : "
+        "annoncer avant, c'est annoncer ce qui peut encore echouer",
+        f"{len(traces)} trace(s)")
+
+    print("\n  ── un enrolement commence et jamais confirme se debloque aussi ──")
+    # LE CAS QU'ON OUBLIE. mfa_en_attente() empeche d'en recommencer un — c'est
+    # voulu, sinon chaque rechargement de page tirerait un secret neuf. Mais
+    # celui qui a mal scanne son QR code reste bloque la, sans etre arme : si
+    # le retrait ne nettoyait que « mfa », son compte serait coince pour
+    # toujours dans un etat que personne ne peut ni confirmer ni annuler.
+    r3 = neuf()
+    r3.creer("coince", MDP)
+    r3.mfa_preparer("coince")
+    dit(r3.mfa_en_attente("coince") and not r3.mfa_arme("coince"),
+        "l'enrolement est en attente, et rien n'est arme")
+    r3.mfa_retirer("coince")
+    dit(not r3.mfa_en_attente("coince"),
+        "le retrait efface AUSSI l'attente, et non le seul facteur arme")
+    s4, _ = r3.mfa_preparer("coince")
+    dit(bool(r3.mfa_confirmer("coince", mfa.code(s4))),
+        "un enrolement neuf redevient possible derriere")
+
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for x in rate:
         print(f"    RATE : {x}")

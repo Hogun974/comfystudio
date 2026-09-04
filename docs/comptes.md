@@ -62,7 +62,10 @@ administrateur connecté n'a plus à le coller.
 
 **Facultatif, et armé par chacun sur son propre compte.** Le bouton « second
 facteur » du bandeau, à côté de « sortir ». L'administrateur ne peut pas
-l'armer pour quelqu'un d'autre : il faudrait son téléphone.
+l'armer pour quelqu'un d'autre : il faudrait son téléphone. Il peut en
+revanche le **désarmer**, avec le jeton d'administration et pas autrement —
+c'est le seul remède quand un téléphone et ses codes de secours sont perdus
+ensemble, et il est décrit [plus bas](#rouvrir-un-compte-dont-le-téléphone-est-perdu).
 
 Un code à six chiffres qui change toutes les trente secondes, que ton
 application d'authentification calcule hors ligne. Le studio n'appelle aucun
@@ -140,17 +143,34 @@ Dans l'ordre, du moins coûteux au plus :
 2. **Plus de codes de secours non plus.** Le compte ne peut plus s'ouvrir seul,
    et c'est exactement ce que le second facteur promet. Il faut alors la main
    sur la machine :
-   - **par `/admin`**, avec le jeton d'administration (`STUDIO_ADMIN`) : la
-     seule porte qui n'ait pas de second facteur, parce que c'est celle de
-     l'amorçage. Elle permet d'imposer un nouveau mot de passe — mais **pas** de
-     désarmer le facteur de quelqu'un d'autre.
-   - **par le fichier**, et c'est le vrai remède : arrête le studio, ouvre
-     `conversations/_comptes.json`, **retire le bloc `"mfa"`** du compte
-     concerné, relance. Le compte redevient un compte à mot de passe simple, et
-     son propriétaire peut réenrôler.
+   - **par `/admin`**, onglet *comptes*, bouton **« désarmer le facteur »**.
+     La colonne *second facteur* dit qui a quoi, et combien de codes de secours
+     il reste à chacun. Le compte redevient un compte à mot de passe simple —
+     celui que son propriétaire connaît toujours — et il peut réenrôler depuis
+     zéro. Son ancien secret est effacé, ses anciens codes de secours ne valent
+     plus rien.
 
-   Sauvegarde le fichier avant d'y toucher, et n'y touche pas pendant que le
-   studio tourne : il le réécrit en entier à chaque changement.
+     **Il faut le jeton d'administration**, pas seulement un compte marqué
+     administrateur. Le bouton est grisé sinon, et le serveur refuse de toute
+     façon. Ce n'est pas une tracasserie : un compte administrateur peut déjà
+     imposer un mot de passe à n'importe qui ; s'il pouvait aussi désarmer, il
+     prendrait n'importe quel compte en deux gestes et le second facteur ne
+     promettrait plus rien. Le jeton, lui, ne se lit que **sur la machine** —
+     la console au premier démarrage, ou `conversations/_admin.json`. C'est
+     exactement ce que coûtait le remède d'avant.
+
+     Le studio écrit une ligne dans sa console à chaque fois : `second facteur
+     DÉSARMÉ sur le compte « … »`. C'est le seul endroit où le propriétaire du
+     studio verra qu'une protection posée par quelqu'un d'autre a été levée.
+   - **par le fichier**, s'il ne reste plus rien d'autre — le studio ne démarre
+     plus, ou le jeton est perdu lui aussi : arrête le studio, ouvre
+     `conversations/_comptes.json`, **retire le bloc `"mfa"`** du compte
+     concerné, relance.
+
+     Sauvegarde le fichier avant d'y toucher, et n'y touche pas pendant que le
+     studio tourne : il le réécrit en entier à chaque changement. Une accolade
+     de travers coûte tous les comptes — c'est pour cela que ce chemin n'est
+     plus le premier.
 
 ### Ce qu'il faut savoir sur le stockage
 
@@ -165,6 +185,12 @@ seul compte qui fait tourner le studio, ce qui n'a d'effet que sur POSIX et
 aucun sur Windows —, le secret **ne sort jamais** par une route (ni par la liste
 des comptes de `/admin`, ni par l'état du facteur), et les **codes de secours**,
 eux, sont empreints avec scrypt comme des mots de passe.
+
+Ce que la liste des comptes de `/admin` porte, depuis qu'elle sait montrer le
+facteur, c'est **un mot et un nombre** : `armé`, `en attente` ou rien, et
+combien de codes de secours restent. Ni le secret, ni les empreintes des codes.
+Un administrateur apprend donc qui s'est armé — il l'apprendrait aussi bien en
+regardant le fichier — et rien de ce qui permettrait d'entrer.
 
 Conséquence à connaître : **qui lit le disque de l'hôte peut calculer tes
 codes**. Le second facteur protège d'un mot de passe qui fuit, pas de quelqu'un

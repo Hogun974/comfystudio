@@ -327,7 +327,7 @@ td .detail{display:block;max-width:34ch}
         jamais conservé, seule une empreinte l'est, et personne — pas même
         l'administrateur — ne peut le relire.</p>
       <div class="tableau"><table>
-        <thead><tr><th>compte</th><th>rôle</th><th>créé</th><th>dernière entrée</th><th></th></tr></thead>
+        <thead><tr><th>compte</th><th>rôle</th><th>second facteur</th><th>créé</th><th>dernière entrée</th><th></th></tr></thead>
         <tbody id="listeComptes"></tbody>
       </table></div>
       <div class="rangee" style="margin-top:10px">
@@ -659,7 +659,7 @@ async function rafraichirComptes() {
   const corps = $("#listeComptes");
   corps.innerHTML = "";
   if (!d.comptes.length) {
-    corps.innerHTML = '<tr><td colspan="5" class="detail">aucun compte \u2014 '
+    corps.innerHTML = '<tr><td colspan="6" class="detail">aucun compte \u2014 '
       + 'le studio reste ouvert \u00e0 tous, chaque navigateur avec son espace</td></tr>';
   }
   const envoyer = async (charge, methode = "POST", ou = "/api/admin/comptes") => {
@@ -670,19 +670,52 @@ async function rafraichirComptes() {
     return true;
   };
 
+  /* L'\u00c9TAT DU SECOND FACTEUR, ET CE QU'IL PERMET DE FAIRE. \u00ab en attente \u00bb
+     compte : c'est un enr\u00f4lement commenc\u00e9 et jamais confirm\u00e9, et il emp\u00eache
+     d'en recommencer un \u2014 celui qui a mal scann\u00e9 son QR code est bloqu\u00e9 l\u00e0,
+     et c'est exactement le cas qu'un administrateur doit pouvoir d\u00e9bloquer. */
+  const facteur = (c) =>
+    c.mfa === "arme"
+      ? `arm\u00e9 <span class="detail">(${c.secours} code${c.secours > 1 ? "s" : ""} de secours)</span>`
+      : c.mfa === "en_attente" ? "en attente" : "\u2014";
+
   for (const c of d.comptes) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><b>${ech(c.nom)}</b></td>
       <td class="detail">${c.admin ? "administrateur" : "utilisateur"}</td>
+      <td class="detail">${facteur(c)}</td>
       <td class="detail">${ech(c.cree)}</td>
       <td class="detail">${ech(c.vu) || "\u2014"}</td>
       <td>
         <button data-role="${ech(c.nom)}">${c.admin ? "retirer l'admin" : "rendre admin"}</button>
         <button data-mdp="${ech(c.nom)}" style="margin-left:6px">mot de passe</button>
+        ${c.mfa ? `<button data-mfa="${ech(c.nom)}" style="margin-left:6px">d\u00e9sarmer le facteur</button>` : ""}
         <button data-sup="${ech(c.nom)}" style="margin-left:6px">supprimer</button>
       </td>`;
     corps.appendChild(tr);
+    /* D\u00c9SARMER. Le bouton n'existe que s'il y a quelque chose \u00e0 d\u00e9sarmer, et
+       il refuse tout seul quand la console n'a qu'un compte administrateur
+       sans le jeton : c'est le serveur qui tranche, la page ne fait que le
+       dire d'avance plut\u00f4t que de laisser cliquer pour rien. */
+    const bMfa = tr.querySelector("[data-mfa]");
+    if (bMfa && !d.peut_desarmer) {
+      bMfa.disabled = true;
+      bMfa.title = "il faut le jeton d'administration, pas seulement un compte "
+                 + "administrateur : lever une protection pos\u00e9e par quelqu'un "
+                 + "d'autre demande la main sur la machine";
+    } else if (bMfa) {
+      bMfa.onclick = () => {
+        if (!confirm(`D\u00e9sarmer le second facteur de ${c.nom} ?\n\n`
+                   + `Son compte redeviendra joignable avec son mot de passe `
+                   + `SEUL. Son secret est effac\u00e9 : il devra r\u00e9enr\u00f4ler depuis `
+                   + `z\u00e9ro, et ses codes de secours ne valent plus rien.\n\n`
+                   + `\u00c0 ne faire que pour rouvrir un compte dont le t\u00e9l\u00e9phone `
+                   + `ET les codes de secours sont perdus.`)) return;
+        envoyer(null, "DELETE",
+                "/api/admin/comptes/" + encodeURIComponent(c.nom) + "/mfa");
+      };
+    }
     tr.querySelector("[data-role]").onclick = () =>
       envoyer({ nom: c.nom, admin: !c.admin });
     tr.querySelector("[data-mdp]").onclick = () => {

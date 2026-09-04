@@ -8195,11 +8195,65 @@ async def api_mfa_secours(req):
     return web.json_response(dict(_etat_mfa(nom), secours=secours))
 
 
+def admin_par_jeton(req):
+    """Le porteur du JETON, et pas seulement un compte administrateur.
+
+    admin_ok() ouvre aux deux : le jeton, et tout compte marque administrateur.
+    C'est bon pour tout ce que la console fait — creer un compte, changer un mot
+    de passe, effacer une machine. Ce n'est PAS bon pour desarmer le second
+    facteur de QUELQU'UN D'AUTRE.
+
+    Le second facteur promet une chose precise, et docs/comptes.md l'ecrit :
+    « personne ne pourrait le faire rentrer, pas meme l'administrateur ». Un
+    compte administrateur peut deja imposer un mot de passe a n'importe qui ;
+    s'il pouvait aussi desarmer le facteur, il prendrait n'importe quel compte
+    en deux gestes, et la promesse tomberait sans qu'une ligne de la
+    documentation ne bouge. Le jeton, lui, ne se lit que sur la MACHINE — la
+    console au premier demarrage, ou conversations/_admin.json. L'exiger, c'est
+    exiger la main sur l'hote : exactement ce que coutait le remede d'avant,
+    qui etait d'ouvrir _comptes.json a la main.
+
+    Le cout est nul pour qui l'a deja colle une fois : le cookie « studio_admin »
+    vaut sept jours. Il n'est paye que par un compte administrateur qui n'a
+    jamais eu le jeton — et c'est precisement la personne qu'on veut arreter.
+    """
+    jeton = (req.headers.get("X-Admin") or req.cookies.get("studio_admin") or "")
+    return bool(ADMIN_JETON) and secrets.compare_digest(jeton, ADMIN_JETON)
+
+
+def _facteur_du_compte(nom):
+    """L'ETAT du second facteur, jamais sa matiere.
+
+    Un mot et un nombre : « arme », « en_attente » ou rien, et combien de codes
+    de secours restent. Le secret ne passe pas par la, ni les empreintes des
+    codes — c'est la meme regle que pour _etat_mfa(), la route du proprietaire.
+
+    Compose ICI et non dans comptes.liste(), qui doit rester la reponse a « que
+    peut-on montrer de ces comptes sans rien risquer » : cette console-ci a
+    besoin de plus, elle le demande explicitement, et le banc peut mesurer les
+    deux reponses separement.
+    """
+    if COMPTES.mfa_arme(nom):
+        etat = "arme"
+    elif COMPTES.mfa_en_attente(nom):
+        etat = "en_attente"
+    else:
+        etat = ""
+    return {"mfa": etat,
+            "secours": COMPTES.mfa_secours_restants(nom) if etat == "arme" else 0}
+
+
 async def api_admin_comptes(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "jeton invalide"}, status=403)
-    return web.json_response({"comptes": COMPTES.liste(),
-                              "mdp_minimum": _comptes.MDP_MINIMUM})
+    comptes = [dict(c, **_facteur_du_compte(c["nom"])) for c in COMPTES.liste()]
+    # LA CONSOLE DOIT SAVOIR CE QU'ELLE POURRA FAIRE, et le savoir AVANT de
+    # proposer un bouton qui echouera. Un compte administrateur sans le jeton
+    # voit l'etat du facteur de chacun — il n'y a rien de secret la-dedans —
+    # mais pas de bouton pour le desarmer, et la page dit pourquoi.
+    return web.json_response({"comptes": comptes,
+                              "mdp_minimum": _comptes.MDP_MINIMUM,
+                              "peut_desarmer": admin_par_jeton(req)})
 
 
 async def api_admin_compte_poser(req):
@@ -8222,6 +8276,59 @@ async def api_admin_compte_poser(req):
     except _comptes.ErreurCompte as e:
         return web.json_response({"erreur": str(e)}, status=400)
     return web.json_response({"ok": True, "comptes": COMPTES.liste()})
+
+
+async def api_admin_mfa_retirer(req):
+    """Desarmer le second facteur de quelqu'un d'autre, avec la main sur l'hote.
+
+    CE QUE CETTE ROUTE REMPLACE : « arrete le studio, ouvre
+    conversations/_comptes.json, retire le bloc mfa, relance ». C'etait le seul
+    remede quand un telephone et ses codes de secours etaient perdus ensemble.
+    Il marchait, mais il se paie cher — le proprietaire du studio edite a la
+    main un fichier que le serveur reecrit en entier a chaque changement, et
+    une accolade de travers coute tous les comptes.
+
+    LE JETON, ET NON UN COMPTE ADMINISTRATEUR : voir admin_par_jeton(). Le
+    remede d'avant exigeait la machine ; celui-ci exige la meme chose, sinon la
+    commodite aurait rogne la promesse.
+
+    ON N'ARME PAS POUR AUTRUI, et cela ne changera pas : il faudrait le
+    telephone de l'autre. Cette route ne fait donc qu'une chose, elle enleve.
+
+    LE MOT DE PASSE N'EST PAS TOUCHE. Desarmer rend le compte joignable par son
+    mot de passe seul, celui que son proprietaire connait encore. Enchainer les
+    deux — desarmer puis imposer un mot de passe — reste possible et reste DEUX
+    gestes, tous deux traces.
+    """
+    if not admin_ok(req):
+        return web.json_response({"erreur": "jeton invalide"}, status=403)
+    if not admin_par_jeton(req):
+        return web.json_response(
+            {"erreur": "il faut le jeton d'administration, pas seulement un "
+                       "compte administrateur : desarmer le facteur de "
+                       "quelqu'un d'autre demande la main sur la machine"},
+            status=403)
+    nom = req.match_info["nom"]
+    # Par liste() et non par un coup d'oeil dans le registre : cette route ne
+    # doit connaitre des comptes que ce que tout le monde en connait.
+    if nom.lower() not in {c["nom"].lower() for c in COMPTES.liste()}:
+        return web.json_response({"erreur": "compte inconnu"}, status=404)
+    if not COMPTES.mfa_arme(nom) and not COMPTES.mfa_en_attente(nom):
+        # UN REFUS PLUTOT QU'UN SUCCES VIDE. « C'est deja fait » et « ce n'est
+        # pas ce compte-la » se ressemblent trop pour qu'on reponde ok aux deux.
+        return web.json_response(
+            {"erreur": "ce compte n'a pas de second facteur"}, status=400)
+    COMPTES.mfa_retirer(nom)
+    # LA CONSOLE DU STUDIO EST LE JOURNAL. C'est le seul endroit ou le
+    # proprietaire verra qu'une protection posee par quelqu'un d'autre a ete
+    # levee — comme pour les jetons d'administration refuses, quelques lignes
+    # plus bas dans ce fichier. Le nom du compte, rien de plus : ni jeton, ni
+    # adresse, ni ce qu'il y avait dedans.
+    print(f"  second facteur DESARME sur le compte « {nom} » "
+          f"depuis la console d'administration", flush=True)
+    comptes = [dict(c, **_facteur_du_compte(c["nom"])) for c in COMPTES.liste()]
+    return web.json_response({"ok": True, "comptes": comptes,
+                              "peut_desarmer": True})
 
 
 async def api_admin_compte_supprimer(req):
@@ -14214,6 +14321,7 @@ def app():
     a.router.add_get("/api/admin/comptes", api_admin_comptes)
     a.router.add_post("/api/admin/comptes", api_admin_compte_poser)
     a.router.add_delete("/api/admin/comptes/{nom}", api_admin_compte_supprimer)
+    a.router.add_delete("/api/admin/comptes/{nom}/mfa", api_admin_mfa_retirer)
     a.router.add_get("/api/nuage", api_nuage)
     a.router.add_post("/api/nuage", api_nuage)
     a.on_startup.append(demarrer_file)
