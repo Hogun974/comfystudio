@@ -5052,8 +5052,40 @@ try:
         dit(code == 0, f"{banc} est vert sur le depot sain",
             derniere[-1].strip() if derniere else "sans sortie")
 
+    # ── « CASSE » SE REJOUE UNE FOIS, « VERT » JAMAIS ───────────────────
+    # Les quatre verdicts ne se valent pas devant le hasard. « vert » dit que le
+    # filet a un trou : le rejouer serait chercher un tour ou le trou se referme,
+    # et c'est exactement la facon dont on finit par ne plus rien mesurer.
+    # « perimee » ne depend d'aucune execution : l'ancre est la ou elle n'y est
+    # pas. Mais « casse » melange deux choses tres differentes — une mutation qui
+    # fait vraiment planter le banc, et un processus que la machine a tue.
+    #
+    # MESURE DU 4 SEPTEMBRE 2026, ET C'EST ELLE QUI A DECIDE : un tour a rendu
+    # TROIS echecs — deux « sans sortie », c'est-a-dire un banc mort avant sa
+    # premiere ligne, et un « TypeError: 'str' object is not an iterator » dans
+    # ast.iter_fields — et le tour suivant ZERO sur 244 mutations, sans qu'une
+    # ligne du depot ne bouge. Un troisieme avait rendu « SystemError: Negative
+    # size passed to PyBytes_FromStringAndSize ». Trois signatures differentes,
+    # dont deux erreurs INTERNES de CPython, sur trois bancs differents : c'est
+    # la machine sous charge, pas le filet.
+    #
+    # ON NE LISSE PAS POUR AUTANT. Un second essai qui reussit est SIGNALE, avec
+    # ce que le premier avait rendu : une instabilite qu'on efface est une
+    # instabilite qui grandit, et le jour ou un banc plantera vraiment un tour
+    # sur deux, la ligne sera la pour le dire. C'est le meme raisonnement que
+    # TROUS_CONNUS, pris a l'envers : on ne compte pas en echec ce qu'on ne sait
+    # pas reproduire, mais on l'ecrit.
     for mut in MUTATIONS:
         etat, detail = verdict(mut, racine)
+        if etat == "casse":
+            second, detail2 = verdict(mut, racine)
+            if second == "rouge":
+                signales.append(
+                    f"DEUX ESSAIS : {mut['banc']} / {mut['nom']} — le premier a "
+                    f"rendu « {detail} », le second a rougi")
+                etat, detail = second, detail2
+            else:
+                detail = f"{detail} (deux essais, second : {detail2})"
         dit(etat == "rouge", f"{mut['banc']} rougit : {mut['nom']}",
             {"rouge": mut["rougit"],
              "vert": "LE FILET A UN TROU — " + mut["imite"],
