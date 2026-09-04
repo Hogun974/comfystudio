@@ -256,6 +256,18 @@ Concrètement, dans ta pull request :
    chemin du navigateur, ils appelaient tous une route que la page n'utilise
    plus. Un banc qui teste un contrat que personne n'emprunte ne mesure rien.
 
+   Il y en a trois, toutes lancées de la même façon :
+
+   ```bash
+   sudo docker exec comfystudio python /app/recette_chemin_page.py
+   ```
+
+   `recette_grille_variantes.py` pour les variantes,
+   `recette_facteur_admin.py` pour le retrait du second facteur — celle-là
+   parce que ce que `banc_comptes.py` sait de `serveur.py`, il le sait par
+   l'arbre de syntaxe : il peut voir qu'une garde est écrite avant le retrait,
+   pas qu'une requête refusée laisse vraiment le facteur en place.
+
 Ce qui est accueilli sans mesure : les corrections de fautes, la documentation,
 un rapport de bogue clair, un cas de test qui échoue.
 
