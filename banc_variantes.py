@@ -255,6 +255,36 @@ def mots(tid):
     return " | ".join(e["msg"] for e in (S.TACHES.get(tid) or {}).get("etapes", []))
 
 
+async def jusqua(condition, quoi, limite=20.0):
+    """Attend un ETAT, jamais une duree — et dit ce qu'il a trouve a la place.
+
+    POURQUOI CE HELPER EXISTE. Trois sections observaient la file apres un
+    « await asyncio.sleep(0.25) » en aveugle, en supposant qu'un tirage de
+    0,05 s serait fini et un tirage de 0,6 s pas encore. C'est vrai sur une
+    machine au repos. Le 4 septembre 2026, la CI a rendu TROIS cas rouges d'un
+    coup sur le commit c27d42a, et verts sur le suivant, qui n'ajoutait qu'une
+    recette : un runner charge n'avait pas rendu la main dans la fenetre. Le
+    produit n'y etait pour rien.
+
+    Un banc qui depend de la vitesse de la machine ne mesure pas ce qu'il
+    croit, et il coute plus cher qu'il ne rapporte : il apprend a lire un rouge
+    comme un caprice. Ce depot a deja passe des jours avec une CI rouge sur des
+    faux positifs.
+
+    LA LIMITE EST GENEREUSE ET NON SILENCIEUSE. Vingt secondes n'allongent rien
+    quand la condition arrive en cinquante millisecondes ; et si elle n'arrive
+    jamais, on rend la main de toute facon, pour que le cas qui suit rougisse
+    sur SA mesure plutot que le banc entier ne meure sur un temps depasse.
+    """
+    fin = time.time() + limite
+    while time.time() < fin:
+        if condition():
+            return True
+        await asyncio.sleep(0.01)
+    print(f"       (attente depassee : {quoi})")
+    return False
+
+
 async def tourner(combien=4):
     """Fait tourner la file jusqu'a ce qu'elle soit vide, avec de vrais
     travailleurs : c'est travailleur() qui transmet « variantes » a executer,
@@ -604,10 +634,15 @@ async def main():
     # la garde protege.
     conv = poser()
     S.FILE_ATTENTE = asyncio.Queue()
-    LENT.update({1: 0.6})
+    # DEUX SECONDES, ET NON SIX DIXIEMES : c'est la fenetre pendant laquelle
+    # on doit pouvoir observer « la troisieme est finie, la premiere pas
+    # encore ». Large, elle ne depend plus de la charge de la machine.
+    LENT.update({1: 2.0})
     await poster(variantes=4)
     gens = [asyncio.create_task(S.travailleur()) for _ in range(4)]
-    await asyncio.sleep(0.2)
+    await jusqua(lambda: any((t.get("variantes") or {}).get("rang") == 3
+                             and t.get("etat") == "fini" for t in tours()),
+                 "le rang 3 rendu")
     par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
     dit(par_rang[3].get("etat") == "fini" and par_rang[1].get("etat") != "fini",
         "la troisieme est rendue, la premiere calcule encore",
@@ -669,9 +704,9 @@ async def main():
     await poster(variantes=4)
     # Un seul travailleur : le premier tirage calcule, les trois autres
     # attendent en file — c'est la qu'on en retire une.
-    LENT.update({1: 0.6})
+    LENT.update({1: 2.0})
     gens = [asyncio.create_task(S.travailleur())]
-    await asyncio.sleep(0.15)
+    await jusqua(lambda: len(S.ATTENTE) == 3, "trois tirages en file")
     en_attente = list(S.ATTENTE)
     dit(len(en_attente) == 3, "trois tirages attendent leur tour",
         str(len(en_attente)))
@@ -934,10 +969,12 @@ async def main():
     # studio n'a pas redemarre entre le clic et la fin du rendu — c'est-a-dire
     # pas dans le cas ou le rendu est long, qui est le seul ou l'on clique.
     conv = await reveil()
-    LENT.update({1: 0.6, 2: 0.02, 3: 0.05})
+    LENT.update({1: 2.0, 2: 0.02, 3: 0.05})
     S.ARRET = False
     gens = [asyncio.create_task(S.travailleur()) for _ in range(4)]
-    await asyncio.sleep(0.25)
+    await jusqua(lambda: any((t.get("variantes") or {}).get("rang") == 3
+                             and t.get("etat") == "fini" for t in tours()),
+                 "le rang 3 repris rendu")
     par_rang = {(t.get("variantes") or {}).get("rang"): t for t in tours()}
     dit(par_rang[3].get("etat") == "fini" and par_rang[1].get("etat") != "fini",
         "le rang 3 repris est rendu, le rang 1 calcule encore",
