@@ -132,6 +132,7 @@ ComfyUI de rendre *ça* serait demander pour rien, à chaque cycle, sans fin.
 | Tenu au repos, rien de chargé | **1,5 Go** sur 11 | pc (avec un bureau affiché) | 3 septembre 2026 |
 | Tenu au repos, rien de chargé | **0,3 Go** sur 5,9 | zima (sans écran) | 3 septembre 2026 |
 | Tenu pendant un rendu FLUX.1 dev | 9,4 Go sur 11 | pc | 3 septembre 2026 |
+| Tenu **quatre minutes après** un rendu, relevé toutes les 10 s | **1,4 Go**, sans une remontée | pc | 4 septembre 2026 |
 
 Le seuil vaut **2,0 Go**, soit 0,5 Go au-dessus du plus gourmand des deux
 repos — et en dessous du plus petit moteur du catalogue, le détourage à 1,0 Go.
@@ -146,6 +147,15 @@ repos — et en dessous du plus petit moteur du catalogue, le détourage à 1,0 
 > La fonctionnalité reste juste et gratuite ; elle servira à qui a un ComfyUI
 > qui garde ses modèles, ce qui est le comportement le plus répandu. Ici, elle
 > dort.
+>
+> **Et elle dort pour de bon**, ce que la première mesure ne pouvait pas dire :
+> elle avait relevé la chute, pas ce qui venait après. Le 4 septembre 2026, un
+> rendu de 112 s sur **pc**, puis la carte échantillonnée toutes les dix
+> secondes pendant quatre minutes : 9,4 Go pendant le rendu, **1,4 Go dix
+> secondes plus tard, et 1,4 Go jusqu'au bout** — vingt-quatre relevés, pas une
+> remontée. Le seuil n'est donc pas franchi plus tard non plus, et la consigne
+> ne part à aucun moment. Une carte qui retomberait au-dessus de 2 Go en
+> refroidissant aurait donné un tout autre verdict.
 
 ## Ce que coûte un rechargement de modèle
 
