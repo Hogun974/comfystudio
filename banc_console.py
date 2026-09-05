@@ -468,6 +468,141 @@ try:
     finally:
         (S.subprocess.Popen, S.subprocess.run, S.os.kill, S.comfy_repond,
          S.lanceur_comfy, S.pid_du_port, S.commande_comfy) = vrais
+    # ══════════════════════════════════════════════════════════════════
+    #  5. ce qu'une machine porte, et ce qu'on lui demande
+    # ══════════════════════════════════════════════════════════════════
+    print("\n  ── le detail d'une machine, et l'essai de son modele ──")
+    poser("pc")
+    S.ETAT_NOEUDS["pc"].update(carte="RTX 2080 Ti", libre=9.4, ram=63.8,
+                               llm=True, llm_modeles=["qwen2.5vl:7b"])
+    st, d = lire(lancer(S.api_admin_noeud_detail(Req(match={"ident": "pc"}))))
+    dit(st == 200 and d.get("id") == "pc" and d.get("carte") == "RTX 2080 Ti",
+        "le detail rend ce que la machine porte", f"HTTP {st}")
+
+    # LE CAS QUI COMPTE ICI, ET IL NE SE VOIT QU'EN LE CHERCHANT. Cette route
+    # sert le contenu du registre a la console. Le registre porte le JETON de
+    # chaque machine — celui qui donne droit de faire travailler sa carte — et
+    # il suffirait d'un « dict(x) » pour le faire sortir avec le reste.
+    plat = json.dumps(d)
+    dit("jeton" not in plat and "jeton-pc" not in plat,
+        "et il ne porte NI le jeton de la machine NI le mot : le registre en "
+        "contient un, servir le registre entier le publierait",
+        ", ".join(sorted(d))[:70])
+
+    # ET LA PROTECTION N'EST PAS DANS CETTE ROUTE, ce qu'on n'apprend qu'en
+    # cherchant : tous_les_noeuds() REBATIT un dictionnaire propre a partir du
+    # registre — six champs nommes, jamais le jeton. Toutes les routes qui
+    # parlent d'une machine passent par elle, et c'est donc la que le secret
+    # est retenu. Un banc qui ne garderait que la sortie de /detail laisserait
+    # cette fonction-la sans filet, alors qu'elle sert tout le monde.
+    vus = S.tous_les_noeuds()
+    dit(vus and all("jeton" not in x for x in vus),
+        "tous_les_noeuds() rebatit des fiches PROPRES : c'est la, et non dans "
+        "chaque route, que le jeton d'une machine est retenu",
+        ", ".join(sorted(vus[-1])) if vus else "aucune machine")
+
+    # LES TROIS LISTES SE DISTINGUENT, et la docstring dit pourquoi : « la
+    # carte est trop petite » ne se resout pas en telechargeant, « le modele
+    # n'est pas la » si. Les confondre envoie chercher au mauvais endroit.
+    dit(all(k in d for k in ("prets", "absents", "trop_gros")),
+        "il separe ce qui est pret, ce qui manque et ce qui ne tiendra jamais",
+        f"{len(d.get('prets', []))} prets, {len(d.get('absents', []))} absents, "
+        f"{len(d.get('trop_gros', []))} trop gros")
+
+    st, d = lire(lancer(S.api_admin_noeud_detail(Req(match={"ident": "nulle"}))))
+    dit(st == 404, "une machine inconnue rend 404", f"HTTP {st}")
+
+    # L'ESSAI DU MODELE DE LANGAGE. Sa docstring porte une regle de conception
+    # qu'on peut mesurer : « par le MEME chemin que la bascule automatique, et
+    # non par une variante de test — une voie de secours qu'on verifie
+    # autrement que par son usage reel peut passer l'essai et echouer le jour
+    # venu ».
+    demandes = []
+
+    async def faux_poser(ident, corps, tid=None, secondes=900, patience=None):
+        demandes.append((ident, corps, secondes))
+        return "bleu", ""
+
+    vrai_poser, S.poser_a = S.poser_a, faux_poser
+    try:
+        st, d = lire(lancer(S.api_admin_essai_llm(Req(match={"ident": "pc"}))))
+        dit(st == 200 and d.get("reponse") == "bleu" and not d.get("erreur"),
+            "l'essai pose une vraie question et rend ce que la machine repond",
+            f"HTTP {st}, « {d.get('reponse')} » en {d.get('secondes')} s")
+        dit(len(demandes) == 1 and demandes[0][0] == "pc",
+            "par poser_a(), le MEME chemin que la bascule automatique : une "
+            "voie de secours verifiee autrement que par son usage reel peut "
+            "passer l'essai et echouer le jour venu",
+            f"{len(demandes)} appel(s), vers {demandes[0][0] if demandes else '?'}")
+        # « keep_alive: 0 » N'EST PAS UN DETAIL : un essai qui laisse le modele
+        # resident occupe la carte de quelqu'un qui n'a rien demande, et le
+        # studio passe son temps a rendre cette carte ailleurs.
+        corps = demandes[0][1] if demandes else {}
+        dit(corps.get("keep_alive") == 0,
+            "et il ne laisse pas le modele charge derriere lui",
+            f"keep_alive={corps.get('keep_alive')}")
+        dit(corps.get("stream") is False
+            and (corps.get("options") or {}).get("temperature") == 0,
+            "la question est posee sans flux et sans hasard : deux essais de "
+            "suite doivent se comparer", str(corps.get("options")))
+
+        S.ETAT_NOEUDS["pc"]["repond"] = False
+        st, d = lire(lancer(S.api_admin_essai_llm(Req(match={"ident": "pc"}))))
+        dit(st == 409 and len(demandes) == 1,
+            "une machine qui ne repond pas rend 409, et rien n'est demande : "
+            "l'essai attendrait trois minutes pour rien",
+            f"HTTP {st}, {len(demandes)} appel(s) en tout")
+    finally:
+        S.poser_a = vrai_poser
+
+    # ══════════════════════════════════════════════════════════════════
+    #  6. les modeles d'un fournisseur, lus chez lui
+    # ══════════════════════════════════════════════════════════════════
+    print("\n  ── les modeles que declare un fournisseur ──")
+    st, d = lire(lancer(S.api_admin_modeles(Req(admin=False))))
+    dit(st == 403, "sans le jeton, la liste est refusee", f"HTTP {st}")
+
+    class Requete(Req):
+        def __init__(self, requete=None, **kw):
+            super().__init__(**kw)
+            self.query = requete or {}
+
+    st, d = lire(lancer(S.api_admin_modeles(
+        Requete(requete={"fournisseur": "pas-un-fournisseur"}))))
+    dit(st == 400 and "inconnu" in str(d.get("erreur", "")),
+        "un fournisseur inconnu est refuse AVANT qu'on aille chercher quoi que "
+        "ce soit", f"HTTP {st}")
+
+    # SANS CLE, ON LE DIT — et l'on n'appelle personne. Rendre une liste vide
+    # sans raison ferait chercher une panne de reseau la ou il manque une cle.
+    appels = []
+
+    async def faux_lister(nom, cle):
+        appels.append((nom, cle))
+        return ["un-modele"]
+
+    vrai_lister = S.fournisseurs.lister_modeles
+    vraie_cle, S.cle_de = S.cle_de, lambda n: ""
+    S.fournisseurs.lister_modeles = faux_lister
+    try:
+        st, d = lire(lancer(S.api_admin_modeles(
+            Requete(requete={"fournisseur": "anthropic"}))))
+        dit(st == 200 and d.get("modeles") == [] and d.get("raison") == "aucune cle"
+            and not appels,
+            "sans cle, il le DIT et n'appelle personne : une liste vide sans "
+            "raison ferait chercher une panne de reseau",
+            f"raison={d.get('raison')!r}, {len(appels)} appel(s)")
+        S.cle_de = lambda n: "une-cle-qui-ne-doit-pas-sortir"
+        st, d = lire(lancer(S.api_admin_modeles(
+            Requete(requete={"fournisseur": "anthropic"}))))
+        dit(st == 200 and d.get("modeles") == ["un-modele"] and len(appels) == 1,
+            "avec une cle, il va la chercher chez le fournisseur",
+            f"{d.get('modeles')}")
+        dit("une-cle-qui-ne-doit-pas-sortir" not in json.dumps(d),
+            "et la cle ne repart PAS dans la reponse")
+    finally:
+        S.fournisseurs.lister_modeles = vrai_lister
+        S.cle_de = vraie_cle
 finally:
     pass
 

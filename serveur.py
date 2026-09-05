@@ -13280,6 +13280,53 @@ async def api_noeud_progres(req):
     return web.json_response({"ok": True, "annule": annule})
 
 
+# Les segments qu'un nom rendu par une machine n'a pas le droit de porter.
+_NOM_RENDU_INTERDIT = ("/", "\\", "\x00")
+
+
+def fichiers_rendus(bruts, ident):
+    """Ce qu'une machine dit avoir depose, reduit a des NOMS.
+
+    POURQUOI CE FILTRE EXISTE. Ces noms ne s'arretent pas ici : ils entrent
+    dans le tour, donc dans la liste d'autorisation d'api_fichier(), qui les
+    relaie TELS QUELS a « /view » de ComfyUI. La liste d'autorisation est la
+    seule barriere de cette route — elle repond « ce fichier est-il a toi »,
+    pas « ce nom est-il un nom ». Une machine qui rendrait
+    « ../../serveur.py » ferait donc relayer ce chemin par le studio.
+
+    Le danger n'est pas theorique mais il demande un jeton de noeud : c'est une
+    machine du parc, ou quelqu'un qui a pris son jeton. Une machine a carte est
+    precisement ce qu'on met chez soi et qu'on oublie ; le studio n'a aucune
+    raison de lui accorder plus que ce qu'elle doit rendre — un nom de fichier
+    et un sous-dossier.
+
+    ON JETTE, ET ON LE DIT. Corriger silencieusement — retirer les « .. »,
+    garder le reste — laisserait passer un nom qu'on aurait fabrique nous-meme,
+    et le journal ne montrerait rien d'anormal. Un rendu refuse se voit.
+    """
+    propres = []
+    for f in bruts or []:
+        if not isinstance(f, dict):
+            continue
+        nom = f.get("filename")
+        sous = f.get("subfolder") or ""
+        if not isinstance(nom, str) or not isinstance(sous, str):
+            continue
+        # os.path.basename ne suffirait pas : sous Windows il coupe sur « \ »,
+        # sous POSIX non, et c'est le POSIX qui sert ComfyUI. On refuse les deux
+        # separateurs partout, plus « .. » sous toutes ses formes.
+        morceaux = [nom] + [s for s in sous.replace("\\", "/").split("/") if s]
+        if (not nom or any(c in nom for c in _NOM_RENDU_INTERDIT)
+                or any(m in ("..", ".") for m in morceaux)
+                or os.path.isabs(nom) or os.path.isabs(sous)
+                or "\x00" in sous):
+            print(f"  {ident} a rendu un nom refuse : {str(nom)[:60]!r} "
+                  f"dans {str(sous)[:40]!r}", flush=True)
+            continue
+        propres.append(f)
+    return propres
+
+
 async def api_noeud_resultat(req):
     """Fin de travail : l'agent rend l'etat et la liste des fichiers deposes."""
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
@@ -13334,7 +13381,8 @@ async def api_noeud_resultat(req):
     if attente is not None and not attente.done():
         attente.set_result({"etat": d.get("etat"), "erreur": d.get("erreur"),
                             "secondes": d.get("secondes") or 0,
-                            "fichiers": d.get("fichiers") or [],
+                            "fichiers": fichiers_rendus(d.get("fichiers"),
+                                                        x["id"]),
                             "noeud": x["id"]})
     else:
         # Personne n'attend plus : le studio a redemarre pendant le rendu. Les
@@ -13371,7 +13419,8 @@ def rattacher_tardif(tid, d, x):
                 print(f"  [{tid[:6]}] rendu tardif ignore : la demande avait "
                       f"ete interrompue", flush=True)
                 return
-            fichiers = [dict(f, noeud=x["id"]) for f in (d.get("fichiers") or [])]
+            fichiers = [dict(f, noeud=x["id"])
+                        for f in fichiers_rendus(d.get("fichiers"), x["id"])]
             if d.get("etat") == "fini" and fichiers:
                 # La machine et la duree viennent de l'agent : TACHES est vide
                 # apres un redemarrage, et enregistrer_tour() les y aurait

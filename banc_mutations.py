@@ -421,6 +421,24 @@ BESOINS = {
     # banc_console.py importe serveur.py : il lui faut donc tout ce que
     # serveur.py importe, comme banc_conteneur.py le calcule deja.
     "banc_console.py": ["banc_console.py"] + fichiers_du_conteneur(),
+    # banc_avis.py fait tourner le VRAI reentrainement, qui lit cinq fichiers
+    # de DONNEES qu'aucun import ne nomme. Sans eux, corpus() rend un corpus
+    # tronque et bancs=[] : la section du reentrainement rougirait pour une
+    # raison qui n'a rien a voir avec la mutation. QUATRIEME fois que ce cas
+    # se presente — apres aiguilleur.json, web/index.html et la spec.
+    "banc_avis.py": ["banc_avis.py"] + fichiers_du_conteneur() + [
+        "aiguilleur.json",
+        "corpus_aiguillage.jsonl", "corpus_llm.jsonl", "corpus_llm2.jsonl",
+        "banc_aiguillage.jsonl", "banc_neuf.jsonl"],
+    "banc_seance.py": ["banc_seance.py"] + fichiers_du_conteneur(),
+    # banc_fichiers.py SERT les onze fichiers de SCRIPTS_NOEUD depuis ICI et
+    # relit les deux empaquetages : sans eux, le depot sain rougit dans le
+    # dossier d'essai et les mutations ne mesurent plus rien.
+    "banc_fichiers.py": ["banc_fichiers.py"] + fichiers_du_conteneur() + [
+        "paquet/comfystudio.spec", "web/index.html", "agent_noeud.py",
+        "noeud.sh", "noeud.bat", "maj_noeud.sh", "maj_noeud.bat",
+        "modeles.sh", "zimaos-comfyui.yml", "zimaos-registry.yml",
+        "installer.py", "installation.py"],
     # L'ENCODEUR QR ET SES ETALONS, et rien d'autre : qr.py n'importe que
     # « collections », etalons_qr.py n'importe rien du tout. mfa.py est la pour
     # la derniere section du banc, qui encode cinq URI d'enrolement REELLES —
@@ -5445,6 +5463,1265 @@ VERSION = [
 # banc_attente.py la nomme quarante-cinq fois — mais a partir d'un registre ou
 # l'on avait pose « pause » a la main. Le GESTE, lui, n'etait mesure par
 # personne : ni l'ecriture sur le disque, ni le reveil de ce qui attendait.
+# ══════════════════════════════════════════════════════════════════════
+#  banc_avis.py — le pouce, le journal des retours, et le reentrainement
+# ══════════════════════════════════════════════════════════════════════
+# Quatre routes du releve du 5 septembre 2026 : /api/avis,
+# /api/admin/avis, /api/admin/aiguilleur et /api/intentions. Ce sont
+# celles par lesquelles le studio APPREND — un pouce en bas finit dans le
+# corpus, et le bouton de reentrainement remplace le classifieur qui
+# decide de l'intention de CHAQUE demande. Un aiguilleur casse fait
+# derailler tout le studio, en silence.
+AVIS = [
+    # ══════════════════════════════════════════════════════════════════
+    #  POST /api/avis — ou va un avis, et a qui il appartient
+    # ══════════════════════════════════════════════════════════════════
+    dict(
+        nom="l'avis ne quitte plus la conversation",
+        banc="banc_avis.py",
+        imite="le retour n'est plus consigne qu'a l'interieur de la "
+              "conversation, que son proprietaire peut supprimer. C'est "
+              "exactement ce que le fichier a part existe pour empecher : "
+              "« la seule mesure qu'on ait de ce qui marche » disparait avec "
+              "la premiere corbeille, et personne ne s'en apercoit — le pouce "
+              "continue de s'allumer",
+        rougit="et une ligne part dans le journal des avis",
+        editions=[
+            ("serveur.py", brut(
+                "                if avis:\n"
+                "                    noter_avis(pid, conv, tour, avis, note)\n",
+                "                if avis:\n"
+                "                    pass\n")),
+        ]),
+    dict(
+        nom="un avis retire ecrit quand meme sa ligne",
+        banc="banc_avis.py",
+        imite="s'etre trompe de bouton laisse une trace definitive dans le "
+              "journal. Le decompte de /admin compte un pouce que personne ne "
+              "porte plus, et l'utilisateur n'a aucun moyen de le reprendre",
+        rougit="un pouce retire (avis=0) efface l'avis du tour et n'ecrit "
+               "AUCUNE ligne de plus",
+        editions=[
+            ("serveur.py", brut(
+                "                if avis:\n"
+                "                    noter_avis(pid, conv, tour, avis, note)",
+                "                if True:\n"
+                "                    noter_avis(pid, conv, tour, avis, note)")),
+        ]),
+    dict(
+        nom="la ligne d'avis perd le prompt et les parametres",
+        banc="banc_avis.py",
+        imite="LE DEFAUT QUI NE SE VOIT PAS. Le journal se relit encore, le "
+              "decompte de /admin est juste, le pouce s'allume — et le cas ne "
+              "se refait plus : sans le prompt envoye ni les parametres, il "
+              "faut redemander a l'utilisateur ce qu'il avait demande. "
+              "docs/avis.md promet « de quoi refaire le cas sans redemander a "
+              "personne »",
+        rougit="les dix-sept champs, ni un de moins",
+        editions=[
+            ("serveur.py", brut(
+                '        "parametres": tour.get("parametres"), '
+                '"prompt": tour.get("prompt"),\n',
+                "")),
+        ]),
+    dict(
+        nom="la ligne d'avis ne porte plus la correction",
+        banc="banc_avis.py",
+        imite="le champ est toujours la, et il est toujours vide. Le retour le "
+              "plus precieux du studio — « c'etait plutot de la musique », une "
+              "formulation que le classifieur a DEJA ratee, avec sa bonne "
+              "reponse — n'arrive jamais jusqu'a celui qui relit le journal "
+              "pour comprendre ce qui cloche",
+        rougit="et la ligne du journal la porte, avec le mot",
+        editions=[
+            ("serveur.py", brut(
+                '        "intention_voulue": tour.get("intention_voulue"),\n',
+                '        "intention_voulue": None,\n')),
+        ]),
+    dict(
+        nom="un avis se pose sur le tour de n'importe qui",
+        banc="banc_avis.py",
+        imite="LE CORPUS EST PARTAGE PAR TOUT LE STUDIO, et c'est ce qui rend "
+              "ce trou-la couteux : « un renard dans les hautes herbes », "
+              "pouce en bas, « c'etait plutot de la musique » sur le tour de "
+              "quelqu'un d'autre, et le mot part en « audio » pondere huit "
+              "fois POUR LES AUTRES. Le commentaire de moissonner() decrit "
+              "l'attaque mot pour mot",
+        rougit="un avis sur le travail de quelqu'un d'autre est refuse",
+        editions=[
+            ("serveur.py", brut(
+                "    for conv in mes_conversations(pid):\n",
+                "    for conv in CONVERSATIONS.values():\n")),
+        ]),
+    dict(
+        nom="le refus distingue « pas a toi » de « n'existe pas »",
+        banc="banc_avis.py",
+        imite="la meme faute que le dictionnaire a corrigee le 2 septembre "
+              "2026 en fusionnant « unknown conversation » et « unknown "
+              "turn », et que _ouvrir_porte() evite avec un seul message pour "
+              "trois echecs. Un refus qui distingue les deux fait de la route "
+              "un oracle : on essaie des identifiants au hasard, et 403 dit "
+              "« celui-la existe »",
+        rougit="et le refus est MOT POUR MOT celui d'un tour inexistant",
+        editions=[
+            ("serveur.py", brut(
+                '    return web.json_response({"erreur": '
+                'T("erreur.echange_inconnu", lg)},\n'
+                "                             status=404)\n",
+                "    for c in CONVERSATIONS.values():\n"
+                '        for t in c.get("tours", []):\n'
+                '            if t.get("id") == tid:\n'
+                '                return web.json_response(\n'
+                '                    {"erreur": "ce tour n\'est pas a toi"},'
+                " status=403)\n"
+                '    return web.json_response({"erreur": '
+                'T("erreur.echange_inconnu", lg)},\n'
+                "                             status=404)\n")),
+        ]),
+    dict(
+        nom="une etiquette que l'aiguilleur ne saura jamais apprendre est acceptee",
+        banc="banc_avis.py",
+        imite="« chanson », « detour », « modifier » — exactement les "
+              "etiquettes que les modeles de langage inventaient et qu'un "
+              "classifieur a liste fermee ne peut PAS inventer. Ecrite sur le "
+              "tour, elle y dort : moissonner() la jette en silence, et "
+              "l'utilisateur croit avoir corrige quelque chose",
+        rougit="une etiquette qui n'existe pas est refusee",
+        editions=[
+            ("serveur.py", brut(
+                "    if voulue and voulue not in INTENTIONS_LISIBLES:\n"
+                '        return web.json_response({"erreur": '
+                'T("erreur.intention_inconnue", lg)},\n'
+                "                                 status=400)\n",
+                "")),
+        ]),
+    dict(
+        nom="le pouce repasse en l'air ne retire plus la correction",
+        banc="banc_avis.py",
+        imite="l'utilisateur se ravise — le rendu etait bon, finalement — et "
+              "la correction reste collee au tour. L'entrainement suivant "
+              "apprend « c'etait de la musique » sur une demande d'image que "
+              "son auteur vient de valider, ponderee huit fois",
+        rougit="un pouce repasse en l'air efface la correction",
+        editions=[
+            ("serveur.py", brut(
+                "                elif avis != -1:\n"
+                "                    # Un pouce retire ou repasse en haut "
+                "efface la correction :\n"
+                "                    # elle ne valait que pour le reproche.\n"
+                '                    tour.pop("intention_voulue", None)\n',
+                "                elif avis != -1:\n"
+                "                    pass\n")),
+        ]),
+    dict(
+        nom="la borne de l'avis saute",
+        banc="banc_avis.py",
+        imite="un avis « 2 » entre dans le journal et dans le tour. Il n'est "
+              "compte ni en haut ni en bas par /admin, et moissonner() ne le "
+              "reconnait pas non plus : le retour existe et n'est vu par "
+              "personne",
+        rougit="un avis hors de -1, 0, 1 est refuse",
+        editions=[
+            ("serveur.py", brut(
+                "    if avis not in (-1, 0, 1):\n",
+                "    if avis not in (-1, 0, 1, 2):\n")),
+        ]),
+    dict(
+        nom="le refus de l'avis n'est plus traduit",
+        banc="banc_avis.py",
+        imite="la moitie du travail de traductions.py, defaite a un endroit. "
+              "Le commentaire de la route dit pourquoi cette route-ci est "
+              "traduite quand dix-sept autres ne le sont pas : « corps "
+              "illisible sert dix-huit routes et trois publics, seul le "
+              "premier lit une interface ». Le francais revient dans la bulle "
+              "d'un utilisateur anglophone",
+        rougit="et le refus est traduit",
+        editions=[
+            ("serveur.py", brut(
+                '        return web.json_response({"erreur": '
+                'T("erreur.avis_attendu", lg)},\n'
+                "                                 status=400)\n",
+                '        return web.json_response(\n'
+                '            {"erreur": "avis attendu : -1, 0 ou 1"}, '
+                "status=400)\n")),
+        ]),
+    dict(
+        nom="la note n'est plus bornee",
+        banc="banc_avis.py",
+        imite="le champ de la page limite a 2000 caracteres (maxLength), la "
+              "route ne limite plus rien : un POST direct ecrit un mega-octet "
+              "par ligne dans avis.jsonl, et /admin en relit quatre cents a "
+              "chaque ouverture. La borne du navigateur n'est pas une borne",
+        rougit="la note est bornee a deux mille caracteres DES DEUX COTES",
+        editions=[
+            ("serveur.py", brut(
+                '    note = str(d.get("note") or "")[:2000]\n',
+                '    note = str(d.get("note") or "")\n')),
+        ]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  GET /api/intentions — ce qu'on ose proposer
+    # ══════════════════════════════════════════════════════════════════
+    dict(
+        nom="sans aiguilleur, la page propose les onze classes",
+        banc="banc_avis.py",
+        imite="LE DEFAUT EXACT QUE LE COMMENTAIRE DE LA ROUTE NOMME : « or "
+              "INTENTIONS_LISIBLES faisait exactement l'inverse de ce que la "
+              "docstring promet ». Un studio sans classifieur affiche « c'etait "
+              "plutot quoi ? » et onze boutons ; chaque clic ecrit une "
+              "correction que rien n'apprendra jamais",
+        rougit="sans aiguilleur, elle ne propose RIEN",
+        editions=[
+            ("serveur.py", brut(
+                "    connues = set((AIGUILLEUR.classes if AIGUILLEUR "
+                "else {}) or {})\n",
+                "    connues = set((AIGUILLEUR.classes if AIGUILLEUR "
+                "else {}) or INTENTIONS_LISIBLES)\n")),
+        ]),
+    dict(
+        nom="la page propose des classes que l'aiguilleur ne connait pas",
+        banc="banc_avis.py",
+        imite="le filtre saute : les onze etiquettes lisibles sont proposees "
+              "quel que soit ce que le classifieur a appris. Un studio "
+              "entraine sur un corpus partiel — c'est le cas de toute "
+              "installation dont le corpus a ete reduit — offre des "
+              "corrections qu'il jettera",
+        rougit="elle ne propose QUE les classes que l'aiguilleur connait "
+               "reellement",
+        editions=[
+            ("serveur.py", brut(
+                "         if k in connues])\n",
+                "         ])\n")),
+        ]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  GET /api/admin/avis — le recapitulatif
+    # ══════════════════════════════════════════════════════════════════
+    dict(
+        nom="le recapitulatif s'ouvre sans le jeton",
+        banc="banc_avis.py",
+        imite="essai_securite.md nomme cette route parmi ce qu'un XSS de "
+              "/admin obtient : « GET /api/admin/avis (les demandes de tous "
+              "les utilisateurs) ». Sans admin_ok(), il n'y a meme plus besoin "
+              "de l'XSS — les demandes, les prompts et les mots de tout le "
+              "monde sont a une requete de n'importe qui",
+        rougit="sans le jeton d'administration, le recapitulatif est refuse",
+        editions=[
+            ("serveur.py", brut(
+                "async def api_admin_avis(req):\n"
+                "    if not admin_ok(req):\n"
+                '        return web.json_response({"erreur": "jeton invalide"}, '
+                "status=403)\n"
+                "    tous = lire_avis(400)\n",
+                "async def api_admin_avis(req):\n"
+                "    tous = lire_avis(400)\n")),
+        ]),
+    dict(
+        nom="le recapitulatif rend les plus vieux d'abord",
+        banc="banc_avis.py",
+        imite="/admin ouvre sur les avis du premier jour. Le retour d'hier — "
+              "celui qui dit ce qui vient de casser — est quatre cents lignes "
+              "plus bas, et le plafond finira par le manger",
+        rougit="il rend les avis LE PLUS RECENT D'ABORD",
+        editions=[
+            ("serveur.py", brut(
+                "    return lignes[-limite:][::-1]\n",
+                "    return lignes[-limite:]\n")),
+        ]),
+    dict(
+        nom="le plafond de quatre cents lignes saute",
+        banc="banc_avis.py",
+        imite="/admin se charge le journal entier a chaque ouverture, et le "
+              "journal ne fait que grossir : celui du depot pese deja "
+              "cinquante kilo-octets. La page devient lente puis inouvrable, "
+              "sur la seule installation qui s'en serve beaucoup",
+        rougit="il est plafonne aux quatre cents dernieres lignes",
+        editions=[
+            ("serveur.py", brut(
+                "    tous = lire_avis(400)\n",
+                "    tous = lire_avis(1000000)\n")),
+        ]),
+    dict(
+        nom="une ligne tronquee emporte tout l'historique",
+        banc="banc_avis.py",
+        imite="LA RAISON D'ETRE DU FORMAT « une ligne, un objet », defaite : "
+              "« se relit meme si l'ecriture a ete coupee en cours ». Un arret "
+              "du studio pendant un write laisse une derniere ligne "
+              "incomplete, et /admin perd d'un coup TOUT l'historique des "
+              "retours — pas la derniere ligne, tout",
+        rougit="une derniere ligne tronquee par un arret ne fait pas perdre "
+               "les autres",
+        editions=[
+            ("serveur.py", brut(
+                "                try:\n"
+                "                    lignes.append(json.loads(l))\n"
+                "                except ValueError:\n"
+                "                    continue\n",
+                "                lignes.append(json.loads(l))\n")),
+        ]),
+    dict(
+        nom="un journal absent devient une erreur",
+        banc="banc_avis.py",
+        imite="un studio neuf, qui n'a jamais recu un seul avis, rend 500 sur "
+              "/admin. C'est le premier ecran que voit celui qui vient "
+              "d'installer le studio, et il annonce une panne la ou il n'y a "
+              "qu'un fichier pas encore ne",
+        rougit="un studio qui n'a jamais recu d'avis rend une liste vide",
+        editions=[
+            ("serveur.py", brut(
+                "    except FileNotFoundError:\n        return []\n",
+                "    except FileNotFoundError:\n        raise\n")),
+        ]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  /api/admin/aiguilleur — l'etat, et le reentrainement
+    # ══════════════════════════════════════════════════════════════════
+    dict(
+        nom="le reentrainement s'ouvre sans le jeton",
+        banc="banc_avis.py",
+        imite="LE CLIC LE PLUS COUTEUX DU STUDIO, ouvert a tout le monde. Il "
+              "remplace le classifieur qui decide de l'intention de CHAQUE "
+              "demande, pour tous les comptes a la fois, et il le fait avec le "
+              "corpus moissonne du moment. Un visiteur peut le declencher en "
+              "boucle : c'est un deni de service en une ligne, et une prise de "
+              "controle de l'aiguillage en plusieurs",
+        # FRAGMENT SANS UN SEUL CARACTERE ACCENTUE NI UN TIRET CADRATIN. La
+        # sortie du banc est relue par verdict() apres un decode("utf-8",
+        # "replace") : un tiret cadratin dans le fragment ne se retrouve pas
+        # forcement dans la ligne relue, et la mutation se declarait « rouge
+        # ailleurs » alors qu'elle rougissait sur sa ligne. Mesure du
+        # 5 septembre 2026 : trois mutations perdues ainsi au premier essai.
+        rougit="sans le jeton l'est aussi",
+        editions=[
+            ("serveur.py", brut(
+                '    """Etat de l\'aiguilleur, et reentrainement a la '
+                'demande."""\n'
+                "    if not admin_ok(req):\n"
+                '        return web.json_response({"erreur": "jeton invalide"}, '
+                "status=403)\n"
+                "    global AIGUILLEUR\n",
+                '    """Etat de l\'aiguilleur, et reentrainement a la '
+                'demande."""\n'
+                "    global AIGUILLEUR\n")),
+        ]),
+    dict(
+        nom="deux reentrainements a la fois",
+        banc="banc_avis.py",
+        imite="LA COURSE QUE LE VERROU EXISTE POUR FERMER, et elle est reelle "
+              "depuis que corpus() reecrit toujours le fichier : « l'un "
+              "tronquait le corpus pendant que l'autre le relisait, et le "
+              "second apprenait sur un corpus ampute puis ecrivait son "
+              "modele, que le studio rechargeait aussitot. Rien ne le "
+              "disait. » Deux onglets d'administration, ou un double-clic",
+        rougit="un second reentrainement pendant qu'un premier tourne est "
+               "refuse TOUT DE SUITE",
+        editions=[
+            ("serveur.py", brut(
+                "        if _VERROU_AIGUILLEUR.locked():\n"
+                "            return web.json_response(\n"
+                '                {"erreur": "un entrainement est deja en '
+                'cours"}, status=409)\n',
+                "")),
+        ]),
+    dict(
+        nom="le verrou n'est jamais relache",
+        banc="banc_avis.py",
+        imite="le premier clic passe, tous les suivants rendent 409 « un "
+              "entrainement est deja en cours » — pour toujours, ou jusqu'au "
+              "prochain redemarrage. Le message est le pire des deux : il "
+              "designe une cause qui n'existe pas, et l'administrateur attend "
+              "la fin d'un entrainement termine depuis une heure",
+        rougit="le verrou est relache par l'echec, et non garde",
+        editions=[
+            ("serveur.py", brut(
+                "        async with _VERROU_AIGUILLEUR:\n"
+                "            try:\n",
+                "        await _VERROU_AIGUILLEUR.acquire()\n"
+                "        if True:\n"
+                "            try:\n")),
+        ]),
+    dict(
+        nom="un entrainement rate emporte l'aiguilleur en service",
+        banc="banc_avis.py",
+        imite="LE DEGAT LE PLUS LARGE QU'UN SEUL CLIC PUISSE FAIRE. "
+              "L'aiguilleur decide de l'intention de chaque demande du "
+              "studio : mis a None par un entrainement rate, les onze "
+              "intentions repartent d'un coup au modele de langage — sept "
+              "cents millisecondes au lieu de cinq centiemes, et les trois "
+              "raccourcis sans ecriture disparaissent. L'administrateur, lui, "
+              "a seulement lu « entrainement impossible »",
+        rougit="l'aiguilleur EN SERVICE est intact",
+        editions=[
+            ("serveur.py", brut(
+                "            except Exception as e:\n"
+                "                return web.json_response(\n"
+                '                    {"erreur": f"entrainement impossible : '
+                '{e}"}, status=500)\n',
+                "            except Exception as e:\n"
+                "                AIGUILLEUR = None\n"
+                "                return web.json_response(\n"
+                '                    {"erreur": f"entrainement impossible : '
+                '{e}"}, status=500)\n')),
+        ]),
+    dict(
+        nom="le reentrainement ecrase le modele PUBLIE",
+        banc="banc_avis.py",
+        imite="LA FAUTE QUE aiguilleur.py RACONTE DEJA : « faute d'y trouver "
+              "les conversations, il ecrasait la copie EMBARQUEE du modele "
+              "publie ». Gele par PyInstaller, ICI pointe sur un dossier "
+              "temporaire efface a l'arret : le modele en memoire est degrade "
+              "— 7 890 traits tombes a 7 680 — au profit d'un fichier que "
+              "personne ne relira. Dans le depot, c'est un fichier suivi par "
+              "git qui change sous les doigts",
+        rougit="il n'ecrit QUE le modele local : le modele publie est intact",
+        editions=[
+            ("serveur.py", brut(
+                "    neuf.ecrire(_aiguilleur.MODELE_LOCAL)\n",
+                "    neuf.ecrire(_aiguilleur.MODELE)\n")),
+        ]),
+    dict(
+        nom="le studio ne recharge pas ce qu'il vient d'ecrire",
+        banc="banc_avis.py",
+        imite="le bouton affiche une belle mesure, le fichier est ecrit, et le "
+              "studio continue d'aiguiller avec le modele d'AVANT jusqu'au "
+              "prochain demarrage. C'est la pire forme du defaut : tout dit "
+              "que ca a marche. La correction d'un aiguillage rate ne prend "
+              "effet que le lendemain, et personne ne fait le rapprochement",
+        rougit="le studio se sert AUSSITOT du modele qu'il vient d'ecrire",
+        editions=[
+            ("serveur.py", brut(
+                "            AIGUILLEUR = _aiguilleur.charger()\n",
+                "")),
+        ]),
+    dict(
+        nom="la mesure disparait de la reponse",
+        banc="banc_avis.py",
+        imite="« un bouton dans /admin relance l'entrainement et affiche la "
+              "mesure a cote — SANS ELLE, on ne saurait pas si le "
+              "reentrainement a ameliore ou abime quelque chose ». Le bouton "
+              "devient un bouton de foi : il rend 200, et le classifieur qu'il "
+              "vient d'installer peut aussi bien etre pire",
+        rougit="la reponse porte la mesure, banc par banc",
+        editions=[
+            ("serveur.py", brut(
+                "    for nom in entrainer.BANCS:\n",
+                "    for nom in []:\n")),
+        ]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  entrainer_aiguilleur.py — ce que le studio consent a apprendre
+    # ══════════════════════════════════════════════════════════════════
+    dict(
+        nom="le studio apprend des tours que personne n'a valides",
+        banc="banc_avis.py",
+        imite="LA REGLE QUE LE DOCUMENT POSE EN TROIS LIGNES, defaite : « un "
+              "tour fini sans pouce ne prouve rien — le studio a pu se tromper "
+              "de modalite et produire quand meme quelque chose. L'apprendre "
+              "reviendrait a lui enseigner ses propres erreurs. » Chaque "
+              "aiguillage rate qui a quand meme produit une image revient dans "
+              "le corpus, pondere huit fois, et le classifieur se rend SUR de "
+              "l'erreur qu'il vient de faire",
+        rougit="le pouce retire, le studio ne l'apprend plus",
+        editions=[
+            ("entrainer_aiguilleur.py", brut(
+                '            if not impose and t.get("avis") != 1:\n'
+                "                continue\n",
+                "")),
+        ]),
+    dict(
+        nom="la correction apprend la classe qu'on corrigeait",
+        banc="banc_avis.py",
+        imite="l'utilisateur dit « ce n'etait pas une image, c'etait de la "
+              "musique », et le studio apprend « image » sur cette phrase-la, "
+              "pondere huit fois. Le retour le plus precieux du studio est "
+              "retourne contre lui : la formulation ratee est apprise AVEC sa "
+              "mauvaise reponse, et le classifieur se trompera desormais avec "
+              "assurance",
+        rougit="une correction apprend la BONNE classe",
+        editions=[
+            ("entrainer_aiguilleur.py", brut(
+                '                recolte.append({"texte": texte, '
+                '"intention": corrigee,\n',
+                '                recolte.append({"texte": texte, '
+                '"intention": intention,\n')),
+        ]),
+    dict(
+        nom="les demandes reelles ne pesent plus qu'un exemplaire",
+        banc="banc_avis.py",
+        imite="POIDS_REEL a huit n'est pas un reglage, c'est une mesure : « les "
+              "demandes reelles sont rares et precieuses, sinon trois mille "
+              "exemples fabriques les noieraient ». A un exemplaire, le pouce "
+              "et la correction ne changent plus rien de mesurable au "
+              "classifieur — le bouton s'allume, la boucle d'apprentissage est "
+              "morte, et les deux bancs d'aiguillage ne bougent pas d'un point",
+        rougit="entre dans le corpus, pondere huit fois",
+        editions=[
+            ("entrainer_aiguilleur.py", brut(
+                "POIDS_REEL = 8\n",
+                "POIDS_REEL = 1\n")),
+        ]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  les deux garde-fous que ces chemins traversent
+    # ══════════════════════════════════════════════════════════════════
+    dict(
+        nom="un POST inter-site atteint l'avis et le reentrainement",
+        banc="banc_avis.py",
+        imite="le middleware que SECURITY.md promettait et qui n'existait "
+              "qu'a trois endroits, rouvert sur tous les POST. Une page piegee "
+              "ouverte dans l'onglet d'a cote peut poser des avis a la place "
+              "de l'utilisateur et, si son cookie studio_admin est pose, "
+              "relancer l'entrainement autant de fois qu'elle veut — sans un "
+              "clic, et sans jamais lire la reponse",
+        rougit="un POST venu d'un site tiers n'atteint ni l'avis ni le "
+               "reentrainement",
+        editions=[
+            ("serveur.py", brut(
+                '    if req.method in ("GET", "HEAD", "OPTIONS") or '
+                'req.path.startswith("/api/noeud/"):\n',
+                '    if req.method in ("GET", "HEAD", "OPTIONS", "POST") or '
+                'req.path.startswith("/api/noeud/"):\n')),
+        ]),
+    dict(
+        nom="l'avis s'ouvre a un visiteur sans compte",
+        banc="banc_avis.py",
+        imite="en STUDIO_AUTH=obligatoire, n'importe qui peut poser un avis et "
+              "une correction d'intention sur un tid devine. La liste des "
+              "chemins libres est ecrite pour l'amorçage — « sans elles on ne "
+              "pourrait jamais se connecter » — et chaque chemin ajoute la "
+              "dedans est une route de plus qui repond avant la porte",
+        rougit="ni l'avis ni la liste des intentions ne s'ouvrent a un "
+               "visiteur sans compte",
+        editions=[
+            ("serveur.py", brut(
+                '             or chemin == "/api/textes"\n',
+                '             or chemin == "/api/textes" '
+                'or chemin == "/api/avis"\n')),
+        ]),
+]
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  banc_seance.py — sortir, changer de fil, et ce qu'un inconnu apprend
+# ══════════════════════════════════════════════════════════════════════
+# Les trois routes du releve du 5 septembre 2026 que la PAGE appelle, et
+# non la console. Elles sont courtes ; ce qu'elles gardent ne l'est pas —
+# le chemin d'un biscuit qu'on efface, la frontiere entre deux espaces, et
+# la promesse d'une route ouverte a tout le monde.
+#
+# CONSOLE_SUITE suit : les trois boutons de /admin ajoutes le meme jour au
+# banc de la console.
+# ══════════════════════════════════════════════════════════════════════
+#  banc_fichiers.py — ce qui entre, ce qui sort, et ce qui n'a pas le droit
+# ══════════════════════════════════════════════════════════════════════
+# Trois routes du releve du 5 septembre 2026, et ce sont celles par
+# lesquelles des octets passent : /api/noeud/{quoi} sert aux machines le
+# code qu'elles vont EXECUTER, /api/televerser accepte ce qu'on lui donne,
+# /api/fichier ressert ce qui a ete produit.
+#
+# TROIS PROTECTIONS DIFFERENTES, et aucune n'est un nettoyage de chemin :
+# une liste blanche exacte pour la premiere, un nom REGENERE pour la
+# deuxieme — le nom du client est jete —, une liste d'autorisation batie
+# sur les conversations de l'appelant pour la troisieme. C'est pour cela que
+# les mutations visent la porte, et non un motif de chemin.
+FICHIERS = [
+    # ══════════════════════════════════════════════════════════════════
+    #  /api/noeud/{quoi} — le code que les machines vont executer
+    # ══════════════════════════════════════════════════════════════════
+    dict(nom="l'adresse nue /api/noeud/agent n'a plus de nom par defaut",
+         banc="banc_fichiers.py",
+         imite="le repli « agent » retire de match_info : maj_noeud.sh, "
+               "noeud.sh, noeud.bat et zimaos-comfyui.yml appellent tous "
+               "/api/noeud/agent, qui passe par la route SANS {quoi}",
+         rougit="l'adresse sans nom sert agent_noeud.py",
+         editions=[("serveur.py",
+                    brut('nom = SCRIPTS_NOEUD.get(req.match_info.get("quoi", "agent"))',
+                    'nom = SCRIPTS_NOEUD.get(req.match_info.get("quoi", ""))'))]),
+
+    dict(nom="la liste blanche devient un simple repli sur le nom demande",
+         banc="banc_fichiers.py",
+         imite="la table gardee mais doublee d'un repli sur le nom brut — "
+               "la forme exacte qu'aurait « et sinon, on sert le fichier "
+               "portant ce nom », qui ouvre tout le dossier du studio",
+         rougit="aucun fichier voisin de la table n'est servi",
+         editions=[("serveur.py",
+                    brut('nom = SCRIPTS_NOEUD.get(req.match_info.get("quoi", "agent"))',
+                    'nom = SCRIPTS_NOEUD.get(req.match_info.get("quoi", "agent"),\n'
+                    '                        req.match_info.get("quoi"))'))]),
+
+    dict(nom="la table ne distingue plus la casse",
+         banc="banc_fichiers.py",
+         imite="un .lower() ajoute « pour etre tolerant » : la table cesse "
+               "d'etre une liste blanche exacte",
+         rougit="la table distingue la casse",
+         editions=[("serveur.py",
+                    brut('nom = SCRIPTS_NOEUD.get(req.match_info.get("quoi", "agent"))',
+                    'nom = SCRIPTS_NOEUD.get(req.match_info.get("quoi", "agent").lower())'))]),
+
+    dict(nom="« agent » designe un autre fichier du depot",
+         banc="banc_fichiers.py",
+         imite="l'entree la plus lourde de consequence de la table pointee "
+               "ailleurs : la machine execute ce qu'on lui sert",
+         rougit="sert le meme fichier que l'adresse nue",
+         editions=[("serveur.py",
+                    brut('SCRIPTS_NOEUD = {"agent": "agent_noeud.py",',
+                    'SCRIPTS_NOEUD = {"agent": "aiguilleur.py",'))]),
+
+    dict(nom="une entree de la table nomme un fichier qui n'existe pas",
+         banc="banc_fichiers.py",
+         imite="un fichier renomme sans que la table suive — la machine "
+               "recoit « absent du studio » et le studio ne dit rien",
+         rougit="sert EXACTEMENT le fichier qu'elle nomme",
+         editions=[("serveur.py",
+                    brut('"noeud.sh": "noeud.sh",',
+                    '"noeud.sh": "noeud_mise_en_service.sh",'))]),
+
+    dict(nom="les scripts ne sont plus servis en texte brut",
+         banc="banc_fichiers.py",
+         imite="text/html a la place de text/plain : la route est ouverte a "
+               "tout le monde et sert sur l'origine du studio",
+         rougit="et en texte brut : un navigateur l'affiche",
+         editions=[("serveur.py",
+                    brut('headers={"Content-Type": "text/plain; charset=utf-8"})',
+                    'headers={"Content-Type": "text/html; charset=utf-8"})'))]),
+
+    dict(nom="« absent du studio » se confond avec « inconnu »",
+         banc="banc_fichiers.py",
+         imite="les deux 404 rendus identiques : on cherche alors du cote du "
+               "client ce qui manque dans l'empaquetage",
+         rougit="rend « absent du studio », et non « inconnu »",
+         editions=[("serveur.py",
+                    brut('return web.json_response({"erreur": "absent du studio"}, status=404)',
+                    'return web.json_response({"erreur": "inconnu"}, status=404)'))]),
+
+    dict(nom="modeles.sh sort de la table alors qu'il s'y appelle lui-meme",
+         banc="banc_fichiers.py",
+         imite="exactement ce que le commentaire de la table raconte pour "
+               "maj_noeud.sh : le script est dans l'image, il est cite dans "
+               "la documentation, et la route rend 404",
+         rougit="est servable — une route nommee ou une entree de la table",
+         editions=[("serveur.py",
+                    brut('                 "modeles.sh": "modeles.sh",\n', ""))]),
+
+    dict(nom="le Dockerfile n'emporte plus les scripts de mise en service",
+         banc="banc_fichiers.py",
+         imite="une ligne de COPY raccourcie : la route rend « absent du "
+               "studio » dans le conteneur, et nulle part ailleurs",
+         rougit="le Dockerfile emporte les onze fichiers que la table nomme",
+         editions=[("Dockerfile",
+                    brut("COPY noeud.sh noeud.bat modeles.sh maj_noeud.sh maj_noeud.bat ./",
+                    "COPY noeud.sh noeud.bat ./"))]),
+
+    dict(nom="l'executable Windows n'emporte plus la mise a jour des agents",
+         banc="banc_fichiers.py",
+         imite="les deux maj_noeud retires de la liste du .spec — le trou "
+               "que son propre commentaire dit avoir bouche",
+         rougit="et paquet/comfystudio.spec aussi",
+         editions=[("paquet/comfystudio.spec",
+                    brut('                "maj_noeud.sh", "maj_noeud.bat"):',
+                    "                ):"))]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  POST /api/televerser — ce que le studio accepte
+    # ══════════════════════════════════════════════════════════════════
+    dict(nom="le nom du client survit au televersement, basename suffirait",
+         banc="banc_fichiers.py",
+         imite="le remede que chemin_agent() dit lui-meme insuffisant — "
+               "« basename ne suffit pas : il rend .. pour ../.. »",
+         rougit="le nom du client est JETE, seule l'extension survit",
+         editions=[("serveur.py",
+                    brut('nom = f"studio_{uuid.uuid4().hex[:10]}{ext}"',
+                    'nom = f"studio_{os.path.basename(champ.filename)}"'))]),
+
+    dict(nom="l'extension n'est plus ramenee en minuscules",
+         banc="banc_fichiers.py",
+         imite="le .lower() perdu : PHOTO.PNG est refuse, et le fichier "
+               "range garde une extension qui ne correspond a rien",
+         rougit="rangee en minuscules",
+         editions=[("serveur.py",
+                    brut("ext = os.path.splitext(champ.filename)[1].lower()",
+                    "ext = os.path.splitext(champ.filename)[1]"))]),
+
+    dict(nom="un premier champ sans nom de fichier n'est plus refuse",
+         banc="banc_fichiers.py",
+         imite="la moitie de la garde retiree : le champ existe, il n'a pas "
+               "de fichier, et la route part quand meme",
+         rougit="un champ de formulaire sans fichier est refuse",
+         editions=[("serveur.py",
+                    brut('if champ is None or not getattr(champ, "filename", None):',
+                    "if champ is None:"))]),
+
+    dict(nom="toutes les extensions deviennent acceptables",
+         banc="banc_fichiers.py",
+         imite="le filtre de famille rendu permissif : le studio accepte un "
+               "maillage ou un .exe et le sert ensuite sur sa propre origine",
+         rougit="un format hors des trois familles est refuse en 400",
+         editions=[("serveur.py",
+                    brut("        if ext in extensions:\n"
+                    "            return famille\n"
+                    '    return ""',
+                    "        if ext in extensions:\n"
+                    "            return famille\n"
+                    '    return "image"'))]),
+
+    dict(nom="le refus de format ne nomme plus ce qu'on accepte",
+         banc="banc_fichiers.py",
+         imite="la liste des acceptees videe : l'utilisateur apprend que "
+               "c'est refuse et rien de ce qu'il pourrait envoyer",
+         rougit="ET la liste entiere des acceptees",
+         editions=[("serveur.py",
+                    brut('acceptes = ", ".join(sorted(e for x, _ in FAMILLES.values() for e in x))',
+                    'acceptes = ""'))]),
+
+    dict(nom="« sans extension » redevient un blanc dans la phrase",
+         banc="banc_fichiers.py",
+         imite="le repli traduit retire : le message lit « format non pris "
+               "en charge () », ce que le commentaire du code refuse",
+         rougit="un fichier sans extension le dit en toutes lettres",
+         editions=[("serveur.py",
+                    brut('extension=ext or T("erreur.sans_extension", lg))},',
+                    "extension=ext)},"))]),
+
+    dict(nom=".gif entre dans les images acceptees a l'entree",
+         banc="banc_fichiers.py",
+         imite="les deux listes unifiees « pour simplifier » : LoadImage ne "
+               "lirait que la premiere image d'un gif joint",
+         rougit="« .gif » est refuse a l'entree",
+         editions=[("serveur.py",
+                    brut('EXT_IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}',
+                    'EXT_IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}'))]),
+
+    dict(nom="le plafond de l'image tombe a 16 Mo",
+         banc="banc_fichiers.py",
+         imite="une constante changee sans mesure : les photos d'appareil "
+               "recentes passent au-dessus et sont refusees",
+         rougit="32 Mio pile passent",
+         editions=[("serveur.py",
+                    brut('    "image": (EXT_IMAGE, 32 * 1024 ** 2),',
+                    '    "image": (EXT_IMAGE, 16 * 1024 ** 2),'))]),
+
+    dict(nom="le plafond ne depend plus de la famille",
+         banc="banc_fichiers.py",
+         imite="un plafond unique : une video de trente secondes serait "
+               "refusee comme si c'etait une image",
+         rougit="le plafond est par FAMILLE",
+         editions=[("serveur.py",
+                    brut("plafond = FAMILLES[famille][1]",
+                    'plafond = FAMILLES["image"][1]'))]),
+
+    dict(nom="le plafond laisse passer le double",
+         banc="banc_fichiers.py",
+         imite="la comparaison relachee : le refus ne tombe plus a la valeur "
+               "annoncee, et le message continue d'annoncer 32 Mo",
+         rougit="un octet de plus est refuse en 413",
+         editions=[("serveur.py",
+                    brut("            if taille > plafond:",
+                    "            if taille > plafond * 2:"))]),
+
+    dict(nom="le fichier trop lourd reste sur le disque apres le refus",
+         banc="banc_fichiers.py",
+         imite="l'effacement du morceau deja ecrit retire : un envoi de "
+               "plusieurs gigaoctets remplit le disque tout en etant refuse",
+         rougit="le fichier partiel est EFFACE",
+         editions=[("serveur.py",
+                    brut("                f.close()\n                os.remove(chemin)\n",
+                    "                f.close()\n"))]),
+
+    dict(nom="un fichier vide est accepte",
+         banc="banc_fichiers.py",
+         imite="la garde du zero octet desarmee : le tour part vers ComfyUI "
+               "avec une image que LoadImage ne saura pas ouvrir",
+         rougit="un fichier vide est refuse",
+         editions=[("serveur.py", brut("    if taille == 0:", "    if taille < 0:"))]),
+
+    dict(nom="les octets ecrits ne sont plus ceux recus",
+         banc="banc_fichiers.py",
+         imite="une transformation glissee dans la boucle d'ecriture : la "
+               "taille rendue reste juste, le contenu non",
+         rougit="les octets recus sont EXACTEMENT ceux ecrits sur le disque",
+         editions=[("serveur.py",
+                    brut("            f.write(bloc)\n    if taille == 0:",
+                    "            f.write(bloc.upper())\n    if taille == 0:"))]),
+
+    dict(nom="le studio ne retient plus qui a televerse",
+         banc="banc_fichiers.py",
+         imite="le proprietaire perdu : l'auteur ne peut plus relire sa "
+               "propre piece jointe, et la purge n'est plus par utilisateur",
+         rougit="le studio retient QUI a televerse",
+         editions=[("serveur.py", brut("    ENTREES[nom] = qui(req)",
+                    '    ENTREES[nom] = ""'))]),
+
+    dict(nom="le registre des entrees n'est plus ecrit sur le disque",
+         banc="banc_fichiers.py",
+         imite="exactement l'etat d'avant charger_entrees() : en memoire "
+               "seule, l'input de ComfyUI gonfle a chaque redemarrage",
+         rougit="il l'ECRIT dans _entrees.json",
+         editions=[("serveur.py",
+                    brut("    sauver_entrees()\n"
+                    '    return web.json_response({"image": nom, "octets": taille})',
+                    '    return web.json_response({"image": nom, "octets": taille})'))]),
+
+    dict(nom="la purge des entrees redevient globale",
+         banc="banc_fichiers.py",
+         imite="le defaut que le commentaire de purger_entrees raconte : un "
+               "visiteur qui televerse en rafale efface le fichier d'entree "
+               "d'un autre dont la tache attendait son tour",
+         rougit="la purge est PAR UTILISATEUR",
+         editions=[("serveur.py", brut("    purger_entrees(pid=qui(req))",
+                    "    purger_entrees()"))]),
+
+    dict(nom="la page propose une extension que le studio refuse",
+         banc="banc_fichiers.py",
+         imite="les deux listes qui derivent — le meme couplage recopie a la "
+               "main que les quatre paires min/max de /admin. Le .gif est "
+               "refuse APRES le temps de l'envoi",
+         rougit="propose EXACTEMENT les quinze extensions",
+         editions=[("web/index.html",
+                    brut('accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.webm,.mkv,.mov,'
+                    '.mp3,.wav,.flac,.ogg,.opus,.m4a"',
+                    'accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.mp4,.webm,.mkv,'
+                    '.mov,.mp3,.wav,.flac,.ogg,.opus,.m4a"'))]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  GET /api/fichier — ce que le studio ressert, et a qui
+    # ══════════════════════════════════════════════════════════════════
+    dict(nom="le type de sortie n'est plus borne a output et input",
+         banc="banc_fichiers.py",
+         imite="« temp » accepte parce que ComfyUI le connait : le triplet "
+               "autorise pour une sortie ouvre alors un autre dossier",
+         rougit="SANS qu'un seul appel parte vers ComfyUI",
+         editions=[("serveur.py",
+                    brut('if genre not in ("output", "input"):',
+                    'if genre not in ("output", "input", "temp"):'))]),
+
+    dict(nom="tout le monde voit la production de tout le monde",
+         banc="banc_fichiers.py",
+         imite="le defaut que la docstring de la route raconte : « il "
+               "suffisait d'incrementer le compteur pour lire la production "
+               "de tout le monde »",
+         rougit="un compte ORDINAIRE, lui, ne voit rien de plus qu'un visiteur",
+         editions=[("serveur.py",
+                    brut("permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(qui(req))",
+                    "permis = tous_les_fichiers()"))]),
+
+    dict(nom="l'administrateur ne voit plus que ses propres fichiers",
+         banc="banc_fichiers.py",
+         imite="la mediatheque de l'administrateur ramenee a la sienne — "
+               "l'oubli que tous_les_fichiers() a ete ecrite pour reparer",
+         rougit="un administrateur relit la production de tout le monde",
+         editions=[("serveur.py",
+                    brut("permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(qui(req))",
+                    "permis = mes_fichiers(qui(req))"))]),
+
+    dict(nom="l'appartenance du fichier n'est plus verifiee",
+         banc="banc_fichiers.py",
+         imite="la liste d'autorisation contournee, la machine seule "
+               "verifiee : n'importe quel nom depose sort du studio",
+         rougit="c'est la liste d'autorisation qui decide, pas la presence",
+         editions=[("serveur.py",
+                    brut("if noeud(ident) is None or (ident, sous, nom) not in permis:",
+                    "if noeud(ident) is None:"))]),
+
+    dict(nom="une conversation fermee redevient a son proprietaire",
+         banc="banc_fichiers.py",
+         imite="le filtre « ferme » perdu dans mes_conversations : une "
+               "conversation qui attend son effacement se relit encore",
+         rougit="SANS qu'un seul appel parte vers ComfyUI",
+         editions=[("serveur.py",
+                    brut("return [c for c in CONVERSATIONS.values() if a_moi(c, pid) "
+                    'and not c.get("ferme")]',
+                    "return [c for c in CONVERSATIONS.values() if a_moi(c, pid)]"))]),
+
+    dict(nom="une conversation fermee redevient visible a l'administrateur",
+         banc="banc_fichiers.py",
+         imite="le meme filtre perdu du cote de tous_les_fichiers, ou le "
+               "commentaire dit pourtant « elles ne sont plus a personne »",
+         rougit="ne rouvre pas une conversation FERMEE",
+         editions=[("serveur.py",
+                    brut('for c in CONVERSATIONS.values() if not c.get("ferme")\n'
+                    '            for t in c.get("tours", []) for f in (t.get("fichiers") or [])',
+                    "for c in CONVERSATIONS.values()\n"
+                    '            for t in c.get("tours", []) for f in (t.get("fichiers") or [])'))]),
+
+    dict(nom="ce qu'on a televerse ne compte plus comme a soi",
+         banc="banc_fichiers.py",
+         imite="la derniere ligne de mes_fichiers retiree : l'apercu de sa "
+               "propre piece jointe rend 404 dans la seconde qui suit l'envoi",
+         rougit="je le relis par /api/fichier?type=input",
+         editions=[("serveur.py",
+                    brut('    permis |= {(defaut, "", nom) for nom, p in ENTREES.items() if p == pid}\n',
+                    ""))]),
+
+    dict(nom="le depot du disque n'est plus servi, on tente le relais",
+         banc="banc_fichiers.py",
+         imite="la branche du depot court-circuitee : le studio essaie "
+               "d'appeler une machine a agent dont il n'a pas l'adresse",
+         rougit="est servi DU DISQUE, sans relais",
+         editions=[("serveur.py",
+                    brut("    chemin = chemin_agent(ident, nom)\n"
+                    "    if chemin and os.path.exists(chemin):",
+                    "    chemin = chemin_agent(ident, nom)\n"
+                    "    if False and chemin and os.path.exists(chemin):"))]),
+
+    dict(nom="le depot d'agent est servi sans nosniff",
+         banc="banc_fichiers.py",
+         imite="le second des « deux verrous pour la meme porte » retire : "
+               "le navigateur redevient libre de deviner un type que "
+               "l'extension ne promet pas, sur l'origine du studio",
+         rougit="et avec « nosniff »",
+         editions=[("serveur.py",
+                    brut('headers={"X-Content-Type-Options": "nosniff"})',
+                    "headers={})"))]),
+
+    dict(nom="un agent muet est quand meme rappele par le reseau",
+         banc="banc_fichiers.py",
+         imite="la garde « un agent ne se relaie pas » retiree : url_de() "
+               "leve, et la route rend 500 la ou elle devait rendre 404",
+         rougit="rend 404, et surtout n'essaie aucun relais",
+         editions=[("serveur.py",
+                    brut("    if est_agent(ident):\n"
+                    "        # un agent ne se relaie pas : le studio n'a pas son adresse\n"
+                    '        return web.json_response({"erreur": "inconnu"}, status=404)\n',
+                    ""))]),
+
+    dict(nom="le Range du navigateur n'est plus transmis",
+         banc="banc_fichiers.py",
+         imite="l'en-tete perdu : le fichier entier transite en memoire et "
+               "l'on ne peut plus naviguer dans une video",
+         rougit="le Range demande par le navigateur part tel quel",
+         editions=[("serveur.py",
+                    brut('    if "Range" in req.headers:\n'
+                    '        entrants["Range"] = req.headers["Range"]',
+                    "    if False:\n"
+                    '        entrants["Range"] = req.headers["Range"]'))]),
+
+    dict(nom="Content-Range ne traverse plus le relais",
+         banc="banc_fichiers.py",
+         imite="un en-tete retire de la liste des propages : le navigateur "
+               "recoit un morceau sans savoir de quel morceau il s'agit",
+         rougit="le 206 revient 206, avec son Content-Range",
+         editions=[("serveur.py",
+                    brut('for h in ("Content-Type", "Content-Length", "Accept-Ranges", "Content-Range"):',
+                    'for h in ("Content-Type", "Content-Length", "Accept-Ranges"):'))]),
+
+    dict(nom="tous les en-tetes de ComfyUI traversent le relais",
+         banc="banc_fichiers.py",
+         imite="la liste blanche remplacee par une recopie : un Set-Cookie "
+               "de ComfyUI se poserait sur l'origine du studio",
+         rougit="seuls les quatre en-tetes nommes traversent",
+         editions=[("serveur.py",
+                    brut('for h in ("Content-Type", "Content-Length", "Accept-Ranges", "Content-Range"):',
+                    "for h in r.headers:"))]),
+
+    dict(nom="Accept-Ranges n'est plus pose quand ComfyUI se tait",
+         banc="banc_fichiers.py",
+         imite="le defaut retire : le navigateur ne demandera jamais de "
+               "morceau, donc ne saura jamais naviguer dans la video",
+         rougit="est pose meme quand ComfyUI se tait",
+         editions=[("serveur.py",
+                    brut('            sortants.setdefault("Accept-Ranges", "bytes")\n', ""))]),
+
+    dict(nom="le statut de ComfyUI n'est plus propage",
+         banc="banc_fichiers.py",
+         imite="200 en dur : un fichier introuvable chez ComfyUI arrive au "
+               "navigateur comme une reponse valide et vide",
+         rougit="le statut de ComfyUI est propage tel quel",
+         editions=[("serveur.py",
+                    brut("return web.Response(body=corps, status=r.status, headers=sortants)",
+                    "return web.Response(body=corps, status=200, headers=sortants)"))]),
+
+    dict(nom="le relais nettoie les chemins qu'il transmet",
+         banc="banc_fichiers.py",
+         imite="l'inverse d'un defaut : un nettoyage AJOUTE. Le cas mesure "
+               "que la liste d'autorisation est aujourd'hui la SEULE "
+               "barriere ; le jour ou ce n'est plus vrai, il doit le dire "
+               "au lieu de rester vert sur une mesure perimee",
+         rougit="le studio ne nettoie pas les chemins qu'il relaie",
+         editions=[("serveur.py",
+                    brut('        params = {"filename": nom, "subfolder": sous, "type": genre}',
+                    '        params = {"filename": os.path.basename(nom),\n'
+                    '                  "subfolder": "", "type": genre}'))]),
+
+    dict(nom="le relais ne va plus chercher /view",
+         banc="banc_fichiers.py",
+         imite="l'adresse de ComfyUI changee : la route rend 404 pour tout "
+               "le monde, et rien ne dit que c'est le chemin qui a bouge",
+         rougit="relaye vers /view de ma machine",
+         editions=[("serveur.py",
+                    brut('async with s.get(f"{url_de(ident)}/view", params=params, headers=entrants) as r:',
+                    'async with s.get(f"{url_de(ident)}/vue", params=params, headers=entrants) as r:'))]),
+
+    # ══════════════════════════════════════════════════════════════════
+    #  les gardes d'acces — elles vivent dans les intergiciels
+    # ══════════════════════════════════════════════════════════════════
+    dict(nom="plus aucune route qui agit ne verifie son origine",
+         banc="banc_fichiers.py",
+         imite="l'etat que la docstring de origine_verifiee raconte : la "
+               "protection annoncee par SECURITY.md et absente du code",
+         rougit="poste depuis un site tiers est refuse",
+         editions=[("serveur.py",
+                    brut('if req.method in ("GET", "HEAD", "OPTIONS") or req.path.startswith("/api/noeud/"):',
+                    "if True:"))]),
+
+    dict(nom="le televersement s'ouvre a un visiteur sans compte",
+         banc="banc_fichiers.py",
+         imite="une route ajoutee a la liste des libres : n'importe qui "
+               "ecrit sur le disque d'un studio a connexion obligatoire",
+         rougit="sont fermes a un visiteur sans compte",
+         editions=[("serveur.py",
+                    brut('             or chemin == "/api/fournisseurs")',
+                    '             or chemin == "/api/fournisseurs"\n'
+                    '             or chemin == "/api/televerser")'))]),
+
+    dict(nom="le service des scripts se ferme aux machines neuves",
+         banc="banc_fichiers.py",
+         imite="l'exemption retiree : une machine qui n'a encore aucun jeton "
+               "ne peut plus telecharger l'agent, donc plus s'installer",
+         rougit="reste OUVERT sans compte",
+         editions=[("serveur.py",
+                    brut('             or chemin.startswith("/api/noeud/")\n', ""))]),
+]
+
+
+SEANCE = [
+    dict(
+        nom="sortir efface le biscuit sans nommer son chemin",
+        banc="banc_seance.py",
+        imite="LE PIRE DES DEUX ETATS : on croit etre sorti. Un navigateur "
+              "n'efface QUE le biscuit dont le nom ET le chemin correspondent. "
+              "Le biscuit de connexion est pose sur « / » ; une suppression "
+              "sans chemin vise celui du dossier courant, « /api/compte », qui "
+              "n'existe pas. La page affiche « deconnecte » et la requete "
+              "suivante repart connectee",
+        rougit="et elle l'efface sur « / », le chemin ou la connexion l'a pose",
+        editions=[
+            # « path="/api/compte" » ET NON L'ABSENCE DU PARAMETRE. La premiere
+            # ecriture de cette mutation retirait simplement « path="/" » — et
+            # elle est revenue VERTE, parce que c'est deja le defaut d'aiohttp
+            # (verifie le 5 septembre 2026 sur la signature de del_cookie :
+            # « path: str = '/' »). Une mutation inerte ne mesure rien. Celle-ci
+            # pose le chemin que le code aurait pris s'il s'etait fie au dossier
+            # de la route, qui est la faute qu'on veut interdire.
+            ("serveur.py", brut('    rep_.del_cookie("studio_compte", path="/")',
+                                '    rep_.del_cookie("studio_compte", '
+                                'path="/api/compte")')),
+        ]),
+    dict(
+        nom="on active la conversation de n'importe qui",
+        banc="banc_seance.py",
+        imite="il suffit de coller l'identifiant d'un fil pour l'ouvrir. C'est "
+              "la SEULE chose qui separe deux espaces sur un studio ouvert au "
+              "reseau local, et le studio l'est par defaut",
+        rougit="celle de quelqu'un d'autre rend 404, et ne deplace RIEN",
+        editions=[
+            ("serveur.py", brut(
+                "    if not ouvrable(CONVERSATIONS.get(cid), pid):",
+                "    if CONVERSATIONS.get(cid) is None:")),
+        ]),
+    dict(
+        nom="une conversation fermee se rouvre",
+        banc="banc_seance.py",
+        imite="fermer cesse de fermer. Le fil revient dans l'interface alors "
+              "qu'on venait de le mettre a la corbeille, et il y reste jusqu'a "
+              "sa purge — vingt-quatre heures d'un fil qu'on croyait parti",
+        rougit="une conversation fermee ne se rouvre pas par la",
+        editions=[
+            ("serveur.py", brut(
+                '    return a_moi(conv, pid) and not conv.get("ferme")',
+                "    return a_moi(conv, pid)")),
+        ]),
+    dict(
+        nom="un jeton signe suffit, meme si le compte n'existe plus",
+        banc="banc_seance.py",
+        imite="la SEULE revocation du studio disparait. Le jeton de session est "
+              "signe et sans registre : supprimer un compte est le seul geste "
+              "qui ferme ses sessions ouvertes, et il tient a cette derniere "
+              "ligne. Sans elle, un compte efface continue d'entrer jusqu'a la "
+              "peremption de son jeton",
+        rougit="SUPPRIMER un compte ferme ses sessions",
+        editions=[
+            ("comptes.py", brut(
+                '        return self.gens.get(nom.lower(), {}).get("nom")',
+                "        return nom")),
+        ]),
+    dict(
+        nom="la route ouverte des fournisseurs emporte la cle",
+        banc="banc_seance.py",
+        imite="une route SANS jeton laisse filer une cle d'API — donc a "
+              "n'importe qui sur le reseau local. Sa docstring promet « aucune "
+              "cle, aucun indice de cle », et c'est la promesse la plus chere "
+              "du fichier : une cle qui fuit se paie en euros chez un tiers",
+        rougit="elle ne porte NI la cle NI un morceau de cle",
+        editions=[
+            ("serveur.py", brut(
+                '        dit[modalite] = {"libelle": libelle, "choix": choix,',
+                '        dit[modalite] = {"libelle": libelle, "choix": choix,\n'
+                '                         "cle": cle,')),
+        ]),
+]
+
+CONSOLE_SUITE = [
+    dict(
+        nom="le detail d'une machine sert le registre en entier",
+        banc="banc_console.py",
+        imite="le JETON de la machine part dans la reponse. Il donne droit de "
+              "faire travailler sa carte, et il suffit d'un « dict(x) » pour "
+              "le publier avec le reste — c'est la forme la plus naturelle "
+              "qu'on puisse ecrire, et c'est pour cela qu'elle est dangereuse",
+        rougit="il ne porte NI le jeton de la machine NI le mot",
+        editions=[
+            # LA PROTECTION N'EST PAS OU L'ON CROIT, et la premiere ecriture de
+            # cette mutation l'a montre en revenant VERTE : « **x » ne fuitait
+            # rien, parce que tous_les_noeuds() rebatit un dictionnaire PROPRE
+            # et ne recopie jamais le jeton du registre. C'est donc le registre
+            # lui-meme qu'il faut atteindre pour imiter le defaut, c'est-a-dire
+            # ecrire le raccourci qu'on ecrirait vraiment.
+            ("serveur.py", brut(
+                '    return web.json_response({\n'
+                '        "id": ident, "titre": x.get("titre", ident), '
+                '"agent": bool(x.get("agent")),',
+                '    return web.json_response({\n'
+                "        **(REGISTRE.get(ident) or {}),\n"
+                '        "id": ident, "titre": x.get("titre", ident), '
+                '"agent": bool(x.get("agent")),')),
+        ]),
+    dict(
+        nom="ce qu'une machine rapporte n'est plus filtre",
+        banc="banc_fichiers.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 5 SEPTEMBRE 2026. Les noms rendus par "
+              "un agent entrent dans le tour, donc dans la liste "
+              "d'autorisation d'api_fichier(), qui les relaie TELS QUELS a "
+              "« /view » de ComfyUI. Une machine du parc — ou quelqu'un ayant "
+              "pris son jeton — pouvait donc fabriquer le chemin qu'elle "
+              "voulait voir servi",
+        rougit="aucune liste de fichiers rendue n'atteint un tour sans passer "
+               "par le filtre",
+        editions=[
+            ("serveur.py", brut(
+                '                            "fichiers": fichiers_rendus('
+                'd.get("fichiers"),' + chr(10)
+                + "                                                        "
+                'x["id"]),' + chr(10),
+                '                            "fichiers": d.get("fichiers") or [],'
+                + chr(10))),
+        ]),
+    dict(
+        nom="le filtre des noms rendus laisse passer « .. »",
+        banc="banc_fichiers.py",
+        imite="le filtre existe et ne filtre plus rien de ce qui compte : "
+              "« ../../serveur.py » redevient un nom acceptable, et repart vers "
+              "ComfyUI par la route qui ressert les fichiers",
+        rougit="formes tordues sont TOUTES jetees",
+        editions=[
+            ("serveur.py", brut(
+                '                or any(m in ("..", ".") for m in morceaux)' + chr(10),
+                "")),
+        ]),
+    dict(
+        nom="le filtre ne connait que le separateur POSIX",
+        banc="banc_fichiers.py",
+        imite="« a\\\\b.png » passe. Le studio tourne aussi sous Windows, ou "
+              "c'est CE separateur-la qui ouvre un dossier — et ComfyUI, lui, "
+              "recevra le nom sous la forme qu'on lui donne",
+        rougit="formes tordues sont TOUTES jetees",
+        editions=[
+            ("serveur.py", brut(
+                '_NOM_RENDU_INTERDIT = ("/", "\\\\", "\\x00")',
+                '_NOM_RENDU_INTERDIT = ("/", "\\x00")')),
+        ]),
+    dict(
+        nom="le filtre corrige le nom au lieu de le refuser",
+        banc="banc_fichiers.py",
+        imite="un nom fabrique passe, nettoye par nos soins, et le journal ne "
+              "montre rien d'anormal. Corriger en silence, c'est accepter en "
+              "silence : un rendu refuse se voit, un rendu repare ne se voit "
+              "jamais",
+        rougit="le mauvais est JETE et le bon garde",
+        editions=[
+            ("serveur.py", brut(
+                '                  f"dans {str(sous)[:40]!r}", flush=True)' + chr(10)
+                + "            continue" + chr(10),
+                '                  f"dans {str(sous)[:40]!r}", flush=True)' + chr(10)
+                + '            f = dict(f, filename=os.path.basename(nom or ""),'
+                ' subfolder="")' + chr(10))),
+        ]),
+    dict(
+        nom="tous_les_noeuds() recopie le registre au lieu de le rebatir",
+        banc="banc_console.py",
+        imite="LA VRAIE PORTE, et elle sert TOUT LE MONDE : chaque route qui "
+              "parle d'une machine passe par cette fonction. Recopier l'entree "
+              "du registre au lieu d'en rebatir une fiche propre fait sortir le "
+              "jeton partout a la fois, et « dict(x) » est precisement ce qu'on "
+              "ecrit quand on veut « les memes champs »",
+        rougit="tous_les_noeuds() rebatit des fiches PROPRES",
+        editions=[
+            ("serveur.py", brut(
+                '    agents = [{"id": x["id"], "titre": x.get("titre") or x["id"],'
+                ' "url": None,' + chr(10)
+                + '               "local": False, "agent": True,'
+                ' "pause": x.get("pause")}' + chr(10),
+                "    agents = [dict(x, url=None, local=False, agent=True)" + chr(10))),
+        ]),
+    dict(
+        nom="l'essai du modele laisse le modele charge",
+        banc="banc_console.py",
+        imite="un essai lance depuis /admin occupe la carte de quelqu'un qui "
+              "n'a rien demande. Le studio passe ensuite son temps a rendre "
+              "cette carte — c'est exactement le travail que « rendre la "
+              "carte » existe pour eviter",
+        rougit="il ne laisse pas le modele charge derriere lui",
+        editions=[
+            ("serveur.py", brut(
+                '             "stream": False, "keep_alive": 0, '
+                '"options": {"temperature": 0}}',
+                '             "stream": False, "options": {"temperature": 0}}')),
+        ]),
+    dict(
+        nom="on interroge le modele d'une machine muette",
+        banc="banc_console.py",
+        imite="l'essai part vers une machine qui ne repond plus et attend le "
+              "delai complet — trois minutes pendant lesquelles la console "
+              "semble figee, pour une reponse qu'on connaissait d'avance",
+        rougit="une machine qui ne repond pas rend 409",
+        editions=[
+            ("serveur.py", brut(
+                '    if not e.get("repond"):\n'
+                '        return web.json_response({"erreur": "cette machine ne repond pas"},\n'
+                "                                 status=409)\n",
+                "")),
+        ]),
+    dict(
+        nom="on va chercher les modeles sans avoir de cle",
+        banc="banc_console.py",
+        imite="un appel part chez le fournisseur avec une cle vide. Il rend une "
+              "erreur d'authentification, et la console affiche « aucun "
+              "modele » : on cherche une panne de reseau la ou il manque une "
+              "cle",
+        rougit="sans cle, il le DIT et n'appelle personne",
+        editions=[
+            ("serveur.py", brut(
+                "    if not cle:\n"
+                '        return web.json_response({"modeles": [], '
+                '"raison": "aucune cle"})\n',
+                "")),
+        ]),
+    dict(
+        nom="un fournisseur inconnu part quand meme chez le fournisseur",
+        banc="banc_console.py",
+        imite="le nom vient de la requete : sans cette garde, ce que la console "
+              "envoie decide de qui l'on appelle. La liste des fournisseurs "
+              "connus est la seule chose qui borne cette route",
+        rougit="un fournisseur inconnu est refuse AVANT",
+        editions=[
+            ("serveur.py", brut(
+                "    if nom not in connus:\n"
+                '        return web.json_response({"erreur": "fournisseur inconnu"}, '
+                "status=400)\n",
+                "")),
+        ]),
+]
+
+
 CONSOLE = [
     dict(
         nom="la pause n'est plus ecrite sur le disque",
@@ -6722,7 +7999,7 @@ BOUCLE_AGENT = [
 ]
 
 
-MUTATIONS = (CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
+MUTATIONS = (FICHIERS + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE

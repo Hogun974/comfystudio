@@ -508,6 +508,31 @@ jobs:
       - name: Les boutons de la console d'administration
         run: python banc_console.py
 
+      # SORTIR, CHANGER DE FIL, ET CE QU'UN INCONNU APPREND. Les trois routes
+      # du meme releve que la page appelle — pas la console. Le cas qui les
+      # justifie a lui seul : « sortir » efface le biscuit avec « path="/" », le
+      # chemin ou la connexion l'a pose. Sans ce mot, le navigateur garde le
+      # sien, la page affiche « deconnecte », et la requete suivante repart
+      # connectee — le pire des deux etats.
+      - name: La seance : sortir, changer de fil
+        run: python banc_seance.py
+
+      # LE POUCE, LE JOURNAL DES RETOURS, ET LE REENTRAINEMENT. Un pouce en bas
+      # finit dans le corpus, et le bouton de /admin remplace le classifieur qui
+      # decide de l'intention de CHAQUE demande. Un aiguilleur casse fait
+      # derailler tout le studio, en silence.
+      - name: Les avis, et le reentrainement de l'aiguilleur
+        run: python banc_avis.py
+
+      # CE QUI ENTRE, CE QUI SORT. /api/noeud/{quoi} sert aux machines le code
+      # qu'elles vont EXECUTER ; /api/televerser accepte ce qu'on lui donne ;
+      # /api/fichier ressert ce qui a ete produit. Trois protections
+      # differentes, et aucune n'est un nettoyage de chemin : une liste blanche
+      # exacte, un nom REGENERE — celui du client est jete —, et une liste
+      # d'autorisation batie sur les conversations de l'appelant.
+      - name: Les fichiers servis, deposes et resservis
+        run: python banc_fichiers.py
+
       # LES SIX FONCTIONS QUE banc_agent.py A NOMMEES EN LAISSANT DEHORS. Son
       # en-tete les enumere : « boucle(), qui ne rend jamais la main […]
       # insister(), servir_le_langage(), trouver_ollama() et main() », plus
