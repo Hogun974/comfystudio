@@ -5566,6 +5566,29 @@ CONSOLE = [
                                 "    if EN_VOL:\n")),
         ]),
     dict(
+        nom="l'arret ne tue plus l'arbre de processus, sous Windows",
+        banc="banc_console.py",
+        imite="« taskkill /PID <pid> /F » sans « /T » laisse les enfants du "
+              "moteur en vie. Un exe onefile en a un, et c'est LUI qui tient le "
+              "port : l'arret rend 200, le port reste pris, et la relance "
+              "echoue sur une adresse deja utilisee",
+        rougit="sur « nt », l'arret est exactement",
+        editions=[
+            ("serveur.py", brut(
+                '            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],',
+                '            subprocess.run(["taskkill", "/PID", str(pid), "/F"],')),
+        ]),
+    dict(
+        nom="l'arret sous Unix vise le mauvais numero",
+        banc="banc_console.py",
+        imite="os.kill recoit autre chose que le pid du PORT : le moteur "
+              "survit, et le studio a peut-etre tue quelqu'un d'autre",
+        rougit="sur « posix », l'arret est exactement",
+        editions=[
+            ("serveur.py", brut("            os.kill(pid, 15)",
+                                "            os.kill(1, 15)")),
+        ]),
+    dict(
         nom="le pilotage de ComfyUI s'ouvre au reseau",
         banc="banc_console.py",
         imite="n'importe qui sur le reseau local peut tuer et relancer le "

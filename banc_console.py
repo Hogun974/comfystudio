@@ -324,21 +324,32 @@ try:
     async def repond_oui():
         return True
 
-    # subprocess.run EST REMPLACE LUI AUSSI, ET CE N'EST PAS UN DETAIL. Sans
-    # lui, le chemin d'arret appelle « taskkill /PID <pid> /T /F » POUR DE VRAI
-    # sur le numero que pid_du_port rend — un banc qui tue un processus de la
-    # machine ou il tourne. Constate le 5 septembre 2026, a la premiere
-    # execution de ce fichier : le faux pid 4242 est bien parti a taskkill.
+    # LES DEUX BRANCHES DE L'ARRET SONT REMPLACEES, ET CE N'EST PAS UN DETAIL.
+    # Le code tue par « taskkill /PID <pid> /T /F » sous Windows et par
+    # os.kill(pid, 15) ailleurs. Ne remplacer que la premiere donne un banc qui
+    # TUE POUR DE VRAI sur l'autre systeme — et le numero vient de pid_du_port,
+    # que ce banc-ci fabrique.
+    #
+    # DEUX FOIS LA MEME FAUTE LE MEME JOUR, 5 septembre 2026. D'abord ici :
+    # subprocess.run n'etait pas remplace, et le faux pid 4242 est parti a un
+    # vrai taskkill sur la machine de developpement. Corrige — et la correction
+    # ne visait QUE Windows, si bien que la CI Ubuntu a appele os.kill(4242, 15)
+    # sur son runner au tour suivant. Une garde ecrite pour la plateforme qu'on
+    # a sous les yeux n'est pas une garde.
     tues = []
 
     def faux_run(cmd, **kw):
         tues.append(list(cmd))
         return type("Fini", (), {"returncode": 0, "stdout": b"", "stderr": b""})()
 
-    vrais = (S.subprocess.Popen, S.subprocess.run, S.comfy_repond,
+    def faux_kill(pid, signal):
+        tues.append(["kill", str(pid), str(signal)])
+
+    vrais = (S.subprocess.Popen, S.subprocess.run, S.os.kill, S.comfy_repond,
              S.lanceur_comfy, S.pid_du_port, S.commande_comfy)
     S.subprocess.Popen = FauxPopen
     S.subprocess.run = faux_run
+    S.os.kill = faux_kill
     S.comfy_repond = repond_non
     S.lanceur_comfy = lambda: os.path.join(tempfile.gettempdir(), "faux_lanceur.sh")
     S.pid_du_port = lambda port=None: 4242
@@ -407,10 +418,44 @@ try:
 
         # LE CHEMIN QUI TUE, une fois qu'il n'y a plus rien a perdre.
         st, d = lire(lancer(S.api_comfy_arreter(Req(hote=LOCALE))))
+        # « 4242 dans l'ordre », et non « taskkill » : la premiere ecriture de
+        # ce cas nommait la commande Windows, et rougissait sur la CI Ubuntu
+        # pour une raison qui n'avait rien a voir avec le studio. Ce qu'on
+        # mesure est qu'UN ordre part, et qu'il porte le pid du PORT de
+        # ComfyUI — pas la facon dont le systeme tue.
         dit(st == 200 and d.get("pid") == 4242 and len(tues) == 1
             and "4242" in " ".join(tues[0]),
             "file vide, il arrete le moteur, et sur le pid du PORT de ComfyUI",
             f"HTTP {st}, {tues}")
+
+        # LES DEUX SYSTEMES, DEPUIS N'IMPORTE LEQUEL DES DEUX. Le cas
+        # ci-dessus ne traverse qu'UNE branche : celle de la machine qui
+        # lance le banc. C'est ainsi qu'une assertion ecrite pour Windows a
+        # rougi sur la CI Ubuntu — et, plus grave, que l'autre branche a
+        # appele os.kill POUR DE VRAI, parce que rien ne l'avait exercee ici.
+        # On force donc os.name, qui est le seul aiguillage.
+        vrai_nom = S.os.name
+        try:
+            # L'ORDRE EN ENTIER, ET NON SON PREMIER MOT. La premiere ecriture
+            # exigeait « taskkill » et « 4242 quelque part » : la mutation qui
+            # retire « /T » gardait les deux, et revenait VERTE. Sans « /T »,
+            # taskkill ne tue que le parent — or un exe onefile a un enfant, et
+            # c'est LUI qui tient le port. L'arret rendrait 200, le port
+            # resterait pris, la relance echouerait sur « adresse deja
+            # utilisee ». C'est le piege mesure sur l'executable le meme jour.
+            for systeme, attendu in (
+                    ("nt", ["taskkill", "/PID", "4242", "/T", "/F"]),
+                    ("posix", ["kill", "4242", "15"])):
+                S.os.name = systeme
+                del tues[:]
+                S.pid_du_port = lambda port=None: 4242
+                st, d = lire(lancer(S.api_comfy_arreter(Req(hote=LOCALE))))
+                dit(st == 200 and tues == [attendu],
+                    f"sur « {systeme} », l'arret est exactement "
+                    f"« {' '.join(attendu)} »",
+                    f"HTTP {st}, {tues}")
+        finally:
+            S.os.name = vrai_nom
         S.pid_du_port = lambda port=None: 0
         avant = len(tues)
         st, d = lire(lancer(S.api_comfy_arreter(Req(hote=LOCALE))))
@@ -421,7 +466,7 @@ try:
         dit(st == 403, "l'arret est reserve a la machine hote lui aussi",
             f"HTTP {st}")
     finally:
-        (S.subprocess.Popen, S.subprocess.run, S.comfy_repond,
+        (S.subprocess.Popen, S.subprocess.run, S.os.kill, S.comfy_repond,
          S.lanceur_comfy, S.pid_du_port, S.commande_comfy) = vrais
 finally:
     pass
