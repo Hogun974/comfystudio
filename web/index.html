@@ -262,6 +262,11 @@ aside{width:236px;flex:none;background:var(--plan);border-right:1px solid var(--
   background:transparent;color:var(--encre-douce);font:11px var(--mono);cursor:pointer}
 .moteur button:hover:not(:disabled){border-color:var(--braise);color:var(--braise-vive)}
 .moteur button:disabled{opacity:.35;cursor:default}
+/* Le refus d'un geste — l'arret pendant un rendu — reste affiche sous l'etat
+   jusqu'au clic suivant : le detail, lui, est repeint a chaque tour et
+   l'effacerait en deux secondes. Pleine opacite : c'est une reponse a un
+   clic, pas une information d'ambiance. */
+.moteur .refus{color:var(--rouge);opacity:1}
 .conv{position:relative;padding:8px 26px 8px 11px;border-radius:7px;cursor:pointer;
   font-size:13.5px;line-height:1.4;color:var(--encre-douce);margin-bottom:2px}
 .conv:hover{background:var(--relief)}
@@ -761,6 +766,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       <div class="ligne"><span class="pastille" id="pastille"></span>
         <span id="etatMoteur" data-t="page.moteur.attente">ComfyUI…</span></div>
       <div class="detail" id="detailMoteur"></div>
+      <div class="detail refus" id="refusMoteur"></div>
       <div class="ligne" id="boutonsMoteur" style="display:none">
         <button id="demarrerComfy" data-t="page.comfy.demarrer">démarrer</button>
         <button id="arreterComfy" data-t="page.comfy.arreter">arrêter</button>
@@ -1848,6 +1854,95 @@ PRET.then(() => fetch("/api/machines")).then(r => r.json()).then(ns => {
   try { localStorage.removeItem("machine"); } catch (e) {}
   peindreActifs();
 }).catch(() => {});
+
+/* ── le moteur : son etat, et les deux boutons qui le pilotent ─────────
+   LE PANNEAU A ETE UNE COQUILLE DU PREMIER COMMIT AU 6 SEPTEMBRE 2026. La
+   pastille, « ComfyUI… », les deux boutons et leurs regles CSS existaient ;
+   GET /api/comfy et les deux routes POST aussi, gardees et eprouvees par
+   banc_console.py — et aucune ligne de ce script ne les reliait. Le panneau
+   disait « ComfyUI… » pour toujours, les boutons dormaient sous display:none,
+   et docs/piloter-comfyui.md decrivait depuis le debut une fonctionnalite que
+   la page n'avait jamais eue. Le releve de banc_console.py (section 7) l'a
+   dit le 5 septembre ; ceci le branche, et banc_page.py tient desormais les
+   deux moities du contrat.
+
+   LES BOUTONS NE SE MONTRENT QUE SI LE SERVEUR DIT « pilotable » — c'est-a-
+   dire local(req), l'appel vient de la machine hote, ET un script de
+   lancement trouve. Un bouton visible a un visiteur du reseau rendrait 403 au
+   clic, ce qui est pire que pas de bouton. La page ne devine donc pas si elle
+   est locale : elle lit ce champ, et lui seul. */
+// 10 s au repos : /api/comfy interroge /system_stats de ComfyUI a chaque
+// appel, et un moteur allume a la main, hors du studio, doit se voir sans
+// attendre. 2 s quand ca presse, pendant 90 s : le serveur rend la main avant
+// que ComfyUI ne reponde — « une trentaine de secondes », dit la doc — et
+// trois fois cette duree laisse sa marge a une machine lente.
+const MOTEUR_REPOS = 10000, MOTEUR_VITE = 2000, MOTEUR_PRESSE = 90000;
+let moteurPresse = 0, moteurMinuteur = null, moteurTour = 0, moteurGeste = null;
+
+async function peindreMoteur() {
+  // Pendant un geste, on ne repeint pas : le tour periodique reecrirait
+  // « ComfyUI allumé » par-dessus « arrêt… » et rendrait le bouton a un
+  // second clic pendant que taskkill travaille encore.
+  if (moteurGeste) return;
+  let d = null;
+  try {
+    const r = await fetch("/api/comfy", { credentials: "same-origin" });
+    if (r.ok) d = await r.json();
+  } catch (e) { /* d reste null : « etat indisponible », jamais une pile */ }
+  const pastille = $("#pastille");
+  pastille.classList.toggle("vif", !!(d && d.repond));
+  pastille.classList.toggle("mort", !!(d && !d.repond));
+  $("#etatMoteur").textContent = !d ? T("page.moteur.injoignable")
+    : T(d.repond ? "page.moteur.allume" : "page.moteur.eteint");
+  $("#detailMoteur").textContent = !d || !d.repond ? ""
+    : d.carte ? T("page.moteur.carte",
+                  { carte: d.carte, libre: d.vram_libre, totale: d.vram_totale })
+    : T("page.moteur.sans_carte");
+  // « pilotable » DECIDE SEUL de la presence des boutons — voir ci-dessus.
+  $("#boutonsMoteur").style.display = d && d.pilotable ? "" : "none";
+  $("#demarrerComfy").disabled = !d || !!d.repond;
+  $("#arreterComfy").disabled = !d || !d.repond;
+}
+
+async function tourMoteur() {
+  clearTimeout(moteurMinuteur);
+  const mien = ++moteurTour;
+  await peindreMoteur();
+  // Un tour lance pendant l'attente — un clic — a pris la main : celui-ci ne
+  // replanifie rien, sinon deux chaines de minuteurs tourneraient.
+  if (mien !== moteurTour) return;
+  moteurMinuteur = setTimeout(tourMoteur,
+                              Date.now() < moteurPresse ? MOTEUR_VITE : MOTEUR_REPOS);
+}
+
+async function piloterMoteur(route) {
+  moteurGeste = route;
+  $("#demarrerComfy").disabled = $("#arreterComfy").disabled = true;
+  $("#refusMoteur").textContent = "";
+  $("#etatMoteur").textContent =
+    T(route.endsWith("/arreter") ? "page.moteur.arret" : "page.moteur.demarrage");
+  try {
+    const r = await fetch(route, { method: "POST", credentials: "same-origin" });
+    const d = await r.json().catch(() => ({}));
+    // LE REFUS EST DIT, JAMAIS AVALE. Le 409 — des rendus en cours ou en
+    // attente — a sa phrase au dictionnaire, parce que celle du serveur est
+    // en francais quelle que soit la langue de la page ; les autres refus
+    // portent la sienne, qui nomme ce qui manque (« renseigne COMFY_LANCEUR »).
+    if (!r.ok) throw new Error(r.status === 409 ? T("page.moteur.occupe")
+                                                : (d.erreur || T("page.moteur.refus")));
+  } catch (err) {
+    $("#refusMoteur").textContent = err.message;
+  } finally {
+    moteurGeste = null;
+  }
+  // Repeindre tout de suite, puis vite pendant MOTEUR_PRESSE : le serveur a
+  // rendu la main, ComfyUI n'a pas encore repondu.
+  moteurPresse = Date.now() + MOTEUR_PRESSE;
+  tourMoteur();
+}
+$("#demarrerComfy").onclick = () => piloterMoteur("/api/comfy/demarrer");
+$("#arreterComfy").onclick = () => piloterMoteur("/api/comfy/arreter");
+PRET.then(tourMoteur);
 
 /* ── amorçage ────────────────────────────────────────────────────── */
 PRET.then(() => fetch("/api/modeles")).then(r => r.json()).then(ms => {

@@ -1117,6 +1117,166 @@ PAGE = [
                 '$("#go").onclick = () => '
                 'lancerDemande(document.getElementById("priorite").value);')),
         ]),
+    # ── le moteur : l'etat est peint, et les boutons parlent a leurs routes ──
+    # Onze mutations pour cinq cas, nes le 6 septembre 2026 avec le
+    # branchement du panneau — donc sans filet d'avant. Le sens inverse a ete
+    # pris par le second chemin : le banc NEUF lance sur la page d'AVANT
+    # (HEAD:web/index.html, ou le panneau est une coquille), et les lignes que
+    # ces mutations nomment y rougissent. Chacune imite une facon precise de
+    # revenir a la coquille ou de la reproduire a moitie.
+    dict(
+        nom="le panneau du moteur redevient une coquille",
+        banc="banc_page.py",
+        imite="L'ETAT DU DEPOT DU PREMIER COMMIT AU 6 SEPTEMBRE 2026 : le "
+              "peintre n'interroge plus GET /api/comfy et peint un etat fixe. "
+              "La pastille, les textes et les boutons sont la, rien ne les "
+              "nourrit, et « ComfyUI… » reste ecrit pour toujours",
+        rougit="le panneau est nourri par GET /api/comfy",
+        editions=[
+            ("web/index.html", brut(
+                '    const r = await fetch("/api/comfy", { credentials: "same-origin" });\n'
+                "    if (r.ok) d = await r.json();\n",
+                "    d = { repond: false, pilotable: false };\n")),
+        ]),
+    dict(
+        nom="le panneau lit un champ que le serveur ne rend pas",
+        banc="banc_page.py",
+        imite="« d.allume » a la place de « d.repond » : undefined, donc faux, "
+              "donc la pastille dit « eteint » d'un ComfyUI qui repond. Aucune "
+              "erreur ne leve — c'est le silence de MENU_REGLAGE et CLE_REGLAGE, "
+              "entre la page et le serveur cette fois",
+        rougit="chaque champ qu'il lit est un champ qu'api_comfy() rend",
+        editions=[
+            ("web/index.html", brut(
+                '  pastille.classList.toggle("vif", !!(d && d.repond));',
+                '  pastille.classList.toggle("vif", !!(d && d.allume));')),
+        ]),
+    dict(
+        nom="le serveur cesse de rendre « pilotable »",
+        banc="banc_page.py",
+        imite="le champ disparait de la reponse — refactor, renommage — et la "
+              "page continue de le lire : undefined, donc les boutons ne se "
+              "montrent plus jamais, meme a l'hote. La doc promet deux "
+              "boutons, la page en montre zero, et rien ne rougit",
+        rougit="chaque champ qu'il lit est un champ qu'api_comfy() rend",
+        editions=[
+            ("serveur.py", brut(
+                '        "pilotable": local(req) and bool(lanceur),\n', "")),
+        ]),
+    dict(
+        nom="les boutons se montrent a tout le monde",
+        banc="banc_page.py",
+        imite="l'affichage ne depend plus que de la reponse recue : un "
+              "visiteur du reseau voit « demarrer » et « arreter », clique, et "
+              "recoit 403 — pire que pas de bouton, dit le brief et dit la "
+              "garde de local()",
+        rougit="les boutons ne se montrent que si le serveur dit « pilotable »",
+        editions=[
+            ("web/index.html", brut(
+                '  $("#boutonsMoteur").style.display = d && d.pilotable ? "" : "none";',
+                '  $("#boutonsMoteur").style.display = d ? "" : "none";')),
+        ]),
+    dict(
+        nom="l'affichage des boutons est a l'envers",
+        banc="banc_page.py",
+        imite="les deux branches du ternaire echangees : les boutons se "
+              "montrent au reseau et se cachent a l'hote. Le mot « pilotable » "
+              "est toujours dans la ligne — un releve du mot resterait vert ; "
+              "seule l'EVALUATION le voit",
+        rougit="les boutons ne se montrent que si le serveur dit « pilotable »",
+        editions=[
+            ("web/index.html", brut(
+                '  $("#boutonsMoteur").style.display = d && d.pilotable ? "" : "none";',
+                '  $("#boutonsMoteur").style.display = d && d.pilotable ? "none" : "";')),
+        ]),
+    dict(
+        nom="le bouton « arreter » appelle /demarrer",
+        banc="banc_page.py",
+        imite="un copier-coller : les deux boutons visent la meme route. Le "
+              "libelle dit « arrêter », le clic demarre — et la route d'arret "
+              "n'a plus de bouton, sans qu'une ligne du serveur ne bouge",
+        rougit="chaque bouton du panneau vise une route POST que le serveur sert",
+        editions=[
+            ("web/index.html", brut(
+                '$("#arreterComfy").onclick = () => piloterMoteur("/api/comfy/arreter");',
+                '$("#arreterComfy").onclick = () => piloterMoteur("/api/comfy/demarrer");')),
+        ]),
+    dict(
+        nom="une route de pilotage sans bouton",
+        banc="banc_page.py",
+        imite="LE DEFAUT FONDATEUR, dans sa forme d'origine : une route de "
+              "pilotage servie, gardee, eprouvee en Python, et qu'aucun bouton "
+              "n'atteint. C'est exactement ce qu'etaient /demarrer et /arreter "
+              "pendant tout l'age du depot",
+        rougit="chaque route de pilotage a son bouton",
+        editions=[
+            ("serveur.py", brut(
+                '    a.router.add_post("/api/comfy/arreter", api_comfy_arreter)\n',
+                '    a.router.add_post("/api/comfy/arreter", api_comfy_arreter)\n'
+                '    a.router.add_post("/api/comfy/redemarrer", api_comfy_demarrer)\n')),
+        ]),
+    dict(
+        nom="le refus du pilotage part dans la console du navigateur",
+        banc="banc_page.py",
+        imite="« console.warn(err.message) » a la place de la zone : le 409 est "
+              "lu, formule, et ecrit la ou l'utilisateur ne regarde jamais. Le "
+              "bouton n'a rien fait, rien ne le dit, on clique encore",
+        rougit="un refus du pilotage est DIT",
+        editions=[
+            ("web/index.html", brut(
+                '    $("#refusMoteur").textContent = err.message;',
+                "    console.warn(err.message);")),
+        ]),
+    dict(
+        nom="le 409 perd sa phrase du dictionnaire",
+        banc="banc_page.py",
+        imite="la page affiche le message du serveur tel quel — « des "
+              "generations sont en cours ou en attente », en francais sans "
+              "accents, quelle que soit la langue de l'interface. La cle part "
+              "du dictionnaire avec lui, sinon c'est « aucune cle ne dort » qui "
+              "rougirait a sa place",
+        rougit="le 409 a sa phrase au dictionnaire",
+        editions=[
+            ("web/index.html", brut(
+                '    if (!r.ok) throw new Error(r.status === 409 ? T("page.moteur.occupe")\n'
+                '                                                : (d.erreur || T("page.moteur.refus")));',
+                '    if (!r.ok) throw new Error(d.erreur || T("page.moteur.refus"));')),
+            ("traductions.py", brut(
+                '    "page.moteur.occupe": {\n'
+                '        "fr": "arrêt refusé : des rendus sont en cours ou en attente",\n'
+                '        "en": "stop refused: renders are running or queued"},\n',
+                "")),
+        ]),
+    dict(
+        nom="la phrase du 409 disparait du dictionnaire, la page la cite encore",
+        banc="banc_page.py",
+        imite="T() rend alors la cle elle-meme : « page.moteur.occupe » s'ecrit "
+              "sous le panneau a la place de la phrase. Laid, mais seulement "
+              "pour qui clique sur « arreter » pendant un rendu",
+        rougit="toute cle citee par la page existe au dictionnaire",
+        editions=[
+            ("traductions.py", brut(
+                '    "page.moteur.occupe": {\n'
+                '        "fr": "arrêt refusé : des rendus sont en cours ou en attente",\n'
+                '        "en": "stop refused: renders are running or queued"},\n',
+                "")),
+        ]),
+    dict(
+        nom="le panneau ne se repeint plus apres le clic",
+        banc="banc_page.py",
+        imite="le POST part, le serveur rend la main tout de suite, et le "
+              "panneau garde l'etat d'AVANT jusqu'au tour suivant — dix "
+              "secondes au repos, pendant lesquelles « ComfyUI éteint » reste "
+              "ecrit sous un bouton qu'on vient de cliquer",
+        rougit="le panneau se repeint apres le clic",
+        editions=[
+            ("web/index.html", brut(
+                "  moteurPresse = Date.now() + MOTEUR_PRESSE;\n"
+                "  tourMoteur();\n"
+                "}\n",
+                "  moteurPresse = Date.now() + MOTEUR_PRESSE;\n"
+                "}\n")),
+        ]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -7142,6 +7302,26 @@ CONSOLE_SUITE = [
                 "def app():\n"
                 "    return web.Application()\n"
                 "    a = web.Application(client_max_size=128 * 1024 ** 2,")),
+        ]),
+    # ── l'etat du moteur, et le champ qui decide des boutons (section 4) ──
+    # Nee le 6 septembre 2026 avec le branchement du panneau de web/index.html.
+    # Le champ existait depuis le premier commit ; aucun cas n'appelait
+    # api_comfy(), donc rien ne le gardait. Preuve inverse par la diagonale
+    # elle-meme : rouge avec « local(req) and », verte sans — c'est exactement
+    # cette mutation.
+    dict(
+        nom="« pilotable » ne regarde plus d'ou vient l'appel",
+        banc="banc_console.py",
+        imite="la reponse dit « pilotable » a quiconque tant qu'un lanceur "
+              "existe : la page montre « demarrer » et « arreter » a un "
+              "visiteur du reseau, qui recoit 403 au clic. La garde de local() "
+              "tient toujours sur les deux POST — c'est la promesse faite a "
+              "la page qui ment",
+        rougit="« pilotable » est FAUX",
+        editions=[
+            ("serveur.py", brut(
+                '        "pilotable": local(req) and bool(lanceur),\n',
+                '        "pilotable": bool(lanceur),\n')),
         ]),
 ]
 

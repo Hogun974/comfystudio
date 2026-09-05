@@ -601,6 +601,41 @@ TEXTES = {
     "page.comfy.arreter": {
         "fr": "arrêter",
         "en": "stop"},
+    # Le panneau du moteur, nourri par GET /api/comfy depuis le 6 septembre
+    # 2026 — du premier commit a ce jour, la page portait « ComfyUI… » et ses
+    # deux boutons sans qu'aucune ligne de script ne les relie a rien.
+    "page.moteur.allume": {
+        "fr": "ComfyUI allumé",
+        "en": "ComfyUI running"},
+    "page.moteur.eteint": {
+        "fr": "ComfyUI éteint",
+        "en": "ComfyUI stopped"},
+    "page.moteur.injoignable": {
+        "fr": "état du moteur indisponible",
+        "en": "engine status unavailable"},
+    # « Go » n'est pas une unite internationale, c'est un mot francais :
+    # l'anglais ecrit « GB » (voir page.machine.vram).
+    "page.moteur.carte": {
+        "fr": "{carte} — {libre} / {totale} Go libres",
+        "en": "{carte} — {libre} / {totale} GB free"},
+    "page.moteur.sans_carte": {
+        "fr": "aucune carte détectée",
+        "en": "no GPU detected"},
+    "page.moteur.demarrage": {
+        "fr": "démarrage… (une trentaine de secondes)",
+        "en": "starting… (about thirty seconds)"},
+    "page.moteur.arret": {
+        "fr": "arrêt…",
+        "en": "stopping…"},
+    # Le 409 de /api/comfy/arreter : le serveur refuse tant qu'une generation
+    # est en cours ou en attente. Sa phrase vit ici et non dans la reponse du
+    # serveur, qui est en francais quelle que soit la langue de la page.
+    "page.moteur.occupe": {
+        "fr": "arrêt refusé : des rendus sont en cours ou en attente",
+        "en": "stop refused: renders are running or queued"},
+    "page.moteur.refus": {
+        "fr": "le studio a refusé le geste",
+        "en": "the studio refused the action"},
 
     # ── la saisie ───────────────────────────────────────────────────
     "page.saisie.aria": {

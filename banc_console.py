@@ -63,12 +63,14 @@ CE QU'IL NE VOIT PAS, et il faut l'ecrire :
     statique : un api() dans un gestionnaire que rien n'attache compte comme
     un appel. Emprunter le chemin du navigateur est le travail de
     recette_chemin_page.py, qui a besoin d'un studio.
-  - Les deux routes de pilotage de la section 4 n'ont AUCUN bouton : au
-    5 septembre 2026, rien dans web/ n'appelle /api/comfy/demarrer ni
-    /api/comfy/arreter, et ce depuis le premier commit. La section 7 les
-    nomme en exception, elle ne les couvre pas — un banc qui eprouve une
-    route « depuis l'interface » que l'interface n'appelle pas mesure le
-    gestionnaire, pas le bouton.
+  - Le couplage de la PAGE D'ACCUEIL avec les deux routes de pilotage de la
+    section 4. Du premier commit au 5 septembre 2026, rien dans web/
+    n'appelait /api/comfy/demarrer ni /api/comfy/arreter — le panneau du
+    moteur etait une coquille, et ce releve-ci l'a dit. Depuis le
+    6 septembre, web/index.html les appelle ; c'est banc_page.py qui tient ce
+    couplage, dans les deux sens, parce que c'est lui qui lit la page. La
+    section 7 les nomme donc en exception : la console, elle, ne les appelle
+    toujours pas.
   - L'effet de la pause sur la repartition : banc_attente.py et
     banc_repartition.py le tiennent, et ce banc-ci ne le redit pas.
 """
@@ -683,6 +685,35 @@ try:
         st, d = lire(lancer(S.api_comfy_arreter(Req(hote="203.0.113.9"))))
         dit(st == 403, "l'arret est reserve a la machine hote lui aussi",
             f"HTTP {st}")
+
+        # L'ETAT, ET LE CHAMP QUI DECIDE DES BOUTONS. Depuis le 6 septembre
+        # 2026, web/index.html lit GET /api/comfy et ne montre « demarrer » et
+        # « arreter » que si la reponse dit « pilotable » : c'est la garde de
+        # local() relue par la page, pour qu'un visiteur du reseau ne voie pas
+        # un bouton qui rendrait 403 au clic. Ce champ existait depuis le
+        # premier commit et n'etait garde par personne — aucun cas n'appelait
+        # api_comfy(). Les trois valeurs qui comptent : faux vu du reseau meme
+        # avec un lanceur, vrai vu de l'hote avec un lanceur, faux sans
+        # lanceur — demarrer rendrait alors 404. banc_page.py tient l'autre
+        # moitie : que la page cache bien les boutons sur ce champ-la.
+        S.comfy_repond = repond_non
+        S.lanceur_comfy = lambda: os.path.join(tempfile.gettempdir(),
+                                               "faux_lanceur.sh")
+        st, d = lire(lancer(S.api_comfy(Req(hote="203.0.113.9"))))
+        dit(st == 200 and d.get("pilotable") is False and "repond" in d,
+            "vu du reseau, l'etat du moteur se lit mais « pilotable » est FAUX : "
+            "la page ne montrera pas un bouton qui rendrait 403 au clic",
+            f"HTTP {st}, pilotable={d.get('pilotable')!r}")
+        st, d = lire(lancer(S.api_comfy(Req(hote=LOCALE))))
+        dit(st == 200 and d.get("pilotable") is True,
+            "vu de la machine hote avec un script de lancement, il est vrai",
+            f"HTTP {st}, pilotable={d.get('pilotable')!r}")
+        S.lanceur_comfy = lambda: None
+        st, d = lire(lancer(S.api_comfy(Req(hote=LOCALE))))
+        dit(st == 200 and d.get("pilotable") is False,
+            "et faux sans script de lancement : demarrer rendrait 404, autant "
+            "ne pas le proposer",
+            f"HTTP {st}, pilotable={d.get('pilotable')!r}")
     finally:
         (S.subprocess.Popen, S.subprocess.run, S.os.kill, S.comfy_repond,
          S.lanceur_comfy, S.pid_du_port, S.commande_comfy) = vrais
@@ -924,11 +955,13 @@ try:
             "GET /api/admin/noeuds, et le POST rend deja l'etat complet ; "
             "reste servie a un script",
         ("POST", "/api/comfy/demarrer"):
-            "aucun bouton dans web/ au 5 septembre 2026, et ce depuis le "
-            "premier commit : la section 4 l'eprouve « depuis l'interface », "
-            "et l'interface ne l'appelle pas",
+            "appelee par la page d'accueil, web/index.html, et non par la "
+            "console : sans bouton du premier commit au 5 septembre 2026, "
+            "elle en a un depuis le 6, et banc_page.py tient ce couplage "
+            "dans les deux sens",
         ("POST", "/api/comfy/arreter"):
-            "meme releve que /api/comfy/demarrer — aucun bouton, aucune page",
+            "meme releve que /api/comfy/demarrer — le bouton est dans "
+            "web/index.html, garde par banc_page.py",
     }
     atteintes = set(couples)
     mortes = sorted(k for k in famille

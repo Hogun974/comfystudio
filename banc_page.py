@@ -1680,6 +1680,209 @@ dit(bool(_caches) and all(c and "no-cache" in c for _a, c in _caches),
               if not (c and "no-cache" in c))
     or f"{len(_caches)} pages, l'ETag rend alors un 304 sans corps")
 
+print("\n  ── le moteur : l'etat est peint, et les boutons parlent a leurs routes ──")
+# LE PANNEAU A ETE UNE COQUILLE DU PREMIER COMMIT AU 6 SEPTEMBRE 2026. La
+# pastille, « ComfyUI… », les deux boutons et leurs regles CSS existaient dans
+# le HTML ; GET /api/comfy et les deux routes POST existaient dans serveur.py,
+# gardees par deux verrous et eprouvees par banc_console.py — et AUCUNE ligne
+# du script ne les reliait. Aucun des soixante-onze cas de ce banc ne pouvait
+# le voir : ils relisent ce que la page ecrit, et la page n'ecrivait rien. Le
+# releve de banc_console.py (section 7) l'a dit : « aucun bouton dans web/,
+# et ce depuis le premier commit ». Ce qui suit tient les deux moities du
+# contrat que la doc promettait — docs/piloter-comfyui.md, « depuis la machine
+# hote, deux boutons le demarrent et l'arretent ».
+#
+# CE QUE CETTE SECTION NE VOIT PAS, et il faut l'ecrire : qu'un clic parte
+# vraiment, qu'un 409 s'affiche vraiment. Elle est statique ; le chemin du
+# navigateur reste a recette_chemin_page.py. Elle voit la CONTRADICTION — un
+# champ lu que le serveur ne rend pas, un bouton sans route, une route sans
+# bouton, un refus que rien n'ecrit.
+
+# LE PEINTRE EST TROUVE PAR CE QU'IL FAIT, pas par son nom : la fonction dont
+# le corps interroge GET /api/comfy — le chemin EXACT, avec son guillemet
+# fermant, sinon « /api/comfy/demarrer » le nommerait aussi. Zero ou deux
+# peintres vaut NON : on ne saurait plus lequel la page ecoute.
+_peintres = [n for n in re.findall(r'async function (\w+)\(', CODE)
+             if 'fetch("/api/comfy"' in _corps_de(CODE, n)]
+_PEINTRE = _corps_de(CODE, _peintres[0]) if len(_peintres) == 1 else ""
+
+# LES CHAMPS QUE LE SERVEUR REND, lus sur l'arbre d'api_comfy() : les cles
+# constantes du dictionnaire passe a json_response. Un motif sur le texte
+# aurait lu aussi le commentaire qui les explique.
+_rendus = set()
+for _n in ast.walk(ARBRE_SERVEUR):
+    if isinstance(_n, ast.AsyncFunctionDef) and _n.name == "api_comfy":
+        for _c in ast.walk(_n):
+            if (isinstance(_c, ast.Call) and isinstance(_c.func, ast.Attribute)
+                    and _c.func.attr == "json_response" and _c.args
+                    and isinstance(_c.args[0], ast.Dict)):
+                _rendus |= {k.value for k in _c.args[0].keys
+                            if isinstance(k, ast.Constant)}
+# Les champs que le peintre LIT sur la reponse : « d.x ». « d » est le nom que
+# la page donne a la reponse decodee ; si elle en change, ce releve rend vide
+# et le cas rougit sur « aucun champ lu », ce qui est le bon sens de l'erreur.
+_lus = set(re.findall(r'\bd\.([a-z_]+)', _PEINTRE))
+# CE QUE LA DOC PROMET, et pas seulement ce qui existe : « allume ou eteint,
+# carte detectee, VRAM libre », plus le champ qui decide des boutons.
+_PROMIS = {"repond", "carte", "vram_libre", "pilotable"}
+_inconnus = sorted(_lus - _rendus)
+dit(len(_peintres) == 1 and _rendus and _PROMIS <= _lus and not _inconnus,
+    "le panneau est nourri par GET /api/comfy, et chaque champ qu'il lit est "
+    "un champ qu'api_comfy() rend",
+    f"{len(_peintres)} fonction(s) interrogent /api/comfy" if len(_peintres) != 1
+    else f"lus mais non rendus : {', '.join(_inconnus)}" if _inconnus
+    else f"promis mais non lus : {', '.join(sorted(_PROMIS - _lus))}"
+    if not _PROMIS <= _lus
+    else f"{len(_lus)} champs lus sur {len(_rendus)} rendus")
+
+
+def _bool_js(expr, **valeurs):
+    """Ce que vaut une expression booleenne JS minuscule, ou None.
+
+    « d && d.pilotable », « !d », des parentheses : les noms recus sont
+    remplaces par leur valeur, le reste doit se reduire a des booleens et aux
+    trois operateurs. Tout autre jeton rend None — un NON, jamais un silence :
+    ce banc n'evalue pas ce qu'il ne comprend pas, il le dit (banc_conteneur.py
+    fait de meme pour les defauts calcules du compose).
+    """
+    t = expr
+    for nom, val in sorted(valeurs.items(), key=lambda kv: -len(kv[0])):
+        t = re.sub(r'(?<![\w.])' + re.escape(nom) + r'\b(?!\s*\.)',
+                   " True " if val else " False ", t)
+    t = t.replace("&&", " and ").replace("||", " or ").replace("!", " not ")
+    if re.sub(r'\b(True|False|and|or|not)\b|[()\s]', "", t):
+        return None
+    try:
+        return bool(eval(t, {"__builtins__": {}}, {}))  # noqa: S307
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# LES BOUTONS NE SE MONTRENT QUE SUR « pilotable ». C'est la garde que
+# local() pose cote serveur, relue par la page : un bouton visible a un
+# visiteur du reseau rend 403 au clic, ce qui est pire que pas de bouton. On
+# ne releve pas le mot « pilotable » dans la ligne — « d ? "" : "none" » le
+# porterait dans un commentaire — on EVALUE l'affectation : pilotable faux
+# doit donner « none », pilotable vrai autre chose. Une seule ecriture de
+# l'affichage, sinon on ne sait plus laquelle l'emporte.
+_affiche = re.findall(r'\$\("#boutonsMoteur"\)\.style\.display\s*=\s*([^;]+);',
+                      CODE)
+_verdict_boutons = None
+if len(_affiche) == 1:
+    _m = re.fullmatch(r'(.+?)\?\s*"([^"]*)"\s*:\s*"([^"]*)"', _affiche[0].strip(),
+                      re.S)
+    if _m:
+        _cond, _si, _sinon = _m.groups()
+        _sans = _bool_js(_cond, d=True, **{"d.pilotable": False})
+        _avec = _bool_js(_cond, d=True, **{"d.pilotable": True})
+        if _sans is not None and _avec is not None:
+            _verdict_boutons = ((_si if _sans else _sinon) == "none"
+                                and (_si if _avec else _sinon) != "none")
+dit(_verdict_boutons is True,
+    "les boutons ne se montrent que si le serveur dit « pilotable » : faux, "
+    "ils sont caches ; vrai, ils sont la",
+    f"{len(_affiche)} ecriture(s) de l'affichage" if len(_affiche) != 1
+    else "l'affectation ne se lit pas : ce cas ne mesure plus rien — "
+    + _affiche[0].strip()[:60] if _verdict_boutons is None
+    else _affiche[0].strip()[:60])
+
+# CHAQUE BOUTON VISE UNE ROUTE POST SERVIE, ET CHAQUE ROUTE DE PILOTAGE A SON
+# BOUTON. Les routes sont lues sur l'arbre de serveur.py — les add_post dont
+# le chemin constant commence par /api/comfy/ — et les boutons sur le HTML du
+# panneau, avec la CLE de leur libelle : le bouton qui dit « démarrer » doit
+# appeler /demarrer, et le dernier segment des deux le dit. C'est le couplage
+# page/routeur que banc_console.py tient pour la console (section 7), pris ici
+# pour la seule famille que la page d'accueil appelle.
+_routes = {}
+for _n in ast.walk(ARBRE_SERVEUR):
+    if (isinstance(_n, ast.Call) and isinstance(_n.func, ast.Attribute)
+            and _n.func.attr.startswith("add_") and _n.args
+            and isinstance(_n.args[0], ast.Constant)
+            and str(_n.args[0].value).startswith("/api/comfy/")):
+        _routes[_n.args[0].value] = _n.func.attr
+_POST = {r for r, m in _routes.items() if m == "add_post"}
+_liaisons = dict(re.findall(
+    r'\$\("#(\w+)"\)\.onclick\s*=\s*\(\)\s*=>\s*piloterMoteur\("(/api/comfy/[a-z_]+)"\)',
+    CODE))
+_bloc = re.search(r'id="boutonsMoteur".*?</div>', _CORPS_HTML, re.S)
+_boutons = dict(re.findall(r'<button id="(\w+)" data-t="([a-z0-9_.]+)"',
+                           _bloc.group(0) if _bloc else ""))
+_depareilles = sorted(
+    f"{i} dit « {_boutons[i].rsplit('.', 1)[-1]} » et appelle {_liaisons[i]}"
+    for i in set(_liaisons) & set(_boutons)
+    if _boutons[i].rsplit(".", 1)[-1] != _liaisons[i].rsplit("/", 1)[-1])
+dit(len(_POST) >= 2 and set(_liaisons.values()) == _POST
+    and set(_liaisons) == set(_boutons) and not _depareilles
+    and all(m == "add_post" for m in _routes.values()),
+    "chaque bouton du panneau vise une route POST que le serveur sert, chaque "
+    "route de pilotage a son bouton, et le libelle dit le geste de la route",
+    f"{len(_POST)} route(s) POST sous /api/comfy/ : sans ce temoin, le cas "
+    "serait vrai d'un routeur vide" if len(_POST) < 2
+    else f"routes sans bouton : {', '.join(sorted(_POST - set(_liaisons.values())))}"
+    if _POST - set(_liaisons.values())
+    else f"boutons sans route servie : "
+    f"{', '.join(sorted(set(_liaisons.values()) - _POST))}"
+    if set(_liaisons.values()) - _POST
+    else f"lies sans bouton ou boutons sans lien : "
+    f"{', '.join(sorted(set(_liaisons) ^ set(_boutons)))}"
+    if set(_liaisons) != set(_boutons)
+    else " ; ".join(_depareilles) if _depareilles
+    else f"une route de la famille n'est pas POST : {_routes}"
+    if not all(m == "add_post" for m in _routes.values())
+    else f"{len(_liaisons)} boutons, {len(_POST)} routes")
+
+# UN REFUS N'EST PAS AVALE. L'arret rend 409 tant qu'une generation est en
+# cours ou en attente, et c'est la SEULE chose qu'il refuse a l'hote : un
+# clic qui ne fait rien sans un mot ferait cliquer encore, puis chercher une
+# panne. Meme doctrine que « un POST refuse ne peut pas etre silencieux » pour
+# /admin : UN SEUL pilote — toute mention de la famille /api/comfy/ dans le
+# script est une liaison de bouton, donc tout passe par lui — qui lit le
+# statut, donne au 409 une phrase qui EXISTE au dictionnaire (celle du
+# serveur est francaise quelle que soit la langue de la page), et ecrit le
+# refus dans une zone qui EXISTE dans le HTML.
+_PILOTE = _corps_de(CODE, "piloterMoteur")
+_mentions = len(re.findall(r'"/api/comfy/', CODE))
+_cle_409 = re.search(r'409\s*\?\s*T\("(page\.[a-z0-9_.]+)"', _PILOTE)
+_zone = re.search(r'\$\("#(\w+)"\)\.textContent\s*=\s*err\.message', _PILOTE)
+_zone_la = bool(_zone) and bool(
+    re.search(r'\bid="' + re.escape(_zone.group(1)) + r'"', _CORPS_HTML))
+dit(bool(_PILOTE) and 'method: "POST"' in _PILOTE and ".ok" in _PILOTE
+    and _mentions == len(_liaisons)
+    and _cle_409 is not None and _cle_409.group(1) in TR.TEXTES and _zone_la,
+    "et un refus du pilotage est DIT : le pilote lit le statut, le 409 a sa "
+    "phrase au dictionnaire, et le message tombe dans une zone qui existe",
+    "piloterMoteur() est introuvable" if not _PILOTE
+    else "le pilote ne poste pas" if 'method: "POST"' not in _PILOTE
+    else "le pilote ne lit pas la reponse" if ".ok" not in _PILOTE
+    else f"{_mentions} mention(s) de /api/comfy/ pour {len(_liaisons)} liaison(s) : "
+    "un appel contourne le pilote" if _mentions != len(_liaisons)
+    else "le 409 n'a pas de phrase" if _cle_409 is None
+    else f"{_cle_409.group(1)} n'existe pas au dictionnaire"
+    if _cle_409.group(1) not in TR.TEXTES
+    else "le refus n'est ecrit nulle part, ou dans une zone absente"
+    if not _zone_la
+    else f"409 -> {_cle_409.group(1)}, ecrit dans #{_zone.group(1)}")
+
+# LE PANNEAU SE REPEINT APRES LE CLIC, ET PERIODIQUEMENT. Le serveur rend la
+# main tout de suite — « ComfyUI met une trentaine de secondes a repondre :
+# l'interface interroge l'etat toute seule », dit api_comfy_demarrer() — donc
+# un panneau qui ne se repeint pas apres le clic montre l'etat d'AVANT pendant
+# une minute. On cherche la fonction qui appelle le peintre ET se replanifie,
+# et l'on exige que le pilote la relance (ou relance le peintre) apres le POST.
+_tours = [n for n in re.findall(r'async function (\w+)\(', CODE)
+          if _peintres and _peintres[0] + "(" in _corps_de(CODE, n)
+          and re.search(r'setTimeout\(\s*' + n + r'\b', _corps_de(CODE, n))]
+_relance = bool(_PILOTE) and any(
+    re.search(r'(?<![\w.])' + n + r'\(', _PILOTE) for n in _tours + _peintres)
+dit(len(_peintres) == 1 and len(_tours) == 1 and _relance,
+    "le panneau se repeint apres le clic, et se replanifie tout seul : le "
+    "serveur rend la main avant que ComfyUI ne reponde",
+    "pas de peintre unique" if len(_peintres) != 1
+    else f"{len(_tours)} fonction(s) repeignent et se replanifient"
+    if len(_tours) != 1
+    else "le pilote ne repeint rien apres le POST" if not _relance
+    else f"{_tours[0]}() -> {_peintres[0]}(), relance par piloterMoteur()")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)
