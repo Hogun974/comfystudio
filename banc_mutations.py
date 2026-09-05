@@ -5507,25 +5507,111 @@ AVIS = [
         rougit="et une ligne part dans le journal des avis",
         editions=[
             ("serveur.py", brut(
-                "                if avis:\n"
-                "                    noter_avis(pid, conv, tour, avis, note)\n",
-                "                if avis:\n"
-                "                    pass\n")),
+                "                        noter_avis(pid, conv, tour, avis, note)\n",
+                "                        pass\n")),
         ]),
     dict(
-        nom="un avis retire ecrit quand meme sa ligne",
+        nom="un zero sur un tour vierge ecrit quand meme sa ligne",
         banc="banc_avis.py",
-        imite="s'etre trompe de bouton laisse une trace definitive dans le "
-              "journal. Le decompte de /admin compte un pouce que personne ne "
-              "porte plus, et l'utilisateur n'a aucun moyen de le reprendre",
-        rougit="un pouce retire (avis=0) efface l'avis du tour et n'ecrit "
-               "AUCUNE ligne de plus",
+        imite="chaque zero venu d'ailleurs que du reclic de la page — un "
+              "client qui envoie l'etat du bouton a chaque rendu, un script — "
+              "laisse une ligne de retrait sur un tour qui n'avait rien a "
+              "retirer. Le journal grossit de gestes qui ne disent rien, et "
+              "/admin en relit quatre cents a chaque ouverture",
+        rougit="un retrait sur un tour qui n'avait pas d'avis n'ecrit aucune "
+               "ligne",
         editions=[
             ("serveur.py", brut(
-                "                if avis:\n"
-                "                    noter_avis(pid, conv, tour, avis, note)",
-                "                if True:\n"
-                "                    noter_avis(pid, conv, tour, avis, note)")),
+                '                if avis or avant["avis"]:\n',
+                "                if True:\n")),
+        ]),
+    dict(
+        nom="un pouce retire ne laisse plus de trace",
+        banc="banc_avis.py",
+        imite="LE DEFAUT DU 5 SEPTEMBRE 2026, seconde moitie : /admin compte "
+              "par tour, dernier avis retenu, mais le retrait n'ecrit rien — "
+              "le dernier avis du tour reste le pouce que l'utilisateur a "
+              "repris, et il est compte pour toujours. « Un retrait n'est pas "
+              "un retour » etait juste tant que l'on comptait les lignes ; "
+              "depuis, c'est l'inverse",
+        rougit="ecrit UNE ligne de retrait",
+        editions=[
+            ("serveur.py", brut(
+                '                if avis or avant["avis"]:\n',
+                "                if avis:\n")),
+        ]),
+    dict(
+        nom="le journal qui refuse est avale par un print",
+        banc="banc_avis.py",
+        imite="LE DEFAUT DU 5 SEPTEMBRE 2026, mesure a la main : avis.jsonl "
+              "inecrivable, POST /api/avis rend 200 {\"ok\": true, \"avis\": 1} "
+              "et l'avis n'existe nulle part. Le seul temoin est la console du "
+              "studio, que l'utilisateur ne voit pas ; le pouce s'allume, et "
+              "« la seule mesure qu'on ait de ce qui marche » se perd en "
+              "silence, retour apres retour",
+        rougit="un journal inecrivable ne rend pas",
+        editions=[
+            ("serveur.py", brut(
+                '    with open(FICHIER_AVIS, "a", encoding="utf-8") as f:\n'
+                "        f.write(json.dumps(ligne, ensure_ascii=False) + chr(10))\n",
+                "    try:\n"
+                '        with open(FICHIER_AVIS, "a", encoding="utf-8") as f:\n'
+                "            f.write(json.dumps(ligne, ensure_ascii=False) + chr(10))\n"
+                "    except Exception as e:\n"
+                '        print(f"avis non enregistre : {e}", flush=True)\n')),
+        ]),
+    dict(
+        nom="la route ignore le refus du journal",
+        banc="banc_avis.py",
+        imite="la seconde garde du meme defaut : noter_avis() leve, et la "
+              "route passe outre — le tour est sauve avec son pouce, la "
+              "reponse dit « ok », et le journal n'a rien. Deux gardes pour "
+              "une panne, eprouvees chacune a la place de l'autre",
+        rougit="un journal inecrivable ne rend pas",
+        editions=[
+            ("serveur.py", brut(
+                "                    except OSError:\n"
+                "                        for k, v in avant.items():\n"
+                "                            if v is None:\n"
+                "                                tour.pop(k, None)\n"
+                "                            else:\n"
+                "                                tour[k] = v\n"
+                "                        return web.json_response(\n"
+                '                            {"erreur": T("erreur.avis_non_consigne", lg)},\n'
+                "                            status=500)\n",
+                "                    except OSError:\n"
+                "                        pass\n")),
+        ]),
+    dict(
+        nom="le tour garde un avis que le journal a refuse",
+        banc="banc_avis.py",
+        imite="la route dit non, mais le tour en memoire dit oui : la page "
+              "affiche l'erreur, puis a la prochaine ouverture peint un pouce "
+              "que le journal ne connait pas. Deux verites pour un geste, et "
+              "moissonner() apprendra de celle que personne n'a consignee",
+        rougit="et le tour est rendu tel qu'il etait",
+        editions=[
+            ("serveur.py", brut(
+                "                        for k, v in avant.items():\n"
+                "                            if v is None:\n"
+                "                                tour.pop(k, None)\n"
+                "                            else:\n"
+                "                                tour[k] = v\n",
+                "                        pass\n")),
+        ]),
+    dict(
+        nom="un avis illisible redevient un retrait",
+        banc="banc_avis.py",
+        imite="LE DEFAUT DU 5 SEPTEMBRE 2026 : avis: \"oui\" — ou un emoji, ou "
+              "une liste — echoue dans int(), le repli vaut 0, et la garde "
+              "« not in (-1, 0, 1) » ne voit rien. Un client mal ecrit efface "
+              "le pouce du tour en croyant le poser, la route rend 200, et "
+              "personne ne sait qu'un avis s'est perdu",
+        rougit="un avis illisible",
+        editions=[
+            ("serveur.py", brut(
+                "        avis = None\n",
+                "        avis = 0\n")),
         ]),
     dict(
         nom="la ligne d'avis perd le prompt et les parametres",
@@ -5608,11 +5694,29 @@ AVIS = [
         rougit="une etiquette qui n'existe pas est refusee",
         editions=[
             ("serveur.py", brut(
-                "    if voulue and voulue not in INTENTIONS_LISIBLES:\n"
+                "    if voulue and voulue not in intentions_proposables():\n"
                 '        return web.json_response({"erreur": '
                 'T("erreur.intention_inconnue", lg)},\n'
                 "                                 status=400)\n",
                 "")),
+        ]),
+    dict(
+        nom="la correction n'est refusee que par le dictionnaire fige",
+        banc="banc_avis.py",
+        imite="LE DEFAUT DU 5 SEPTEMBRE 2026 : le commentaire promettait "
+              "« refusee si l'aiguilleur ne connait pas cette classe », le "
+              "code testait INTENTIONS_LISIBLES. Un studio sans aiguilleur ne "
+              "propose rien et accepte tout ; un aiguilleur qui n'a pas appris "
+              "« video » recoit des corrections « video » qu'il ne saura "
+              "jamais apprendre, et moissonner() les jette en silence. Deux "
+              "portes pour un seul accord — la page propose, la route accepte "
+              "— et elles ne disent plus la meme chose",
+        rougit="et une classe lisible mais que l'aiguilleur EN SERVICE ne "
+               "connait pas est refusee",
+        editions=[
+            ("serveur.py", brut(
+                "    if voulue and voulue not in intentions_proposables():\n",
+                "    if voulue and voulue not in INTENTIONS_LISIBLES:\n")),
         ]),
     dict(
         nom="le pouce repasse en l'air ne retire plus la correction",
@@ -5709,8 +5813,8 @@ AVIS = [
                "reellement",
         editions=[
             ("serveur.py", brut(
-                "         if k in connues])\n",
-                "         ])\n")),
+                "    return [k for k in INTENTIONS_LISIBLES if k in connues]\n",
+                "    return list(INTENTIONS_LISIBLES)\n")),
         ]),
 
     # ══════════════════════════════════════════════════════════════════
@@ -5759,6 +5863,53 @@ AVIS = [
             ("serveur.py", brut(
                 "    tous = lire_avis(400)\n",
                 "    tous = lire_avis(1000000)\n")),
+        ]),
+    dict(
+        nom="le decompte des pouces compte les lignes",
+        banc="banc_avis.py",
+        imite="LE DEFAUT DU 5 SEPTEMBRE 2026 : le geste complet de la page "
+              "pour UN pouce en bas — le pouce part avant le mot, puis avec le "
+              "mot, puis avec la correction — ecrit trois lignes, et "
+              "pouces.bas rend 3. Un pouce retire reste compte, un avis change "
+              "de camp compte des deux cotes. Le chiffre que /admin affiche en "
+              "tete de « la seule mesure de ce qui marche » est faux d'un "
+              "facteur que personne ne connait",
+        rougit="un tour, une voix, le dernier avis retenu",
+        editions=[
+            ("serveur.py", brut(
+                '        dernier.setdefault((a.get("conversation"), '
+                'a.get("tour")), a.get("avis"))\n',
+                '        dernier[id(a)] = a.get("avis")\n')),
+        ]),
+    dict(
+        nom="le decompte retient le premier avis du tour, pas le dernier",
+        banc="banc_avis.py",
+        imite="un tour, une voix — mais la voix d'AVANT : l'utilisateur qui "
+              "s'est ravise reste compte du cote qu'il a quitte, et le retrait "
+              "ne decompte plus rien puisque la ligne la plus vieille gagne. "
+              "lire_avis() rend le plus recent d'abord, et ce sens-la est la "
+              "moitie du decompte",
+        rougit="un tour, une voix, le dernier avis retenu",
+        editions=[
+            ("serveur.py", brut(
+                '        dernier.setdefault((a.get("conversation"), '
+                'a.get("tour")), a.get("avis"))\n',
+                '        dernier[(a.get("conversation"), a.get("tour"))] = '
+                'a.get("avis")\n')),
+        ]),
+    dict(
+        nom="la ligne de retrait est rendue a la page",
+        banc="banc_avis.py",
+        imite="/admin peint chaque ligne en pouce en l'air ou en pouce en bas "
+              "— « a.avis === 1 ? pouce haut : pouce bas » — et un retrait, "
+              "qui porte zero, s'affiche donc en pouce en bas, avec la demande "
+              "et le mot du tour. Le tableau montre des reproches que personne "
+              "ne porte, sous un decompte qui, lui, ne les compte pas",
+        rougit="et la liste rendue ne montre que les retours",
+        editions=[
+            ("serveur.py", brut(
+                '        "avis": [a for a in tous if a.get("avis") != 0],\n',
+                '        "avis": tous,\n')),
         ]),
     dict(
         nom="une ligne tronquee emporte tout l'historique",
@@ -5894,9 +6045,12 @@ AVIS = [
               "git qui change sous les doigts",
         rougit="il n'ecrit QUE le modele local : le modele publie est intact",
         editions=[
+            # Sur la DESTINATION du os.replace, depuis que le modele est ecrit
+            # a cote puis deplace d'un bloc une fois mesure : c'est la que se
+            # decide quel fichier recoit le modele.
             ("serveur.py", brut(
-                "    neuf.ecrire(_aiguilleur.MODELE_LOCAL)\n",
-                "    neuf.ecrire(_aiguilleur.MODELE)\n")),
+                "        os.replace(provisoire, _aiguilleur.MODELE_LOCAL)\n",
+                "        os.replace(provisoire, _aiguilleur.MODELE)\n")),
         ]),
     dict(
         nom="le studio ne recharge pas ce qu'il vient d'ecrire",
@@ -5923,8 +6077,44 @@ AVIS = [
         rougit="la reponse porte la mesure, banc par banc",
         editions=[
             ("serveur.py", brut(
-                "    for nom in entrainer.BANCS:\n",
-                "    for nom in []:\n")),
+                "        for nom in entrainer.BANCS:\n",
+                "        for nom in []:\n")),
+        ]),
+    dict(
+        nom="le modele local est ecrit avant d'etre mesure",
+        banc="banc_avis.py",
+        imite="LE DEFAUT DU 5 SEPTEMBRE 2026, le plus grave des six : la "
+              "mesure echoue, la route rend 500, la memoire garde l'ancien "
+              "aiguilleur — et le disque porte un modele que personne n'a "
+              "mesure. charger() le prefere au modele publie : au prochain "
+              "demarrage, le studio aiguille chaque demande avec, et rien ne "
+              "le dit. Mesure : le fichier local passait d'absent a ecrit sur "
+              "une exception dans la mesure",
+        rougit="et le modele LOCAL sur le disque n'a pas bouge d'un octet",
+        editions=[
+            ("serveur.py", brut(
+                '    provisoire = _aiguilleur.MODELE_LOCAL + ".tmp"\n'
+                "    neuf.ecrire(provisoire)\n",
+                '    provisoire = _aiguilleur.MODELE_LOCAL + ".tmp"\n'
+                "    neuf.ecrire(_aiguilleur.MODELE_LOCAL)\n"
+                "    neuf.ecrire(provisoire)\n")),
+        ]),
+    dict(
+        nom="le fichier provisoire du modele reste apres l'echec",
+        banc="banc_avis.py",
+        imite="chaque mesure ratee laisse un aiguilleur.local.json.tmp a cote "
+              "des donnees, et le suivant l'ecrase sans le lire. Inoffensif "
+              "pour charger(), qui ne le connait pas — jusqu'au jour ou "
+              "quelqu'un le renomme « pour reparer », et installe le modele "
+              "que la mesure avait justement refuse",
+        rougit="et aucun fichier provisoire ne traine",
+        editions=[
+            ("serveur.py", brut(
+                "    finally:\n"
+                "        if os.path.exists(provisoire):\n"
+                "            os.remove(provisoire)\n",
+                "    finally:\n"
+                "        pass\n")),
         ]),
 
     # ══════════════════════════════════════════════════════════════════
@@ -5978,6 +6168,24 @@ AVIS = [
             ("entrainer_aiguilleur.py", brut(
                 "POIDS_REEL = 8\n",
                 "POIDS_REEL = 1\n")),
+        ]),
+    dict(
+        nom="la route reecrit le corpus des gabarits dans le depot",
+        banc="banc_avis.py",
+        imite="LE DEFAUT DU 5 SEPTEMBRE 2026 : chaque POST /api/admin/"
+              "aiguilleur reecrivait corpus_aiguillage.jsonl a sa place dans "
+              "l'arbre des sources — un fichier suivi par git, /app dans "
+              "l'image en conteneur. Un clic d'administration qui modifie le "
+              "depot, et « git status » qui bouge sans qu'on ait rien edite. "
+              "Le fichier n'apportait rien que le code n'ait deja : la graine "
+              "est fixe, la generation prend dix millisecondes",
+        rougit="et aucune ecriture du reentrainement ne VISAIT l'arbre des "
+               "sources",
+        editions=[
+            ("entrainer_aiguilleur.py", brut(
+                "    gabarits = corpus_aiguillage.depuis_gabarits()\n",
+                "    gabarits = corpus_aiguillage.depuis_gabarits()\n"
+                "    corpus_aiguillage.ecrire(gabarits)\n")),
         ]),
 
     # ══════════════════════════════════════════════════════════════════
@@ -6499,6 +6707,31 @@ FICHIERS = [
          rougit="reste OUVERT sans compte",
          editions=[("serveur.py",
                     brut('             or chemin.startswith("/api/noeud/")\n', ""))]),
+]
+
+
+FICHIERS_SUITE = [
+    dict(nom="la page oublie un format audio que le studio accepte",
+         banc="banc_fichiers.py",
+         imite="L'ETAT DU DEPOT JUSQU'AU 5 SEPTEMBRE 2026 : « .m4a » manquait a "
+               "EXT_SON alors que le serveur l'accepte et que le champ "
+               "« accept » le propose. Un .m4a joint recevait un apercu <img> "
+               "casse au lieu d'un lecteur — et rien, ni banc ni page, ne "
+               "reliait les deux listes",
+         rougit="l'apercu sonore de la page reconnait EXACTEMENT",
+         editions=[("web/index.html", brut(
+             "const EXT_SON = /\\.(mp3|flac|wav|ogg|opus|m4a)$/i;",
+             "const EXT_SON = /\\.(mp3|flac|wav|ogg|opus)$/i;"))]),
+    dict(nom="le relais ressert sans nosniff",
+         banc="banc_fichiers.py",
+         imite="la porte a demi fermee : la branche du disque pose l'en-tete, "
+               "celle du relais non, et c'est elle qui sert les fichiers "
+               "TELEVERSES — ce qu'un utilisateur a choisi de nous donner — "
+               "sur l'origine du studio, dans la session de tout le monde",
+         rougit="ce que le relais ressert porte « nosniff » lui aussi",
+         editions=[("serveur.py", brut(
+             '            sortants["X-Content-Type-Options"] = "nosniff"\n',
+             ""))]),
 ]
 
 
@@ -8018,7 +8251,7 @@ BOUCLE_AGENT = [
 ]
 
 
-MUTATIONS = (FICHIERS + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
+MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE

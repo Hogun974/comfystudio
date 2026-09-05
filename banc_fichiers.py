@@ -756,6 +756,21 @@ try:
         else f"page {len(propose)}, studio {len(ACCEPTEES)}, "
              f"ecart {sorted(set(propose) ^ set(ACCEPTEES))}")
 
+    # LE SECOND COUPLAGE AVEC LA PAGE, ET IL ETAIT ROMPU LE 5 SEPTEMBRE 2026 :
+    # EXT_SON n'avait pas « .m4a », alors que le serveur l'accepte et que le
+    # champ « accept » le propose. Un .m4a joint recevait un apercu <img> casse
+    # au lieu d'un lecteur. La liste du serveur fait foi ; la page doit la
+    # suivre, et rien ne l'y obligeait.
+    _son = re.search(r"const EXT_SON = /\\.\(([a-z0-9|]+)\)\$/i;", page or "")
+    _page_son = sorted("." + x for x in _son.group(1).split("|")) if _son else []
+    _studio_son = sorted(du_studio("EXT_AUDIO", set()))
+    dit(bool(_son) and _page_son == _studio_son,
+        "l'apercu sonore de la page reconnait EXACTEMENT les extensions audio "
+        "que le studio accepte : un format accepte au depot mais inconnu de la "
+        "page recevait un apercu d'image casse",
+        "EXT_SON introuvable" if not _son
+        else f"ecart {sorted(set(_page_son) ^ set(_studio_son))}")
+
     # ══════════════════════════════════════════════════════════════════
     #  3. GET /api/fichier — ce que le studio ressert, et a qui
     # ══════════════════════════════════════════════════════════════════
@@ -894,6 +909,20 @@ try:
     dit(rep.status == 404 and corps_de(rep) == b"introuvable chez comfy",
         "le statut de ComfyUI est propage tel quel : un 404 de sa part reste "
         "un 404, et non un 200 vide", f"HTTP {rep.status}")
+
+    # nosniff SUR LE RELAIS AUSSI, depuis le 5 septembre 2026. La branche du
+    # disque le posait, celle-ci non — or elle sert les memes choses sur la
+    # meme origine : les sorties de ComfyUI et les fichiers TELEVERSES
+    # (type=input), c'est-a-dire ce qu'un utilisateur a choisi de nous donner.
+    # Un en-tete pose sur une branche et pas l'autre est une porte a demi
+    # fermee, et c'est la moitie ouverte que le navigateur trouve.
+    poser_comfy(200, b"octets relayes", {"Content-Type": "image/png"})
+    rep = lancer(demander(filename="moi_00001_.png"))
+    dit(rep.status == 200 and RELAIS
+        and rep.headers.get("X-Content-Type-Options") == "nosniff",
+        "ce que le relais ressert porte « nosniff » lui aussi : les deux "
+        "branches servent sur la meme origine, donc dans la meme session",
+        f"HTTP {rep.status}, {str(rep.headers.get('X-Content-Type-Options'))}")
 
     # CE QUE LE STUDIO NE NETTOIE PAS, ET IL FAUT LE MESURER POUR LE SAVOIR.
     # api_fichier ne cherche ni « .. » ni chemin absolu dans « filename » : sa

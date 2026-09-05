@@ -1084,7 +1084,10 @@ const ech = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const EXT_IMG = /\.(png|jpe?g|webp|bmp|gif)$/i;
 const EXT_VID = /\.(mp4|webm|mkv|mov)$/i;
-const EXT_SON = /\.(mp3|flac|wav|ogg|opus)$/i;
+/* .m4a : le serveur l'accepte (EXT_AUDIO) et le selecteur le propose ; sans
+   lui ici, un .m4a joint recevait un apercu <img> casse au lieu d'un lecteur.
+   La liste du serveur fait foi, et banc_fichiers.py exige qu'elles coincident. */
+const EXT_SON = /\.(mp3|flac|wav|ogg|opus|m4a)$/i;
 /* le noeud fait partie de l'adresse : deux machines peuvent produire le meme
    nom de fichier le meme jour, le compteur de ComfyUI etant propre a chacune */
 const url = f => `/api/fichier?filename=${encodeURIComponent(f.filename)}`

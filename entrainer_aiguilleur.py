@@ -23,8 +23,11 @@ import aiguilleur as _aiguilleur
 from aiguilleur import Aiguilleur, MARGE_SURE, MODELE, MODELE_LOCAL  # noqa: E402
 import corpus_aiguillage                                # noqa: E402
 
+# Les fichiers LUS par corpus(). Les gabarits n'y sont plus : ils viennent du
+# code, corpus_aiguillage.depuis_gabarits(), et le fichier qui les porte —
+# corpus_aiguillage.jsonl, suivi par git — n'est plus qu'une sortie de ce
+# script lance a la main, pour que le depot montre ce que le code engendre.
 CORPUS = [
-    "corpus_aiguillage.jsonl",   # gabarits, produits par corpus_aiguillage.py
     "corpus_llm.jsonl",          # demandes variees ecrites par un modele
     "corpus_llm2.jsonl",         # tournures indirectes, ou le verbe est absent
 ]
@@ -127,23 +130,30 @@ SANS_REEL = False
 
 def corpus():
     """Tous les exemples, sans doublon. L'ordre des fichiers ne compte pas."""
-    # On regenere TOUJOURS, et pas seulement quand le fichier manque. Les sept
-    # gabarits « image » ajoutes le 31 aout pour qu'une creation en haute
+    # LES GABARITS VIENNENT DU CODE, PAS D'UN FICHIER. Ils ont d'abord ete lus
+    # depuis corpus_aiguillage.jsonl regenere « seulement s'il manque » : les
+    # sept gabarits « image » ajoutes le 31 aout pour qu'une creation en haute
     # definition cesse de partir a l'agrandissement ne sont jamais arrives
-    # jusqu'au corpus : le .jsonl datait du 29, il existait, on ne le
-    # reecrivait donc pas — et le correctif est reste inerte. Mesure du 31 aout
+    # jusqu'au corpus — le .jsonl datait du 29, il existait, on ne le
+    # reecrivait donc pas, et le correctif est reste inerte. Mesure du 31 aout
     # une fois le corpus reellement regenere : banc_neuf passe de 82 a 88 % de
-    # justesse, et de 85 a 91 % sur les tranches d'office. La graine est fixe et
-    # l'ecriture prend dix millisecondes : le fichier ne bouge que si les
-    # gabarits ont bouge.
-    corpus_aiguillage.ecrire(corpus_aiguillage.depuis_gabarits())
+    # justesse, et de 85 a 91 % sur les tranches d'office.
+    #
+    # Le remede a ete de regenerer TOUJOURS — donc de reecrire, a chaque appel,
+    # un fichier suivi par git, y compris depuis POST /api/admin/aiguilleur :
+    # une route HTTP ecrivait dans l'arbre des sources, et dans l'image en
+    # conteneur dans /app. Constate le 5 septembre 2026. Or la graine est fixe
+    # et la generation prend dix millisecondes : le fichier n'apportait rien
+    # que le code n'ait deja. On ne lit donc plus le fichier, on appelle le
+    # code, et il ne peut plus etre en retard sur lui-meme. Le .jsonl du depot
+    # n'est plus ecrit que par ce script lance a la main (voir __main__).
+    gabarits = corpus_aiguillage.depuis_gabarits()
     tout, vus = [], set()
-    for nom in CORPUS:
-        for x in _lire(nom):
-            cle = (x.get("texte") or "").strip().lower()
-            if cle and cle not in vus:
-                vus.add(cle)
-                tout.append(x)
+    for x in gabarits + [x for nom in CORPUS for x in _lire(nom)]:
+        cle = (x.get("texte") or "").strip().lower()
+        if cle and cle not in vus:
+            vus.add(cle)
+            tout.append(x)
     fabriques = {}
     for x in tout:
         fabriques[x["intention"]] = fabriques.get(x["intention"], 0) + 1
@@ -266,6 +276,11 @@ if __name__ == "__main__":
     # commande qui regenere le modele publie.
     SANS_REEL = "--sans-reel" in sys.argv
 
+    # Le corpus des gabarits, ecrit dans le depot POUR LE DEPOT : il montre en
+    # clair ce que corpus_aiguillage.py engendre, et une relecture de PR voit
+    # les gabarits ajoutes dans le diff. Seul ce script l'ecrit — jamais la
+    # route d'administration, qui n'a rien a faire dans l'arbre des sources.
+    corpus_aiguillage.ecrire(corpus_aiguillage.depuis_gabarits())
     exemples, du_reel = corpus()
     par = {}
     for x in exemples:

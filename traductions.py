@@ -186,6 +186,11 @@ TEXTES = {
     "erreur.avis_attendu": {
         "fr": "avis attendu : -1, 0 ou 1",
         "en": "expected rating: -1, 0 or 1"},
+    # Le journal des avis a refuse l'ecriture : l'avis n'est pose nulle part,
+    # et la route le dit au lieu de rendre « ok ».
+    "erreur.avis_non_consigne": {
+        "fr": "avis non consigne : le journal des avis est inecrivable",
+        "en": "rating not recorded: the ratings log cannot be written"},
     "erreur.intention_inconnue": {
         "fr": "intention inconnue",
         "en": "unknown intent"},

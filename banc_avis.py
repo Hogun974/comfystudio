@@ -46,8 +46,11 @@ CE QU'IL GARDE, dans l'ordre des degats :
 CE QU'IL NE DETRUIT PAS, et il faut le dire parce que c'etait le risque :
 « reentrainer » ECRIT. Trois chemins sont donc detournes vers un dossier
 temporaire AVANT le premier appel — le modele publie, le modele local, et le
-corpus des gabarits, que corpus() reecrit a chaque entrainement. La derniere
-section relit le depot et exige qu'il n'ait pas bouge d'un octet.
+corpus des gabarits, que corpus() reecrivait a chaque entrainement jusqu'au
+5 septembre 2026. Le troisieme detour est garde meme si la route n'ecrit plus
+ce fichier : c'est un filet, et il RELEVE ce que chaque ecriture visait, pour
+que la derniere section puisse exiger qu'aucune n'ait vise le depot. Elle
+relit aussi les trois fichiers et exige qu'ils n'aient pas bouge d'un octet.
 
 LE SENS INVERSE. Ce banc nait bien apres les quatre routes : il n'y a pas de
 filet d'avant, donc pas de diagonale. On a pris le second chemin — le banc
@@ -78,26 +81,34 @@ CE QU'IL NE VOIT PAS :
   - La JUSTESSE du classifieur : entrainer_aiguilleur.py la mesure et la CI
     la garde. Ce banc mesure que la mesure est RENDUE, pas ce qu'elle vaut.
 
-TROIS TROUVAILLES, ECRITES ET NON FIGEES. Aucune n'a de cas : les figer
-rendrait le banc rouge le jour ou on les repare, et c'est l'inverse de ce
-qu'on veut. Mesurees le 5 septembre 2026 :
+SIX DEFAUTS RELEVES LE 5 SEPTEMBRE 2026, d'abord ecrits ici sans cas — les
+figer aurait rendu le banc rouge le jour de leur reparation. Ils sont corriges
+le meme jour, et chacun a desormais son cas, qui exige la PROPRIETE et non la
+presence d'un mot :
 
-  - LE DECOMPTE DES POUCES DE /admin COMPTE LES CLICS, PAS LES TOURS. Le
-    journal est un ajout — c'est voulu, et c'est ce qui le rend relisible
-    apres une coupure. Mais /admin compte ses lignes : le geste complet de la
-    page pour UN SEUL pouce en bas (le pouce part avant le mot, puis avec le
-    mot, puis avec la correction) ecrit TROIS lignes, et pouces.bas rend 3.
-    Un pouce ensuite retire reste compte.
-  - UN JOURNAL INECRIVABLE REND QUAND MEME « ok ». noter_avis() avale toute
-    exception d'ecriture derriere un print. Mesure : avis.jsonl rendu
-    inecrivable, POST /api/avis rend 200 {"ok": true, "avis": 1} et l'avis
-    n'existe nulle part. Le seul temoin est la console du studio.
-  - UN ENTRAINEMENT QUI ECHOUE APRES L'ECRITURE laisse sur le disque un modele
-    que personne n'a mesure, pendant que la memoire garde l'ancien.
-    _mesurer_aiguilleur ecrit AVANT de mesurer les bancs ; une exception dans
-    la mesure rend 500 sans recharger. Mesure : le fichier local passe
-    d'absent a ecrit, la reponse est 500, AIGUILLEUR en memoire est inchange.
-    Au prochain demarrage, le studio prend ce modele-la.
+  - UN ENTRAINEMENT QUI ECHOUE APRES L'ECRITURE laissait sur le disque un
+    modele que personne n'avait mesure : _mesurer_aiguilleur ecrivait AVANT de
+    mesurer les bancs. Mesure : le fichier local passait d'absent a ecrit, la
+    reponse etait 500, et le prochain demarrage prenait ce modele-la. Le cas
+    fait echouer la MESURE expres et exige que le modele local n'ait pas bouge
+    d'un octet, et qu'aucun fichier provisoire ne traine.
+  - POST /api/admin/aiguilleur REECRIVAIT corpus_aiguillage.jsonl, un fichier
+    suivi par git, dans l'arbre des sources. Le cas releve ce que chaque
+    ecriture du reentrainement VISAIT et exige que rien n'ait vise le depot.
+  - UN JOURNAL INECRIVABLE RENDAIT QUAND MEME « ok ». Mesure : avis.jsonl
+    rendu inecrivable, POST /api/avis rendait 200 {"ok": true} et l'avis
+    n'existait nulle part. Le cas rend le journal inecrivable et exige un
+    refus, la phrase du dictionnaire, et un tour rendu tel qu'il etait.
+  - LE DECOMPTE DES POUCES DE /admin COMPTAIT LES CLICS, PAS LES TOURS : le
+    geste complet de la page pour UN pouce en bas ecrit trois lignes, et
+    pouces.bas rendait 3 ; un pouce retire restait compte. Le cas rejoue le
+    geste de la page et le retrait, et exige un tour, une voix.
+  - avis: "oui" DEVENAIT 0, un retrait silencieux, au lieu de 400.
+  - LE COMMENTAIRE DE api_avis SUR intention ETAIT FAUX : il promettait un
+    refus « si l'aiguilleur ne connait pas cette classe », le code testait un
+    dictionnaire fige. C'est le code qui a suivi le commentaire — une seule
+    porte pour proposer et accepter — et le cas exige qu'une classe lisible
+    mais inconnue de l'aiguilleur en service soit refusee.
 """
 import asyncio
 import hashlib
@@ -148,9 +159,22 @@ with open(MODELE_PUBLIE, "w", encoding="utf-8") as _f:
 
 # corpus_aiguillage n'est PAS recharge par _mesurer_aiguilleur (seul
 # entrainer_aiguilleur l'est) : le detour tient d'un bout a l'autre.
+#
+# LE DETOUR RELEVE CE QU'IL DETOURNE. Sans cela, il cacherait exactement le
+# defaut qu'il protege : une route qui reecrirait le corpus du depot ecrirait
+# ici dans le dossier temporaire, et la section 6 verrait un depot intact. On
+# note donc le chemin que l'appelant VISAIT — le sien, ou le defaut du module,
+# corpus_aiguillage.FICHIER — et l'on ecrit ailleurs.
 _vrai_ecrire = _corpus.ecrire
-_corpus.ecrire = (lambda exemples, chemin=os.path.join(DOSSIER, "corpus.jsonl"):
-                  _vrai_ecrire(exemples, chemin))
+ECRITURES_VISEES = []
+
+
+def _ecrire_detourne(exemples, chemin=None):
+    ECRITURES_VISEES.append(os.path.abspath(chemin or _corpus.FICHIER))
+    return _vrai_ecrire(exemples, os.path.join(DOSSIER, "corpus.jsonl"))
+
+
+_corpus.ecrire = _ecrire_detourne
 
 ok, rate = [], []
 
@@ -408,10 +432,52 @@ def _section_1():
     lancer(avis({"tid": "t1", "avis": -1}))
     avant = len(journal())
     st, d = lancer(avis({"tid": "t1", "avis": 0}))
-    dit(st == 200 and tour.get("avis") == 0 and len(journal()) == avant,
-        "un pouce retire (avis=0) efface l'avis du tour et n'ecrit AUCUNE "
-        "ligne de plus : un retrait n'est pas un retour",
-        f"HTTP {st}, tour.avis={tour.get('avis')}, {len(journal())} ligne(s)")
+    # UN RETRAIT S'ECRIT S'IL RETIRE QUELQUE CHOSE. Jusqu'au 5 septembre 2026
+    # il n'ecrivait rien — « un retrait n'est pas un retour » — et c'etait
+    # coherent avec un /admin qui comptait les LIGNES. Depuis qu'il compte par
+    # tour, dernier avis retenu, la ligne de retrait est ce qui permet de ne
+    # plus compter un pouce que personne ne porte. On exige UNE ligne, et
+    # qu'elle porte zero : deux lignes ou un -1 recopie seraient le vieux
+    # defaut sous une autre forme.
+    dit(st == 200 and tour.get("avis") == 0 and len(journal()) == avant + 1
+        and journal()[-1].get("avis") == 0,
+        "un pouce retire (avis=0) efface l'avis du tour et ecrit UNE ligne de "
+        "retrait, qui porte zero : c'est elle qui decompte le pouce",
+        f"HTTP {st}, tour.avis={tour.get('avis')}, {len(journal())} ligne(s), "
+        f"derniere avis={journal()[-1].get('avis') if journal() else '?'}")
+
+    # ET UN ZERO SUR UN TOUR QUI N'AVAIT RIEN N'ECRIT RIEN. La page envoie
+    # zero quand on reclique le meme pouce ; un zero venu d'ailleurs, sur un
+    # tour vierge, ne retire rien et n'a pas a laisser de trace.
+    table_rase()
+    conv, tour = poser_tour(tid="t-vierge")
+    st, d = lancer(avis({"tid": "t-vierge", "avis": 0}))
+    dit(st == 200 and not journal(),
+        "un retrait sur un tour qui n'avait pas d'avis n'ecrit aucune ligne : "
+        "il n'y a rien a retirer", f"HTTP {st}, {len(journal())} ligne(s)")
+
+    # ── le journal refuse ───────────────────────────────────────────────
+    # LE CAS DU 5 SEPTEMBRE 2026, mesure a la main : avis.jsonl inecrivable,
+    # la route rendait 200 {"ok": true, "avis": 1} et l'avis n'existait nulle
+    # part. Un DOSSIER a la place du fichier : open(..., "a") echoue sur les
+    # trois plateformes, sans droits a manipuler ni a restaurer.
+    print("\n  ── quand le journal refuse ──")
+    table_rase()
+    conv, tour = poser_tour(tid="t-mur")
+    os.mkdir(S.FICHIER_AVIS)
+    try:
+        st, d = lancer(avis({"tid": "t-mur", "avis": 1, "note": "net"}))
+    finally:
+        os.rmdir(S.FICHIER_AVIS)
+    dit(st == 500 and not d.get("ok")
+        and d.get("erreur") == texte("erreur.avis_non_consigne", "fr"),
+        "un journal inecrivable ne rend pas « ok » : la route refuse et dit "
+        "pourquoi, avec la phrase du dictionnaire",
+        f"HTTP {st}, {d!r}"[:100])
+    dit(tour.get("avis") is None and "note" not in tour,
+        "et le tour est rendu tel qu'il etait : un avis consigne nulle part "
+        "n'a pas ete pose",
+        f"tour.avis={tour.get('avis')}, note={'presente' if 'note' in tour else 'absente'}")
 
     # ── la correction d'intention ───────────────────────────────────────
     table_rase()
@@ -447,6 +513,20 @@ def _section_1():
         and not journal(),
         "un avis hors de -1, 0, 1 est refuse, et rien n'est ecrit",
         f"HTTP {st}, {d.get('erreur')!r}")
+
+    # « oui » N'EST PAS ZERO. int("oui") echoue, le repli valait 0, et la
+    # garde « not in (-1, 0, 1) » ne voyait rien : un avis illisible passait
+    # pour un RETRAIT, rendait 200, et effacait le pouce du tour. On pose un
+    # pouce d'abord, pour que l'effacement ait quelque chose a effacer.
+    lancer(avis({"tid": "t-refus", "avis": 1}))
+    st, d = lancer(avis({"tid": "t-refus", "avis": "oui"}))
+    dit(st == 400 and d.get("erreur") == texte("erreur.avis_attendu", "fr")
+        and tour.get("avis") == 1,
+        "un avis illisible (« oui ») est refuse comme un avis hors bornes, et "
+        "ne passe pas pour un retrait : le pouce pose reste pose",
+        f"HTTP {st}, tour.avis={tour.get('avis')}")
+    table_rase()
+    conv, tour = poser_tour(tid="t-refus")
 
     st, d = lancer(avis({"tid": "t-refus", "avis": 2},
                         entetes={"Accept-Language": "en"}))
@@ -504,6 +584,22 @@ def _section_2():
             "et chacune est acceptee par POST /api/avis : la page ne propose "
             "pas un bouton qui rendra 400", f"refusees : {refuses or 'aucune'}")
 
+        # L'AUTRE MOITIE DU MEME ACCORD. « video » est lisible — le
+        # dictionnaire fige la connait — mais cet aiguilleur-ci ne l'a jamais
+        # apprise. Jusqu'au 5 septembre 2026 la route l'acceptait : le
+        # commentaire promettait « refusee si l'aiguilleur ne connait pas
+        # cette classe », le code testait INTENTIONS_LISIBLES. L'etiquette
+        # dormait sur le tour, et moissonner() la jetait en silence.
+        conv, tour = poser_tour(tid="t-inconnue")
+        st, d = lancer(avis({"tid": "t-inconnue", "avis": -1,
+                             "intention": "video"}))
+        dit(st == 400 and "intention_voulue" not in tour and tour.get("avis") is None
+            and d.get("erreur") == texte("erreur.intention_inconnue", "fr"),
+            "et une classe lisible mais que l'aiguilleur EN SERVICE ne connait "
+            "pas est refusee par POST /api/avis, sans rien ecrire : ce que la "
+            "page ne propose pas, la route ne l'accepte pas",
+            f"HTTP {st}, intention_voulue={tour.get('intention_voulue')}")
+
         # SANS AIGUILLEUR, RIEN. Le commentaire de la route nomme la faute
         # exacte : « or INTENTIONS_LISIBLES » proposait les onze classes a un
         # studio qui n'a aucun classifieur pour les apprendre.
@@ -512,6 +608,12 @@ def _section_2():
         dit(liste == [],
             "sans aiguilleur, elle ne propose RIEN : la page n'affiche alors "
             "pas la question, et c'est la bonne reponse", f"rendu {liste}")
+        conv, tour = poser_tour(tid="t-sans")
+        st, d = lancer(avis({"tid": "t-sans", "avis": -1, "intention": "image"}))
+        dit(st == 400 and "intention_voulue" not in tour,
+            "et sans aiguilleur, aucune correction n'est acceptee non plus : "
+            "il n'y a personne pour l'apprendre",
+            f"HTTP {st}, intention_voulue={tour.get('intention_voulue')}")
     finally:
         S.AIGUILLEUR = vrai_aiguilleur
 
@@ -542,8 +644,40 @@ def _section_3():
         "et ceux de TOUT LE MONDE : c'est /admin, pas la page de quelqu'un",
         str(sorted({x.get("utilisateur") for x in tous})))
     dit(d.get("pouces") == {"haut": 1, "bas": 2},
-        "le decompte des pouces est celui des lignes rendues",
+        "le decompte des pouces est celui des tours rendus, un pouce par tour",
         str(d.get("pouces")))
+
+    # UN TOUR, UNE VOIX. Le geste complet de la page pour UN pouce en bas
+    # ecrit TROIS lignes — le pouce part avant le mot, puis avec le mot, puis
+    # avec la correction — et /admin comptait ses lignes : pouces.bas rendait 3
+    # pour un seul reproche, mesure du 5 septembre 2026. Un pouce retire
+    # restait compte, et un avis change de camp comptait des deux cotes. Les
+    # trois defauts dans un seul journal, et un seul decompte attendu.
+    table_rase()
+    poser_tour(tid="g-bas")
+    reponses = [lancer(avis({"tid": "g-bas", "avis": -1}))[0],
+                lancer(avis({"tid": "g-bas", "avis": -1, "note": "flou"}))[0],
+                lancer(avis({"tid": "g-bas", "avis": -1, "note": "flou",
+                             "intention": "audio"}))[0]]
+    poser_tour(pid=AUTRE, tid="g-retire")
+    reponses.append(lancer(avis({"tid": "g-retire", "avis": 1}, pid=AUTRE))[0])
+    reponses.append(lancer(avis({"tid": "g-retire", "avis": 0}, pid=AUTRE))[0])
+    poser_tour(tid="g-change")
+    reponses.append(lancer(avis({"tid": "g-change", "avis": 1}))[0])
+    reponses.append(lancer(avis({"tid": "g-change", "avis": -1}))[0])
+    _, d = lire(lancer(S.api_admin_avis(Req(methode="GET", admin=True,
+                                            chemin="/api/admin/avis"))))
+    dit(reponses == [200] * 7 and len(journal()) == 7
+        and d.get("pouces") == {"haut": 0, "bas": 2},
+        "le geste complet de la page pour un pouce en bas, un pouce retire et "
+        "un avis change de camp : sept lignes, et le decompte dit deux pouces "
+        "en bas, zero en haut — un tour, une voix, le dernier avis retenu",
+        f"reponses {reponses}, {len(journal())} ligne(s), pouces={d.get('pouces')}")
+    rendus = d.get("avis") or []
+    dit(len(rendus) == 6 and all(x.get("avis") in (1, -1) for x in rendus),
+        "et la liste rendue ne montre que les retours, jamais la ligne de "
+        "retrait : /admin ne sait peindre qu'un pouce ou l'autre",
+        f"{len(rendus)} rendus, avis={[x.get('avis') for x in rendus]}")
 
     # LE PLAFOND. /admin doit rester ouvrable quand le journal a grossi : sans
     # borne, la page se charge le fichier entier a chaque rafraichissement.
@@ -743,6 +877,59 @@ def _section_4b():
         if os.path.exists(MODELE_LOCAL):
             os.remove(MODELE_LOCAL)
 
+    # ── un entrainement qui echoue APRES l'ecriture ─────────────────────
+    # LE VRAI _mesurer_aiguilleur, et c'est la MESURE qu'on casse — pas la
+    # fonction entiere comme ci-dessus. Jusqu'au 5 septembre 2026 le modele
+    # local etait ecrit AVANT les bancs : une exception dans la mesure rendait
+    # 500, la memoire gardait l'ancien, et le disque portait un modele que
+    # personne n'avait mesure. charger() le prefere au modele publie : au
+    # prochain demarrage, le studio aiguillait avec.
+    #
+    # On casse classer() sur la CLASSE : mesurer() est la seule etape du
+    # reentrainement qui l'appelle — apprendre() et connu() ne s'en servent
+    # pas — donc l'entrainement reussit, l'ecriture a lieu ou non, et la
+    # mesure tombe. Un temoin reconnaissable dans le fichier local, et l'on
+    # exige qu'il y soit encore mot pour mot : « le fichier existe » serait
+    # vrai d'un fichier reecrit.
+    print("\n  ── un entrainement qui echoue APRES l'ecriture ──")
+    TEMOIN_LOCAL = ('{"poids": {"audio": {"jazz": 1}}, "classes": {"audio": 1}, '
+                    '"total": {"audio": 1}, "vocabulaire": 1}')
+    with open(MODELE_LOCAL, "w", encoding="utf-8") as f:
+        f.write(TEMOIN_LOCAL)
+    vrai_classer = S._aiguilleur.Aiguilleur.classer
+
+    def classer_casse(self, texte):
+        raise RuntimeError("banc casse expres dans la mesure")
+
+    temoin = S.AIGUILLEUR
+    try:
+        S._aiguilleur.Aiguilleur.classer = classer_casse
+        st, d = lire(lancer(S.api_admin_aiguilleur(aig("POST"))))
+    finally:
+        S._aiguilleur.Aiguilleur.classer = vrai_classer
+    try:
+        with open(MODELE_LOCAL, encoding="utf-8") as f:
+            reste = f.read()
+    except OSError:
+        reste = "<absent>"
+    traces = sorted(n for n in os.listdir(DOSSIER)
+                    if n.startswith("local.json") and n != "local.json")
+    dit(st == 500 and "casse expres" in str(d.get("erreur", "")),
+        "une mesure qui echoue apres l'entrainement rend 500 et dit pourquoi",
+        f"HTTP {st}, {str(d.get('erreur'))[:60]!r}")
+    dit(reste == TEMOIN_LOCAL,
+        "et le modele LOCAL sur le disque n'a pas bouge d'un octet : un modele "
+        "que personne n'a mesure ne sera pas celui du prochain demarrage",
+        "intact" if reste == TEMOIN_LOCAL else
+        ("ABSENT" if reste == "<absent>" else f"REECRIT ({len(reste)} octets)"))
+    dit(not traces,
+        "et aucun fichier provisoire ne traine a cote du modele local",
+        f"traces : {traces or 'aucune'}")
+    dit(S.AIGUILLEUR is temoin,
+        "et l'aiguilleur en service est toujours le meme objet",
+        "meme objet" if S.AIGUILLEUR is temoin else "remplace")
+    os.remove(MODELE_LOCAL)
+
     # ── le vrai reentrainement ──────────────────────────────────────────
     table_rase()
     avant_memoire = S.AIGUILLEUR
@@ -918,6 +1105,22 @@ def _section_6():
         "les trois fichiers que « reentrainer » vise n'ont pas bouge d'un "
         "octet : un banc qui abime le depot qu'il mesure est pire qu'un banc "
         "absent", f"bouges : {bouges or 'aucun'}")
+
+    # ET RIEN N'A VISE LE DEPOT. La ligne au-dessus est vraie grace au detour ;
+    # celle-ci demande ce que le detour a detourne. Jusqu'au 5 septembre 2026,
+    # chaque POST /api/admin/aiguilleur reecrivait corpus_aiguillage.jsonl a
+    # sa place dans l'arbre des sources — un fichier suivi par git, et /app
+    # dans l'image en conteneur. Une route HTTP n'a rien a ecrire la. Quatre
+    # reentrainements ont tourne dans ce banc : on exige zero ecriture visant
+    # ICI, et l'on cite celles qu'il y a eu.
+    depot = os.path.abspath(S.ICI) + os.sep
+    vers_le_depot = sorted({c for c in ECRITURES_VISEES if c.startswith(depot)})
+    dit(not vers_le_depot,
+        "et aucune ecriture du reentrainement ne VISAIT l'arbre des sources : "
+        "le corpus des gabarits vient du code, pas d'un fichier que la route "
+        "reecrirait dans le depot",
+        f"visees : {[os.path.basename(c) for c in vers_le_depot] or 'aucune'}"
+        f" ({len(ECRITURES_VISEES)} ecriture(s) detournee(s) en tout)")
 
 try:
     section("POST /api/avis — ou va un avis, et a qui il appartient", _section_1)

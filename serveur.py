@@ -7519,6 +7519,12 @@ def noter_avis(pid, conv, tour, avis, note):
     son proprietaire, alors que le retour, lui, sert a corriger le code — c'est
     la seule mesure qu'on ait de ce qui marche. Le format « une ligne, un
     objet » se relit meme si l'ecriture a ete coupee en cours.
+
+    LEVE OSError, ET NE L'AVALE PLUS. Jusqu'au 5 septembre 2026 l'echec
+    d'ecriture partait dans un print et la route rendait « ok » — mesure :
+    avis.jsonl rendu inecrivable, POST /api/avis repondait 200 {"ok": true}
+    et l'avis n'existait nulle part. Le seul temoin etait la console du
+    studio, que l'utilisateur ne voit pas. C'est a la route de dire la verite.
     """
     ligne = {
         "quand": time.strftime("%Y-%m-%d %H:%M:%S"), "avis": avis, "note": note,
@@ -7531,11 +7537,8 @@ def noter_avis(pid, conv, tour, avis, note):
         "etat": tour.get("etat"), "erreur": tour.get("erreur"),
         "fichiers": [f.get("filename") for f in (tour.get("fichiers") or [])],
     }
-    try:
-        with open(FICHIER_AVIS, "a", encoding="utf-8") as f:
-            f.write(json.dumps(ligne, ensure_ascii=False) + chr(10))
-    except Exception as e:
-        print(f"avis non enregistre : {e}", flush=True)
+    with open(FICHIER_AVIS, "a", encoding="utf-8") as f:
+        f.write(json.dumps(ligne, ensure_ascii=False) + chr(10))
 
 
 def lire_avis(limite=200):
@@ -7576,21 +7579,37 @@ INTENTIONS_LISIBLES = {
 }
 
 
+def intentions_proposables():
+    """Les classes qu'on ose PROPOSER comme correction, et les seules qu'on
+    ACCEPTE : lisibles, et connues de l'aiguilleur en service.
+
+    UNE SEULE PORTE POUR LES DEUX ROUTES. /api/intentions propose, /api/avis
+    accepte ; jusqu'au 5 septembre 2026 la seconde testait INTENTIONS_LISIBLES
+    seul, un dictionnaire fige, pendant que son commentaire promettait « refusee
+    si l'aiguilleur ne connait pas cette classe ». Un studio sans aiguilleur ne
+    proposait donc rien et acceptait tout — et l'etiquette dormait sur le tour,
+    moissonner() la jetant en silence. Deux refus ecrits a deux endroits se
+    couvriraient l'un l'autre : on ne pourrait plus faire rougir ni l'un ni
+    l'autre.
+    """
+    # Sans aiguilleur, RIEN. « or INTENTIONS_LISIBLES » faisait exactement
+    # l'inverse de ce que la docstring de la route promet : les onze classes
+    # proposees a un studio qui n'a aucun classifieur pour les apprendre. La
+    # page n'affiche alors pas la question, ce qui est la bonne reponse — mieux
+    # vaut ne pas demander que demander pour rien.
+    connues = set((AIGUILLEUR.classes if AIGUILLEUR else {}) or {})
+    return [k for k in INTENTIONS_LISIBLES if k in connues]
+
+
 async def api_intentions(_):
     """Ce qu'on peut repondre a « c'etait plutot quoi ? ».
 
     On ne rend que les classes que l'aiguilleur connait REELLEMENT : proposer
     une correction qu'il ne saurait pas apprendre serait demander pour rien.
     """
-    # Sans aiguilleur, RIEN. « or INTENTIONS_LISIBLES » faisait exactement
-    # l'inverse de ce que la docstring promet : les onze classes proposees a un
-    # studio qui n'a aucun classifieur pour les apprendre. La page n'affiche
-    # alors pas la question, ce qui est la bonne reponse — mieux vaut ne pas
-    # demander que demander pour rien.
-    connues = set((AIGUILLEUR.classes if AIGUILLEUR else {}) or {})
     return web.json_response(
-        [{"cle": k, "titre": v} for k, v in INTENTIONS_LISIBLES.items()
-         if k in connues])
+        [{"cle": k, "titre": INTENTIONS_LISIBLES[k]}
+         for k in intentions_proposables()])
 
 
 async def api_avis(req):
@@ -7611,21 +7630,32 @@ async def api_avis(req):
     try:
         avis = int(d.get("avis", 0))
     except (TypeError, ValueError):
-        avis = 0
+        # « oui », un emoji, une liste : rien de cela n'est un avis. Le repli
+        # a zero en faisait un RETRAIT silencieux — mesure du 5 septembre
+        # 2026 : avis: "oui" rendait 200 et effacait le pouce du tour. None
+        # tombe dans la garde juste en dessous, qui repond 400 et le dit.
+        avis = None
     if avis not in (-1, 0, 1):
         return web.json_response({"erreur": T("erreur.avis_attendu", lg)},
                                  status=400)
     note = str(d.get("note") or "")[:2000]
     # « C'etait plutot quoi ? » — la reponse a la seule question qui rende un
-    # pouce en bas utile. Refusee si l'aiguilleur ne connait pas cette classe :
-    # on n'ecrit pas sur un tour une etiquette qu'il ne saura jamais apprendre.
+    # pouce en bas utile. Refusee si l'aiguilleur en service ne connait pas
+    # cette classe — la meme porte que /api/intentions, voir
+    # intentions_proposables() : on n'ecrit pas sur un tour une etiquette
+    # qu'il ne saura jamais apprendre.
     voulue = str(d.get("intention") or "")
-    if voulue and voulue not in INTENTIONS_LISIBLES:
+    if voulue and voulue not in intentions_proposables():
         return web.json_response({"erreur": T("erreur.intention_inconnue", lg)},
                                  status=400)
     for conv in mes_conversations(pid):
         for tour in conv.get("tours", []):
             if tour.get("id") == tid:
+                # CE QUE LE TOUR PORTAIT, pour le lui rendre si le journal
+                # refuse : un avis qui n'est consigne nulle part n'a pas ete
+                # pose, et la page doit le voir comme tel.
+                avant = {k: tour.get(k) for k in ("avis", "note",
+                                                  "intention_voulue")}
                 tour["avis"] = avis
                 # LE POUCE EN BAS N'ARME PLUS RIEN TOUT SEUL. Il armait la
                 # demande SUIVANTE, quelle qu'elle soit — donc « et maintenant
@@ -7642,9 +7672,31 @@ async def api_avis(req):
                     # Un pouce retire ou repasse en haut efface la correction :
                     # elle ne valait que pour le reproche.
                     tour.pop("intention_voulue", None)
+                # LE JOURNAL D'ABORD, LE TOUR ENSUITE. Si le journal refuse, le
+                # tour est rendu tel qu'il etait et rien n'est ecrit — ni ici,
+                # ni la-bas — et la reponse le dit. Avant le 5 septembre 2026,
+                # l'echec partait dans un print et la route rendait « ok ».
+                #
+                # UN RETRAIT S'ECRIT S'IL RETIRE QUELQUE CHOSE. « Un retrait
+                # n'est pas un retour » a tenu tant que /admin comptait les
+                # LIGNES : une ligne de retrait aurait compte pour un pouce.
+                # Depuis que le decompte se fait par tour, dernier avis
+                # retenu, c'est l'inverse : sans la ligne, le pouce retire
+                # reste compte pour toujours. Un zero sur un tour qui n'avait
+                # rien, lui, ne retire rien et n'ecrit rien.
+                if avis or avant["avis"]:
+                    try:
+                        noter_avis(pid, conv, tour, avis, note)
+                    except OSError:
+                        for k, v in avant.items():
+                            if v is None:
+                                tour.pop(k, None)
+                            else:
+                                tour[k] = v
+                        return web.json_response(
+                            {"erreur": T("erreur.avis_non_consigne", lg)},
+                            status=500)
                 sauver(conv)
-                if avis:
-                    noter_avis(pid, conv, tour, avis, note)
                 return web.json_response({"ok": True, "avis": avis})
     return web.json_response({"erreur": T("erreur.echange_inconnu", lg)},
                              status=404)
@@ -8384,15 +8436,29 @@ def _mesurer_aiguilleur():
     # Gele par PyInstaller, ce dernier vit d'ailleurs dans un dossier temporaire
     # efface a l'arret : y ecrire degradait le modele en memoire — 7 890 traits
     # tombes a 7 680 — au profit d'un fichier que personne ne relirait.
-    neuf.ecrire(_aiguilleur.MODELE_LOCAL)
-    bancs = []
-    for nom in entrainer.BANCS:
-        banc = entrainer._lire(nom)
-        if not banc:
-            continue
-        bons, total, bons_surs, surs = entrainer.mesurer(neuf, banc)
-        bancs.append({"nom": nom, "justes": bons, "total": total,
-                      "justes_surs": bons_surs, "surs": surs})
+    #
+    # ET SEULEMENT UNE FOIS MESURE. Ecrit avant les bancs, un modele que la
+    # mesure faisait echouer restait sur le disque sans que personne ne l'ait
+    # mesure : la route rendait 500, la memoire gardait l'ancien, et le
+    # prochain demarrage prenait celui-la — charger() prefere le modele local.
+    # Mesure du 5 septembre 2026 : le fichier passait d'absent a ecrit sur une
+    # exception dans la mesure. Un fichier a cote puis os.replace(), le motif
+    # de sauver_registre() : le modele local ne change que d'un bloc, apres.
+    provisoire = _aiguilleur.MODELE_LOCAL + ".tmp"
+    neuf.ecrire(provisoire)
+    try:
+        bancs = []
+        for nom in entrainer.BANCS:
+            banc = entrainer._lire(nom)
+            if not banc:
+                continue
+            bons, total, bons_surs, surs = entrainer.mesurer(neuf, banc)
+            bancs.append({"nom": nom, "justes": bons, "total": total,
+                          "justes_surs": bons_surs, "surs": surs})
+        os.replace(provisoire, _aiguilleur.MODELE_LOCAL)
+    finally:
+        if os.path.exists(provisoire):
+            os.remove(provisoire)
     par = {}
     for x in exemples:
         par[x["intention"]] = par.get(x["intention"], 0) + 1
@@ -8411,7 +8477,10 @@ async def api_admin_aiguilleur(req):
     if req.method == "POST":
         # UN SEUL A LA FOIS. Deux POST concurrents partaient dans deux fils du
         # pool : l'un regenerait le corpus pendant que l'autre le relisait.
-        # Depuis que corpus() reecrit toujours le fichier, la course est reelle.
+        # corpus() ne reecrit plus rien depuis le 5 septembre 2026, mais la
+        # course a change de lieu, pas disparu : les deux fils ecriraient le
+        # meme fichier provisoire du modele local, et le second os.replace()
+        # publierait un modele que le premier a peut-etre deja efface.
         if _VERROU_AIGUILLEUR.locked():
             return web.json_response(
                 {"erreur": "un entrainement est deja en cours"}, status=409)
@@ -8439,10 +8508,22 @@ async def api_admin_avis(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "jeton invalide"}, status=403)
     tous = lire_avis(400)
+    # UN TOUR, UNE VOIX. Le journal est un AJOUT — c'est ce qui le rend
+    # relisible apres une coupure — et le geste complet de la page pour UN
+    # pouce en bas ecrit trois lignes : le pouce part avant le mot, puis avec
+    # le mot, puis avec la correction. Compter les lignes rendait pouces.bas=3
+    # pour un seul reproche, mesure du 5 septembre 2026. On retient donc, par
+    # tour, la ligne la plus recente — lire_avis() les rend dans cet ordre —
+    # et un retrait (avis 0) ne compte ni d'un cote ni de l'autre.
+    dernier = {}
+    for a in tous:
+        dernier.setdefault((a.get("conversation"), a.get("tour")), a.get("avis"))
     return web.json_response({
-        "avis": tous,
-        "pouces": {"haut": sum(1 for a in tous if a.get("avis") == 1),
-                   "bas": sum(1 for a in tous if a.get("avis") == -1)},
+        # Les retraits ne sont pas des retours : ils comptent, ils ne se
+        # lisent pas. La page ne sait peindre qu'un pouce ou l'autre.
+        "avis": [a for a in tous if a.get("avis") != 0],
+        "pouces": {"haut": sum(1 for v in dernier.values() if v == 1),
+                   "bas": sum(1 for v in dernier.values() if v == -1)},
     })
 
 
@@ -11985,6 +12066,15 @@ async def api_fichier(req):
                 if h in r.headers:
                     sortants[h] = r.headers[h]
             sortants.setdefault("Accept-Ranges", "bytes")
+            # nosniff ICI AUSSI, depuis le 5 septembre 2026. La branche du disque
+            # le posait, celle-ci non — or elle sert exactement les memes choses
+            # sur la meme origine : les sorties de ComfyUI, et les fichiers
+            # TELEVERSES (type=input), c'est-a-dire ce qu'un utilisateur a
+            # choisi de nous donner. L'extension est filtree au depot ; on
+            # empeche en plus le navigateur de deviner un type que l'extension
+            # ne promet pas. Deux verrous pour la meme porte, parce qu'elle
+            # donne sur la session de l'utilisateur.
+            sortants["X-Content-Type-Options"] = "nosniff"
             return web.Response(body=corps, status=r.status, headers=sortants)
 
 # ══════════════════════ pilotage de ComfyUI ═══════════════════════════

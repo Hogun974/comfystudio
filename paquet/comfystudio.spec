@@ -65,8 +65,10 @@ DONNEES = [
     _f("noeuds.exemple.json"),
 ]
 
-# SCRIPTS_NOEUD (serveur.py ligne 5081) : servis en texte brut par
-# /api/agent/<quoi>. Ce sont des DONNEES, pas du code, meme pour les .py :
+# SCRIPTS_NOEUD (dans serveur.py) : servis en texte brut par
+# /api/noeud/<quoi>. Pas de numero de ligne ici : celui qu'il y avait etait
+# faux de neuf mille lignes le jour ou on l'a relu.
+# Ce sont des DONNEES, pas du code, meme pour les .py :
 # catalogue.py est a la fois un module importe ET un fichier telecharge par les
 # machines-noeuds, il figure donc deux fois dans le paquet, sous deux formes.
 for _script in ("agent_noeud.py", "noeud.sh", "noeud.bat",
