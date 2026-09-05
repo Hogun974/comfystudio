@@ -51,6 +51,18 @@ import posixpath
 import re
 import sys
 
+# LA CONSOLE WINDOWS ECRIT EN cp1252, et ce banc n'importe pas serveur.py —
+# c'est serveur.py qui reconfigure la sortie pour tout le reste du depot. Le
+# tiret cadratin passait (il est dans cp1252), le trait de tableau « U+2500 »
+# non : le banc est MORT sur son propre titre de section le 5 septembre 2026,
+# une pile d'appels a la place du verdict. Meme correction que dans
+# banc_comptes.py, et pour la meme raison.
+for _flux in (sys.stdout, sys.stderr):
+    try:
+        _flux.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ICI = os.path.dirname(os.path.abspath(__file__))
 ok, rate = [], []
 
@@ -505,6 +517,41 @@ for ligne in lire(".env.exemple").splitlines():
         recopies.append(m.group(0))
 dit(not recopies, "aucun defaut recopie en dur dans .env.exemple",
     ", ".join(recopies) or "aucune ligne active redondante")
+
+# ══════════════════════════════════════════════════════════════════════
+#  LE WORKFLOW LUI-MEME DOIT POUVOIR SE LIRE
+# ══════════════════════════════════════════════════════════════════════
+# LA PANNE DU 5 SEPTEMBRE 2026, ET SA FORME EST CE QUI COMPTE. Une etape nommee
+# « La seance : sortir, changer de fil » — un deux-points suivi d'une espace
+# dans un scalaire YAML non protege — a rendu le fichier illisible. La CI a
+# rendu « failure » avec ZERO job et AUCUNE etape rouge : rien a lire dans le
+# rapport, rien de rouge a corriger.
+#
+# ET L'AUTO-CONTROLE DU WORKFLOW — celui qui exige une etape par banc — VIT
+# DANS LE WORKFLOW. Il ne peut rien dire d'un fichier qui ne s'analyse pas :
+# une garde logee dans ce qu'elle garde ne garde rien. Le controle devait donc
+# venir d'ailleurs, et un banc est le seul « ailleurs » du depot.
+#
+# LE MOTIF PLUTOT QU'UN ANALYSEUR YAML : PyYAML n'est pas une dependance de ce
+# depot, et le studio doit demarrer sur un NAS sans pip. On ne verifie donc pas
+# « le YAML est valide » mais la faute EXACTE qui s'est produite — celle qu'un
+# titre francais appelle naturellement, parce qu'on ecrit « La seance :
+# sortir » comme on parle.
+print("\n  ── le workflow doit pouvoir se lire ──")
+_wf = lire(os.path.join(".github", "workflows", "verification.yml"))
+_titres = re.findall(r"^\s*- name:\s*(.+?)\s*$", _wf, re.M)
+_casses = [n for n in _titres
+           if ": " in n and not (n[:1] in "\"'" and n[-1:] == n[:1])]
+dit(bool(_titres) and not _casses,
+    "aucun nom d'etape ne porte un deux-points nu : YAML y lit une clef, et le "
+    "fichier entier devient illisible",
+    ", ".join(_casses) or f"{len(_titres)} etapes relues")
+
+# LE TEMOIN : sans lui, le cas ci-dessus serait vrai d'un fichier vide, ou
+# d'une expression reguliere qui aurait cesse de trouver quoi que ce soit.
+dit(len(_titres) >= 20,
+    "et le releve trouve bien les etapes : le cas ci-dessus n'est pas vrai de "
+    "rien", f"{len(_titres)} etapes")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

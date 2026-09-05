@@ -383,7 +383,11 @@ BESOINS = {
     # aiguilleur.json pour banc_multilingue et web/index.html pour banc_refaire.
     # La regle tient en une phrase : un banc qui ouvre un fichier de plus doit
     # le declarer ici, sinon il ne mesure plus rien dans le dossier d'essai.
-    "banc_conteneur.py": fichiers_du_conteneur() + ["paquet/comfystudio.spec"],
+    # Le workflow depuis le 5 septembre 2026 : ce banc est le seul endroit
+    # d'ou l'on puisse verifier qu'il se lit, son propre auto-controle
+    # vivant a l'interieur de lui-meme.
+    "banc_conteneur.py": fichiers_du_conteneur() + [
+        "paquet/comfystudio.spec", ".github/workflows/verification.yml"],
     # traductions.py DEPUIS LE 2 SEPTEMBRE 2026 AU SOIR : banc_page.py releve
     # le francais ecrit dans le HTML et exige qu'il soit exactement celui du
     # dictionnaire — la meme moitie de contrat que MARQUE_DEJA, mais sur cent
@@ -678,6 +682,21 @@ def appliquer(texte, edition):
 # imite, pas la manipulation : « OLLAMA_URL disparait du compose » se relit dans
 # les deux lignes en dessous, « le studio ne trouve plus aucun Ollama » non.
 CONTENEUR = [
+    dict(
+        nom="un nom d'etape porte un deux-points nu",
+        banc="banc_conteneur.py",
+        imite="LA PANNE DU 5 SEPTEMBRE 2026. Un titre francais ecrit comme on "
+              "parle — « La seance : sortir » — rend le YAML illisible : la CI "
+              "repond « failure » avec ZERO job et AUCUNE etape rouge. Rien a "
+              "lire dans le rapport, rien de rouge a corriger. Et l'auto-"
+              "controle qui exige une etape par banc VIT DANS CE FICHIER : une "
+              "garde logee dans ce qu'elle garde ne garde rien",
+        rougit="aucun nom d'etape ne porte un deux-points nu",
+        editions=[
+            (".github/workflows/verification.yml", brut(
+                "      - name: La seance, sortir et changer de fil",
+                "      - name: La seance : sortir, changer de fil")),
+        ]),
     dict(
         nom="un defaut du compose qui repete un defaut CALCULE par le code",
         banc="banc_conteneur.py",

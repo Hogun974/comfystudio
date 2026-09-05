@@ -514,7 +514,7 @@ jobs:
       # chemin ou la connexion l'a pose. Sans ce mot, le navigateur garde le
       # sien, la page affiche « deconnecte », et la requete suivante repart
       # connectee — le pire des deux etats.
-      - name: La seance : sortir, changer de fil
+      - name: La seance, sortir et changer de fil
         run: python banc_seance.py
 
       # LE POUCE, LE JOURNAL DES RETOURS, ET LE REENTRAINEMENT. Un pouce en bas
