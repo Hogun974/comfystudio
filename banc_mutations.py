@@ -424,7 +424,13 @@ BESOINS = {
     "banc_comptes.py": ["banc_comptes.py", "comptes.py", "mfa.py", "serveur.py"],
     # banc_console.py importe serveur.py : il lui faut donc tout ce que
     # serveur.py importe, comme banc_conteneur.py le calcule deja.
-    "banc_console.py": ["banc_console.py"] + fichiers_du_conteneur(),
+    # ET web/admin.html DEPUIS LE 5 SEPTEMBRE 2026 AU SOIR : la section 7 de
+    # banc_console.py relit chaque appel api() de la console et le confronte
+    # au routeur, dans les deux sens. Le fichier est ouvert sous try la-bas —
+    # sans lui le banc rougit sur un cas nomme au lieu de mourir — mais une
+    # mutation posee dans la console tomberait « perimee » ici : on ne mute
+    # que ce qu'on copie. Douze mutations de CONSOLE_SUITE en dependent.
+    "banc_console.py": ["banc_console.py", "web/admin.html"] + fichiers_du_conteneur(),
     # banc_avis.py fait tourner le VRAI reentrainement, qui lit cinq fichiers
     # de DONNEES qu'aucun import ne nomme. Sans eux, corpus() rend un corpus
     # tronque et bancs=[] : la section du reentrainement rougirait pour une
@@ -6971,6 +6977,172 @@ CONSOLE_SUITE = [
                 "status=400)\n",
                 "")),
         ]),
+    # ── la console appelle bien ce que le serveur sert (section 7) ──────
+    # Douze mutations pour huit cas, nes avec la section le 5 septembre 2026 :
+    # il n'y a pas de filet d'avant, la preuve inverse a ete prise a la main —
+    # chaque panne posee dans le depot, le banc lance, la ligne nommee rouge,
+    # la panne retiree. Elles visent web/admin.html autant que serveur.py, et
+    # c'est la premiere fois que la console est copiee pour ce banc : voir
+    # BESOINS. Le contrat a deux moities et deux sens ; il faut donc casser
+    # la page ET le routeur, dans le sens aller ET dans le sens retour.
+    dict(
+        nom="la console vise /api/admin/noeud/ — une lettre manque",
+        banc="banc_console.py",
+        imite="la faute de frappe la plus banale : le pli d'une machine rend "
+              "404 au clic, la console n'affiche rien, et l'on cherche une "
+              "machine en panne la ou il manque un « s »",
+        rougit="chaque appel de la console vise une route que le serveur sert",
+        editions=[
+            ("web/admin.html", brut(
+                'const { ok, d } = await api("/api/admin/noeuds/" '
+                '+ encodeURIComponent(ident) + "/detail");',
+                'const { ok, d } = await api("/api/admin/noeud/" '
+                '+ encodeURIComponent(ident) + "/detail");')),
+        ]),
+    dict(
+        nom="le bouton « retirer » change de methode",
+        banc="banc_console.py",
+        imite="un POST sur une route DELETE : aiohttp rend 405, la machine "
+              "reste dans le parc, et le bouton a l'air d'avoir agi puisque "
+              "la page se rafraichit juste apres",
+        rougit="chaque appel de la console vise une route que le serveur sert",
+        editions=[
+            ("web/admin.html", brut(
+                'await api(`/api/admin/noeuds/${n.id}`, "DELETE");',
+                'await api(`/api/admin/noeuds/${n.id}`, "POST");')),
+        ]),
+    dict(
+        nom="la pause devient une route GET cote serveur",
+        banc="banc_console.py",
+        imite="le serveur change la methode d'une route sans que la page "
+              "suive : le bouton poste, le routeur rend 405, la carte n'est "
+              "jamais mise au repos",
+        rougit="chaque appel de la console vise une route que le serveur sert",
+        editions=[
+            ("serveur.py", brut(
+                '    a.router.add_post("/api/admin/noeuds/{ident}/pause", '
+                'api_admin_pause)\n',
+                '    a.router.add_get("/api/admin/noeuds/{ident}/pause", '
+                'api_admin_pause)\n')),
+        ]),
+    dict(
+        nom="la route des couts disparait du routeur, le bouton reste",
+        banc="banc_console.py",
+        imite="une route retiree — refactor, renommage — pendant que la page "
+              "l'appelle encore : l'onglet des couts rend 404 a chaque "
+              "rafraichissement, sans une ligne de journal cote serveur",
+        rougit="chaque appel de la console vise une route que le serveur sert",
+        editions=[
+            ("serveur.py", brut(
+                '    a.router.add_get("/api/admin/couts", api_admin_couts)\n',
+                "")),
+        ]),
+    dict(
+        nom="une route d'administration que rien n'appelle",
+        banc="banc_console.py",
+        imite="LE DEFAUT FONDATEUR DE CE FICHIER : une route ajoutee au "
+              "serveur, testee en Python, et qu'aucun bouton n'atteint "
+              "jamais. Elle reste verte a tous les bancs, et morte pour "
+              "l'utilisateur",
+        rougit="chaque route de la famille est atteinte par la console",
+        editions=[
+            ("serveur.py", brut(
+                '    a.router.add_get("/api/admin/couts", api_admin_couts)\n',
+                '    a.router.add_get("/api/admin/couts", api_admin_couts)\n'
+                '    a.router.add_get("/api/admin/couts/mois", '
+                'api_admin_couts)\n')),
+        ]),
+    dict(
+        nom="le bouton des couts disparait, la route reste",
+        banc="banc_console.py",
+        imite="l'autre sens du meme defaut : l'appel est retire de la page et "
+              "la route continue d'etre servie, testee et maintenue pour "
+              "personne",
+        rougit="chaque route de la famille est atteinte par la console",
+        editions=[
+            ("web/admin.html", brut(
+                'const { ok, d } = await api("/api/admin/couts");',
+                'const { ok, d } = { ok: false, d: null };')),
+        ]),
+    dict(
+        nom="une exception nomme une route qui n'existe plus",
+        banc="banc_console.py",
+        imite="la route GET des reglages est retiree du serveur et son "
+              "exception reste ecrite : la liste couvre une route fantome, et "
+              "couvrira la prochaine qui portera ce nom",
+        rougit="chaque exception nomme une route que le serveur sert encore",
+        editions=[
+            ("serveur.py", brut(
+                '    a.router.add_get("/api/admin/reglages", '
+                'api_admin_reglages)\n',
+                "")),
+        ]),
+    dict(
+        nom="la console appelle une route qu'on croyait morte, et l'exception "
+            "reste",
+        banc="banc_console.py",
+        imite="un bouton se met a lire GET /api/admin/reglages : la route "
+              "n'est plus une exception, elle est vivante, et la liste ment "
+              "tant qu'on ne l'en retire pas",
+        rougit="aucune exception n'est appelee par la console",
+        editions=[
+            ("web/admin.html", brut(
+                'const r = await api("/api/admin/reglages", "POST", corps);',
+                'const r = await api("/api/admin/reglages", "GET", corps);')),
+        ]),
+    dict(
+        nom="un bouton contourne api() par un fetch() direct",
+        banc="banc_console.py",
+        imite="l'appel sort du releve : « chaque appel vise une route » reste "
+              "vrai de lui quoi qu'il vise, et la route qu'il atteignait "
+              "passe pour morte",
+        rougit="fetch() n'apparait que",
+        editions=[
+            ("web/admin.html", brut(
+                'await api(`/api/admin/noeuds/${n.id}`, "DELETE");',
+                'await fetch(`/api/admin/noeuds/${n.id}`, '
+                '{ method: "DELETE" });')),
+        ]),
+    dict(
+        nom="la porte de la console change de nom et le releve ne mord plus",
+        banc="banc_console.py",
+        imite="api() devient appel() : le releve lit le nom dans la "
+              "definition et ne trouve plus aucun site d'appel. Sans le "
+              "temoin, les deux sens seraient verts a vide — zero appel vise "
+              "bien zero route",
+        rougit="le releve trouve au moins quinze appels",
+        editions=[
+            ("web/admin.html", brut(
+                'async function api(chemin, methode = "GET", corps) {',
+                'async function appel(chemin, methode = "GET", corps) {')),
+        ]),
+    dict(
+        nom="un chemin passe par une variable que le releve ne suit pas",
+        banc="banc_console.py",
+        imite="« api(CHEMIN_COUTS) » : ni chaine, ni gabarit, ni parametre "
+              "d'une enveloppe. Ignorer l'appel en silence ferait passer sa "
+              "route pour morte et l'appel pour inexistant ; on le declare",
+        rougit="aucun appel n'est obscur",
+        editions=[
+            ("web/admin.html", brut(
+                'const { ok, d } = await api("/api/admin/couts");',
+                'const { ok, d } = await api(CHEMIN_COUTS);')),
+        ]),
+    dict(
+        nom="le routeur se vide",
+        banc="banc_console.py",
+        imite="app() rend une application sans route — c'est la forme que "
+              "prend un releve des routes qui ne mord plus. Sans le temoin, "
+              "« aucune route morte » serait vrai de zero route",
+        rougit="au moins quinze routes de la famille",
+        editions=[
+            ("serveur.py", brut(
+                "def app():\n"
+                "    a = web.Application(client_max_size=128 * 1024 ** 2,",
+                "def app():\n"
+                "    return web.Application()\n"
+                "    a = web.Application(client_max_size=128 * 1024 ** 2,")),
+        ]),
 ]
 
 
@@ -7151,6 +7323,40 @@ CONSOLE = [
 
 
 BOUCLE_AGENT = [
+    # ── LE TROISIEME DEFAUT, RELEVE DEUX JOURS PUIS TRANCHE LE 6 SEPTEMBRE ──
+    dict(
+        nom="l'annulation repart par appeler(), sans second essai",
+        banc="banc_boucle.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : le seul rapport au "
+              "studio qui ne passait pas par insister(). Un studio qui "
+              "redemarre a cet instant — quatre secondes — n'apprend jamais "
+              "que l'annulation a abouti : la demande reste « en cours "
+              "d'annulation » chez lui, et la derniere ligne de son journal, "
+              "la seule qui parle de l'arret au passe, n'est jamais ecrite",
+        rougit="l'annulation est REESSAYEE devant un studio muet",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                insister(f"{studio}/api/noeud/resultat", jeton,\n'
+                '                         {"tid": tid, "etat": "annule", "erreur": None,\n'
+                '                          "secondes": round(secondes, 1), "fichiers": []},\n'
+                "                         minutes=1)",
+                '                appeler(f"{studio}/api/noeud/resultat", jeton,\n'
+                '                        {"tid": tid, "etat": "annule", "erreur": None,\n'
+                '                         "secondes": round(secondes, 1), "fichiers": []})')),
+        ]),
+    dict(
+        nom="l'annulation insiste trois minutes au lieu d'une",
+        banc="banc_boucle.py",
+        imite="la mauvaise reponse a la bonne question : « comme les autres ». "
+              "Les autres rapports sauvent un rendu DEJA FAIT ; celui-ci ne "
+              "sauve qu'une ligne. Chaque minute de plus est une minute ou la "
+              "machine ne reclame pas le travail SUIVANT, pour un travail qui "
+              "n'existe plus",
+        rougit="mais UNE minute au plus, pas dix",
+        editions=[
+            ("agent_noeud.py", brut("                         minutes=1)",
+                                    "                         minutes=3)")),
+        ]),
     # ── LES DEUX DEFAUTS TROUVES EN COUVRANT, ET CORRIGES LE MEME JOUR ──
     # Ils vivaient tous les deux dans l'ecart entre une docstring et son code.
     # Ce n'est pas un hasard : une promesse ecrite au-dessus d'une condition est
@@ -7659,8 +7865,13 @@ BOUCLE_AGENT = [
         rougit="un studio MUET est rappele jusqu'a ce qu'il revienne — le "
                "travail est garde",
         editions=[
+            # L'ancre suit la ligne du 6 septembre 2026 : insister() a gagne un
+            # budget par appel (« minutes »), et la ligne du delai a change de
+            # forme. L'ancienne ancre, « LIVRAISON_MINUTES * 60 » seule, etait
+            # perimee — c'est le lanceur de l'agent parallele qui l'a dit.
             ("agent_noeud.py", brut(
-                '    fin = time.time() + LIVRAISON_MINUTES * 60',
+                '    fin = time.time() + (LIVRAISON_MINUTES if minutes is None '
+                'else minutes) * 60',
                 '    fin = time.time() - 1')),
         ]),
     dict(

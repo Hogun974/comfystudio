@@ -817,7 +817,7 @@ def se_mettre_a_jour_seul(studio, attendue, epinglee):
 LIVRAISON_MINUTES = int(os.environ.get("AGENT_LIVRAISON_MINUTES") or 10)
 
 
-def insister(url, jeton, corps=None, brut=None, secondes=60):
+def insister(url, jeton, corps=None, brut=None, secondes=60, minutes=None):
     """Livre au studio, et recommence tant qu'il ne repond pas.
 
     Un travail DEJA FAIT ne doit pas etre perdu parce que le studio redemarrait
@@ -845,7 +845,10 @@ def insister(url, jeton, corps=None, brut=None, secondes=60):
     Elle etait rendue en silence, et le seul appelant qui la lise vraiment est
     celui qui compte les battements.
     """
-    fin = time.time() + LIVRAISON_MINUTES * 60
+    # « minutes » : le budget de CET envoi. Par defaut celui d'un travail deja
+    # fait, dix minutes. L'annulation en demande moins — voir plus bas — parce
+    # qu'elle ne sauve pas un rendu : elle ferme une ligne de journal.
+    fin = time.time() + (LIVRAISON_MINUTES if minutes is None else minutes) * 60
     attente, dit = 2, False
     while True:
         st, _ = appeler(url, jeton, corps, brut=brut, secondes=secondes)
@@ -1226,9 +1229,25 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
             # studio, qui ecrira la derniere ligne de son journal (la seule qui
             # parle de l'arret au passe), et on repart chercher du travail.
             if erreur == ANNULE:
-                appeler(f"{studio}/api/noeud/resultat", jeton,
-                        {"tid": tid, "etat": "annule", "erreur": None,
-                         "secondes": round(secondes, 1), "fichiers": []})
+                # PAR insister(), MAIS UNE MINUTE ET NON DIX. C'etait le seul
+                # rapport au studio qui partait par appeler() en direct : un
+                # studio qui redemarrait a cet instant n'apprenait jamais que
+                # l'annulation avait abouti, la demande restait « en cours
+                # d'annulation » chez lui et la derniere ligne de son journal
+                # — la seule qui parle de l'arret au passe — n'etait jamais
+                # ecrite. Releve le 4 septembre 2026, tranche le 6.
+                #
+                # Dix minutes seraient de trop : les autres rapports sauvent un
+                # rendu DEJA FAIT, celui-ci ne sauve qu'une ligne, et tenir la
+                # machine dix minutes pour un travail qui n'existe plus ferait
+                # attendre le suivant. Un studio qui redemarre revient en
+                # quatre secondes (docs/mesures.md) : une minute couvre le
+                # redemarrage, pas la panne — et une panne d'une minute, c'est
+                # le veilleur du studio qui la constatera de son cote.
+                insister(f"{studio}/api/noeud/resultat", jeton,
+                         {"tid": tid, "etat": "annule", "erreur": None,
+                          "secondes": round(secondes, 1), "fichiers": []},
+                         minutes=1)
                 print(f"  travail {tid[:8]} annule par le studio apres "
                       f"{secondes:.0f} s", flush=True)
                 EN_COURS_ICI.clear()

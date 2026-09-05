@@ -56,11 +56,11 @@ casse le banc par une exception rend elle aussi un code non nul, et se ferait
 passer pour une réussite ». **Le pendage est pire : il ne se déclare pas du
 tout.**
 
-`DELAI_BANC` vaut trente secondes, et l'expiration porte son propre verdict :
+`DELAI_BANC` vaut **quatre-vingt-dix secondes** — trente à l'origine, montées quand les bancs qui lancent un vrai sous-processus sont arrivés —, et l'expiration porte son propre verdict :
 
 ```
 la mutation fait PENDRE banc_refaire au lieu de le faire rougir
-— plus de 30 s sans reponse
+— plus de 90 s sans reponse
 ```
 
 Trente secondes, et le chiffre a sa raison : le plus lent des bancs mutés met

@@ -99,11 +99,13 @@ condition est ce qui s'execute.
     n'etait alors JAMAIS essaye, et la machine s'annoncait avec « 0 modele(s) »
     sans que rien ne dise pourquoi. On exige « ok » depuis.
 
-  - RELEVE, non corrige. L'annulation est le SEUL rapport au studio qui ne
-    passe pas par insister(). Un studio qui redemarre a cet instant n'apprend
-    jamais qu'elle a abouti. Ce n'est pas une ligne a changer mais une decision
-    a prendre — insister dix minutes sur une annulation tient la boucle
-    occupee, et le travail annule, lui, n'existe plus.
+  - CORRIGE le 6 septembre 2026, apres avoir ete releve deux jours. L'annulation
+    etait le SEUL rapport au studio qui ne passait pas par insister() : un
+    studio qui redemarrait a cet instant n'apprenait jamais qu'elle avait
+    abouti. La decision n'etait pas « dix minutes comme les autres » — ce
+    rapport ne sauve qu'une ligne de journal, pas un rendu — mais UNE minute :
+    de quoi couvrir un redemarrage (quatre secondes), pas une panne. insister()
+    a gagne un budget par appel pour le dire.
 
 ET TROIS TROUS DANS CE BANC-CI, tous les trois trouves par ses propres
 mutations, tous les trois du motif de « priorite, » : deux cas ou le faux
@@ -714,19 +716,32 @@ dit("annule par le studio" in _t.dit,
     "et la console le dit, avec le temps que la carte a tout de meme passe",
     _t.dit.strip().splitlines()[-1][:80] if _t.dit.strip() else "muette")
 
-# LE DEFAUT. Toutes les autres reponses au studio passent par insister(), qui
-# garde dix minutes ; CELLE-CI passe par appeler() en direct. Un studio qui
-# redemarre a cet instant n'apprend jamais que l'annulation a abouti — la
-# demande reste « en cours d'annulation » chez lui, et la derniere ligne du
-# journal, « la seule qui parle de l'arret au passe », n'est jamais ecrite.
-# Ce cas RELEVE le comportement d'aujourd'hui plutot que de le taire : le jour
-# ou l'on branchera insister() ici, il rougira et il faudra le reecrire.
+# LE DEFAUT ETAIT LA JUSQU'AU 6 SEPTEMBRE 2026, et ces cas le gardent ferme.
+# Toutes les autres reponses au studio passaient par insister(), qui garde dix
+# minutes ; CELLE-CI partait par appeler() en direct. Un studio qui redemarrait
+# a cet instant n'apprenait jamais que l'annulation avait abouti — la demande
+# restait « en cours d'annulation » chez lui, et la derniere ligne du journal,
+# « la seule qui parle de l'arret au passe », n'etait jamais ecrite.
+#
+# LA REPONSE N'EST PAS « dix minutes comme les autres ». Les autres rapports
+# sauvent un rendu DEJA FAIT ; celui-ci ne sauve qu'une ligne, et tenir la
+# machine dix minutes pour un travail qui n'existe plus ferait attendre le
+# suivant. Un studio qui redemarre revient en quatre secondes : UNE minute
+# couvre le redemarrage, pas la panne. Les trois cas tiennent les deux bords.
 _t = tourner([(200, TRAVAIL)], executer=lambda c, g, d: ([], 1.0, _ANNULE),
-             reponses={"/api/noeud/resultat": (0, "studio muet")})
-dit(len(urls(_t, "/api/noeud/resultat")) == 1,
-    "RELEVE : l'annulation est le SEUL rapport qui ne soit pas reessaye",
-    f"{len(urls(_t, '/api/noeud/resultat'))} envoi(s) pour un studio muet — "
-    f"un resultat ordinaire en ferait vingt-quatre")
+             reponses={"/api/noeud/resultat": (0, "studio muet")}, budget=400)
+_envois = [x for x in _t.appels if x.url.endswith("/api/noeud/resultat")]
+dit(len(_envois) > 1,
+    "l'annulation est REESSAYEE devant un studio muet : un redemarrage a cet "
+    "instant ne perd plus la derniere ligne du journal",
+    f"{len(_envois)} envoi(s)")
+_etendue = (_envois[-1].t - _envois[0].t) if len(_envois) > 1 else 0.0
+dit(len(_envois) > 1 and 30.0 <= _etendue <= 60.0,
+    "mais UNE minute au plus, pas dix : on ne tient pas une machine pour un "
+    "travail qui n'existe plus", f"{_etendue:.0f} s entre le premier et le dernier envoi")
+dit(_t.en_cours == [] and _t.remesurer,
+    "et la boucle repart quand meme : la carte est rendue et remesuree, meme "
+    "sans nouvelles du studio", f"en_cours={_t.en_cours}, remesurer={_t.remesurer}")
 
 print("\n  ── un studio qui n'a rien, ou qui repond de travers ──")
 

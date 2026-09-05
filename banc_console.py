@@ -40,15 +40,35 @@ CE QU'IL GARDE, dans l'ordre des degats :
     site part du navigateur de l'utilisateur, donc de 127.0.0.1.
   - L'ARRET REFUSE QUAND LA FILE N'EST PAS VIDE. Tuer ComfyUI pendant un rendu
     perd le travail de quelqu'un.
+  - LA CONSOLE APPELLE CE QUE LE SERVEUR SERT, ET LE SERVEUR NE SERT RIEN QUE
+    LA CONSOLE N'APPELLE. C'est l'autre moitie du contrat, et elle n'etait
+    tenue par personne : les six sections ci-dessus appellent les
+    gestionnaires EN PYTHON, et banc_page.py ne relit web/admin.html que pour
+    les noms de reglage. La septieme section reconstruit chaque appel api()
+    de la page — chemin, methode, y compris ceux qui passent par une
+    enveloppe — et le confronte au VRAI routeur, dans les deux sens : un
+    appel vers une route absente est un bouton qui rend 404 au clic, vers la
+    bonne route avec la mauvaise methode 405 ; une route qu'aucun bouton
+    n'atteint est une fonctionnalite morte que rien ne signale, et elle est
+    nommee avec sa raison ou le banc rougit. Releve du 5 septembre 2026 :
+    23 appels, 20 couples methode/chemin, 23 routes dans la famille, trois
+    exceptions nommees.
 
 CE QU'IL NE VOIT PAS, et il faut l'ecrire :
 
   - Qu'un vrai ComfyUI demarre. subprocess.Popen est remplace par un temoin :
     on mesure la DECISION de lancer et ce qu'on lui passe, pas ce que le
     systeme en fait. os.startfile et taskkill non plus.
-  - Que la page de /admin appelle bien ces routes-la. C'est l'autre moitie du
-    contrat, et elle n'est tenue par personne aujourd'hui — web/admin.html
-    n'est relu par aucun banc. C'est un trou nomme, pas un oubli.
+  - Que le bouton soit BRANCHE sur son appel. Le releve de la section 7 est
+    statique : un api() dans un gestionnaire que rien n'attache compte comme
+    un appel. Emprunter le chemin du navigateur est le travail de
+    recette_chemin_page.py, qui a besoin d'un studio.
+  - Les deux routes de pilotage de la section 4 n'ont AUCUN bouton : au
+    5 septembre 2026, rien dans web/ n'appelle /api/comfy/demarrer ni
+    /api/comfy/arreter, et ce depuis le premier commit. La section 7 les
+    nomme en exception, elle ne les couvre pas — un banc qui eprouve une
+    route « depuis l'interface » que l'interface n'appelle pas mesure le
+    gestionnaire, pas le bouton.
   - L'effet de la pause sur la repartition : banc_attente.py et
     banc_repartition.py le tiennent, et ce banc-ci ne le redit pas.
 """
@@ -56,6 +76,7 @@ import asyncio
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -152,6 +173,203 @@ def poser(*idents):
         S.MODELES_NOEUD[ident] = {"quand": time.time(), "dossiers": {}}
         S.TRAVAUX[ident] = []
     S.sauver_registre()
+
+
+# ── Relire les appels de la console ───────────────────────────────────
+# Ce qui suit reconstruit chaque appel api() de web/admin.html : le chemin tel
+# que le serveur le verra, morceaux dynamiques remplaces par « {x} », et la
+# methode HTTP. Pas une expression reguliere sur « api("/api/... » : les
+# chemins sont des CONCATENATIONS — « "/api/admin/noeuds/" +
+# encodeURIComponent(n.id) + "/pause" » — dont les parentheses interieures
+# arreteraient un motif au mauvais endroit, la pause s'etale sur deux lignes,
+# et les comptes passent par une enveloppe « envoyer(charge, methode, ou) »
+# dont le chemin est un PARAMETRE. Un releve qui manquerait ces cinq appels-la
+# declarerait mortes trois routes bien vivantes.
+
+def sans_commentaires(html):
+    """Le JavaScript sans ses commentaires de bloc, MEMES numeros de ligne.
+
+    Un « api() » cite dans un commentaire n'est pas un appel ; le retirer
+    avant le releve evite de le compter. Les sauts de ligne sont gardes pour
+    que les numeros de ligne des cas restent ceux du fichier.
+    """
+    return re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"),
+                  html, flags=re.S)
+
+
+def arguments_js(texte, i):
+    """Les arguments de premier niveau de l'appel dont « ( » est a texte[i].
+
+    Par comptage de parentheses, en sautant les chaines : rend (arguments,
+    indice apres la parenthese fermante), ou (None, fin) si l'appel n'est
+    jamais ferme.
+    """
+    creux, corde, args, debut, j = 0, None, [], i + 1, i
+    while j < len(texte):
+        c = texte[j]
+        if corde:
+            if c == "\\":
+                j += 2
+                continue
+            if c == corde:
+                corde = None
+        elif c in "\"'`":
+            corde = c
+        elif c in "([{":
+            creux += 1
+        elif c in ")]}":
+            creux -= 1
+            if creux == 0:
+                args.append(texte[debut:j].strip())
+                return [a for a in args if a], j + 1
+        elif c == "," and creux == 1:
+            args.append(texte[debut:j].strip())
+            debut = j + 1
+        j += 1
+    return None, len(texte)
+
+
+def gabarit_js(expr):
+    """Le chemin que sert le serveur, ou None si l'expression ne se lit pas.
+
+    « "/a/" + encodeURIComponent(x) + "/b" » et `/a/${x}/b` rendent tous deux
+    « /a/{x}/b » ; la requete « ?fournisseur=... » est otee, le routeur ne la
+    voit pas. Un identifiant nu rend None : c'est un chemin passe par une
+    variable, que l'appelant resout par son enveloppe ou declare obscur.
+    """
+    if not expr or expr[0] not in "\"'`":
+        return None
+    if expr[0] == "`":
+        if not expr.endswith("`"):
+            return None
+        chemin = re.sub(r"\$\{[^}]*\}", "{x}", expr[1:-1])
+    else:
+        chemin, creux, corde, debut, morceaux = "", 0, None, 0, []
+        for j, c in enumerate(expr):
+            if corde:
+                if c == corde and expr[j - 1] != "\\":
+                    corde = None
+            elif c in "\"'`":
+                corde = c
+            elif c in "([{":
+                creux += 1
+            elif c in ")]}":
+                creux -= 1
+            elif c == "+" and creux == 0:
+                morceaux.append(expr[debut:j].strip())
+                debut = j + 1
+        morceaux.append(expr[debut:].strip())
+        for m in morceaux:
+            chemin += m[1:-1] if m[:1] in "\"'" and m.endswith(m[0]) else "{x}"
+    return chemin.split("?", 1)[0]
+
+
+def litteral_js(expr):
+    """Le contenu d'une chaine litterale simple, ou None."""
+    if expr and len(expr) >= 2 and expr[0] in "\"'" and expr.endswith(expr[0]):
+        return expr[1:-1]
+    return None
+
+
+def corps_de_fonction(texte, nom):
+    """Le corps de « function nom(...) { ... } », par comptage d'accolades ; "" sinon."""
+    depart = texte.find("function " + nom + "(")
+    ouvre = texte.find("{", depart) if depart >= 0 else -1
+    if ouvre < 0:
+        return ""
+    creux = 0
+    for i in range(ouvre, len(texte)):
+        if texte[i] == "{":
+            creux += 1
+        elif texte[i] == "}":
+            creux -= 1
+            if creux == 0:
+                return texte[ouvre:i + 1]
+    return ""
+
+
+def appels_de_la_console(html):
+    """Rend (porte, appels, obscurs).
+
+    porte : (nom de la fonction d'appel, methode par defaut) lus dans SA
+    DEFINITION — « async function api(chemin, methode = "GET", corps) » —
+    et non supposes : si la page change son defaut, le releve suit. None si
+    la page n'en a pas.
+    appels : liste de (METHODE, gabarit, ligne, enveloppe ou None).
+    obscurs : les appels dont le chemin ou la methode ne se reconstruit pas.
+    """
+    porte = re.search(r'async function (\w+)\(\s*chemin\s*,\s*methode\s*=\s*'
+                      r'"(\w+)"', html)
+    if not porte:
+        return None, [], []
+    nom, defaut = porte.group(1), porte.group(2)
+    code = sans_commentaires(html)
+    appels, obscurs = [], []
+
+    def ligne(pos):
+        return code.count("\n", 0, pos) + 1
+
+    def resoudre(chemin_expr, methode_expr, pos):
+        chemin, methode = gabarit_js(chemin_expr), litteral_js(methode_expr)
+        if chemin is not None and methode is not None:
+            appels.append((methode.upper(), chemin, ligne(pos), None))
+            return
+        # UNE ENVELOPPE : le chemin ou la methode est un parametre d'une
+        # fonction flechee definie plus haut, et chaque appel de CETTE
+        # fonction est un appel au serveur. On prend la definition la plus
+        # proche qui nomme tous les identifiants en jeu, et ses appels jusqu'a
+        # la prochaine definition du meme nom — la page en a deux, « envoyer »
+        # des cles et « envoyer » des comptes, et seule la seconde passe le
+        # chemin en parametre.
+        idents = [e for e in (chemin_expr, methode_expr)
+                  if re.fullmatch(r"\w+", e or "")]
+        defs = [d for d in re.finditer(
+            r"(\w+)\s*=\s*(?:async\s*)?\(([^()]*)\)\s*=>", code[:pos])
+            if all(re.search(r"\b" + i + r"\b", d.group(2)) for i in idents)]
+        if not defs:
+            obscurs.append((chemin_expr, methode_expr, ligne(pos)))
+            return
+        d = defs[-1]
+        params = []
+        for p in d.group(2).split(","):
+            n, _, v = p.partition("=")
+            params.append((n.strip(), v.strip() or None))
+        noms = [n for n, _ in params]
+        suivant = re.search(r"\b" + d.group(1) + r"\s*=\s*(?:async\s*)?\(",
+                            code[d.end():])
+        fin = d.end() + suivant.start() if suivant else len(code)
+        vus = 0
+        for site in re.finditer(r"(?<![\w.])" + d.group(1) + r"\(",
+                                code[d.end():fin]):
+            args, _ = arguments_js(code, d.end() + site.end() - 1)
+            if args is None:
+                continue
+            vus += 1
+
+            def valeur(expr):
+                if expr in noms:
+                    k = noms.index(expr)
+                    return args[k] if k < len(args) else params[k][1]
+                return expr
+
+            c, m = gabarit_js(valeur(chemin_expr)), litteral_js(valeur(methode_expr))
+            p = d.end() + site.start()
+            if c is None or m is None:
+                obscurs.append((valeur(chemin_expr), valeur(methode_expr), ligne(p)))
+            else:
+                appels.append((m.upper(), c, ligne(p), d.group(1)))
+        if not vus:
+            obscurs.append((chemin_expr, methode_expr, ligne(pos)))
+
+    for site in re.finditer(r"(?<![\w.])" + nom + r"\(", code):
+        if code[max(0, site.start() - 9):site.start()] == "function ":
+            continue
+        args, _ = arguments_js(code, site.end() - 1)
+        if not args:
+            continue
+        resoudre(args[0], args[1] if len(args) > 1 else '"' + defaut + '"',
+                 site.start())
+    return (nom, defaut), appels, obscurs
 
 
 lancer = asyncio.get_event_loop().run_until_complete if False else asyncio.run
@@ -603,6 +821,137 @@ try:
     finally:
         S.fournisseurs.lister_modeles = vrai_lister
         S.cle_de = vraie_cle
+
+    # ══════════════════════════════════════════════════════════════════
+    #  7. la console appelle bien ce que le serveur sert
+    # ══════════════════════════════════════════════════════════════════
+    # L'AUTRE MOITIE DU CONTRAT. Les six sections ci-dessus appellent les
+    # gestionnaires en Python ; que la page de /admin les appelle, eux et avec
+    # cette methode-la, personne ne le relisait. LE VRAI ROUTEUR, et non un
+    # motif sur « a.router.add_post(...) » : S.app().router porte exactement ce
+    # que le studio servira, methodes comprises — un releve textuel decrirait
+    # une facon d'ecrire la route, jamais la route.
+    print("\n  ── la console appelle bien ce que le serveur sert ──")
+    ICI = os.path.dirname(os.path.abspath(__file__))
+    try:
+        ADMIN = io.open(os.path.join(ICI, "web", "admin.html"),
+                        encoding="utf-8", newline=None).read()
+    except OSError:
+        ADMIN = ""
+    porte, appels, obscurs = appels_de_la_console(ADMIN)
+    CODE = sans_commentaires(ADMIN)
+
+    # UNE SEULE PORTE, SINON LE RELEVE EST AVEUGLE. Un bouton qui appellerait
+    # fetch() en direct sortirait du releve, et « chaque appel vise une route »
+    # resterait vrai de lui. C'est le raisonnement de « un seul ecrivain » dans
+    # banc_page.py, applique a la porte au lieu du reglage.
+    corps_porte = corps_de_fonction(CODE, porte[0]) if porte else ""
+    dit(bool(ADMIN) and porte is not None and CODE.count("fetch(") == 1
+        and "fetch(" in corps_porte,
+        "la console n'a qu'UNE porte vers le serveur : fetch() n'apparait que "
+        "dans le corps de sa fonction d'appel",
+        f"{CODE.count('fetch(')} fetch(), porte "
+        f"{porte[0] + '()' if porte else 'introuvable'}"
+        if ADMIN else "web/admin.html absent")
+
+    # LE TEMOIN. « Chaque appel vise une route » est vrai d'un releve qui ne
+    # trouve rien — une porte renommee, un motif qui ne mord plus. Quinze,
+    # parce que la page en porte vingt-trois au 5 septembre 2026 et que le
+    # chiffre doit survivre au retrait d'un onglet sans survivre au releve vide.
+    couples = sorted(set((m, c) for m, c, _, _ in appels))
+    enveloppes = sum(1 for a in appels if a[3])
+    dit(len(appels) >= 15,
+        "le releve trouve au moins quinze appels : sans ce temoin, « chaque "
+        "appel vise une route » serait vrai d'un releve qui ne trouve rien",
+        f"{len(appels)} appels, {len(couples)} couples methode/chemin, "
+        f"{enveloppes} passes par une enveloppe")
+    dit(not obscurs,
+        "aucun appel n'est obscur : chaque chemin et chaque methode se "
+        "reconstruisent depuis la page, enveloppes comprises",
+        " ; ".join(f"l. {l} : {c} {m}" for c, m, l in obscurs)
+        or f"{len(appels)} reconstruits")
+
+    # LES ROUTES, LUES SUR LE ROUTEUR QUE LE STUDIO SERVIRA. getattr et non
+    # un appel direct : sur un serveur.py d'avant, le cas rougit au lieu de
+    # mourir, et le sens inverse reste mesurable. HEAD est ecarte — aiohttp
+    # l'ajoute de lui-meme a chaque GET, personne ne l'ecrit ni ne l'appelle.
+    #
+    # LA FAMILLE : /api/admin/*, et les deux routes de pilotage de ComfyUI que
+    # la section 4 eprouve. « /api/comfy » sans barre est l'etat que lit la
+    # page d'accueil, pas la console.
+    FAMILLE = ("/api/admin/", "/api/comfy/")
+    toutes, famille, souci = {}, {}, ""
+    fabrique = getattr(S, "app", None)
+    try:
+        for r in (fabrique().router.routes() if fabrique else ()):
+            if r.method == "HEAD":
+                continue
+            canon = r.resource.canonical
+            clef = (r.method, re.sub(r"\{[^}]*\}", "{x}", canon))
+            toutes[clef] = r.handler.__name__
+            if canon.startswith(FAMILLE):
+                famille[clef] = r.handler.__name__
+    except Exception as e:  # noqa: BLE001 — un cas nomme, pas une trace
+        souci = repr(e)[:80]
+    dit(len(famille) >= 15,
+        "le routeur du studio sert au moins quinze routes de la famille de la "
+        "console : sans ce temoin, « aucune route morte » serait vrai d'un "
+        "routeur vide",
+        f"{len(famille)} routes sous {' et '.join(FAMILLE)}, {len(toutes)} en tout"
+        + (f" — {souci}" if souci else "")
+        + ("" if fabrique else " — serveur.app() n'existe pas"))
+
+    # LE SENS ALLER : chaque bouton vise une route servie, avec SA methode.
+    # Contre TOUTES les routes et non la seule famille : un appel de la console
+    # vers /api/textes serait legitime, et ne doit pas passer pour un manque.
+    manques = [(m, c, l) for m, c, l, _ in appels if (m, c) not in toutes]
+    dit(not manques,
+        "chaque appel de la console vise une route que le serveur sert, avec "
+        "la MEME methode : sinon le bouton rend 404 ou 405 au clic, et "
+        "personne ne le voit avant l'utilisateur",
+        " ; ".join(f"l. {l} : {m} {c}" for m, c, l in manques)
+        or f"{len(couples)} couples, tous servis")
+
+    # LE SENS RETOUR, ET SES EXCEPTIONS NOMMEES UNE PAR UNE. Une route que rien
+    # n'appelle est une fonctionnalite morte que rien ne signale — le defaut
+    # fondateur de banc_mutations.py. Ici elle est au moins ECRITE, avec la
+    # raison, et deux cas plus bas tiennent la liste : une exception dont la
+    # route a disparu, ou que la console appelle de nouveau, est un mensonge.
+    EXCEPTIONS = {
+        ("GET", "/api/admin/reglages"):
+            "aucun appelant dans le depot au 5 septembre 2026 — la console lit "
+            "pause_propose, armee_heures et vram_repos_min dans la reponse de "
+            "GET /api/admin/noeuds, et le POST rend deja l'etat complet ; "
+            "reste servie a un script",
+        ("POST", "/api/comfy/demarrer"):
+            "aucun bouton dans web/ au 5 septembre 2026, et ce depuis le "
+            "premier commit : la section 4 l'eprouve « depuis l'interface », "
+            "et l'interface ne l'appelle pas",
+        ("POST", "/api/comfy/arreter"):
+            "meme releve que /api/comfy/demarrer — aucun bouton, aucune page",
+    }
+    atteintes = set(couples)
+    mortes = sorted(k for k in famille
+                    if k not in atteintes and k not in EXCEPTIONS)
+    dit(not mortes,
+        "chaque route de la famille est atteinte par la console, ou nommee ici "
+        "en exception avec sa raison : une route que rien n'appelle est une "
+        "fonctionnalite morte que rien ne signale",
+        " ; ".join(f"{m} {c} ({famille[(m, c)]})" for m, c in mortes)
+        or f"{len(famille)} routes, {len(atteintes & set(famille))} atteintes, "
+           f"{len(EXCEPTIONS)} exceptions nommees")
+    perimees = sorted(k for k in EXCEPTIONS if k not in famille)
+    dit(not perimees,
+        "chaque exception nomme une route que le serveur sert encore : une "
+        "exception perimee couvrirait la route suivante du meme nom",
+        " ; ".join(f"{m} {c}" for m, c in perimees) or "aucune perimee")
+    mensonges = sorted(set(EXCEPTIONS) & atteintes)
+    dit(not mensonges,
+        "aucune exception n'est appelee par la console : la liste ne ment pas, "
+        "et une route revenue au service en sort",
+        " ; ".join(f"{m} {c}" for m, c in mensonges) or "aucune")
+    for (m, c), pourquoi in sorted(EXCEPTIONS.items()):
+        print(f"       exception : {m} {c} — {pourquoi}")
 finally:
     pass
 
