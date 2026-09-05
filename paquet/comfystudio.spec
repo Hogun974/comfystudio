@@ -27,7 +27,8 @@ ICI = os.path.abspath(SPECPATH)             # noqa: F821 — fourni par PyInstal
 SOURCE = os.path.dirname(ICI)               # D:\ComfyStudio
 
 # Mettre a 1 pour laisser PyAV dehors. Mesure sur cette machine : l'exe tombe
-# de 44 818 543 a 17 517 471 octets, soit 27 Mo pour les DLL ffmpeg de av.libs.
+# de 45 120 925 a 17 817 972 octets (mesure du 5 septembre 2026), soit 27 Mo
+# pour les DLL ffmpeg de av.libs.
 # Le prix est mesurer_cadence() qui rend alors toujours 24 im/s (le repli deja
 # prevu par le try/except de serveur.py ligne 2547) : une video televersee a
 # une autre cadence serait rejouee a 24. Defaut 0 : on paie les 27 Mo plutot

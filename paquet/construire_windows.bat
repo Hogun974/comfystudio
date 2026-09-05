@@ -2,8 +2,16 @@
 REM ====================================================================
 REM  ComfyStudio -- construction de l'executable Windows unique
 REM
-REM  Produit paquet\dist\ComfyStudio.exe : 44 818 543 octets mesures,
-REM  17 517 471 octets si PAQUET_SANS_AV=1. Environ 40 s de construction.
+REM  Produit paquet\dist\ComfyStudio.exe : 45 120 925 octets mesures le
+REM  5 septembre 2026, 17 817 972 si PAQUET_SANS_AV=1. Environ 29 s de
+REM  construction a froid, 23 s ensuite.
+REM
+REM  CES NOMBRES SONT DATES, ET C'EST VOLONTAIRE. Ceux d'avant — 44 818 543,
+REM  17 517 471, « environ 40 s » — dataient du 30 aout et avaient derive de
+REM  244 ko sans que rien ne le dise : un nombre sans date ne vieillit pas, il
+REM  ment. Deux constructions identiques le meme jour donnent d'ailleurs
+REM  45 120 779 et 45 120 925 octets : a 146 octets pres, ce n'est pas
+REM  reproductible au bit.
 REM  A lancer depuis n'importe ou : le script se replace tout seul.
 REM ====================================================================
 setlocal

@@ -174,6 +174,31 @@ paquetage, et rien ici ne peut le rattraper.
 
 ## Pièges rencontrés à la construction
 
+### Arrêter l'exe ne suffit pas à l'arrêter — et ça fabrique de faux chiffres
+
+**Mesuré le 5 septembre 2026.** Un exe *onefile* PyInstaller lance un
+**processus enfant** : le parent extrait l'archive dans un dossier temporaire,
+puis exécute le vrai programme à côté de lui. Tuer le seul parent —
+`Stop-Process`, ou un clic sur la croix d'un lanceur — laisse **l'enfant
+vivant**, et avec lui le port occupé.
+
+Relevé : le pid 40472 était l'enfant du pid 23212 ; après l'arrêt « réussi » du
+parent, il tenait encore le port 8399.
+
+Le danger n'est pas seulement qu'un serveur traîne. C'est qu'une **mesure
+suivante interroge l'ancien serveur en croyant mesurer le neuf**. Deux
+répétitions d'un essai de démarrage ont ainsi annoncé **0,29 s et 0,24 s** —
+des chiffres impossibles, et qui n'ont l'air impossibles que si l'on connaît
+l'ordre de grandeur attendu, autour de six secondes. Un chiffre trop beau se
+recopie plus facilement qu'il ne se vérifie.
+
+```powershell
+taskkill /PID <pid> /T /F    # /T : l'arbre, pas seulement le parent
+```
+
+`/T` est le seul mot qui compte. Le protocole de l'essai du 30 août 2026 ne le
+mentionne nulle part, et c'est pour cela qu'il est écrit ici.
+
 ### Les modules voisins ne sont pas trouvés
 
 `serveur.py` fait `from catalogue import ...`, `import fournisseurs`,

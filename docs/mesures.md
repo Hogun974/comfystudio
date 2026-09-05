@@ -115,11 +115,34 @@ d'un appel direct.** C'est ce qui a décidé de `OLLAMA_URL` en liste — voir
 | Construction de l'image Docker, base `python:3.12-slim` en cache | 49 s, 46 Mo téléchargés — ~110 Mo sans le cache | une machine sans carte | 30 août 2026 |
 | `up -d` puis la première page servie | 4 s | idem | 30 août 2026 |
 | Exécutable Windows, à froid | 45 Mo en 28 s | pc | 30 août 2026 |
+| Le même, reconstruit six jours plus tard | **45 120 925 o en 29 s** (+244 ko) | pc | 5 septembre 2026 |
 | Le même avec `PAQUET_SANS_AV=1` | 17,6 Mo en 14 s | pc | 30 août 2026 |
+| Idem, six jours plus tard | **17 817 972 o en 17 s** | pc | 5 septembre 2026 |
 | Démarrage de l'exécutable | 5 à 6 s | pc | 30 août 2026 |
+| Démarrage, quatre relevés | **5,43 / 6,16 / 5,97 / 6,00 s** | pc | 5 septembre 2026 |
 | Entraînement de l'aiguilleur, 2 899 exemples, 11 classes | 0,03 s | pc | 1er septembre 2026 |
 | Taillage du journal des appels distants, avant correction | 97 ms par appel sur 11 091 lignes | le studio | 1er septembre 2026 |
 | Écriture du journal hors de la boucle, disque ralenti à 50 ms la ligne | 40 appels en 2,0 ms au lieu de 2 s | pc, au banc | 1er septembre 2026 |
+
+> **L'exécutable a été reconstruit pour de vrai le 5 septembre 2026**, six jours
+> et quatre commits après la seule mesure qu'on en avait. Deux de ces commits le
+> touchaient en profondeur : le chemin de Python n'est plus codé en dur, et la
+> version est désormais gravée à la construction. Il se construit **du premier
+> coup**, démarre dans un dossier vide sans ComfyUI ni Ollama, et sa bannière
+> annonce `Version : d51a269 (gravee a la construction)` — le point neuf, et il
+> tient.
+>
+> `banc_noeud.py` gardait le **texte** de ces deux fichiers ; personne n'avait
+> reconstruit le binaire. Un relevé de texte ne dit pas qu'un exécutable se
+> construit et démarre.
+>
+> **Un piège de mesure a été trouvé au passage, et il fabriquait de faux
+> chiffres.** Un exe *onefile* lance un processus enfant : tuer le parent laisse
+> le serveur vivant et le port pris, si bien que la mesure suivante interroge
+> l'ancien serveur. Deux répétitions ont ainsi annoncé **0,29 s et 0,24 s** de
+> démarrage — impossibles, et qui n'ont l'air impossibles que si l'on connaît
+> l'ordre de grandeur attendu. Il faut `taskkill /PID … /T /F` ; c'est écrit
+> dans [`paquet/NOTES.md`](../paquet/NOTES.md).
 
 ## Ce qu'une carte tient quand elle ne fait rien
 
