@@ -493,6 +493,21 @@ jobs:
       - name: L'agent de noeud, contre un faux ComfyUI
         run: python banc_agent.py
 
+      # LES BOUTONS DE /admin, ET NON L'ETAT QU'ILS POSENT. Un releve du
+      # 5 septembre 2026 a compte VINGT-DEUX routes sur soixante-quatre
+      # qu'aucun banc ne nommait ; celles-ci agissent sur le parc — pause,
+      # jeton d'une machine, retrait, pilotage de ComfyUI.
+      #
+      # La pause dit tout du manque : son EFFET etait mesure depuis longtemps
+      # par banc_attente.py, mais a partir d'un registre ou l'on avait pose
+      # « pause » a la main. Que le clic l'ECRIVE sur le disque — la seule
+      # chose qui empeche un studio relance de reprendre la carte de quelqu'un
+      # qui joue — n'etait garde par personne. C'est la lecon de
+      # recette_chemin_page.py : un etat qu'on pose soi-meme n'est pas un
+      # bouton qu'on clique.
+      - name: Les boutons de la console d'administration
+        run: python banc_console.py
+
       # LES SIX FONCTIONS QUE banc_agent.py A NOMMEES EN LAISSANT DEHORS. Son
       # en-tete les enumere : « boucle(), qui ne rend jamais la main […]
       # insister(), servir_le_langage(), trouver_ollama() et main() », plus

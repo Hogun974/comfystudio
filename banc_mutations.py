@@ -418,6 +418,9 @@ BESOINS = {
     # branchees. Il n'a besoin d'aucune dependance : ni comptes.py ni mfa.py
     # n'importent autre chose que la bibliotheque standard.
     "banc_comptes.py": ["banc_comptes.py", "comptes.py", "mfa.py", "serveur.py"],
+    # banc_console.py importe serveur.py : il lui faut donc tout ce que
+    # serveur.py importe, comme banc_conteneur.py le calcule deja.
+    "banc_console.py": ["banc_console.py"] + fichiers_du_conteneur(),
     # L'ENCODEUR QR ET SES ETALONS, et rien d'autre : qr.py n'importe que
     # « collections », etalons_qr.py n'importe rien du tout. mfa.py est la pour
     # la derniere section du banc, qui encode cinq URI d'enrolement REELLES —
@@ -5430,6 +5433,171 @@ VERSION = [
 # depot des suivants » l'etait aussi, parce que le fichier illisible etait
 # ECRIT EN SECOND et que le break n'avait plus rien a couper. Le motif de
 # « priorite, », trois fois, dans le banc qui vient le fermer.
+# ══════════════════════════════════════════════════════════════════════
+#  banc_console.py — les boutons de /admin, dix mutations
+# ══════════════════════════════════════════════════════════════════════
+# CE QU'ELLES GARDENT : sept routes que le releve du 5 septembre 2026 a
+# trouvees muettes — vingt-deux sur soixante-quatre n'etaient nommees par aucun
+# banc. Celles-ci AGISSENT sur le parc : elles mettent une carte au repos,
+# ferment un jeton, retirent une machine, tuent un moteur.
+#
+# LA PAUSE EST LE CAS D'ECOLE. Son EFFET etait mesure depuis longtemps —
+# banc_attente.py la nomme quarante-cinq fois — mais a partir d'un registre ou
+# l'on avait pose « pause » a la main. Le GESTE, lui, n'etait mesure par
+# personne : ni l'ecriture sur le disque, ni le reveil de ce qui attendait.
+CONSOLE = [
+    dict(
+        nom="la pause n'est plus ecrite sur le disque",
+        banc="banc_console.py",
+        imite="la pause ne survit pas au redemarrage du studio. Elle tient tant "
+              "que le processus vit, ce qui la rend PIRE qu'absente : celui qui "
+              "l'a posee croit sa carte a lui, et le premier studio relance la "
+              "redistribue pendant qu'il joue",
+        rougit="elle est ECRITE dans _noeuds.json",
+        editions=[
+            ("serveur.py", brut(
+                '    if d.get("pause"):\n'
+                '        x["pause"] = time.time()\n'
+                '    else:\n'
+                '        x.pop("pause", None)\n'
+                "    sauver_registre()\n",
+                '    if d.get("pause"):\n'
+                '        x["pause"] = time.time()\n'
+                '    else:\n'
+                '        x.pop("pause", None)\n')),
+        ]),
+    dict(
+        nom="sortir de pause ne reveille plus ce qui attendait",
+        banc="banc_console.py",
+        imite="la machine est rendue au travail et la demande qui l'attendait "
+              "reste armee : elle repartira au battement suivant du veilleur, "
+              "trente secondes plus tard. L'administrateur voit son clic ne "
+              "rien faire, et clique une seconde fois",
+        rougit="sortir une machine de pause relance ce qui l'attendait",
+        editions=[
+            ("serveur.py", brut(
+                "    reveillees = (0 if x.get(\"pause\")\n"
+                "                  else await reveiller_armees(x[\"id\"], plancher=False))",
+                "    reveillees = 0")),
+        ]),
+    dict(
+        nom="le plancher de quinze secondes revient sur le clic",
+        banc="banc_console.py",
+        imite="LE DEFAUT EXACT QUE « plancher=False » REPARE : une demande armee "
+              "depuis moins de quinze secondes est ecartee, la reponse annonce "
+              "« 0 relancee » alors qu'elle repart au battement suivant. Le "
+              "clic est deliberatif, pas un va-et-vient de machine",
+        rougit="sans le plancher de quinze secondes",
+        editions=[
+            ("serveur.py", brut(
+                'else await reveiller_armees(x["id"], plancher=False))',
+                'else await reveiller_armees(x["id"]))')),
+        ]),
+    dict(
+        nom="une pause devient un retrait",
+        banc="banc_console.py",
+        imite="mettre en pause efface l'etat de la machine. Elle disparait de "
+              "la console au lieu d'y rester grisee, son inventaire est perdu, "
+              "et il faut attendre qu'elle se reannonce pour la revoir — alors "
+              "qu'une pause promet exactement le contraire",
+        rougit="une pause n'est pas un retrait",
+        editions=[
+            ("serveur.py", brut(
+                '    if d.get("pause"):\n        x["pause"] = time.time()\n',
+                '    if d.get("pause"):\n        x["pause"] = time.time()\n'
+                '        ETAT_NOEUDS.pop(req.match_info["ident"], None)\n')),
+        ]),
+    dict(
+        nom="le jeton regenere ne ferme pas l'ancien",
+        banc="banc_console.py",
+        imite="LE PIRE DES DEUX ECHECS POSSIBLES. Le bouton rend un jeton neuf "
+              "et l'ancien continue d'ouvrir : celui qui vient de regenerer "
+              "parce que son jeton a fuite croit avoir ferme la porte, et ne "
+              "cherchera plus. Un refus franc l'aurait au moins averti",
+        rougit="ET L'ANCIEN NE VAUT PLUS RIEN",
+        editions=[
+            ("serveur.py", brut(
+                '    jeton = secrets.token_urlsafe(24)\n'
+                '    REGISTRE[ident]["jeton"] = jeton\n',
+                "    jeton = secrets.token_urlsafe(24)\n")),
+        ]),
+    dict(
+        nom="le jeton regenere n'est pas ecrit sur le disque",
+        banc="banc_console.py",
+        imite="l'ancien jeton revient au redemarrage du studio, et la machine "
+              "dont on venait de fermer l'acces le rouvre toute seule. Le "
+              "danger est le meme que ci-dessus, avec un delai",
+        rougit="le neuf est ecrit sur le disque",
+        editions=[
+            ("serveur.py", brut(
+                '    REGISTRE[ident]["jeton"] = jeton\n'
+                "    sauver_registre()\n"
+                "    ETAT_NOEUDS.pop(ident, None)\n"
+                '    return web.json_response({"id": ident, "jeton": jeton})',
+                '    REGISTRE[ident]["jeton"] = jeton\n'
+                "    ETAT_NOEUDS.pop(ident, None)\n"
+                '    return web.json_response({"id": ident, "jeton": jeton})')),
+        ]),
+    dict(
+        nom="retirer une machine en laisse une trace",
+        banc="banc_console.py",
+        imite="une machine fantome : elle ne s'annonce plus, elle n'est plus "
+              "dans le registre, et le studio compte encore ses travaux. C'est "
+              "le genre de reste qui ne se voit qu'a la panne suivante",
+        rougit="elle disparait des QUATRE tables",
+        editions=[
+            ("serveur.py", brut(
+                "    ETAT_NOEUDS.pop(ident, None)\n"
+                "    MODELES_NOEUD.pop(ident, None)\n"
+                "    TRAVAUX.pop(ident, None)\n",
+                "    ETAT_NOEUDS.pop(ident, None)\n"
+                "    MODELES_NOEUD.pop(ident, None)\n")),
+        ]),
+    dict(
+        nom="l'arret de ComfyUI ne regarde plus ce qui attend",
+        banc="banc_console.py",
+        imite="EN_VOL se vide entre deux taches. Ne tester que lui laisse "
+              "passer l'arret dans cet intervalle : le moteur est tue pendant "
+              "qu'une file entiere l'attend, et toutes les demandes echouent "
+              "en cascade sans que personne n'ait rien demande de tel",
+        rougit="l'arret est REFUSE tant qu'une demande ATTEND",
+        editions=[
+            ("serveur.py", brut("    if EN_VOL or ATTENTE:\n",
+                                "    if EN_VOL:\n")),
+        ]),
+    dict(
+        nom="le pilotage de ComfyUI s'ouvre au reseau",
+        banc="banc_console.py",
+        imite="n'importe qui sur le reseau local peut tuer et relancer le "
+              "moteur du studio. Le pilotage lance un processus sur la machine "
+              "hote : il n'a rien a faire au bout d'un cable",
+        rougit="un appel venu d'une AUTRE machine est refuse",
+        editions=[
+            ("serveur.py", brut(
+                "    if not local(req):\n"
+                '        return web.json_response({"erreur": "pilotage reserve a la machine hote"}, status=403)\n'
+                "    if await comfy_repond():",
+                "    if await comfy_repond():")),
+        ]),
+    dict(
+        nom="le pilotage perd la garde de l'origine",
+        banc="banc_console.py",
+        imite="local() ne suffit pas, et c'est tout l'objet de la seconde "
+              "garde : un formulaire poste depuis un site piege part du "
+              "navigateur de l'utilisateur, donc de 127.0.0.1. Sans "
+              "origine_sure(), une page ouverte dans un autre onglet lance le "
+              "moteur",
+        rougit="un clic sur un site tiers l'est aussi",
+        editions=[
+            ("serveur.py", brut(
+                "async def api_comfy_demarrer(req):\n"
+                "    if not origine_sure(req):\n"
+                '        return web.json_response({"erreur": "origine refusee"}, status=403)\n',
+                "async def api_comfy_demarrer(req):\n")),
+        ]),
+]
+
+
 BOUCLE_AGENT = [
     # ── LES DEUX DEFAUTS TROUVES EN COUVRANT, ET CORRIGES LE MEME JOUR ──
     # Ils vivaient tous les deux dans l'ecart entre une docstring et son code.
@@ -6531,7 +6699,7 @@ BOUCLE_AGENT = [
 ]
 
 
-MUTATIONS = (FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
+MUTATIONS = (CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
