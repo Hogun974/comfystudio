@@ -9262,6 +9262,17 @@ SECURITE_SEPT = [
                 '                    if (noeud.get("inputs") or {}).get(champ) == origine:',
                 '                    if (noeud.get("inputs") or {}).get(champ) == nom:')),
         ]),
+    dict(
+        nom="le 413 d'aiohttp retombe en 400 « corps illisible »",
+        banc="banc_console.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026, et la forme la plus "
+              "naturelle qui soit : « except Exception » autour de req.json(). "
+              "Le corps est bien coupe a CORPS_MAX, mais l'appelant lit « corps "
+              "illisible » et cherche une faute de JSON qui n'existe pas",
+        rougit="ressort en 413, tel qu'aiohttp l'a leve",
+        editions=[
+            ("serveur.py", brut("    # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.\n    lg = langue_de(req)\n    try:\n        d = await req.json()\n    except web.HTTPException:\n        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer\n    except Exception:", "    # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.\n    lg = langue_de(req)\n    try:\n        d = await req.json()\n    except Exception:")),
+        ]),
 ]
 
 

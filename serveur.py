@@ -5172,6 +5172,8 @@ async def api_nuage(req):
     if req.method == "POST":
         try:
             d = await req.json()
+        except web.HTTPException:
+            raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:
             return web.json_response({"erreur": "corps illisible"}, status=400)
         modalite = str(d.get("modalite") or "llm")
@@ -7578,6 +7580,8 @@ async def api_avis(req):
     lg = langue_de(req)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
@@ -7748,6 +7752,8 @@ async def api_admin_cles_poser(req):
         return web.json_response({"erreur": "jeton invalide"}, status=403)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
 
@@ -7954,6 +7960,8 @@ async def api_entrer(req):
     lg = langue_de(req)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
@@ -8019,6 +8027,8 @@ async def _corps(req, lg):
     """(dictionnaire, refus). Un corps illisible ne doit pas lever un 500."""
     try:
         return await req.json(), None
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return {}, web.json_response(
             {"erreur": T("erreur.corps_illisible", lg)}, status=400)
@@ -8308,6 +8318,8 @@ async def api_admin_compte_poser(req):
         return web.json_response({"erreur": "jeton invalide"}, status=403)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     nom = str(d.get("nom") or "")
@@ -10319,6 +10331,8 @@ async def api_textes(req):
     if req.method == "POST":
         try:
             voulue = str((await req.json()).get("langue") or "")
+        except web.HTTPException:
+            raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:
             # PAS DE 400 ICI. Un corps illisible sur cette route-ci ne demande
             # rien d'autre que les textes, et refuser laisserait la page sans
@@ -10593,6 +10607,8 @@ async def api_reprendre(req):
     lg = langue_de(req)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
@@ -10656,6 +10672,8 @@ async def api_au_propre(req):
     lg = langue_de(req)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
@@ -10849,6 +10867,8 @@ async def api_refaire(req):
     lg = langue_de(req)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
@@ -11126,6 +11146,8 @@ async def api_variante_choisir(req):
     lg = langue_de(req)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
@@ -11171,6 +11193,8 @@ async def api_generer(req):
     lg = langue_de(req)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
@@ -11574,6 +11598,8 @@ async def api_conv_reglages(req):
         return web.json_response({"erreur": "inconnue"}, status=404)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     # Les memes controles que pour une demande : un reglage qui nomme un moteur
@@ -13109,6 +13135,8 @@ async def api_noeud_annonce(req):
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     etat = ETAT_NOEUDS.setdefault(x["id"], {})
@@ -13311,6 +13339,8 @@ async def api_noeud_reponse(req):
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     attribue, futur = REPONSES.get(d.get("qid")) or (None, None)
@@ -13453,6 +13483,8 @@ async def api_noeud_progres(req):
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     # Seulement pour un travail en vol qui appartient a CETTE machine : une
@@ -13563,6 +13595,8 @@ async def api_noeud_resultat(req):
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     # Une chaine, et rien d'autre : ce tid sert de cle a TACHES, et journal()
@@ -13835,6 +13869,8 @@ async def api_admin_pause(req):
         return web.json_response({"erreur": "machine inconnue"}, status=404)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         d = {}
     if d.get("pause"):
@@ -13874,6 +13910,8 @@ async def api_admin_reglages(req):
     if req.method == "POST":
         try:
             d = await req.json()
+        except web.HTTPException:
+            raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:
             d = {}
         # Chaque clef est facultative : la carte « pause » de /admin n'envoie
@@ -13914,6 +13952,8 @@ async def api_admin_creer(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     titre = (d.get("titre") or "").strip()[:60]
@@ -13967,6 +14007,8 @@ async def api_admin_entrer(req):
     """
     try:
         d = await req.json()
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
@@ -14351,6 +14393,8 @@ async def api_demarrage(req):
     if req.method == "POST":
         try:
             d = await req.json()
+        except web.HTTPException:
+            raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:
             return web.json_response(
                 {"erreur": T("erreur.corps_illisible", langue_de(req))}, status=400)

@@ -1040,6 +1040,29 @@ try:
         "et une route qui a deja pose l'un d'eux garde SA valeur : "
         "l'intergiciel complete, il n'ecrase pas",
         f"Referrer-Policy={rep.headers.get('Referrer-Policy')!r}")
+
+    # LE 413 D'AIOHTTP TRAVERSE LA GARDE « corps illisible ». Vingt-deux routes
+    # enveloppent req.json() d'un « except Exception » ; l'exception qu'aiohttp
+    # leve au quatre-millionieme octet y tombait aussi, et un corps trop gros
+    # rendait 400 « corps illisible ». La lecture etait bien coupee — c'est ce
+    # qui compte pour la memoire — mais rien ne le disait, et l'epreuve en
+    # vrai du 6 septembre 2026 sur le studio deploye l'a mesure en 400.
+    class Trop(Req):
+        async def json(self):
+            raise S.web.HTTPRequestEntityTooLarge(max_size=S.CORPS_MAX,
+                                                  actual_size=S.CORPS_MAX + 1)
+
+    try:
+        rep = asyncio.run(S.api_entrer(Trop(admin=False)))
+        sorti = f"HTTP {rep.status}"
+    except S.web.HTTPException as e:
+        sorti = f"leve {e.status}"
+    dit(sorti == "leve 413",
+        "un corps plus gros que CORPS_MAX ressort en 413, tel qu'aiohttp l'a "
+        "leve, et non en 400 « corps illisible »", sorti)
+    st, d = lire(asyncio.run(S.api_entrer(Req(admin=False))))
+    dit(st == 400, "alors qu'un corps vraiment illisible rend toujours 400",
+        f"HTTP {st}")
 finally:
     pass
 
