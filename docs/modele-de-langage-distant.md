@@ -34,9 +34,11 @@ d'écart, et cette page a décrit l'ancien pendant ce temps. `STUDIO_ANALYSE_PET
 remet la plus petite, si la mesure devait donner tort à la règle. Voir
 [Qui prend le travail](qui-prend-le-travail.md).
 
-L'emprunt est aussi **borné dans le temps** : au-delà de `STUDIO_ANALYSE_MAX`
-— 90 s par défaut — il ne vaut plus la peine, et mieux vaut attendre sa propre
-carte. Mesure du 31 août 2026 : un seul appel au modèle de **zima** a mis 500 s.
+L'emprunt a été **borné dans le temps** un moment — `STUDIO_ANALYSE_MAX`,
+90 s — après qu'un seul appel au modèle de **zima** a mis 500 s le 31 août 2026.
+La borne a été retirée le jour même : l'agent de zima met 162 s par appel, et
+la lui imposer le condamnait. Le réglage a survécu au code cinq jours ; il n'y
+est plus.
 
 Dans `/admin`, le pli d'une machine porte un bouton **« poser une question pour
 vérifier »**. Une voie de secours qu'on n'essaie jamais n'en est pas une : on

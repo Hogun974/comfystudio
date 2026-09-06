@@ -25,7 +25,10 @@ Puis <http://127.0.0.1:8199>.
 
 `huggingface_hub` et `av` (PyAV) sont utilisés s'ils sont présents et ignorés
 sinon : le téléchargement des modèles retombe sur du HTTPS direct, et la lecture
-de cadence vidéo est simplement indisponible. N'en fais pas des dépendances.
+de cadence vidéo est simplement indisponible. N'en fais pas des dépendances
+obligatoires : `requirements.txt` les liste pour l'image Docker et l'exe, qui
+les embarquent, mais le code doit continuer de tourner sans eux — la CI
+n'installe qu'`aiohttp`, précisément pour le vérifier.
 
 Sur Windows, `LANCER ComfyStudio.bat` fait la même chose avec le Python embarqué
 de ComfyUI — pratique pour reproduire l'environnement d'un utilisateur, qui n'a
@@ -150,7 +153,7 @@ Trois centièmes de seconde, aucune dépendance, aucun réseau. Sortie actuelle 
 
 ```
   2899 exemples, 11 classes
-  entraine en 0.03 s — 7680 traits
+  entraine en 0.03 s — 7734 traits
   ecrit : aiguilleur.json (0.19 Mo)
 
   banc_aiguillage.jsonl

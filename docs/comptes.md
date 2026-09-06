@@ -50,7 +50,9 @@ Trois choix à connaître :
   peut en imposer un nouveau, pas consulter l'ancien.
 - **La session est un jeton signé**, pas une entrée en mémoire — sinon chaque
   redémarrage du studio déconnecterait tout le monde, et il redémarre souvent.
-  Le cookie est `HttpOnly`.
+  Le cookie est `HttpOnly`. Changer de mot de passe, armer ou désarmer le
+  second facteur ferme toutes les sessions du compte, partout ; se déconnecter
+  ne ferme que l'appareil d'où l'on sort.
 - **Supprimer un compte n'efface pas son travail.** Ses conversations
   redeviennent sans propriétaire et restent sur le disque, récupérables.
 

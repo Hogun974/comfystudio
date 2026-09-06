@@ -82,7 +82,6 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
   border-radius:6px;padding:2px 7px;font:11px var(--mono);color:var(--encre-pale);
   cursor:pointer}
 .tache button:hover{border-color:var(--rouge);color:var(--rouge)}
-.tache .encours{color:var(--braise);font:10.5px var(--mono)}
 /* Barre de progression : elle ne s'affiche QUE si ComfyUI a annonce un total.
    Une barre qui avance sans rapport avec le calcul est pire qu'aucune barre,
    parce qu'on lui fait confiance. */
@@ -500,11 +499,9 @@ main{flex:1;overflow-y:auto;min-width:0}
 .question button{background:var(--braise);border:1px solid var(--braise);color:var(--nuit);
   border-radius:8px;padding:9px 15px;font:12px var(--mono);cursor:pointer;font-weight:600}
 .question button:hover{filter:brightness(1.12)}
-.nomfic{font:10.5px var(--mono);color:var(--encre-pale);margin-top:6px}
 /* Le moteur employe se lit, mais ne se dispute pas la place avec l'image. */
 .signature{font:10.5px var(--mono);color:var(--encre-pale);margin-top:8px;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.signature .sep{opacity:.5}
 .signature .avis{margin-top:0}
 .signature .refaire-grand{margin-left:6px;padding:2px 9px;border:1px solid var(--braise);
   border-radius:20px;background:transparent;color:var(--braise);

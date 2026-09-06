@@ -63,8 +63,9 @@ la mutation fait PENDRE banc_refaire au lieu de le faire rougir
 — plus de 90 s sans reponse
 ```
 
-Trente secondes, et le chiffre a sa raison : le plus lent des bancs mutés met
-3,5 s (`banc_variantes`), le suivant 2,9 s (`banc_cout`). Dix fois la marge. Et
+Quatre-vingt-dix secondes, et le chiffre a sa raison : le plus lent des bancs
+mutés met 3,5 s (`banc_variantes`), le suivant 2,9 s (`banc_cout`) — les trente
+d'origine faisaient déjà dix fois la marge, avant les bancs à sous-processus. Et
 cette marge est pour la **charge de la machine**, pas pour le banc — une
 exécution mesurée à 77 s est passée au-dessus de 300 s sur une machine occupée.
 
@@ -238,6 +239,7 @@ le banc visé laisse **encore** passer. Elles sont écrites, nommées et signal�
 chaque exécution, mais ne font pas échouer : les compter en échec rendrait la CI
 rouge en permanence, et une CI qui rougit pour rien finit ignorée. Les basculer
 dans les mutations ordinaires est le geste qui clôt la réparation du filet.
+La liste est **vide** depuis le 5 septembre 2026 — elle reste, pour le prochain.
 
 Ce que les fermer a appris : un relevé par expression régulière décrit **une
 façon d'écrire la panne, jamais la panne**. Fermer le premier a d'ailleurs révélé
@@ -377,5 +379,16 @@ mutations éprouvent.
 ## Si tu ajoutes un banc
 
 Ajoute-lui sa mutation. **Un filet qu'on n'a jamais vu rougir ne mesure rien.**
+Et vois-la rougir avant de payer le tour complet :
+
+```
+python jouer_mutations.py SECURITE_SEPT "un nom vide part vide"
+```
+
+joue une mutation (ou toute une liste, sans nom) dans un dossier temporaire,
+avec le même `verdict()` que le lanceur, et dit `[rouge]`, `[vert]`, `[casse]`
+ou `[perimee]` — ce dernier quand l'ancre de l'édition n'existe plus dans le code,
+ce qui arrive à chaque fois qu'on déplace la ligne qu'une mutation visait.
+Vingt secondes au lieu de vingt minutes ; le tour complet reste celui de la CI.
 Le détail de ce qui est attendu d'une contribution est dans
 [`CONTRIBUTING.md`](../CONTRIBUTING.md).

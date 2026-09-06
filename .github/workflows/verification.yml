@@ -63,13 +63,13 @@ jobs:
           /tmp/venv/bin/pip install --quiet --upgrade pip aiohttp
           echo /tmp/venv/bin >> "$GITHUB_PATH"
 
-      # Le depot n'a pas de requirements.txt, et c'est voulu : aiohttp est la
+      # On n'installe PAS requirements.txt, et c'est voulu : aiohttp est la
       # SEULE dependance obligatoire, installee juste au-dessus. huggingface_hub
-      # et av sont facultatifs, le code retombe sur du HTTPS direct sans eux — on
-      # ne les installe donc pas, ce qui verifie au passage que rien ne les exige
-      # en douce.
+      # et av y figurent pour l'image Docker et l'exe, mais sont facultatifs — le
+      # code retombe sur du HTTPS direct sans eux. Ne pas les installer ici
+      # verifie au passage que rien ne les exige en douce.
 
-      # serveur.py fait 250 ko : une faute de syntaxe dans une branche rarement
+      # serveur.py fait 750 ko : une faute de syntaxe dans une branche rarement
       # prise ne se voit qu'au demarrage, c'est-a-dire chez l'utilisateur.
       # compileall les lit tous, y compris installer.py, qui doit rester lisible
       # par un Python tres ancien pour pouvoir afficher son message de version.
@@ -593,15 +593,15 @@ jobs:
       # fait.
       #
       # Seuils retenus : 75 % de justesse globale, 80 % sur les cas tranches
-      # d'office. Mesures actuelles : 94 % / 98 % sur banc_aiguillage.jsonl et
-      # 86 % / 90 % sur banc_neuf.jsonl (les tournures indirectes, le banc dur).
+      # d'office. Mesures actuelles : 94 % / 97 % sur banc_aiguillage.jsonl et
+      # 88 % / 91 % sur banc_neuf.jsonl (les tournures indirectes, le banc dur).
       # Soit environ onze points de marge sous le banc le plus faible.
       #
-      # POURQUOI si bas : un banc de 44 cas se deplace de 2,3 points des qu'une
+      # POURQUOI si bas : un banc de 49 cas se deplace de deux points des qu'une
       # seule demande change de camp. Un seuil colle a 85 % virerait au rouge au
       # premier exemple ajoute au corpus — et une CI qui rougit pour rien finit
       # par etre ignoree, ce qui la rend pire qu'absente. Ce seuil ne cherche
-      # pas a defendre les 86 % : il cherche a attraper un effondrement (un
+      # pas a defendre les 88 % : il cherche a attraper un effondrement (un
       # corpus tronque, une classe disparue, un classifieur casse), qui fait
       # tomber ces chiffres de dizaines de points, pas de deux.
       #

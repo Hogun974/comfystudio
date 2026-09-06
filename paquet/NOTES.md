@@ -9,9 +9,9 @@ Python 3.13.14 embarqué de ComfyUI, PyInstaller 6.22.2), pas supposé.
 |---|---|
 | Interpréteur retenu | `D:\ComfyUI_windows_portable\python_embeded\python.exe` (3.13.14) |
 | PyInstaller | 6.22.2, installé par `pip` **sans problème** dans le Python embarqué |
-| Taille de l'exe | **~44 818 700 octets** (42,7 Mio) — varie de quelques centaines d'octets d'une construction a l'autre |
-| Taille sans PyAV (`PAQUET_SANS_AV=1`) | **17 517 471 octets** (16,7 Mio) |
-| Durée de construction | ~40 s à froid, ~25 s ensuite |
+| Taille de l'exe | **45 120 925 octets** (43,0 Mio) le 6 septembre 2026 — varie de quelques centaines d'octets d'une construction a l'autre ; [Mesures](../docs/mesures.md) fait foi |
+| Taille sans PyAV (`PAQUET_SANS_AV=1`) | **17 817 972 octets** (17,0 Mio) |
+| Durée de construction | 29 s à froid, 23 s ensuite |
 | Démarrage à froid de l'exe | **1,5 s** entre le lancement et la première réponse HTTP |
 | Test de démarrage | `GET /api/compte` → **HTTP 200** |
 | Persistance des données | **corrigée et vérifiée** (voir plus bas) |
@@ -213,8 +213,8 @@ problème est à l'analyse.
 `importlib.import_module("entrainer_aiguilleur")` : un nom en chaîne de
 caractères, que l'analyse statique ne peut pas suivre. Il est déclaré en
 `hiddenimports`, avec `corpus_aiguillage` qu'il tire, et les cinq `.jsonl` qu'ils
-lisent sont embarqués. Sans cela, `/api/aiguilleur/mesurer` rendrait une trace
-de pile.
+lisent sont embarqués. Sans cela, `POST /api/admin/aiguilleur` rendrait une
+trace de pile.
 
 ### Les imports cachés d'aiohttp
 
@@ -258,7 +258,7 @@ dégradée en silence.
 
 PyInstaller garde en cache la liste des modules analysés. Un fichier de données
 retiré de la spec resterait dans l'exe. `construire_windows.bat` efface
-`build\` et `dist\` à chaque fois ; la construction ne dure que ~40 s.
+`build\` et `dist\` à chaque fois ; la construction ne dure qu'une trentaine de secondes.
 Conséquence à connaître maintenant que l'exe écrit à côté de lui :
 **reconstruire efface aussi les données** qu'un exe laissé dans `dist\` y aurait
 écrites. Raison de plus pour déployer l'exe ailleurs que dans `dist\`.

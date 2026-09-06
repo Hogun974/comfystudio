@@ -985,6 +985,61 @@ try:
         " ; ".join(f"{m} {c}" for m, c in mensonges) or "aucune")
     for (m, c), pourquoi in sorted(EXCEPTIONS.items()):
         print(f"       exception : {m} {c} — {pourquoi}")
+
+    # ══════════════════════════════════════════════════════════════════
+    #  8. ce que app() assemble avant la premiere route
+    # ══════════════════════════════════════════════════════════════════
+    # LE MEME app() QUE LA SECTION 7 — c'est le seul banc qui l'instancie.
+    # Deux choses s'y decident pour TOUTES les routes a la fois, et aucune
+    # route ne peut les rattraper : la taille du corps qu'aiohttp accepte de
+    # lire avant de refuser, et les en-tetes que chaque reponse emporte.
+    # Jusqu'au 6 septembre 2026, le corps valait 128 Mo — herite du temps ou
+    # les images montaient en base64 dans le JSON — et vingt POST paralleles
+    # sur /api/compte/entrer, sans session, suffisaient a faire tomber le
+    # conteneur par la memoire.
+    print("\n  ── ce que app() assemble avant la premiere route ──")
+    application = S.app()
+    dit(getattr(application, "_client_max_size", None) == S.CORPS_MAX
+        and S.CORPS_MAX == 4 * 1024 ** 2,
+        "le plus gros corps JSON qu'une route accepte est CORPS_MAX, quatre "
+        "mega-octets — le plus gros corps legitime, la liste des modeles "
+        "d'une machine, tient en quelques centaines de Ko",
+        f"client_max_size={getattr(application, '_client_max_size', None)}, "
+        f"CORPS_MAX={S.CORPS_MAX}")
+
+    # LE PREMIER, ET PAS SEULEMENT PRESENT. aiohttp enchaine les intergiciels
+    # dans l'ordre de la liste, chacun enveloppant les suivants : c'est le
+    # premier qui voit la reponse EN DERNIER, y compris celle qu'un refus
+    # d'exiger_compte ou d'origine_verifiee a rendue sans atteindre la route.
+    # En troisieme position, les 401 et 403 partiraient sans ces en-tetes.
+    intergiciels = list(application.middlewares)
+    dit(bool(intergiciels) and intergiciels[0] is S.en_tetes_surs,
+        "en_tetes_surs est le PREMIER intergiciel : les refus des deux autres "
+        "portent les en-tetes aussi",
+        ", ".join(getattr(m, "__name__", "?") for m in intergiciels))
+
+    async def route_nue(req):
+        return S.web.json_response({"ok": True})
+
+    async def route_qui_pose(req):
+        rep_ = S.web.json_response({"ok": True})
+        rep_.headers["Referrer-Policy"] = "same-origin"
+        return rep_
+
+    rep = asyncio.run(S.en_tetes_surs(Req(), route_nue))
+    dit(rep.headers.get("X-Frame-Options") == "DENY"
+        and rep.headers.get("Referrer-Policy") == "no-referrer"
+        and rep.headers.get("X-Content-Type-Options") == "nosniff",
+        "toute reponse emporte X-Frame-Options: DENY, Referrer-Policy: "
+        "no-referrer et X-Content-Type-Options: nosniff — le JSON compris, "
+        "pas seulement les pages",
+        str({k: v for k, v in rep.headers.items() if k.startswith(("X-", "Ref"))}))
+    rep = asyncio.run(S.en_tetes_surs(Req(), route_qui_pose))
+    dit(rep.headers.get("Referrer-Policy") == "same-origin"
+        and rep.headers.get("X-Frame-Options") == "DENY",
+        "et une route qui a deja pose l'un d'eux garde SA valeur : "
+        "l'intergiciel complete, il n'ecrase pas",
+        f"Referrer-Policy={rep.headers.get('Referrer-Policy')!r}")
 finally:
     pass
 

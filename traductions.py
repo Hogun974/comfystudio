@@ -384,7 +384,11 @@ TEXTES = {
     # echange${c.tours > 1 ? "s" : ""} ». Recopiee, en francais, dans du code
     # d'interface — et fausse en anglais des zero. Ailleurs elle l'esquivait
     # avec « appel(s) », « demande(s) », « conversation(s) », ce qui ne se lit
-    # bien dans aucune langue et n'existe pas dans toutes.
+    # bien dans aucune langue et n'existe pas dans toutes — ces trois-la sont
+    # devenues des cles a part entiere (page.nuage.mention.title,
+    # page.file.compteur, page.file.armees.title), et les entrees « compte.* »
+    # ecrites pour elles sont restees mortes ici cinq jours avant qu'un releve
+    # ne le voie. Il n'en reste que celles que la page lit.
     #
     # Les formes sont dans l'ordre que PLURIELS rend : singulier d'abord.
     "compte.echanges": {
@@ -393,21 +397,6 @@ TEXTES = {
     "compte.pieces": {
         "fr": ["{n} piece", "{n} pieces"],
         "en": ["{n} file", "{n} files"]},
-    "compte.appels": {
-        "fr": ["{n} appel", "{n} appels"],
-        "en": ["{n} call", "{n} calls"]},
-    "compte.demandes": {
-        "fr": ["{n} demande", "{n} demandes"],
-        "en": ["{n} request", "{n} requests"]},
-    "compte.conversations": {
-        "fr": ["{n} conversation", "{n} conversations"],
-        "en": ["{n} conversation", "{n} conversations"]},
-    "compte.variantes": {
-        "fr": ["{n} variante", "{n} variantes"],
-        "en": ["{n} variant", "{n} variants"]},
-    "compte.machines": {
-        "fr": ["{n} machine", "{n} machines"],
-        "en": ["{n} machine", "{n} machines"]},
 
     # ══ LA PAGE ════════════════════════════════════════════════════════
     # LES ACCENTS SONT ICI, ET C'EST LA REGLE DU DEPOT — pas une entorse.

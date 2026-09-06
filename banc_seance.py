@@ -10,7 +10,6 @@ d'administration, la page de tout le monde :
 
     POST /api/compte/sortir              api_sortir
     POST /api/conversation/{cid}/activer api_activer
-    GET  /api/fournisseurs               api_fournisseurs
 
 Elles sont courtes. Ce qu'elles gardent ne l'est pas :
 
@@ -131,15 +130,81 @@ try:
 
     # IL Y A QUAND MEME UN LEVIER, ET IL N'EST PAS LA OU L'ON CROIT. Le jeton
     # est signe, mais nom_du_jeton() relit le registre a la fin : un compte
-    # SUPPRIME ferme ses sessions ouvertes, la ou un mot de passe change ne les
-    # ferme pas. C'est la seule revocation qui existe, et elle merite d'etre
-    # gardee — si la derniere ligne de nom_du_jeton() disparaissait au profit
-    # du seul nom signe, un compte efface continuerait d'entrer.
+    # SUPPRIME ferme ses sessions ouvertes. C'etait la seule revocation
+    # jusqu'au 6 septembre 2026 — la generation, ci-dessous, en est la
+    # seconde — et elle merite d'etre gardee : si la derniere ligne de
+    # nom_du_jeton() disparaissait au profit du seul nom signe, un compte
+    # efface continuerait d'entrer.
     S.COMPTES.supprimer("quelqu-un")
     dit(S.COMPTES.nom_du_jeton(jeton) is None,
         "en revanche SUPPRIMER un compte ferme ses sessions : le jeton signe "
         "ne suffit pas, le compte doit exister encore",
         "le meme jeton ne rend plus rien")
+
+    # ── LA GENERATION : CE QUI TOUCHE A L'IDENTITE FERME LES SESSIONS ──
+    # Jusqu'au 6 septembre 2026, une session capturee restait bonne trente
+    # jours QUOI QUE FASSE son proprietaire : changer le mot de passe qu'on
+    # croyait vole ne fermait rien. Le jeton porte depuis un numero de
+    # generation, sous la signature ; changer de mot de passe, armer ou
+    # desarmer le second facteur l'incrementent, et tout jeton d'avant ne
+    # designe plus personne. La simple deconnexion d'un appareil, elle, ne
+    # touche a rien : sortir sur le telephone ne ferme pas l'ordinateur du
+    # salon — c'est le cas « sortir » ci-dessus.
+    import mfa as _mfa
+    MDP1, MDP2 = "un-mot-de-passe-assez-long", "un-autre-mot-de-passe-long"
+    S.COMPTES.creer("prudent", MDP1)
+    vieux = S.COMPTES.jeton("prudent")
+    S.COMPTES.changer_mdp("prudent", MDP2)
+    neuf = S.COMPTES.jeton("prudent")
+    dit(S.COMPTES.nom_du_jeton(vieux) is None
+        and S.COMPTES.nom_du_jeton(neuf) == "prudent",
+        "changer de mot de passe FERME les sessions ouvertes : le jeton "
+        "d'avant ne designe plus personne, celui remis apres ouvre",
+        f"avant={S.COMPTES.nom_du_jeton(vieux)!r}, "
+        f"apres={S.COMPTES.nom_du_jeton(neuf)!r}")
+
+    # LA GENERATION EST SIGNEE, ET C'EST TOUT L'INTERET. Le numero se lit dans
+    # le jeton ; si on pouvait y ecrire le numero courant, un vieux jeton
+    # capture se ranimerait d'une simple retouche.
+    morceaux = neuf.split(".")
+    retouche = ".".join(vieux.split(".")[:2] + [morceaux[2]] + vieux.split(".")[3:])
+    dit(len(morceaux) == 4 and S.COMPTES.nom_du_jeton(retouche) is None,
+        "et retoucher la generation dans un vieux jeton ne le ranime pas : "
+        "elle est SOUS la signature, pas a cote",
+        f"{len(morceaux)} morceaux, retouche={S.COMPTES.nom_du_jeton(retouche)!r}")
+
+    avant_mfa = S.COMPTES.jeton("prudent")
+    secret_totp, _ = S.COMPTES.mfa_preparer("prudent")
+    S.COMPTES.mfa_confirmer("prudent", _mfa.code(secret_totp))
+    dit(S.COMPTES.nom_du_jeton(avant_mfa) is None
+        and S.COMPTES.nom_du_jeton(S.COMPTES.jeton("prudent")) == "prudent",
+        "ARMER le second facteur ferme les sessions d'avant : celui qui "
+        "tenait une session sans le code ne la garde pas",
+        f"avant={S.COMPTES.nom_du_jeton(avant_mfa)!r}")
+
+    avant_retrait = S.COMPTES.jeton("prudent")
+    S.COMPTES.mfa_retirer("prudent")
+    dit(S.COMPTES.nom_du_jeton(avant_retrait) is None
+        and S.COMPTES.nom_du_jeton(S.COMPTES.jeton("prudent")) == "prudent",
+        "le DESARMER aussi : une protection levee par un tiers ne laisse pas "
+        "courir les sessions qu'elle gardait",
+        f"avant={S.COMPTES.nom_du_jeton(avant_retrait)!r}")
+
+
+    # L'ANCIEN FORMAT NE PASSE PLUS. Un jeton a trois morceaux, signe comme
+    # avant le 6 septembre 2026, est exactement ce qu'un navigateur garde
+    # encore apres la mise a jour — et ce qu'une capture d'alors contiendrait.
+    # Le refuser deconnecte tout le monde une fois ; l'accepter « par
+    # compatibilite » laisserait la generation contournable a jamais.
+    fin = str(int(time.time() + 3600))
+    import hashlib as _h
+    import hmac as _hm
+    ancien = f"prudent.{fin}." + _hm.new(S.COMPTES.secret, f"prudent.{fin}".encode(),
+                                         _h.sha256).hexdigest()[:32]
+    dit(ancien.count(".") == 2 and S.COMPTES.nom_du_jeton(ancien) is None,
+        "un jeton de l'ancien format, a trois morceaux et signe sans "
+        "generation, ne rend plus rien",
+        f"{ancien[:24]}… -> {S.COMPTES.nom_du_jeton(ancien)!r}")
 
     # ══════════════════════════════════════════════════════════════════
     #  2. activer une conversation — la sienne, et seulement la sienne
@@ -182,35 +247,6 @@ try:
         "une conversation fermee ne se rouvre pas par la : elle attend sa purge",
         f"HTTP {st}")
 
-    # ══════════════════════════════════════════════════════════════════
-    #  3. les fournisseurs — une route ouverte, donc une promesse a tenir
-    # ══════════════════════════════════════════════════════════════════
-    print("\n  ── ce qu'un inconnu apprend des fournisseurs ──")
-    SECRET = "sk-une-cle-qui-ne-doit-jamais-sortir-0123456789"
-    vraie_cle, S.cle_de = S.cle_de, lambda n: SECRET
-    try:
-        st, d = lire(lancer(S.api_fournisseurs(Req())))
-        plat = json.dumps(d)
-        dit(st == 200 and d, "la route repond sans jeton : elle sert un bandeau "
-            "a tout le monde, et c'est voulu", f"HTTP {st}, {len(d)} modalite(s)")
-        # LA PROMESSE DE SA DOCSTRING, MESUREE. Une route ouverte qui laisse
-        # filer un secret le laisse filer a n'importe qui.
-        dit(SECRET not in plat and "sk-" not in plat,
-            "et elle ne porte NI la cle NI un morceau de cle", plat[:70])
-        dit(all(set(v) <= {"libelle", "choix", "titre", "distant"}
-                for v in d.values()),
-            "quatre champs par modalite, et pas un de plus",
-            ", ".join(sorted({k for v in d.values() for k in v})))
-        # « distant » EST UN BOOLEEN, ET IL DIT DEJA QUELQUE CHOSE : que le
-        # studio a une cle pour ce fournisseur-la. C'est le minimum pour que la
-        # page puisse avertir « ceci part chez un tiers », et c'est la limite
-        # exacte de ce qu'une route ouverte doit dire.
-        dit(all(isinstance(v.get("distant"), bool) for v in d.values()),
-            "« distant » est un booleen : la page doit pouvoir avertir que la "
-            "demande part chez un tiers, sans rien apprendre de plus",
-            str({k: v.get("distant") for k, v in d.items()})[:70])
-    finally:
-        S.cle_de = vraie_cle
 finally:
     pass
 

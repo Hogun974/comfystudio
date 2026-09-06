@@ -203,6 +203,7 @@ class Comptes:
         if len(mdp or "") < MDP_MINIMUM:
             raise ErreurCompte(f"mot de passe : {MDP_MINIMUM} caracteres au moins")
         c["sel"], c["empreinte"] = empreinte(mdp)
+        c["gen"] = self._generation(nom) + 1
         # ICI ET NULLE PART AILLEURS. C'est le SEUL endroit du depot ou un mot
         # de passe est remplace — les deux portes qui en changent un, celle du
         # proprietaire (/api/compte/mdp) et celle de l'administration
@@ -377,6 +378,7 @@ class Comptes:
                     "dernier_pas": pas,
                     "secours": _empreintes_secours(secours)}
         c.pop("mfa_attente", None)
+        c["gen"] = self._generation(nom) + 1
         self.sauver()
         return secours
 
@@ -461,23 +463,32 @@ class Comptes:
             raise ErreurCompte("compte inconnu")
         c.pop("mfa", None)
         c.pop("mfa_attente", None)
+        c["gen"] = self._generation(nom) + 1
         self.sauver()
 
     # ── sessions ─────────────────────────────────────────────────────────
     def jeton(self, nom, duree=DUREE_SESSION):
-        """« nom.peremption.signature », lisible mais infalsifiable."""
+        """« nom.peremption.generation.signature », lisible mais infalsifiable.
+
+        LA GENERATION est le numero des sessions en cours du compte : changer
+        de mot de passe, armer ou desarmer le second facteur l'incrementent,
+        et tout jeton remis avant ne designe plus personne. Sans elle, une
+        session capturee restait bonne trente jours QUOI QUE FASSE son
+        proprietaire — changer le mot de passe qu'on croit vole ne fermait
+        rien.
+        """
         fin = str(int(time.time() + duree))
-        charge = f"{nom}.{fin}"
+        charge = f"{nom}.{fin}.{self._generation(nom)}"
         signature = hmac.new(self.secret, charge.encode(), hashlib.sha256).hexdigest()[:32]
         return f"{charge}.{signature}"
 
     def nom_du_jeton(self, jeton):
         """Le compte designe par ce jeton, ou None. Ne leve jamais."""
         try:
-            nom, fin, signature = (jeton or "").rsplit(".", 2)
+            nom, fin, gen, signature = (jeton or "").rsplit(".", 3)
         except ValueError:
             return None
-        attendu = hmac.new(self.secret, f"{nom}.{fin}".encode(),
+        attendu = hmac.new(self.secret, f"{nom}.{fin}.{gen}".encode(),
                            hashlib.sha256).hexdigest()[:32]
         if not hmac.compare_digest(signature, attendu):
             return None
@@ -486,8 +497,18 @@ class Comptes:
                 return None
         except ValueError:
             return None
-        # Le compte a pu etre supprime depuis que le jeton a ete remis.
+        # Le compte a pu etre supprime depuis que le jeton a ete remis — ou
+        # avoir ferme ses sessions d'alors.
+        if gen != str(self._generation(nom)):
+            return None
         return self.gens.get(nom.lower(), {}).get("nom")
+
+    def _generation(self, nom):
+        """Le numero des sessions en cours du compte. Il n'avance QUE par ce
+        qui touche a la matiere de l'identite — mot de passe, second facteur —
+        et jamais par la deconnexion d'un appareil : sortir sur le telephone
+        ne doit pas fermer l'ordinateur du salon."""
+        return int((self.gens.get((nom or "").lower()) or {}).get("gen") or 0)
 
     def est_admin(self, nom):
         return bool(self.gens.get((nom or "").lower(), {}).get("admin"))

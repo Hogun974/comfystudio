@@ -32,10 +32,10 @@ plus visible pour la plus urgente.
 
 | | Quoi | Volume | État |
 |---|---|---|---|
-| 1 | **Ce que le studio écrit** — journal, erreurs d'API, page web, documentation | 163 messages de journal, 133 messages d'erreur, 103 lignes accentuées dans `web/index.html`, 38 625 mots de `docs/` | français |
+| 1 | **Ce que le studio écrit** — journal, erreurs d'API, page web, documentation | 163 messages de journal, 133 messages d'erreur, 62 lignes accentuées dans `web/index.html`, 52 000 mots de `docs/` (mesure du 6 septembre 2026 ; 38 625 le 3) | français |
 | 2 | **Ce que le studio lit** — le classifieur, les raccourcis écrits | 2 899 exemples, 7 734 traits ; une douzaine d'expressions régulières | français, **et il ne le sait pas** |
 | 3 | **Ce qu'il envoie au moteur** | `SYS_TRADUCTION`, `replier_sur_multilingue()` | déjà réglé |
-| 4 | **Le code et les commentaires** | 12 583 lignes | français, et [CONTRIBUTING](../CONTRIBUTING.md) refuse de les angliciser |
+| 4 | **Le code et les commentaires** | 22 000 lignes hors bancs | français, et [CONTRIBUTING](../CONTRIBUTING.md) refuse de les angliciser |
 
 **Le point 4 est hors sujet et le reste.** Le point 3 est fait : voir plus bas.
 Restent le 1 et le 2, et c'est le 2 qui décide.
@@ -395,12 +395,13 @@ Ce qui se traduit, donc, par ordre de rapport :
 | les pannes — dernière ligne de journal sur un échec | **une dizaine**, celles qui portent `etat="erreur"` | une clé, pas une traduction |
 | interface — textes, attributs, texte construit en JS | **~195 chaînes distinctes** | **pas mécanique** — voir ci-dessous |
 | journal | 163 messages, dont 110 formatés | **non** |
-| documentation | 38 625 mots | **non** — voir ci-dessous |
+| documentation | 52 000 mots | **non** — voir ci-dessous |
 
 #### L'interface n'est pas de la recopie, et c'est mesuré
 
-`web/index.html` n'a **aucune amorce d'internationalisation** : pas de
-dictionnaire, pas de `t()`, pas de `data-i18n`. Le texte est déposé sur **127
+Au moment de cette mesure, `web/index.html` n'avait **aucune amorce
+d'internationalisation** : pas de dictionnaire, pas de `t()`, pas de `data-i18n`
+(elle en a une depuis, voir plus bas). Le texte était déposé sur **127
 sites d'écriture DOM** répartis dans ~28 fonctions, et il n'existe **aucun
 endroit unique où la page se peint**. Quatre chantiers ne se réduisent pas à un
 fichier clé → traduction, et **trois d'entre eux étaient des défauts avant toute
@@ -547,8 +548,9 @@ sont faits). *Ferme la gêne. Pas une panne : la gêne.*
 > fausse, et personne pour le voir. Le banc passe de 23 à 38 vérifications, et
 > `banc_mutations.py` de 114 à 130.
 >
-> **Ce qui reste français malgré tout** : le journal (tranché plus bas), les
-> îlots servis par le serveur — titre d'un moteur, libellé d'une modalité de
+> **Ce qui reste français malgré tout** : la console `/admin`, entièrement en
+> dur — elle s'adresse à qui tient le jeton, pas aux invités —, le journal
+> (tranché plus bas), les îlots servis par le serveur — titre d'un moteur, libellé d'une modalité de
 > nuage, nom d'une intention, mot du devis (« 4 min ») —, et le `Précisions : `
 > que la réponse à une question **envoie** au moteur : le studio a un pivot, et
 > c'est le français.
@@ -579,7 +581,7 @@ utilisable en toute langue avant qu'un seul mot ait été traduit.
 
 ## Ce qu'on ne fera pas
 
-**On ne traduira pas la documentation.** 38 625 mots sur 38 pages, dont
+**On ne traduira pas la documentation.** 52 000 mots sur 41 pages, dont
 l'essentiel est daté et lié à une mesure. Une traduction fige la version du jour
 et vieillit sans le dire — le défaut exact que [Mesures](mesures.md) existe pour
 empêcher, une page plus loin. Une documentation française à jour vaut mieux que

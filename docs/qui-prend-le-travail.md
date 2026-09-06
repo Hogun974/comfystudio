@@ -43,8 +43,9 @@ au départ : quand aucune adresse Ollama ne répond en direct, le studio emprunt
 le modèle d'une machine **par son agent**, et ce chemin-là a gardé l'ancien
 ordre pendant une journée. Ce dernier recours coûte de toute façon vingt à
 quarante fois le prix d'un appel direct — mesure du 31 août 2026, 3,8 s en
-direct contre 162,6 s par l'agent de **zima** — et il est borné par
-`STUDIO_ANALYSE_MAX`. `STUDIO_ANALYSE_PETITE=1` y remet la plus petite ; voir
+direct contre 162,6 s par l'agent de **zima** — et il n'est plus borné dans le
+temps : la borne `STUDIO_ANALYSE_MAX` le condamnait sur cette machine, elle a
+été retirée. `STUDIO_ANALYSE_PETITE=1` y remet la plus petite ; voir
 [Réglages](reglages.md) et [Le modèle de langage peut venir d'une autre
 machine](modele-de-langage-distant.md).
 

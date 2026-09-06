@@ -25,6 +25,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import ssl
 import threading
 import sys
@@ -213,8 +214,16 @@ def deposer_entrees(comfy, entrees, graphe):
     """
     import uuid
 
-    for nom, donnees in (entrees or {}).items():
+    for origine, donnees in (entrees or {}).items():
         octets = base64.b64decode(donnees)
+        # Le nom vient du studio, et il est colle tel quel dans un en-tete
+        # multipart : un guillemet ou un retour a la ligne dedans y ecrirait
+        # d'autres champs. On ne garde qu'un nom de fichier, sans rien qui
+        # puisse fermer l'en-tete. Le graphe, lui, porte le nom d'ORIGINE :
+        # c'est lui qu'on y cherche pour le remplacer par ce que ComfyUI a
+        # accepte, sinon un nom nettoye laissait le graphe pointer sur un
+        # fichier qui n'existe pas.
+        nom = re.sub(r'["\r\n]', "", os.path.basename(origine or "")) or "entree"
         limite = "----" + uuid.uuid4().hex
         corps = (
             f"--{limite}\r\n"
@@ -235,10 +244,10 @@ def deposer_entrees(comfy, entrees, graphe):
         except Exception as e:
             return f"fichier d'entree refuse par ComfyUI : {e}"
         vrai = rendu.get("name") or nom
-        if vrai != nom:
+        if vrai != origine:
             for noeud in graphe.values():
                 for champ in CHAMPS_ENTREE:
-                    if (noeud.get("inputs") or {}).get(champ) == nom:
+                    if (noeud.get("inputs") or {}).get(champ) == origine:
                         noeud["inputs"][champ] = vrai
     return None
 

@@ -109,6 +109,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import socket
 import sys
@@ -1090,10 +1091,79 @@ dit(_graphe["8"]["inputs"]["texte"] == "chat.png",
     "bouge pas",
     f"{_graphe['8']['inputs']}")
 
+# LE GRAPHE EST CHERCHE PAR LE NOM D'ORIGINE, pas par le nom nettoye. Depuis
+# que le nom est reduit a sa base avant de partir (section suivante), un
+# graphe qui portait « dossier/chat.png » ne contenait plus le nom envoye :
+# la correction ne le trouvait pas, et le rendu cherchait un fichier absent.
+_graphe = {"3": {"inputs": {"image": "dossier/chat.png"}}}
+deposer({"dossier/chat.png": "UE5H"}, _graphe, rendu={"name": "chat.png"})
+dit(_graphe["3"]["inputs"]["image"] == "chat.png",
+    "un nom nettoye avant l'envoi est quand meme retrouve dans le graphe, "
+    "par son nom d'ORIGINE, et remplace par ce que ComfyUI a accepte",
+    f"{_graphe['3']['inputs']}")
+
 _refuse = deposer({"chat.png": "UE5H"}, {}, leve=OSError("413 trop gros"))
 dit(_refuse.erreur and "413 trop gros" in _refuse.erreur,
     "un ComfyUI qui refuse l'entree rend une erreur, et le rendu ne part pas",
     f"{_refuse.erreur!r}")
+
+# ══ LE NOM DU FICHIER VIENT DU STUDIO, ET IL EST COLLE DANS UN EN-TETE ═
+# Jusqu'au 6 septembre 2026, il y allait tel quel. Un guillemet suivi d'un
+# retour a la ligne dans le nom fermait « filename="…" » et ecrivait la suite
+# comme d'AUTRES CHAMPS du multipart — « type=output », par exemple, et le
+# fichier atterrissait dans les sorties de la machine au lieu de son input.
+# Le studio est le seul a fournir ces noms, mais l'agent execute sur la
+# machine de quelqu'un d'autre ce qu'un studio lui dit : c'est la surface
+# que SECURITY.md nomme, et l'en-tete est mesure sur les OCTETS qui partent.
+
+
+def _en_tete_du_fichier(corps):
+    """Les lignes d'en-tete de la premiere partie — celle du fichier."""
+    return corps.split(b"\r\n\r\n", 1)[0].split(b"\r\n")
+
+
+_hostile = ('chat.png"\r\nContent-Disposition: form-data; name="type"\r\n\r\n'
+            'output\r\n--')
+_piege = deposer({_hostile: "UE5H"}, {})
+_req = _piege.demandes[0] if _piege.demandes else None
+_corps = _req.data if _req else b""
+_lignes = _en_tete_du_fichier(_corps)
+# LES PARTIES SONT COMPTEES A LA FRONTIERE, comme ComfyUI les decoupera : un
+# releve du mot « Content-Disposition » compterait aussi celui que le nom
+# hostile porte, une fois rendu inoffensif a l'interieur des guillemets.
+_type = _req.headers.get("Content-type", "") if _req else ""
+_front = _type.split("boundary=")[-1].encode() if "boundary=" in _type else b"?"
+_parties = [p for p in _corps.split(b"--" + _front) if p.strip(b"-\r\n")]
+# ET LE CORPS DE LA PREMIERE PARTIE EST LE FICHIER, RIEN D'AUTRE. La premiere
+# ecriture de ce cas comptait trois lignes d'en-tete et s'en contentait : le
+# nom injecte en fabrique trois aussi — la sienne remplace « Content-Type » —
+# et la mutation « le nom part tel quel » est restee verte. On exige donc la
+# ligne Content-Type a sa place, et les octets du fichier seuls apres elle.
+_charge = _parties[0].split(b"\r\n\r\n", 1)[1] if _parties else b""
+dit(len(_lignes) == 3
+    and re.fullmatch(rb'Content-Disposition: form-data; name="image"; '
+                     rb'filename="[^"\r\n]*"', _lignes[1]) is not None
+    and _lignes[2] == b"Content-Type: application/octet-stream"
+    and _charge == b"PNG\r\n"
+    and len(_parties) == 3
+    and _parties[1].endswith(b'name="type"\r\n\r\ninput\r\n')
+    and _parties[2].endswith(b'name="overwrite"\r\n\r\ntrue\r\n'),
+    "un nom d'entree venu du studio ne peut pas fermer l'en-tete multipart : "
+    "guillemets et retours a la ligne en sont otes, et le corps ne porte que "
+    "les trois champs prevus, type=input compris",
+    f"{_lignes[1][:90]!r}, charge={_charge[:30]!r}, {len(_parties)} partie(s)")
+
+_chemin = deposer({"../../sorties/chat.png": "UE5H"}, {})
+_lignes = _en_tete_du_fichier(_chemin.demandes[0].data if _chemin.demandes else b"")
+dit(len(_lignes) == 3 and _lignes[1].endswith(b'filename="chat.png"'),
+    "et il est reduit a son nom de base : un chemin ne remonte pas dans "
+    "l'input de ComfyUI", f"{_lignes[1][-40:]!r}")
+
+_vide = deposer({'"': "UE5H"}, {})
+_lignes = _en_tete_du_fichier(_vide.demandes[0].data if _vide.demandes else b"")
+dit(len(_lignes) == 3 and _lignes[1].endswith(b'filename="entree"'),
+    "un nom qui ne laisse rien une fois nettoye devient « entree » plutot "
+    "qu'un fichier sans nom", f"{_lignes[1][-40:]!r}")
 
 
 # ══ LE REGISTRE DES DEPOTS, ET LE MENAGE ═══════════════════════════════

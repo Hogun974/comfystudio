@@ -45,7 +45,6 @@ set OLLAMA_URL=http://localhost:11434
 |---|---|---|
 | `STUDIO_TRAVAILLEURS` | `3` | demandes menées de front — une seule par carte quoi qu'il arrive |
 | `STUDIO_ATTENTE_CARTE` | `1800` | secondes qu'une analyse attend une carte occupée quand il n'y a plus d'autre machine |
-| `STUDIO_ANALYSE_MAX` | `90` | secondes au-delà desquelles une analyse **empruntée** à une autre machine ne vaut plus la peine : mieux vaut attendre la sienne. Mesure du 31 août 2026 — un seul appel au modèle de **zima** a mis 500 s |
 | `STUDIO_ANALYSE_PETITE` | `0` | `1` pour analyser sur la plus **petite** carte plutôt que la plus grosse — l'ordre d'avant le 1er septembre 2026. **Ne concerne que l'analyse empruntée à une machine par son agent** ; en direct, la règle est la même et ne se règle pas. Voir [Qui prend le travail](qui-prend-le-travail.md) |
 | `STUDIO_PAUSE_PROPOSE` | `30` | minutes qu'une demande patiente devant l'écran pour une machine en pause |
 | `STUDIO_ARMEE_HEURES` | `12` | heures pendant lesquelles elle reste ensuite **armée**, prête à repartir seule au réveil. `0` rétablit le refus immédiat — voir [Attendre le retour d'une machine en pause](attendre-une-machine.md) |
@@ -83,11 +82,23 @@ Voir [Clés d'API](cles-api.md).
 | `COMFY_LANCEUR` | *deviné* | script de démarrage de ComfyUI |
 | `STUDIO_PURGE_ORPHELINS` | *(absent)* | `1` pour effacer au démarrage les fichiers que plus aucune conversation ne réclame |
 
+## L'installeur, pas le studio
+
+Deux variables ne sont lues que par `installation.py`, au moment d'installer ou
+de construire, jamais par le serveur :
+
+| Variable | Défaut | |
+|---|---|---|
+| `STUDIO_PYTHON` | *deviné* | l'interpréteur à retenir quand plusieurs conviennent — `LANCER ComfyStudio.bat` la pose lui-même |
+| `HTTPS_PROXY` (ou `https_proxy`) | *(absent)* | le mandataire par lequel passent les téléchargements de l'installeur |
+
 ## Sur une machine à carte, pas sur le studio
 
 L'agent lit les siennes — les neuf que `agent_noeud.py` interroge : `STUDIO_URL`,
 `STUDIO_JETON`, `COMFY_URL`, `OLLAMA_URL`, `COMFY_SORTIES`,
 `COMFY_GARDER_HEURES`, `AGENT_EMPREINTE`,
-`AGENT_LIVRAISON_MINUTES`, `AGENT_SANS_MAJ_AUTO`. Elles remplacent
+`AGENT_LIVRAISON_MINUTES`, `AGENT_SANS_MAJ_AUTO` — plus `AGENT_MAJ_TENTEE`,
+qu'il pose et lit lui-même pour ne pas se réinstaller en boucle, et qu'on ne
+règle pas. Elles remplacent
 `agent_noeud.json` quand il n'y a pas de fichier. Voir [Des machines qui
 viennent d'elles-mêmes](machines-a-agent.md).

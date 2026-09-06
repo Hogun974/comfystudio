@@ -1070,6 +1070,63 @@ async def _liberation():
 if _A_LA_LIBERATION:
     asyncio.run(_liberation())
 
+
+# ══ CE QU'UNE MACHINE ANNONCE N'EST PAS CRU SUR PAROLE ═══════════════════
+# Le battement est la seule route qu'une machine du parc emprunte six fois
+# par minute, et son corps allait dans ETAT_NOEUDS tel quel jusqu'au
+# 6 septembre 2026. Une « carte » qui n'est pas une chaine tuait le panneau
+# des machines pour TOUT LE MONDE — la console fait carte.replace(...) ; une
+# « vram » qui n'est pas un nombre, ou une liste de modeles faite de
+# dictionnaires, faisaient lever la route en 500 sur la seule foi de ce
+# qu'une machine annonce. Chaque cas exige le TEMOIN — 200 et « ok » — parce
+# qu'une route qui refuserait tout rendrait aussi ETAT_NOEUDS propre.
+async def _annonce(ident, corps):
+    """Le vrai battement ; une route qui LEVE rend 500 au lieu de tuer le banc."""
+    try:
+        rep = await S.api_noeud_annonce(ReqAnnonce(S.REGISTRE[ident]["jeton"], corps))
+        return rep.status, json.loads(rep.text)
+    except Exception as souci:      # noqa: BLE001
+        return 500, {"erreur": f"la route a leve : {souci!r}"}
+
+
+async def _annonces_hostiles():
+    poser()
+    st, d = await _annonce("pc", {"carte": {"nom": "RTX"}, "vram": 11.0,
+                                  "libre": 1.0, "travaux": []})
+    dit(st == 200 and d.get("ok") is True and S.ETAT_NOEUDS["pc"].get("carte") is None,
+        "une carte qui n'est pas une chaine est notee « rien », pas gardee "
+        "telle quelle : la console fait carte.replace(...) sur chaque ligne",
+        f"HTTP {st}, carte={S.ETAT_NOEUDS['pc'].get('carte')!r}")
+    st, d = await _annonce("pc", {"carte": "X" * 300, "vram": 11.0,
+                                  "libre": 1.0, "travaux": []})
+    dit(st == 200 and d.get("ok") is True
+        and S.ETAT_NOEUDS["pc"].get("carte") == "X" * 120,
+        "et une carte de trois cents caracteres est tronquee a cent vingt",
+        f"HTTP {st}, {len(S.ETAT_NOEUDS['pc'].get('carte') or '')} caracteres")
+    st, d = await _annonce("pc", {"carte": "RTX 2080 Ti", "vram": "beaucoup",
+                                  "libre": 1.0, "travaux": []})
+    dit(st == 200 and d.get("ok") is True and S.ETAT_NOEUDS["pc"].get("vram") == 0.0,
+        "une VRAM qui n'est pas un nombre vaut zero, et le battement repond "
+        "200 plutot qu'une trace de pile en 500",
+        f"HTTP {st} {d.get('erreur', '')}, vram={S.ETAT_NOEUDS['pc'].get('vram')!r}")
+    S.MODELES_NOEUD.pop("pc", None)
+    st, d = await _annonce("pc", {"carte": "RTX 2080 Ti", "vram": 11.0,
+                                  "libre": 1.0, "travaux": [],
+                                  "modeles": {"checkpoints": [{"nom": "x"}, 7,
+                                                              "sd.safetensors"],
+                                              "loras": "pas une liste",
+                                              "vae": ["vae.pt"]}})
+    dossiers = (S.MODELES_NOEUD.get("pc") or {}).get("dossiers")
+    dit(st == 200 and d.get("ok") is True
+        and dossiers == {"checkpoints": {"sd.safetensors"}, "vae": {"vae.pt"}},
+        "des modeles annonces, seules les LISTES DE CHAINES sont retenues : "
+        "un dictionnaire dans la liste ne fait plus lever la route, une "
+        "chaine a la place d'une liste n'est pas eclatee en lettres",
+        f"HTTP {st} {d.get('erreur', '')}, dossiers={dossiers!r}")
+
+
+asyncio.run(_annonces_hostiles())
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

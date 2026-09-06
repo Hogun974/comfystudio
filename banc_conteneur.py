@@ -16,7 +16,7 @@ fermee ici, et chaque fermeture a sa mutation :
   - une ligne « ENV » du Dockerfile suffisait a rendre une variable « arrivee ».
     Elle arrive, en effet, avec la valeur de l'image, et .env reste lettre
     morte : c'est le degat qu'on veut interdire, pas son contraire.
-  - seule la clef etait lue. « STUDIO_ANALYSE_MAX: "${STUDIO_ANALYSE_MAXX:-}" »
+  - seule la clef etait lue. « STUDIO_ANALYSE_PETITE: "${STUDIO_ANALYSE_PETITEE:-}" »
     passait : relayee, vide pour toujours.
   - « os.getenv » et les apostrophes SIMPLES echappaient au releve. Un reglage
     neuf ecrit sous cette forme n'arrivait pas au conteneur, et le banc restait

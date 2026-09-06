@@ -4,14 +4,16 @@
 Tu ecris ce que tu veux, en francais. Un modele local (Ollama) comprend l'intention, choisit le modele adapte, regle les parametres,
 traduit et enrichit le prompt. Les fichiers manquants sont telecharges seuls.
 
-Six intentions : image, edition d'image, video, image animee, musique, lecture
-d'image. La conversation est memorisee, donc « la meme mais de nuit » fonctionne.
+Onze intentions : image, edition d'image, video, image animee, musique, lecture
+d'image, agrandissement, detourage, planche, objet 3D, fluidification. La
+conversation est memorisee, donc « la meme mais de nuit » fonctionne.
 
 Portable : rien n'est installe, tout tient sous D:\\ComfyStudio et s'appuie sur
 le Python embarque de ComfyUI.
 """
 import asyncio, base64, json, os, re, secrets, shlex, subprocess, sys, time, uuid
 import hashlib
+import hmac
 # Uniquement pour nommer le site d'appel quand un garde-fou tire (VerrouCarte) :
 # un avertissement sans pile ne se corrige pas dans un fichier de cette taille.
 import traceback
@@ -236,9 +238,10 @@ MODELE_VISION = os.environ.get("STUDIO_VISION") or "qwen2.5vl:7b"
 MODELE_VISION_IMPOSE = bool(os.environ.get("STUDIO_VISION"))
 PORT       = int(os.environ.get("STUDIO_PORT", "8199"))
 # 127.0.0.1 : seule cette machine peut se connecter. 0.0.0.0 : tout le reseau
-# local. Le studio n'a AUCUNE authentification — l'ouvrir au reseau donne a
-# quiconque le joint le droit de generer, de televerser et de piloter ComfyUI.
-# C'est un choix delibere, pas un defaut : d'ou la variable d'environnement.
+# local. La connexion est obligatoire par defaut (STUDIO_AUTH, plus bas), y
+# compris en local ; l'ouvrir au reseau reste un choix delibere, pas un
+# defaut : d'ou la variable d'environnement. Ce commentaire disait le
+# contraire — il datait d'avant les comptes.
 HOTE       = os.environ.get("STUDIO_HOTE", "127.0.0.1")
 
 # Chemins disque du noeud LOCAL. En conteneur, ComfyUI n'est pas un dossier
@@ -365,9 +368,6 @@ VERROUS_MODELE = {}         # (sous-dossier, nom) -> asyncio.Lock
 # d'une machine occupee. Au-dela, elle va voir ailleurs : un rendu dure deux
 # minutes, une question deux secondes, et faire attendre la seconde derriere le
 # premier bloquait un travailleur pour rien.
-# Combien de temps une question accepte d'attendre AVANT d'aller voir une autre
-# machine. Court : ce n'est pas un abandon, c'est un changement de file.
-ATTENTE_LLM = 20
 # Et combien de temps elle attend quand il n'y a PLUS d'autre machine. Une carte
 # ne fait qu'une chose a la fois — c'est la regle, elle ne souffre pas
 # d'exception : on attend que le rendu finisse, on ne s'installe pas a cote de
@@ -2840,17 +2840,6 @@ async def attendre_carte_libre(tid=None):
             journal(tid, f"toujours en attente de la carte ({int(time.time()-debut)} s)")
         await asyncio.sleep(2)
 
-def noeud_de_l_ollama():
-    """La machine a agent qui heberge l'adresse PRINCIPALE, s'il y en a une.
-
-    Il y a maintenant plusieurs adresses et cerveau() les reconnait toutes ;
-    cette fonction ne sert plus qu'aux quelques endroits qui parlent de « l'
-    Ollama du studio » au singulier. Deux facons de reconnaitre une machine,
-    c'etait une de trop.
-    """
-    return cerveau(OLLAMA).get("noeud")
-
-
 async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
                          modele=None, temperature=0.4, tid=None, garder=0):
     """Un appel au modele de langage, chronometre.
@@ -3290,12 +3279,6 @@ async def _ollama_local(corps, url=None, secondes=900):
 ANALYSE_PETITE = (os.environ.get("STUDIO_ANALYSE_PETITE") or "0") == "1"
 # Combien de temps Ollama garde le modele en memoire entre deux appels.
 GARDER_LLM = os.environ.get("STUDIO_LLM_GARDER") or "60s"
-# Au-dela, une analyse empruntee ne vaut plus la peine. Mesure du 31 aout : un
-# seul appel au modele du NAS a mis 500 SECONDES — le studio l'avait choisi
-# parce que sa propre carte etait prise, ce qui etait juste, mais rien ne bornait
-# l'emprunt. Attendre cent secondes une carte occupee vaut mieux que cinq cents
-# secondes ailleurs. Passe ce delai on renonce et l'on attend la sienne.
-ANALYSE_MAX = int(os.environ.get("STUDIO_ANALYSE_MAX") or 90)
 
 
 def noeuds_a_llm():
@@ -3446,8 +3429,9 @@ async def demander_a_un_noeud(corps, tid=None, secondes=None):
     # demi-heure la carte d'une machine, par appel, ferait deux heures pour une
     # demande. Mais le plafond de reponse, lui, doit tenir compte de ce que ce
     # chemin coute vraiment : mesure du 31 aout, 162,6 s par l'agent du NAS. Le
-    # borner a ANALYSE_MAX (90 s) le condamnait a echouer systematiquement sur
-    # cette machine — et il n'y a rien apres lui.
+    # borner a 90 s — l'ancien STUDIO_ANALYSE_MAX, retire depuis — le
+    # condamnait a echouer systematiquement sur cette machine, et il n'y a rien
+    # apres lui.
     a_llm = list(noeuds_a_llm())
     libres = [i for i in a_llm if not verrou_noeud(i).locked()]
     for ident in libres + [i for i in a_llm if i not in libres]:
@@ -3594,9 +3578,6 @@ def latin(t):
 # est fiable la ou une consigne supplementaire derailait le modele entier.
 _CONTROLE = re.compile(r"^(score_\w+|rating_\w+|\d+(girls?|boys?|others?)|solo|"
                        r"masterpiece|best quality|absurdres|highres)$", re.I)
-
-def etiquettes_de_controle(texte):
-    return [e.strip() for e in (texte or "").split(",") if _CONTROLE.match(e.strip())]
 
 def separer_controle(texte):
     """Met de cote les etiquettes de controle avant de traduire.
@@ -5263,9 +5244,6 @@ MOTEURS_DISTANTS = {
 }
 
 
-def table_distante(cle):
-    return getattr(fournisseurs, MOTEURS_DISTANTS[cle]["table"])
-
 
 def cle_distante(cle):
     """La cle a presenter. Les modeles Google partagent celle de Gemini."""
@@ -5280,9 +5258,6 @@ def moteur_distant_pret(cle):
 # Ces moteurs sont servis par Gemini : inutile de resaisir la meme cle.
 _PAR_GOOGLE = ("nanobanana", "lyria", "veo")
 
-
-def cle_image(choix):
-    return cle_de(choix) or cle_de("google")
 
 
 MODELES_AUDIO = ("audio", "audioplus")
@@ -6167,26 +6142,6 @@ def g_planche(prompt, neg, w, h, seed, prefixe, par=None):
            "positive":["4",0],"negative":["5",0],"latent_image":["6",0]}},
      "12":{"class_type":"VAEDecode","inputs":{"samples":["11",0],"vae":["3",0]}},
      "13":{"class_type":"SaveImage","inputs":{"images":["12",0],"filename_prefix":prefixe}},
-    }
-
-def g_case(prompt, neg, w, h, seed, prefixe, force=0.35):
-    """Une case seule, plein cadre, sans bordure : elle recevra son cadre a la
-    composition. Un megapixel entier par case, la ou une planche entiere n'en
-    accorde que 0,16 — c'est toute la difference de lisibilite."""
-    return {
-     "1":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"ponyDiffusionV6XL.safetensors"}},
-     "2":{"class_type":"LoraLoader","inputs":{"model":["1",0],"clip":["1",1],
-          "lora_name":"manga-panels-m4ng4.safetensors",
-          "strength_model":force,"strength_clip":force}},
-     "3":{"class_type":"VAELoader","inputs":{"vae_name":"sdxl_vae_fp16_fix.safetensors"}},
-     "4":{"class_type":"CLIPTextEncode","inputs":{"text":prompt,"clip":["2",1]}},
-     "5":{"class_type":"CLIPTextEncode","inputs":{"text":neg,"clip":["2",1]}},
-     "6":{"class_type":"EmptyLatentImage","inputs":{"width":w,"height":h,"batch_size":1}},
-     "7":{"class_type":"KSampler","inputs":{"seed":seed,"steps":28,"cfg":7.0,
-          "sampler_name":"dpmpp_2m","scheduler":"karras","denoise":1.0,"model":["2",0],
-          "positive":["4",0],"negative":["5",0],"latent_image":["6",0]}},
-     "8":{"class_type":"VAEDecode","inputs":{"samples":["7",0],"vae":["3",0]}},
-     "9":{"class_type":"SaveImage","inputs":{"images":["8",0],"filename_prefix":prefixe}},
     }
 
 def g_planche_composee(cases, neg, seed, prefixe, force=0.35, etapes=28, cfg=7.0,
@@ -7861,6 +7816,23 @@ async def api_compte(req):
 # porte a un deni de service par un tiers qui bloquerait un compte a distance.
 _ECHECS = {}
 ATTENTE_MAX = 30.0          # secondes
+# Un echec plus vieux que ca ne freine plus rien : on l'oublie. Sans cette
+# ligne le dictionnaire ne se vidait qu'au succes, et une rafale de noms
+# inventes — un par requete, sans jamais de succes — le faisait grossir sans
+# borne, depuis le reseau et sans session.
+OUBLI_ECHECS = 3600.0
+ECHECS_MAX = 10000
+
+
+def _oublier_les_vieux_echecs():
+    """Purge les couples dont le dernier echec est trop vieux pour compter, et
+    coupe les plus anciens si, malgre cela, la table deborde."""
+    seuil = time.time() - OUBLI_ECHECS
+    for cle in [k for k, (_, quand) in _ECHECS.items() if quand < seuil]:
+        del _ECHECS[cle]
+    if len(_ECHECS) > ECHECS_MAX:
+        for cle in sorted(_ECHECS, key=lambda k: _ECHECS[k][1])[:len(_ECHECS) - ECHECS_MAX]:
+            del _ECHECS[cle]
 
 
 def _freinage(cle):
@@ -7870,6 +7842,7 @@ def _freinage(cle):
     trompe deux fois ne s'en apercoit pas ; une machine qui essaie un
     dictionnaire y passe des annees.
     """
+    _oublier_les_vieux_echecs()
     combien, quand = _ECHECS.get(cle, (0, 0.0))
     if combien < 3:
         return 0.0
@@ -8076,7 +8049,24 @@ async def api_mon_mdp(req):
         COMPTES.changer_mdp(nom, d.get("nouveau"))
     except _comptes.ErreurCompte as e:
         return web.json_response({"erreur": str(e)}, status=400)
-    return web.json_response({"ok": True})
+    return _session_renouvelee(web.json_response({"ok": True}), nom)
+
+
+def _session_renouvelee(rep_, nom):
+    """Repose le cookie de session sur CET appareil, apres un geste qui a ferme
+    toutes les sessions du compte.
+
+    Changer de mot de passe, armer ou desarmer le second facteur incrementent
+    la generation du compte (comptes.py) : tout jeton d'avant meurt, celui du
+    navigateur qui vient de faire le geste compris. Sans cette ligne, l'ecran
+    suivant etait la porte de connexion — pour qui venait justement de se
+    proteger. Les portes de l'administration, elles, n'appellent pas ceci : un
+    mot de passe impose a quelqu'un doit le deconnecter, partout.
+    """
+    rep_.set_cookie("studio_compte", COMPTES.jeton(nom),
+                    max_age=_comptes.DUREE_SESSION, httponly=True,
+                    samesite="Lax")
+    return rep_
 
 
 # ── le second facteur, cote route ────────────────────────────────────
@@ -8195,7 +8185,8 @@ async def api_mfa_confirmer(req):
     except _comptes.ErreurCompte:
         return web.json_response({"erreur": T("erreur.code_faux", lg)},
                                  status=400)
-    return web.json_response(dict(_etat_mfa(nom), secours=secours))
+    return _session_renouvelee(
+        web.json_response(dict(_etat_mfa(nom), secours=secours)), nom)
 
 
 async def api_mfa_retirer(req):
@@ -8220,7 +8211,8 @@ async def api_mfa_retirer(req):
     if refus is not None:
         return refus
     COMPTES.mfa_retirer(nom)
-    return web.json_response(dict(_etat_mfa(nom), ok=True))
+    return _session_renouvelee(web.json_response(dict(_etat_mfa(nom), ok=True)),
+                               nom)
 
 
 async def api_mfa_secours(req):
@@ -8269,8 +8261,10 @@ def admin_par_jeton(req):
     vaut sept jours. Il n'est paye que par un compte administrateur qui n'a
     jamais eu le jeton — et c'est precisement la personne qu'on veut arreter.
     """
-    jeton = (req.headers.get("X-Admin") or req.cookies.get("studio_admin") or "")
-    return bool(ADMIN_JETON) and secrets.compare_digest(jeton, ADMIN_JETON)
+    jeton = req.headers.get("X-Admin") or ""
+    if bool(ADMIN_JETON) and secrets.compare_digest(jeton, ADMIN_JETON):
+        return True
+    return _session_admin_valide(req.cookies.get("studio_admin") or "")
 
 
 def _facteur_du_compte(nom):
@@ -8400,23 +8394,6 @@ async def api_admin_compte_supprimer(req):
             conv["proprietaire"] = None
             sauver(conv)
     return web.json_response({"ok": True, "comptes": COMPTES.liste()})
-
-
-async def api_fournisseurs(req):
-    """Ce que l'interface a besoin de savoir : qui est disponible, et ou l'on va.
-
-    Aucune cle, aucun indice de cle : cette route n'est pas protegee, elle sert
-    a afficher un bandeau a tout le monde.
-    """
-    dit = {}
-    for modalite, libelle, _ in MODALITES:
-        choix = CHOIX.get(modalite, "local")
-        conf = fournisseurs_de(modalite).get(choix) or {}
-        cle = cle_de(choix) or (cle_de("google") if choix in _PAR_GOOGLE else "")
-        dit[modalite] = {"libelle": libelle, "choix": choix,
-                         "titre": conf.get("titre", "local"),
-                         "distant": choix != "local" and bool(cle)}
-    return web.json_response(dit)
 
 
 def _mesurer_aiguilleur():
@@ -10474,8 +10451,19 @@ def purger_taches(garder=200):
     a plusieurs le dict grossit d'autant plus vite. Les taches terminees ne
     servent qu'a l'affichage immediat : la conversation garde l'historique."""
     finies = [t for t, v in TACHES.items() if v.get("etat") in ("fini", "erreur")]
-    for t in finies[:-garder]:
+    # « finies[:-garder] » : avec garder=0, c'est finies[:0], donc rien — la
+    # forme qui se lit « tout sauf les garder derniers » ne purgeait RIEN
+    # quand on lui demandait de tout purger.
+    for t in finies[:max(0, len(finies) - garder)]:
         TACHES.pop(t, None)
+        DEPOTS.pop(t, None)
+    # Les depots d'un travail que TACHES n'a jamais connu — admis par la
+    # tolerance du disque apres un redemarrage — vieillissent un jour, puis
+    # sont oublies : plus aucune machine ne reessaie un depot vieux d'un jour.
+    seuil = time.time() - 24 * 3600
+    for t in [t for t, v in DEPOTS.items()
+              if t not in TACHES and v.get("quand", 0) < seuil]:
+        DEPOTS.pop(t, None)
 
 async def travailleur():
     """Un seul travail a la fois : le GPU ne se partage pas. Les demandes
@@ -11882,6 +11870,21 @@ EXT_DEPOT = EXT_IMAGE | EXT_VIDEO | EXT_AUDIO | EXT_3D | {".gif"}
 # Deux gigaoctets : large pour la plus longue video qu'on sache produire, et
 # borne quand meme. Sans borne, un seul depot remplissait le disque.
 DEPOT_MAX = 2 * 1024 ** 3
+# Ce qu'un seul travail peut poser en tout, fichiers cumules : une machine qui
+# tient un jeton ne doit pas pouvoir remplir le disque du studio en enchainant
+# des depots de deux gigas sous des noms differents.
+DEPOT_MAX_TACHE = 4 * DEPOT_MAX
+# tid -> {"noms": ce que ce travail a deja pose, "octets": leur total}. Vide
+# avec TACHES par purger_taches().
+DEPOTS = {}
+# Le plus gros corps JSON qu'une route accepte. C'etait 128 Mo, herite du temps
+# ou les images montaient en base64 dans le JSON ; elles passent par
+# /api/televerser en multipart depuis, et le plus gros corps legitime (la liste
+# des modeles qu'une machine annonce) tient en quelques centaines de Ko. A 128 Mo,
+# vingt POST paralleles sur /api/compte/entrer — sans session — suffisaient a
+# faire tomber le conteneur par la memoire. Les depots de fichiers ne sont pas
+# concernes : /api/televerser et /api/noeud/fichier lisent le flux eux-memes.
+CORPS_MAX = 4 * 1024 ** 2
 
 
 def famille_sortie(nom):
@@ -12178,7 +12181,6 @@ async def comfy_repond():
     except Exception:
         return None
 
-DUREE_CODE = 300         # cinq minutes
 
 async def api_comfy(req):
     d = await comfy_repond()
@@ -12491,6 +12493,25 @@ async def origine_verifiee(req, handler):
 
 
 @web.middleware
+async def en_tetes_surs(req, handler):
+    """Trois en-tetes sur TOUTE reponse, pages et JSON compris.
+
+    Aucune page du studio n'a de raison d'etre encadree par une autre : un
+    cadre invisible sur un site tiers est la forme classique du clic vole.
+    Aucun lien sortant n'a besoin d'emporter l'adresse de la conversation.
+    Et le type annonce fait foi : un navigateur qui « devine » un HTML dans un
+    fichier rendu l'executerait sur l'origine du studio — /api/fichier posait
+    deja ce troisieme en-tete, on l'etend au reste pour ne plus avoir a y
+    penser route par route.
+    """
+    rep_ = await handler(req)
+    rep_.headers.setdefault("X-Frame-Options", "DENY")
+    rep_.headers.setdefault("Referrer-Policy", "no-referrer")
+    rep_.headers.setdefault("X-Content-Type-Options", "nosniff")
+    return rep_
+
+
+@web.middleware
 async def exiger_compte(req, handler):
     """Ferme tout ce qui fait ou montre quelque chose, tant qu'on n'est pas
     connecte.
@@ -12505,8 +12526,8 @@ async def exiger_compte(req, handler):
     # Les routes d'administration verifient elles-memes le jeton (admin_ok) :
     # les fermer ici condamnerait le seul moyen d'entrer quand aucun compte
     # n'existe encore — c'est-a-dire l'amorçage d'une installation neuve.
-    # « /api/textes » EST LIBRE, et c'est la seule route ajoutee a cette
-    # liste depuis qu'elle existe. Sans elle, l'ecran de connexion — le seul
+    # « /api/textes » EST LIBRE — avec « /demarrage », les deux routes ajoutees
+    # a cette liste depuis qu'elle existe. Sans elle, l'ecran de connexion — le seul
     # que voie un visiteur non connecte — resterait francais, et le refus
     # ci-dessous aussi : on traduirait tout SAUF ce que lit celui qui n'est
     # encore rien. Elle ne rend que le dictionnaire du depot, le meme pour
@@ -12520,8 +12541,7 @@ async def exiger_compte(req, handler):
              or chemin == "/api/textes"
              or chemin == "/admin" or chemin.startswith("/api/admin/")
              or chemin == "/demarrage" or chemin == "/api/demarrage"
-             or chemin.startswith("/api/noeud/")
-             or chemin == "/api/fournisseurs")
+             or chemin.startswith("/api/noeud/"))
     if libre or req.get("compte"):
         return await handler(req)
     # LE SEUL REFUS DE MIDDLEWARE TRADUIT, et le plus lu de tous : c'est ce
@@ -12675,8 +12695,42 @@ def admin_ok(req):
     nom = req.get("compte") or ""
     if nom and COMPTES and COMPTES.est_admin(nom):
         return True
-    jeton = (req.headers.get("X-Admin") or req.cookies.get("studio_admin") or "")
-    return bool(ADMIN_JETON) and secrets.compare_digest(jeton, ADMIN_JETON)
+    jeton = req.headers.get("X-Admin") or ""
+    if bool(ADMIN_JETON) and secrets.compare_digest(jeton, ADMIN_JETON):
+        return True
+    return _session_admin_valide(req.cookies.get("studio_admin") or "")
+
+
+# Le cookie « studio_admin » ETAIT le jeton, tel quel, pour sept jours. Un
+# navigateur qui fuit — sauvegarde, synchronisation, capture d'un echange en
+# clair — livrait alors le secret maitre, celui qui seul desarme le second
+# facteur d'autrui. Il porte desormais une session derivee : une peremption
+# et sa signature par le jeton. Elle ouvre la console autant que le jeton,
+# mais on ne remonte pas d'elle au jeton, et elle meurt d'elle-meme.
+SESSION_ADMIN = 7 * 24 * 3600
+
+
+def _signature_admin(fin):
+    return hmac.new(ADMIN_JETON.encode(), f"session.{fin}".encode(),
+                    hashlib.sha256).hexdigest()[:32]
+
+
+def session_admin():
+    """Le cookie a poser apres un jeton juste : « peremption.signature »."""
+    fin = str(int(time.time() + SESSION_ADMIN))
+    return f"{fin}.{_signature_admin(fin)}"
+
+
+def _session_admin_valide(cookie):
+    """Vrai si ce cookie a ete signe par le jeton actuel et n'est pas perime.
+    Ne leve jamais : il vient du reseau."""
+    if not ADMIN_JETON or not cookie:
+        return False
+    fin, _, signature = cookie.partition(".")
+    if not fin.isdigit() or not signature:
+        return False
+    return (hmac.compare_digest(signature, _signature_admin(fin))
+            and time.time() < int(fin))
 
 
 def moteurs_du_noeud(ident):
@@ -13038,6 +13092,14 @@ async def liberer_noeuds_a_url():
             _consigne_annulee(x["id"])
 
 
+def _nombre(v):
+    """Un flottant, ou 0.0 si ce que la machine a envoye n'en est pas un."""
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 async def api_noeud_annonce(req):
     """Battement de coeur : l'agent dit qui il est et ce qu'il sait faire."""
     x = noeud_du_jeton(req.headers.get("X-Jeton"))
@@ -13099,7 +13161,13 @@ async def api_noeud_annonce(req):
             # vide, et ce n'est pas la consigne qui l'a videe.
             _consigne_annulee(x["id"])
         etat.update(repond=True, vu=time.time(), agent=True,
-                    carte=d.get("carte"), vram=float(d.get("vram") or 0),
+                    # UNE CHAINE COURTE, OU RIEN : la console fait
+                    # « carte.replace(...) », et un dictionnaire a cet endroit
+                    # tuait le panneau des machines pour tous. Un nombre qui n'en
+                    # est pas un vaut zero plutot qu'une trace de pile en 500.
+                    carte=(d["carte"][:120] if isinstance(d.get("carte"), str)
+                           else None),
+                    vram=_nombre(d.get("vram")),
                     # NONE ET NON ZERO QUAND LA CLE MANQUE. « float(x or 0) »
                     # lisait l'agent d'avant le 3 septembre 2026 — qui n'annonce
                     # pas ce champ — comme une carte entierement pleine, donc
@@ -13108,7 +13176,7 @@ async def api_noeud_annonce(req):
                     libre=(float(d["libre"])
                            if isinstance(d.get("libre"), (int, float))
                            else None),
-                    ram=float(d.get("ram") or 0))
+                    ram=_nombre(d.get("ram")))
     # CE QUE LA CONSIGNE PRECEDENTE A DONNE. L'agent rend le code HTTP de son
     # ComfyUI : un 404 se diagnostique tout seul, la ou la seule lecture de la
     # VRAM aurait laisse choisir entre « route inconnue » et « la carte etait
@@ -13153,8 +13221,13 @@ async def api_noeud_annonce(req):
         ETAT_NOEUDS.setdefault(x["id"], {}).update(
             llm=bool(llm.get("ok")), llm_modeles=llm.get("modeles") or [])
     if isinstance(dossiers, dict) and any(dossiers.values()):
-        MODELES_NOEUD[x["id"]] = {"quand": time.time(),
-                                  "dossiers": {k: set(v) for k, v in dossiers.items()}}
+        MODELES_NOEUD[x["id"]] = {
+            "quand": time.time(),
+            # Des listes de chaines, et rien d'autre : « set(v) » sur une liste
+            # de dictionnaires levait TypeError, donc 500, sur la seule foi de
+            # ce qu'une machine annonce.
+            "dossiers": {str(k): {m for m in v if isinstance(m, str)}
+                         for k, v in dossiers.items() if isinstance(v, list)}}
     # Ce qu'on vient d'apprendre d'elle, garde pour le prochain reveil. Ecrit au
     # plus une fois toutes les trente secondes : trois machines qui battent
     # toutes les dix secondes ecriraient sinon ce fichier neuf fois par minute
@@ -13276,29 +13349,93 @@ async def api_noeud_fichier(req):
     cible = chemin_agent(x["id"], nom)
     if not cible:
         return web.json_response({"erreur": "chemin refuse"}, status=400)
+    # A QUI CE TRAVAIL A ETE CONFIE, et s'il court encore. Le tid n'etait que
+    # nettoye, jamais verifie : n'importe quelle machine enregistree deposait
+    # sous n'importe quel tid, et ecrasait — « wb » — un fichier deja livre et
+    # deja montre a l'utilisateur, que /api/fichier servait ensuite depuis le
+    # disque. Une substitution silencieuse, avec le seul jeton d'un noeud.
+    refus = _depot_refuse(tid, x["id"])
+    if refus:
+        print(f"  depot refuse de {x['id']} : {nom} — {refus[1]}", flush=True)
+        return web.json_response({"erreur": refus[1]}, status=refus[0])
+    # Tenu a part de TACHES : api_etat() rend la tache telle quelle en JSON,
+    # et un ensemble n'y passe pas. Cree APRES un depot reussi seulement, et
+    # date : un tid admis par la tolerance du disque n'est pas dans TACHES, et
+    # purger_taches() ne le retrouverait pas sans sa date.
+    depot = DEPOTS.get(tid) or {"noms": set(), "octets": 0, "quand": time.time()}
+    deposes = depot["noms"]
+    # Un nom deja pose ne se recouvre que par le MEME travail : c'est le cas
+    # de la machine qui reessaie apres une reponse perdue en route, et il est
+    # legitime. Tout autre recouvrement est refuse — un rendu montre ne change
+    # plus de contenu apres coup.
+    if os.path.exists(cible) and nom not in deposes:
+        print(f"  depot refuse de {x['id']} : {nom} existe deja", flush=True)
+        return web.json_response({"erreur": "un fichier de ce nom existe deja"},
+                                 status=409)
     os.makedirs(os.path.dirname(cible), exist_ok=True)
     # « client_max_size » ne s'applique PAS a req.content : en lisant le flux
     # nous-memes, on sortait de sa protection, et rien ne bornait plus ce qu'une
-    # machine enregistree pouvait ecrire sur le disque du studio. On compte donc,
-    # et on efface ce qu'on a commence a poser plutot que de laisser un fichier
-    # tronque passer pour un rendu.
+    # machine enregistree pouvait ecrire sur le disque du studio. On compte donc
+    # — par fichier ET en cumule par travail —, et on efface ce qu'on a commence
+    # a poser plutot que de laisser un fichier tronque passer pour un rendu.
+    # Quelle que soit la raison de l'arret : un flux coupe par le reseau laissait
+    # un fichier partiel, que le nouvel essai de la machine trouvait « deja la ».
     taille = 0
+    deja = depot["octets"]
+    if os.path.exists(cible):
+        # Un nom repose par le meme travail remplace : ses anciens octets
+        # sortent du cumul, sinon cinq reessais d'une video de deux gigas
+        # epuisaient le plafond sans un fichier de trop sur le disque.
+        try:
+            deja -= os.path.getsize(cible)
+        except OSError:
+            pass
     try:
         with open(cible, "wb") as f:
             async for bloc in req.content.iter_chunked(1 << 16):
                 taille += len(bloc)
-                if taille > DEPOT_MAX:
+                if taille > DEPOT_MAX or deja + taille > DEPOT_MAX_TACHE:
                     raise ValueError("trop gros")
                 f.write(bloc)
-    except ValueError:
+    except BaseException as e:
         try:
             os.remove(cible)
         except OSError:
             pass
+        if not isinstance(e, ValueError):
+            raise
         print(f"  depot refuse de {x['id']} : {nom} depasse "
-              f"{DEPOT_MAX / 1e9:.0f} Go", flush=True)
+              f"{DEPOT_MAX / 1e9:.0f} Go, ou {DEPOT_MAX_TACHE / 1e9:.0f} Go "
+              f"pour le travail", flush=True)
         return web.json_response({"erreur": "fichier trop gros"}, status=413)
+    deposes.add(nom)
+    depot["octets"] = max(0, deja + taille)
+    DEPOTS[tid] = depot
     return web.json_response({"ok": True, "octets": taille})
+
+
+def _depot_refuse(tid, ident):
+    """Pourquoi la machine `ident` ne peut pas deposer sous ce travail — ou None.
+
+    Un travail que le studio connait doit lui avoir ete confie et courir
+    encore : fini, il ne recoit plus rien, ses fichiers sont ce que l'utilisateur
+    a vu. Un travail que le studio ne connait plus — TACHES est en memoire et
+    un redemarrage l'emporte — est admis s'il reste un tour ouvert de ce nom
+    sur le disque, la meme tolerance que rattacher_tardif() et pour la meme
+    raison ; autrement, c'est un tid invente.
+    """
+    tache = TACHES.get(tid)
+    if tache is not None:
+        if tache.get("noeud") not in (None, ident):
+            return 403, "travail confie a une autre machine"
+        if tache.get("etat") not in (None, "en cours"):
+            return 409, "travail termine"
+        return None
+    for conv in CONVERSATIONS.values():
+        for tour in conv.get("tours", []):
+            if tour.get("id") == tid:
+                return (409, "travail termine") if tour.get("etat") == "fini" else None
+    return 404, "travail inconnu"
 
 
 async def api_noeud_progres(req):
@@ -13847,7 +13984,7 @@ async def api_admin_entrer(req):
         return web.json_response({"erreur": "jeton refuse"}, status=403)
     _ECHECS.pop(cle_freinage, None)
     rep_ = web.json_response({"ok": True})
-    rep_.set_cookie("studio_admin", ADMIN_JETON, max_age=7 * 24 * 3600,
+    rep_.set_cookie("studio_admin", session_admin(), max_age=SESSION_ADMIN,
                     httponly=True, samesite="Lax")
     return rep_
 
@@ -14382,8 +14519,9 @@ async def arreter_file(a):
               flush=True)
 
 def app():
-    a = web.Application(client_max_size=128 * 1024 ** 2,
-                        middlewares=[identite, origine_verifiee, exiger_compte])
+    a = web.Application(client_max_size=CORPS_MAX,
+                        middlewares=[en_tetes_surs, identite, origine_verifiee,
+                                     exiger_compte])
     a.router.add_get("/", page)
     a.router.add_get("/api/textes", api_textes)
     a.router.add_post("/api/textes", api_textes)
@@ -14431,7 +14569,6 @@ def app():
     a.router.add_delete("/api/file/{tid}", api_file_annuler)
     a.router.add_get("/api/conversations", api_conversations)
     a.router.add_post("/api/conversations", api_nouvelle)
-    a.router.add_get("/api/conversation", api_conversation)
     a.router.add_get("/api/conversation/{cid}", api_conversation)
     a.router.add_post("/api/conversation/{cid}/activer", api_activer)
     a.router.add_post("/api/conversation/{cid}/reglages", api_conv_reglages)
@@ -14447,7 +14584,6 @@ def app():
     a.router.add_get("/api/admin/cles", api_admin_cles)
     a.router.add_post("/api/admin/cles", api_admin_cles_poser)
     a.router.add_get("/api/admin/cles/modeles", api_admin_modeles)
-    a.router.add_get("/api/fournisseurs", api_fournisseurs)
     a.router.add_get("/api/compte", api_compte)
     a.router.add_post("/api/compte/entrer", api_entrer)
     a.router.add_post("/api/compte/sortir", api_sortir)

@@ -62,8 +62,8 @@ un exécutable Windows** que tu construis toi-même.
 paquet\construire_windows.bat
 ```
 
-Il produit `paquet\dist\comfystudio.exe` — **45 Mo**, en 28 secondes à froid.
-Un `set PAQUET_SANS_AV=1` avant de lancer descend à 17,6 Mo en 14 s, au prix de
+Il produit `paquet\dist\ComfyStudio.exe` — **45 Mo**, en 29 secondes à froid.
+Un `set PAQUET_SANS_AV=1` avant de lancer descend à 17,8 Mo en 17 s, au prix de
 la lecture des vidéos jointes. Il faut PyInstaller (`pip install pyinstaller`) ;
 le reste voyage dans l'exe, pages web et modèle d'aiguillage compris.
 

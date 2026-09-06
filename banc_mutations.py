@@ -66,9 +66,10 @@ mais ne font pas echouer : les compter en echec rendrait la CI rouge en
 permanence, et une CI qui rougit pour rien finit ignoree. Les basculer dans
 MUTATIONS est le geste qui clot la reparation du filet.
 
-Ils etaient cinq, puis huit ; il en reste UN. Les quatre qui visaient
-banc_page.py sont fermes et ont rejoint PAGE, les trois de
-verifier_formulations.py sont fermes et ont rejoint FORMULATIONS.
+Ils etaient cinq, puis huit, puis un ; il n'en reste AUCUN depuis le
+5 septembre 2026. Les quatre qui visaient banc_page.py sont fermes et ont
+rejoint PAGE, les trois de verifier_formulations.py sont fermes et ont rejoint
+FORMULATIONS ; la liste reste, vide, pour le prochain.
 
 Les quatre de banc_page.py disaient tous la meme chose : un releve par
 expression reguliere decrit UNE facon d'ecrire la panne, jamais la panne.
@@ -751,8 +752,8 @@ CONTENEUR = [
         rougit="chaque ligne renvoie a SA variable",
         editions=[
             ("docker-compose.yml", brut(
-                '      STUDIO_ANALYSE_MAX: "${STUDIO_ANALYSE_MAX:-}"',
-                '      STUDIO_ANALYSE_MAX: "${STUDIO_ANALYSE_MAXX:-}"')),
+                '      STUDIO_ANALYSE_PETITE: "${STUDIO_ANALYSE_PETITE:-}"',
+                '      STUDIO_ANALYSE_PETITE: "${STUDIO_ANALYSE_PETITEE:-}"')),
         ]),
     dict(
         nom="faute de frappe sur une variable derivee",
@@ -3303,17 +3304,19 @@ FACTEUR_ADMIN = [
         rougit="admin_par_jeton() ne connait QUE le jeton",
         editions=[
             ("serveur.py", brut(
-                '    jeton = (req.headers.get("X-Admin") or '
-                'req.cookies.get("studio_admin") or "")\n'
-                "    return bool(ADMIN_JETON) and secrets.compare_digest(jeton, "
-                "ADMIN_JETON)\n\n\ndef _facteur_du_compte(nom):",
+                '    jeton = req.headers.get("X-Admin") or ""\n'
+                "    if bool(ADMIN_JETON) and secrets.compare_digest(jeton, "
+                "ADMIN_JETON):\n        return True\n"
+                '    return _session_admin_valide(req.cookies.get("studio_admin") '
+                'or "")\n\n\ndef _facteur_du_compte(nom):',
                 '    nom_connecte = req.get("compte") or ""\n'
                 "    if nom_connecte and COMPTES and COMPTES.est_admin(nom_connecte):\n"
                 "        return True\n"
-                '    jeton = (req.headers.get("X-Admin") or '
-                'req.cookies.get("studio_admin") or "")\n'
-                "    return bool(ADMIN_JETON) and secrets.compare_digest(jeton, "
-                "ADMIN_JETON)\n\n\ndef _facteur_du_compte(nom):")),
+                '    jeton = req.headers.get("X-Admin") or ""\n'
+                "    if bool(ADMIN_JETON) and secrets.compare_digest(jeton, "
+                "ADMIN_JETON):\n        return True\n"
+                '    return _session_admin_valide(req.cookies.get("studio_admin") '
+                'or "")\n\n\ndef _facteur_du_compte(nom):')),
         ]),
     dict(
         nom="le jeton est verifie APRES avoir desarme",
@@ -6862,8 +6865,8 @@ FICHIERS = [
                "ecrit sur le disque d'un studio a connexion obligatoire",
          rougit="sont fermes a un visiteur sans compte",
          editions=[("serveur.py",
-                    brut('             or chemin == "/api/fournisseurs")',
-                    '             or chemin == "/api/fournisseurs"\n'
+                    brut('             or chemin.startswith("/api/noeud/"))',
+                    '             or chemin.startswith("/api/noeud/")\n'
                     '             or chemin == "/api/televerser")'))]),
 
     dict(nom="le service des scripts se ferme aux machines neuves",
@@ -6872,7 +6875,9 @@ FICHIERS = [
                "ne peut plus telecharger l'agent, donc plus s'installer",
          rougit="reste OUVERT sans compte",
          editions=[("serveur.py",
-                    brut('             or chemin.startswith("/api/noeud/")\n', ""))]),
+                    brut('             or chemin == "/demarrage" or chemin == "/api/demarrage"\n'
+                         '             or chemin.startswith("/api/noeud/"))',
+                         '             or chemin == "/demarrage" or chemin == "/api/demarrage")'))]),
 ]
 
 
@@ -6961,20 +6966,6 @@ SEANCE = [
             ("comptes.py", brut(
                 '        return self.gens.get(nom.lower(), {}).get("nom")',
                 "        return nom")),
-        ]),
-    dict(
-        nom="la route ouverte des fournisseurs emporte la cle",
-        banc="banc_seance.py",
-        imite="une route SANS jeton laisse filer une cle d'API — donc a "
-              "n'importe qui sur le reseau local. Sa docstring promet « aucune "
-              "cle, aucun indice de cle », et c'est la promesse la plus chere "
-              "du fichier : une cle qui fuit se paie en euros chez un tiers",
-        rougit="elle ne porte NI la cle NI un morceau de cle",
-        editions=[
-            ("serveur.py", brut(
-                '        dit[modalite] = {"libelle": libelle, "choix": choix,',
-                '        dit[modalite] = {"libelle": libelle, "choix": choix,\n'
-                '                         "cle": cle,')),
         ]),
 ]
 
@@ -7298,10 +7289,10 @@ CONSOLE_SUITE = [
         editions=[
             ("serveur.py", brut(
                 "def app():\n"
-                "    a = web.Application(client_max_size=128 * 1024 ** 2,",
+                "    a = web.Application(client_max_size=CORPS_MAX,",
                 "def app():\n"
                 "    return web.Application()\n"
-                "    a = web.Application(client_max_size=128 * 1024 ** 2,")),
+                "    a = web.Application(client_max_size=CORPS_MAX,")),
         ]),
     # ── l'etat du moteur, et le champ qui decide des boutons (section 4) ──
     # Nee le 6 septembre 2026 avec le branchement du panneau de web/index.html.
@@ -8642,12 +8633,630 @@ BOUCLE_AGENT = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  L'AUDIT DU 6 SEPTEMBRE 2026 — sept correctifs de securite, six bancs
+# ──────────────────────────────────────────────────────────────────────
+# Une relecture adverse de serveur.py, comptes.py et agent_noeud.py, menee le
+# 6 septembre 2026 sous l'angle « que peut faire quelqu'un qui tient UN jeton
+# de machine, UN cookie, ou rien du tout ». Sept correctifs en sont sortis, et
+# chacun a recu ses cas le jour meme, dans le banc dont c'est le sujet :
+#
+#   1. /api/noeud/fichier verifie A QUI le travail a ete confie et s'il court
+#      encore (403, 409, 404), ne recouvre un nom que pour le MEME travail,
+#      plafonne le cumul par travail (DEPOT_MAX_TACHE) et efface le fichier
+#      partiel quelle que soit l'exception — banc_fichiers.py, section 4.
+#   2. Le corps JSON accepte tombe de 128 Mo a CORPS_MAX, 4 Mo —
+#      banc_console.py, section 8.
+#   3. _ECHECS oublie les couples trop vieux et se borne a ECHECS_MAX —
+#      banc_comptes.py, derniere section.
+#   4. L'annonce d'une machine n'est plus crue sur parole : carte, vram,
+#      modeles — banc_repartition.py, derniere section.
+#   5. Le cookie d'administration est une session derivee du jeton, plus le
+#      jeton lui-meme — banc_comptes.py, derniere section.
+#   6. Trois en-tetes surs sur toute reponse, par le PREMIER intergiciel —
+#      banc_console.py, section 8.
+#   7. Le jeton de session porte une GENERATION, sous la signature ; mot de
+#      passe, second facteur l'incrementent —
+#      banc_seance.py, section 1.
+#   8. L'agent nettoie le nom d'entree avant de le coller dans l'en-tete
+#      multipart — banc_agent.py, section 4.
+#
+# Chaque mutation ci-dessous remet UN de ces defauts, sous la forme qu'il
+# aurait le plus naturellement : la garde retiree, la comparaison inversee, la
+# purge oubliee, le cookie remis a ADMIN_JETON, la compatibilite « pour ne
+# deconnecter personne ». Les cinq bancs a studio n'ont pas de filet d'avant
+# pour ces gardes — elles sont nees avec les cas — et banc_comptes.py execute
+# les fonctions decoupees dans l'arbre de serveur.py plutot que de les lire :
+# c'est le sens aller, la ligne NOMMEE, qui porte la preuve ici.
+SECURITE_SEPT = [
+    # ── 1. /api/noeud/fichier ─────────────────────────────────────────
+    dict(
+        nom="n'importe quelle machine depose sous n'importe quel tid",
+        banc="banc_fichiers.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : le tid etait "
+              "nettoye, jamais verifie. Une machine enregistree — ou qui tient "
+              "le jeton d'une machine — deposait sous le travail d'une autre "
+              "et recouvrait un rendu deja montre, que /api/fichier ressert "
+              "depuis le disque. Une substitution silencieuse",
+        rougit="une machine ne depose que sous un travail qui LUI a ete confie",
+        editions=[
+            ("serveur.py", brut(
+                '    refus = _depot_refuse(tid, x["id"])\n'
+                "    if refus:\n"
+                "        print(f\"  depot refuse de {x['id']} : {nom} — {refus[1]}\", flush=True)\n"
+                '        return web.json_response({"erreur": refus[1]}, status=refus[0])\n',
+                "    refus = None\n")),
+        ]),
+    dict(
+        nom="un travail termine recoit encore des fichiers",
+        banc="banc_fichiers.py",
+        imite="la verification s'arrete a « confie a qui » : un travail fini "
+              "reste ouvert au depot, et la machine qui l'a fait peut changer "
+              "apres coup ce que l'utilisateur a deja vu",
+        rougit="un travail TERMINE ne recoit plus rien",
+        editions=[
+            ("serveur.py", brut(
+                '        if tache.get("etat") not in (None, "en cours"):\n'
+                '            return 409, "travail termine"\n',
+                "")),
+        ]),
+    dict(
+        nom="un tid inconnu est admis comme apres un redemarrage",
+        banc="banc_fichiers.py",
+        imite="la tolerance du redemarrage etendue a tout : un tid que ni "
+              "TACHES ni le disque ne connaissent passe, et une machine peut "
+              "poser des fichiers sous des travaux qui n'ont jamais existe",
+        rougit="est un tid invente : 404",
+        editions=[
+            ("serveur.py", brut('    return 404, "travail inconnu"',
+                                "    return None")),
+        ]),
+    dict(
+        nom="un tour fini sur le disque accepte encore",
+        banc="banc_fichiers.py",
+        imite="apres un redemarrage, TACHES est vide et seul le tour ecrit "
+              "sur le disque dit si le travail est fini. Ne pas le lire, "
+              "c'est rouvrir tous les rendus passes au depot des que le "
+              "studio redemarre",
+        rougit="mais un tour FINI sur le disque refuse comme un travail termine",
+        editions=[
+            ("serveur.py", brut(
+                '                return (409, "travail termine") if tour.get("etat") == "fini" else None',
+                "                return None")),
+        ]),
+    dict(
+        nom="un nom deja present est recouvert par n'importe quel travail",
+        banc="banc_fichiers.py",
+        imite="« wb » sur un fichier qui existe : le recouvrement silencieux "
+              "d'un rendu montre, par un autre travail de la meme machine — "
+              "ou par la meme machine sous un tid qu'elle a fini",
+        rougit="un AUTRE travail de la meme machine ne recouvre pas un nom deja pose",
+        editions=[
+            ("serveur.py", brut(
+                "    if os.path.exists(cible) and nom not in deposes:\n"
+                "        print(f\"  depot refuse de {x['id']} : {nom} existe deja\", flush=True)\n"
+                '        return web.json_response({"erreur": "un fichier de ce nom existe deja"},\n'
+                "                                 status=409)\n",
+                "")),
+        ]),
+    dict(
+        nom="un nom deja pose est refuse meme a celui qui l'a pose",
+        banc="banc_fichiers.py",
+        imite="la garde trop large : une machine dont la reponse s'est perdue "
+              "en route reessaie, et son propre depot lui est refuse. Le "
+              "rendu est sur le disque et le studio ne le saura jamais",
+        rougit="la MEME machine, sous le MEME travail, peut reposer le meme nom",
+        editions=[
+            ("serveur.py", brut(
+                "    if os.path.exists(cible) and nom not in deposes:",
+                "    if os.path.exists(cible):")),
+        ]),
+    dict(
+        nom="le plafond par travail est oublie",
+        banc="banc_fichiers.py",
+        imite="deux gigas par fichier, sans borne sur leur nombre : une "
+              "machine qui tient un jeton remplit le disque du studio en "
+              "enchainant des depots sous des noms differents",
+        rougit="ce qu'un travail pose en TOUT est plafonne",
+        editions=[
+            ("serveur.py", brut(
+                "                if taille > DEPOT_MAX or deja + taille > DEPOT_MAX_TACHE:",
+                "                if taille > DEPOT_MAX:")),
+        ]),
+    dict(
+        nom="seul le « trop gros » efface le fichier partiel",
+        banc="banc_fichiers.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : un flux coupe par "
+              "le reseau laissait un fichier tronque, que le nouvel essai de "
+              "la machine trouvait « deja la » — et le moignon passait pour "
+              "un rendu",
+        rougit="un flux coupe par le reseau ne laisse pas de fichier partiel",
+        editions=[
+            ("serveur.py", brut(
+                "    except BaseException as e:\n"
+                "        try:\n"
+                "            os.remove(cible)\n"
+                "        except OSError:\n"
+                "            pass\n"
+                "        if not isinstance(e, ValueError):\n"
+                "            raise\n",
+                "    except ValueError:\n"
+                "        try:\n"
+                "            os.remove(cible)\n"
+                "        except OSError:\n"
+                "            pass\n")),
+        ]),
+    dict(
+        nom="purger_taches() garde le registre des depots",
+        banc="banc_fichiers.py",
+        imite="DEPOTS est tenu a part de TACHES, et la purge ne connait que "
+              "TACHES : le nouveau dictionnaire grossit d'un travail par rendu "
+              "pour toute la vie du studio — exactement ce que purger_taches "
+              "existe pour empecher",
+        rougit="purger_taches() oublie aussi ce que le travail avait depose",
+        editions=[
+            ("serveur.py", brut(
+                "        TACHES.pop(t, None)\n"
+                "        DEPOTS.pop(t, None)",
+                "        TACHES.pop(t, None)")),
+        ]),
+    # ── 4. l'annonce d'une machine ────────────────────────────────────
+    dict(
+        nom="la carte annoncee est gardee telle quelle",
+        banc="banc_repartition.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : « carte » allait "
+              "dans ETAT_NOEUDS sans regarder son type. La console fait "
+              "carte.replace(...) sur chaque ligne du panneau des machines : "
+              "un dictionnaire a cet endroit le tuait pour tous",
+        rougit="une carte qui n'est pas une chaine est notee « rien »",
+        editions=[
+            ("serveur.py", brut(
+                '                    carte=(d["carte"][:120] if isinstance(d.get("carte"), str)\n'
+                "                           else None),",
+                '                    carte=d.get("carte"),')),
+        ]),
+    dict(
+        nom="la carte n'est plus tronquee",
+        banc="banc_repartition.py",
+        imite="une chaine, donc « ca va » — de la longueur qu'une machine "
+              "veut, six fois par minute, dans l'etat et sur le disque",
+        rougit="tronquee a cent vingt",
+        editions=[
+            ("serveur.py", brut('                    carte=(d["carte"][:120] if',
+                                '                    carte=(d["carte"] if')),
+        ]),
+    dict(
+        nom="la VRAM annoncee passe par float() tel quel",
+        banc="banc_repartition.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : float(« beaucoup ») "
+              "leve, la route rend 500 avec une trace de pile, sur la seule "
+              "foi de ce qu'une machine annonce",
+        rougit="une VRAM qui n'est pas un nombre vaut zero",
+        editions=[
+            ("serveur.py", brut('                    vram=_nombre(d.get("vram")),',
+                                '                    vram=float(d.get("vram") or 0),')),
+        ]),
+    dict(
+        nom="les modeles annonces sont mis en ensemble sans regarder",
+        banc="banc_repartition.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : set(v) sur une "
+              "liste de dictionnaires leve TypeError — donc 500 — et sur une "
+              "chaine eclate ses lettres en « modeles ». Dans les deux cas "
+              "c'est la machine qui decide de ce que le studio croit avoir",
+        rougit="seules les LISTES DE CHAINES sont retenues",
+        editions=[
+            ("serveur.py", brut(
+                '            "dossiers": {str(k): {m for m in v if isinstance(m, str)}\n'
+                "                         for k, v in dossiers.items() if isinstance(v, list)}}",
+                '            "dossiers": {k: set(v) for k, v in dossiers.items()}}')),
+        ]),
+    # ── 2 et 6. ce que app() assemble ─────────────────────────────────
+    dict(
+        nom="CORPS_MAX remonte a 128 Mo",
+        banc="banc_console.py",
+        imite="LA VALEUR D'AVANT, heritee du temps ou les images montaient en "
+              "base64 dans le JSON. Vingt POST paralleles sur "
+              "/api/compte/entrer — sans session — suffisaient a faire tomber "
+              "le conteneur par la memoire",
+        rougit="le plus gros corps JSON qu'une route accepte est CORPS_MAX, quatre mega-octets",
+        editions=[
+            ("serveur.py", brut("CORPS_MAX = 4 * 1024 ** 2",
+                                "CORPS_MAX = 128 * 1024 ** 2")),
+        ]),
+    dict(
+        nom="app() n'emprunte pas CORPS_MAX",
+        banc="banc_console.py",
+        imite="la constante existe, commentee, et la ligne qui compte "
+              "garde son nombre en dur : le plus facile des retours en "
+              "arriere, celui d'une fusion mal resolue",
+        rougit="le plus gros corps JSON qu'une route accepte est CORPS_MAX",
+        editions=[
+            ("serveur.py", brut(
+                "    a = web.Application(client_max_size=CORPS_MAX,",
+                "    a = web.Application(client_max_size=128 * 1024 ** 2,")),
+        ]),
+    dict(
+        nom="en_tetes_surs est le dernier intergiciel",
+        banc="banc_console.py",
+        imite="« present dans la liste » — mais en dernier, il enveloppe la "
+              "seule route : les 401 d'exiger_compte et les 403 "
+              "d'origine_verifiee, rendus avant lui, partent sans les "
+              "en-tetes. C'est la place qu'on lui donne en l'ajoutant a la "
+              "fin de la liste sans y penser",
+        rougit="en_tetes_surs est le PREMIER intergiciel",
+        editions=[
+            ("serveur.py", brut(
+                "middlewares=[en_tetes_surs, identite, origine_verifiee,\n"
+                "                                     exiger_compte])",
+                "middlewares=[identite, origine_verifiee,\n"
+                "                                     exiger_compte, en_tetes_surs])")),
+        ]),
+    dict(
+        nom="Referrer-Policy n'est plus pose",
+        banc="banc_console.py",
+        imite="deux en-tetes sur trois : le lien sortant emporte de nouveau "
+              "l'adresse de la conversation, et le banc qui ne verifierait "
+              "que « des en-tetes sont poses » resterait vert",
+        rougit="toute reponse emporte X-Frame-Options: DENY, Referrer-Policy: no-referrer",
+        editions=[
+            ("serveur.py", brut(
+                '    rep_.headers.setdefault("Referrer-Policy", "no-referrer")\n',
+                "")),
+        ]),
+    dict(
+        nom="l'intergiciel ecrase ce que la route a pose",
+        banc="banc_console.py",
+        imite="« = » a la place de setdefault : plus aucune route ne peut "
+              "choisir sa politique — /api/fichier posait deja nosniff, et le "
+              "jour ou une route aura besoin d'un Referrer-Policy a elle, "
+              "l'intergiciel l'effacera sans un mot",
+        rougit="et une route qui a deja pose l'un d'eux garde SA valeur",
+        editions=[
+            ("serveur.py", brut(
+                '    rep_.headers.setdefault("X-Frame-Options", "DENY")\n'
+                '    rep_.headers.setdefault("Referrer-Policy", "no-referrer")\n'
+                '    rep_.headers.setdefault("X-Content-Type-Options", "nosniff")',
+                '    rep_.headers["X-Frame-Options"] = "DENY"\n'
+                '    rep_.headers["Referrer-Policy"] = "no-referrer"\n'
+                '    rep_.headers["X-Content-Type-Options"] = "nosniff"')),
+        ]),
+    # ── 5. le cookie d'administration ─────────────────────────────────
+    dict(
+        nom="le cookie d'administration redevient le jeton",
+        banc="banc_comptes.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : session_admin() "
+              "existe, et la route continue d'ecrire ADMIN_JETON dans le "
+              "cookie, pour sept jours. Un navigateur qui fuit — sauvegarde, "
+              "synchronisation, echange en clair — livre le secret maitre, "
+              "celui qui seul desarme le second facteur d'autrui",
+        rougit="api_admin_entrer pose une session derivee valide dans le cookie",
+        editions=[
+            ("serveur.py", brut(
+                '    rep_.set_cookie("studio_admin", session_admin(), max_age=SESSION_ADMIN,',
+                '    rep_.set_cookie("studio_admin", ADMIN_JETON, max_age=SESSION_ADMIN,')),
+        ]),
+    dict(
+        nom="admin_ok() accepte encore le jeton brut en cookie",
+        banc="banc_comptes.py",
+        imite="LA COMPATIBILITE, et elle se defend : « les navigateurs "
+              "d'avant gardent l'ancien cookie, ne deconnectons personne ». "
+              "Tant qu'elle est la, un cookie capture avant le changement "
+              "ouvre pour toujours, et le nouveau format ne protege rien",
+        rougit="un cookie qui vaut le jeton BRUT n'ouvre plus rien",
+        editions=[
+            ("serveur.py", brut(
+                '    return _session_admin_valide(req.cookies.get("studio_admin") or "")\n'
+                "\n\n# Le cookie « studio_admin » ETAIT le jeton",
+                '    cookie = req.cookies.get("studio_admin") or ""\n'
+                "    if bool(ADMIN_JETON) and secrets.compare_digest(cookie, ADMIN_JETON):\n"
+                "        return True\n"
+                "    return _session_admin_valide(cookie)\n"
+                "\n\n# Le cookie « studio_admin » ETAIT le jeton")),
+        ]),
+    dict(
+        nom="admin_par_jeton() accepte encore le jeton brut en cookie",
+        banc="banc_comptes.py",
+        imite="la meme compatibilite, sur la porte qui desarme le second "
+              "facteur d'autrui — la seule que le jeton brut garde encore",
+        rougit="un cookie qui vaut le jeton BRUT n'ouvre plus rien",
+        editions=[
+            ("serveur.py", brut(
+                '    return _session_admin_valide(req.cookies.get("studio_admin") or "")\n'
+                "\n\ndef _facteur_du_compte(nom):",
+                '    cookie = req.cookies.get("studio_admin") or ""\n'
+                "    if bool(ADMIN_JETON) and secrets.compare_digest(cookie, ADMIN_JETON):\n"
+                "        return True\n"
+                "    return _session_admin_valide(cookie)\n"
+                "\n\ndef _facteur_du_compte(nom):")),
+        ]),
+    dict(
+        nom="admin_ok() oublie l'en-tete X-Admin",
+        banc="banc_comptes.py",
+        imite="le temoin : « la session suffit » — et plus personne n'entre "
+              "la premiere fois, quand aucun cookie n'a encore ete pose",
+        rougit="le jeton lui-meme, en en-tete X-Admin, ouvre toujours",
+        editions=[
+            ("serveur.py", brut(
+                '    jeton = req.headers.get("X-Admin") or ""\n'
+                "    if bool(ADMIN_JETON) and secrets.compare_digest(jeton, ADMIN_JETON):\n"
+                "        return True\n"
+                '    return _session_admin_valide(req.cookies.get("studio_admin") or "")\n'
+                "\n\n# Le cookie « studio_admin » ETAIT le jeton",
+                '    return _session_admin_valide(req.cookies.get("studio_admin") or "")\n'
+                "\n\n# Le cookie « studio_admin » ETAIT le jeton")),
+        ]),
+    dict(
+        nom="la session derivee n'ouvre jamais",
+        banc="banc_comptes.py",
+        imite="la comparaison inversee sur la signature : tout est refuse, "
+              "et un banc qui ne verifierait que les refus resterait vert "
+              "sur une porte condamnee",
+        rougit="et cette session ouvre admin_ok() comme admin_par_jeton()",
+        editions=[
+            ("serveur.py", brut(
+                "    if not fin.isdigit() or not signature:\n"
+                "        return False",
+                "    if not fin.isdigit() or signature:\n"
+                "        return False")),
+        ]),
+    dict(
+        nom="la peremption du cookie n'est pas verifiee",
+        banc="banc_comptes.py",
+        imite="la signature suffit : une session capturee vaut pour "
+              "toujours, alors que sa date est ecrite dedans en clair",
+        rougit="une session perimee n'ouvre plus",
+        editions=[
+            ("serveur.py", brut(
+                "    return (hmac.compare_digest(signature, _signature_admin(fin))\n"
+                "            and time.time() < int(fin))",
+                "    return hmac.compare_digest(signature, _signature_admin(fin))")),
+        ]),
+    dict(
+        nom="la signature ne depend plus du jeton",
+        banc="banc_comptes.py",
+        imite="une cle fixe a la place du jeton : la session se forge sans "
+              "rien savoir, et regenerer le jeton — le geste qu'on fait "
+              "quand il a fui — ne ferme plus aucune session",
+        rougit="et regenerer le jeton ferme les sessions derivees de l'ancien",
+        editions=[
+            ("serveur.py", brut(
+                '    return hmac.new(ADMIN_JETON.encode(), f"session.{fin}".encode(),',
+                '    return hmac.new(b"session-admin", f"session.{fin}".encode(),')),
+        ]),
+    dict(
+        nom="un cookie mal forme fait lever la porte",
+        banc="banc_comptes.py",
+        imite="« la date d'abord, c'est moins cher » — et int() sur ce qu'un "
+              "inconnu a mis dans le cookie leve avant la signature : un 500 "
+              "sur chaque requete d'administration, depuis le reseau",
+        rougit="un cookie vide, sans point, sans signature ou qui n'est pas un nombre est refuse sans lever",
+        editions=[
+            ("serveur.py", brut(
+                "    if not fin.isdigit() or not signature:\n"
+                "        return False\n"
+                "    return (hmac.compare_digest(signature, _signature_admin(fin))\n"
+                "            and time.time() < int(fin))",
+                "    return (time.time() < int(fin)\n"
+                "            and hmac.compare_digest(signature, _signature_admin(fin)))")),
+        ]),
+    # ── 3. les echecs s'oublient ──────────────────────────────────────
+    dict(
+        nom="_freinage() n'oublie plus les vieux echecs",
+        banc="banc_comptes.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : la purge existe, "
+              "personne ne l'appelle. _ECHECS ne se vide qu'au succes, et une "
+              "rafale de noms inventes — un par requete, jamais de succes — "
+              "le fait grossir sans borne, depuis le reseau et sans session",
+        rougit="un echec plus vieux qu'OUBLI_ECHECS est oublie au freinage suivant",
+        editions=[
+            ("serveur.py", brut(
+                "    _oublier_les_vieux_echecs()\n"
+                "    combien, quand = _ECHECS.get(cle, (0, 0.0))",
+                "    combien, quand = _ECHECS.get(cle, (0, 0.0))")),
+        ]),
+    dict(
+        nom="le seuil d'oubli est dans le futur",
+        banc="banc_comptes.py",
+        imite="le signe inverse : TOUT echec est « trop vieux », la table est "
+              "vide a chaque appel et le freinage ne mord plus jamais — le "
+              "dictionnaire s'essaie a pleine vitesse",
+        rougit="tandis qu'un echec recent reste compte et freine encore",
+        editions=[
+            ("serveur.py", brut("    seuil = time.time() - OUBLI_ECHECS",
+                                "    seuil = time.time() + OUBLI_ECHECS")),
+        ]),
+    dict(
+        nom="la borne coupe les plus recents",
+        banc="banc_comptes.py",
+        imite="le tri a l'envers : quand la table deborde, ce sont ceux qui "
+              "essaient EN CE MOMENT qu'on oublie — c'est-a-dire qu'une rafale "
+              "assez large desarme le freinage de sa propre attaque",
+        rougit="au-dela d'ECHECS_MAX couples, les plus ANCIENS sont coupes",
+        editions=[
+            ("serveur.py", brut(
+                "        for cle in sorted(_ECHECS, key=lambda k: _ECHECS[k][1])[:len(_ECHECS) - ECHECS_MAX]:",
+                "        for cle in sorted(_ECHECS, key=lambda k: -_ECHECS[k][1])[:len(_ECHECS) - ECHECS_MAX]:")),
+        ]),
+    dict(
+        nom="la borne de taille est oubliee",
+        banc="banc_comptes.py",
+        imite="l'oubli par l'age suffit, croit-on : dix mille noms inventes "
+              "par heure tiennent dans la fenetre, et la table grossit "
+              "d'autant a chaque heure d'une attaque qui ne s'arrete pas",
+        rougit="au-dela d'ECHECS_MAX couples, les plus ANCIENS sont coupes",
+        editions=[
+            ("serveur.py", brut(
+                "    if len(_ECHECS) > ECHECS_MAX:\n"
+                "        for cle in sorted(_ECHECS, key=lambda k: _ECHECS[k][1])[:len(_ECHECS) - ECHECS_MAX]:\n"
+                "            del _ECHECS[cle]\n",
+                "")),
+        ]),
+    # ── 7. la generation des sessions ─────────────────────────────────
+    dict(
+        nom="changer de mot de passe ne ferme pas les sessions",
+        banc="banc_seance.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026, sous sa forme "
+              "neuve : la generation existe, et l'endroit qui remplace le "
+              "mot de passe ne l'incremente pas. Une session capturee reste "
+              "bonne trente jours quoi que fasse son proprietaire",
+        rougit="changer de mot de passe FERME les sessions ouvertes",
+        editions=[
+            ("comptes.py", brut(
+                '        c["sel"], c["empreinte"] = empreinte(mdp)\n'
+                '        c["gen"] = self._generation(nom) + 1\n',
+                '        c["sel"], c["empreinte"] = empreinte(mdp)\n')),
+        ]),
+    dict(
+        nom="armer le second facteur ne ferme pas les sessions",
+        banc="banc_seance.py",
+        imite="celui qui tenait une session AVANT que le compte soit protege "
+              "la garde apres : le second facteur ne protege que les entrees "
+              "futures, pas la porte deja ouverte",
+        rougit="ARMER le second facteur ferme les sessions d'avant",
+        editions=[
+            ("comptes.py", brut(
+                '        c.pop("mfa_attente", None)\n'
+                '        c["gen"] = self._generation(nom) + 1\n'
+                "        self.sauver()\n"
+                "        return secours",
+                '        c.pop("mfa_attente", None)\n'
+                "        self.sauver()\n"
+                "        return secours")),
+        ]),
+    dict(
+        nom="desarmer le second facteur ne ferme pas les sessions",
+        banc="banc_seance.py",
+        imite="la protection est levee par un tiers — l'administration, avec "
+              "le jeton — et les sessions qu'elle gardait continuent de "
+              "courir comme si de rien n'etait",
+        rougit="le DESARMER aussi",
+        editions=[
+            ("comptes.py", brut(
+                '        c.pop("mfa", None)\n'
+                '        c.pop("mfa_attente", None)\n'
+                '        c["gen"] = self._generation(nom) + 1\n',
+                '        c.pop("mfa", None)\n'
+                '        c.pop("mfa_attente", None)\n')),
+        ]),
+    dict(
+        nom="la generation est a cote de la signature, pas dessous",
+        banc="banc_seance.py",
+        imite="le numero est dans le jeton mais n'est pas signe : un vieux "
+              "jeton capture se ranime en y ecrivant le numero courant, qui "
+              "se lit dans n'importe quel jeton frais",
+        rougit="et retoucher la generation dans un vieux jeton ne le ranime pas",
+        editions=[
+            ("comptes.py", brut(
+                '        charge = f"{nom}.{fin}.{self._generation(nom)}"\n'
+                "        signature = hmac.new(self.secret, charge.encode(), hashlib.sha256).hexdigest()[:32]\n"
+                '        return f"{charge}.{signature}"',
+                '        charge = f"{nom}.{fin}"\n'
+                "        signature = hmac.new(self.secret, charge.encode(), hashlib.sha256).hexdigest()[:32]\n"
+                '        return f"{charge}.{self._generation(nom)}.{signature}"')),
+            ("comptes.py", brut(
+                '        attendu = hmac.new(self.secret, f"{nom}.{fin}.{gen}".encode(),',
+                '        attendu = hmac.new(self.secret, f"{nom}.{fin}".encode(),')),
+        ]),
+    dict(
+        nom="l'ancien format de jeton est accepte par compatibilite",
+        banc="banc_seance.py",
+        imite="« on ne deconnecte personne a la mise a jour » : un jeton a "
+              "trois morceaux, signe sans generation, est lu avec la "
+              "generation courante. Tout jeton d'avant — et toute capture "
+              "d'avant — contourne la generation pour toujours",
+        rougit="un jeton de l'ancien format, a trois morceaux et signe sans generation, ne rend plus rien",
+        editions=[
+            ("comptes.py", brut(
+                '            nom, fin, gen, signature = (jeton or "").rsplit(".", 3)\n'
+                "        except ValueError:\n"
+                "            return None\n"
+                '        attendu = hmac.new(self.secret, f"{nom}.{fin}.{gen}".encode(),\n'
+                "                           hashlib.sha256).hexdigest()[:32]",
+                '            nom, fin, gen, signature = (jeton or "").rsplit(".", 3)\n'
+                '            charge = f"{nom}.{fin}.{gen}"\n'
+                "        except ValueError:\n"
+                "            # Un jeton d'avant la generation : on ne deconnecte personne.\n"
+                "            try:\n"
+                '                nom, fin, signature = (jeton or "").rsplit(".", 2)\n'
+                "            except ValueError:\n"
+                "                return None\n"
+                '            gen, charge = str(self._generation(nom)), f"{nom}.{fin}"\n'
+                "        attendu = hmac.new(self.secret, charge.encode(),\n"
+                "                           hashlib.sha256).hexdigest()[:32]")),
+        ]),
+    dict(
+        nom="nom_du_jeton() decoupe encore en trois",
+        banc="banc_seance.py",
+        imite="jeton() ecrit quatre morceaux et nom_du_jeton() en lit trois : "
+              "plus AUCUN jeton ne designe personne, et tout le monde est "
+              "dehors — c'est le cas d'avant l'audit qui le voit, parce "
+              "qu'il exige qu'un jeton frais ouvre",
+        rougit="le jeton de session vaut par sa SIGNATURE",
+        editions=[
+            ("comptes.py", brut(
+                '            nom, fin, gen, signature = (jeton or "").rsplit(".", 3)',
+                '            nom, fin, gen, signature = (jeton or "").rsplit(".", 2)')),
+        ]),
+    # ── 8. le nom d'entree dans l'en-tete multipart ───────────────────
+    dict(
+        nom="le nom d'entree part tel quel dans l'en-tete",
+        banc="banc_agent.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 6 SEPTEMBRE 2026 : un guillemet et un "
+              "retour a la ligne dans le nom ferment « filename=\"…\" » et "
+              "ecrivent la suite comme d'autres champs — type=output, et le "
+              "fichier atterrit dans les sorties de la machine de quelqu'un "
+              "d'autre",
+        rougit="un nom d'entree venu du studio ne peut pas fermer l'en-tete multipart",
+        editions=[
+            ("agent_noeud.py", brut(
+                "        nom = re.sub(r'[\"\\r\\n]', \"\", os.path.basename(origine or \"\")) or \"entree\"\n",
+                "        nom = os.path.basename(origine or \"\") or \"entree\"\n")),
+        ]),
+    dict(
+        nom="le nom d'entree garde son chemin",
+        banc="banc_agent.py",
+        imite="les guillemets sont otes, le chemin reste : « ../../x.png » "
+              "part tel quel a ComfyUI, et c'est a lui seul qu'on laisse "
+              "decider ou il ecrit",
+        rougit="et il est reduit a son nom de base",
+        editions=[
+            ("agent_noeud.py", brut(
+                "        nom = re.sub(r'[\"\\r\\n]', \"\", os.path.basename(origine or \"\")) or \"entree\"\n",
+                "        nom = re.sub(r'[\"\\r\\n]', \"\", origine or \"\") or \"entree\"\n")),
+        ]),
+    dict(
+        nom="un nom vide part vide",
+        banc="banc_agent.py",
+        imite="le repli « entree » oublie : filename=\"\" part a ComfyUI, qui "
+              "refuse ou invente — et le graphe ne trouvera jamais son fichier",
+        rougit="un nom qui ne laisse rien une fois nettoye devient « entree »",
+        editions=[
+            ("agent_noeud.py", brut(
+                "        nom = re.sub(r'[\"\\r\\n]', \"\", os.path.basename(origine or \"\")) or \"entree\"\n",
+                "        nom = re.sub(r'[\"\\r\\n]', \"\", os.path.basename(origine or \"\"))\n")),
+        ]),
+    dict(
+        nom="le graphe est cherche par le nom nettoye",
+        banc="banc_agent.py",
+        imite="la forme naturelle une fois le nettoyage pose : la meme "
+              "variable partout. Un graphe qui portait « dossier/chat.png » "
+              "ne contient plus le nom envoye, la correction ne trouve rien, "
+              "et le rendu cherche un fichier absent — sans erreur",
+        rougit="par son nom d'ORIGINE",
+        editions=[
+            ("agent_noeud.py", brut(
+                '                    if (noeud.get("inputs") or {}).get(champ) == origine:',
+                '                    if (noeud.get("inputs") or {}).get(champ) == nom:')),
+        ]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
-             + NOEUD + VERSION + BOUCLE_AGENT)
+             + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

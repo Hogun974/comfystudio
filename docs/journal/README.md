@@ -22,7 +22,7 @@ Pour l'état actuel, c'est [la documentation](../README.md) qui fait foi, et
 | Essai | Date | Ce qui a bougé depuis |
 |---|---|---|
 | [Installation par un inconnu](installation.md) | 30 août 2026 | **Son verdict est périmé.** Il conclut « le produit fonctionne, le chemin d'installation non ». Le README a été refait depuis, et trois blocages réels ont été corrigés le 4 septembre : la commande d'enrôlement que le studio distribue échouait à tous les coups, un avertissement consultatif empêchait la mise en service, et le lanceur Windows exigeait un ComfyUI que l'installeur n'installe pas. `banc_noeud.py` les garde. |
-| [L'exécutable Windows](exe_windows.md) | 30 août 2026 | Les chiffres tiennent (45 Mo, 28 s). Le script de construction ne code plus le chemin de Python en dur : il passe par `installation.py:python_du_studio()`. |
+| [L'exécutable Windows](exe_windows.md) | 30 août 2026 | Les chiffres tiennent (45 Mo, 29 s le 6 septembre). Le script de construction essaie toujours le chemin en dur de ComfyUI portable en premier, et ne se rabat sur `installer.py --python-du-studio` que s'il n'y est pas. `SCRIPTS_NOEUD` compte 11 clés, pas 13. |
 | [Retouche localisée](inpainting.md) | 30 août 2026 | Rien sur le fond. Voir [Retouche localisée](../retouche-localisee.md) pour l'état actuel. |
 | [Où la retouche casse](retouche_limites.md) | 30 août 2026 | Rien sur le fond. Cite un lanceur (`LANCER ComfyUI (2080 Ti).bat`) qui n'est pas au dépôt : c'était un fichier local de l'auteur. |
 | [Un masque depuis une description](masque_texte.md) | 30 août 2026 | Rien sur le fond. |

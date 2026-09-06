@@ -165,7 +165,7 @@ Les plus courantes :
 | `STUDIO_LLM_ECRITURE` | impose le modèle d'écriture ; vide, le studio prend le plus gros qui tienne |
 
 Les autres, plus rares, passent de la même façon : `STUDIO_TRAVAILLEURS`,
-`STUDIO_ATTENTE_CARTE`, `STUDIO_ANALYSE_MAX`, `STUDIO_ANALYSE_PETITE`,
+`STUDIO_ATTENTE_CARTE`, `STUDIO_ANALYSE_PETITE`,
 `STUDIO_LLM_GARDER`, `STUDIO_PURGE_ORPHELINS`, `STUDIO_ADMIN`,
 `COMFY_MODELES`, `COMFY_ENTREE`, `COMFY_LANCEUR`. Leur détail est dans
 [Réglages](reglages.md).
@@ -187,13 +187,14 @@ machine hôte n'est pas soi. Le banc refuse toute autre valeur figée — répé
 dans le compose un défaut déjà écrit dans le code, c'est deux maîtres pour un
 réglage, et le jour où le code change l'image garde l'ancien sans un mot.
 
-Ces quatre-là ne sont pas lus par le studio mais par **Compose** :
+Celles-là ne sont pas lues par le studio mais par **Compose** :
 
 | Variable | Rôle |
 |---|---|
 | `STUDIO_PORT`, `COMFY_PORT`, `OLLAMA_PORT` | les ports publiés sur l'hôte |
 | `COMPOSE_PROJECT_NAME` | **le nom qui décide du volume** — à changer pour tout second studio |
 | `STUDIO_NOM`, `STUDIO_IMAGE` | nom du conteneur et tag de l'image |
+| `COMFY_NOM`, `COMFY_IMAGE`, `OLLAMA_NOM` | les mêmes pour les deux conteneurs des profils `moteur` et `complet` |
 | `ROUE`, `COMFY_ARGS` | construction et arguments du ComfyUI conteneurisé |
 
 **Quatre réglages ont aussi leur champ dans `/admin`.** Les deux délais de pause

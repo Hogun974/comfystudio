@@ -141,8 +141,8 @@ répond avant de démarrer et te le dit sinon.
 paquet\construire_windows.bat
 ```
 
-Il produit `paquet\dist\comfystudio.exe` — 45 Mo, en 28 secondes à froid
-(mesuré le 30 août 2026 sur la RTX 2080 Ti). Il
+Il produit `paquet\dist\ComfyStudio.exe` — 45 Mo, en 29 secondes à froid
+(mesuré le 6 septembre 2026 sur la RTX 2080 Ti). Il
 faut PyInstaller (`pip install pyinstaller`) ; le reste voyage dans l'exe, pages
 web et modèle d'aiguillage compris. **Pose-le dans son propre dossier**, pas
 dans une copie du dépôt : il écrit à côté de lui — conversations, comptes, clés

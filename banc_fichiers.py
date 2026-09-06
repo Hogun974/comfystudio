@@ -1156,6 +1156,184 @@ try:
     dit(rep.status == 200,
         "et le meme envoi depuis l'interface passe : c'est l'origine qui est "
         "jugee, pas la methode", f"HTTP {rep.status}")
+
+    # ══════════════════════════════════════════════════════════════════
+    #  4. POST /api/noeud/fichier — ce qu'une machine du parc peut poser
+    # ══════════════════════════════════════════════════════════════════
+    # LA QUATRIEME ROUTE A OCTETS, ajoutee le 6 septembre 2026 avec l'audit
+    # qui l'a corrigee. Le tid n'etait que NETTOYE, jamais verifie : toute
+    # machine enregistree deposait sous n'importe quel travail, et « wb »
+    # recouvrait un fichier deja livre et deja montre — que /api/fichier
+    # ressert ensuite depuis le disque. Une substitution silencieuse, avec le
+    # seul jeton d'un noeud. Chaque refus est mesure par son CODE et par
+    # l'absence du fichier sur le disque : un 403 qui aurait ecrit quand meme
+    # ne protegerait rien.
+    print("\n  ── ce qu'une machine du parc peut deposer, et sous quel travail ──")
+    S.REGISTRE.clear()
+    S.REGISTRE["pc"] = {"id": "pc", "titre": "PC", "agent": True,
+                        "jeton": "jeton-du-pc"}
+    S.REGISTRE["nas"] = {"id": "nas", "titre": "NAS", "agent": True,
+                         "jeton": "jeton-du-nas"}
+    S.TACHES.clear()
+    S.DEPOTS.clear()
+    S.CONVERSATIONS.clear()
+    T_PC, T_PC2, T_FINI, T_LIBRE = "a" * 32, "b" * 32, "c" * 32, "d" * 32
+    T_DISQUE, T_DISQUE_FINI, T_INVENTE = "e" * 32, "f" * 32, "0" * 32
+    S.TACHES[T_PC] = {"etat": "en cours", "noeud": "pc"}
+    S.TACHES[T_PC2] = {"etat": "en cours", "noeud": "pc"}
+    S.TACHES[T_FINI] = {"etat": "fini", "noeud": "pc"}
+    S.TACHES[T_LIBRE] = {"etat": "en cours"}
+    # Deux tours sur le « disque » et absents de TACHES : c'est l'etat d'un
+    # studio qui a redemarre pendant le rendu, la tolerance de rattacher_tardif.
+    S.CONVERSATIONS["c-disque"] = {"id": "c-disque", "proprietaire": MOI,
+                                   "tours": [{"id": T_DISQUE, "etat": "en cours"},
+                                             {"id": T_DISQUE_FINI, "etat": "fini"}]}
+
+    async def deposer_agent(jeton, tid, nom, octets, coupe=None):
+        """Le VRAI api_noeud_fichier, nourri d'un flux comme le reseau le donne.
+
+        « coupe » : le flux leve cette exception au lieu de finir — le reseau
+        qui lache pendant le depot. Rend (statut, corps) ; une route qui LEVE
+        rend 500 et le texte de l'exception, pour que le banc rougisse au lieu
+        de mourir (voir Panne).
+        """
+        route = du_studio("api_noeud_fichier", None)
+        if route is None:
+            return 500, {"erreur": "api_noeud_fichier n'existe pas"}
+        req = Req(query={"tid": tid, "nom": nom}, entetes={"X-Jeton": jeton},
+                  methode="POST", chemin="/api/noeud/fichier")
+        boucle = asyncio.get_running_loop()
+        flux = streams.StreamReader(BaseProtocol(boucle),
+                                    limit=max(2 ** 16, len(octets) + 4096),
+                                    loop=boucle)
+        flux.feed_data(octets)
+        if coupe is not None:
+            flux.set_exception(coupe)
+        else:
+            flux.feed_eof()
+        req.content = flux
+        try:
+            rep = await route(req)
+            return rep.status, json.loads(rep.text)
+        except Exception as souci:      # noqa: BLE001 — voir Panne
+            return 500, {"erreur": f"la route a leve : {souci!r}"}
+
+    def pose(ident, nom):
+        chemin = S.chemin_agent(ident, nom)
+        return bool(chemin) and os.path.exists(chemin)
+
+    def contenu(ident, nom):
+        with open(S.chemin_agent(ident, nom), "rb") as f:
+            return f.read()
+
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC, "rendu.png", b"un rendu"))
+    dit(st == 200 and d.get("octets") == 8 and pose("pc", "rendu.png")
+        and contenu("pc", "rendu.png") == b"un rendu"
+        and (S.DEPOTS.get(T_PC) or {}).get("noms") == {"rendu.png"}
+        and (S.DEPOTS.get(T_PC) or {}).get("octets") == 8
+        and isinstance((S.DEPOTS.get(T_PC) or {}).get("quand"), float),
+        "la machine a qui le travail est confie depose, et le studio note ce "
+        "qu'elle a pose sous ce travail — nom et octets",
+        f"HTTP {st} {d}, DEPOTS={S.DEPOTS.get(T_PC)}")
+
+    # ── A QUI LE TRAVAIL A ETE CONFIE ──────────────────────────────────
+    st, d = lancer(deposer_agent("jeton-du-nas", T_PC, "vole.png", b"substitue"))
+    dit(st == 403 and not pose("nas", "vole.png"),
+        "une machine ne depose que sous un travail qui LUI a ete confie : "
+        "sous celui d'une autre, 403 et rien sur le disque",
+        f"HTTP {st} {d.get('erreur')!r}, fichier={pose('nas', 'vole.png')}")
+    st, d = lancer(deposer_agent("jeton-du-pc", T_FINI, "tard.png", b"tard"))
+    dit(st == 409 and not pose("pc", "tard.png"),
+        "un travail TERMINE ne recoit plus rien : ses fichiers sont ce que "
+        "l'utilisateur a vu, 409",
+        f"HTTP {st} {d.get('erreur')!r}, fichier={pose('pc', 'tard.png')}")
+    st, d = lancer(deposer_agent("jeton-du-pc", T_INVENTE, "nul.png", b"nul"))
+    dit(st == 404 and not pose("pc", "nul.png"),
+        "un tid que ni TACHES ni les conversations ne connaissent est un tid "
+        "invente : 404",
+        f"HTTP {st} {d.get('erreur')!r}, fichier={pose('pc', 'nul.png')}")
+    st, d = lancer(deposer_agent("jeton-du-nas", T_LIBRE, "libre.png", b"libre"))
+    dit(st == 200 and pose("nas", "libre.png"),
+        "un travail en cours sans machine attributaire accepte le depot : "
+        "c'est le cas du studio qui n'a pas encore note a qui il l'a confie",
+        f"HTTP {st} {d}")
+
+    # ── LA TOLERANCE DU REDEMARRAGE, et sa limite ──────────────────────
+    st, d = lancer(deposer_agent("jeton-du-pc", T_DISQUE, "apres.png", b"apres"))
+    dit(st == 200 and pose("pc", "apres.png"),
+        "un travail que TACHES a oublie mais qu'un tour OUVERT porte encore "
+        "sur le disque est admis — la tolerance de rattacher_tardif, apres un "
+        "redemarrage", f"HTTP {st} {d}")
+    st, d = lancer(deposer_agent("jeton-du-pc", T_DISQUE_FINI, "fini.png", b"fini"))
+    dit(st == 409 and not pose("pc", "fini.png"),
+        "mais un tour FINI sur le disque refuse comme un travail termine : "
+        "409, meme quand TACHES l'ignore",
+        f"HTTP {st} {d.get('erreur')!r}, fichier={pose('pc', 'fini.png')}")
+
+    # ── UN NOM DEJA POSE NE SE RECOUVRE QUE PAR LE MEME TRAVAIL ───────
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC, "rendu.png", b"le meme, renvoye"))
+    dit(st == 200 and contenu("pc", "rendu.png") == b"le meme, renvoye"
+        and S.DEPOTS[T_PC]["noms"] == {"rendu.png"},
+        "la MEME machine, sous le MEME travail, peut reposer le meme nom : "
+        "c'est la machine qui reessaie apres une reponse perdue en route",
+        f"HTTP {st}, contenu={contenu('pc', 'rendu.png')!r}")
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC2, "rendu.png", b"recouvert"))
+    dit(st == 409 and contenu("pc", "rendu.png") == b"le meme, renvoye",
+        "un AUTRE travail de la meme machine ne recouvre pas un nom deja "
+        "pose : 409, et le rendu montre garde son contenu",
+        f"HTTP {st} {d.get('erreur')!r}, contenu={contenu('pc', 'rendu.png')!r}")
+
+    # ── LE PLAFOND EST AUSSI CUMULE PAR TRAVAIL ────────────────────────
+    # Un seul depot de 2 Go etait borne ; vingt depots de 2 Go sous vingt noms
+    # ne l'etaient pas. Les deux plafonds sont abaisses le temps du cas : les
+    # vrais demanderaient des gigaoctets en memoire.
+    vrai_max, vrai_max_tache = S.DEPOT_MAX, S.DEPOT_MAX_TACHE
+    avant = S.DEPOTS[T_PC]["octets"]
+    S.DEPOT_MAX, S.DEPOT_MAX_TACHE = 1000, avant + 100
+    try:
+        st1, _ = lancer(deposer_agent("jeton-du-pc", T_PC, "un.png", b"x" * 60))
+        st2, d2 = lancer(deposer_agent("jeton-du-pc", T_PC, "deux.png", b"y" * 60))
+        dit(st1 == 200 and st2 == 413 and not pose("pc", "deux.png")
+            and S.DEPOTS[T_PC]["octets"] == avant + 60
+            and "deux.png" not in S.DEPOTS[T_PC]["noms"],
+            "ce qu'un travail pose en TOUT est plafonne (DEPOT_MAX_TACHE) : le "
+            "depot qui ferait deborder rend 413, son fichier partiel est "
+            "efface et il n'est pas compte",
+            f"HTTP {st1} puis {st2} {d2.get('erreur')!r}, "
+            f"DEPOTS={S.DEPOTS.get(T_PC)}")
+    finally:
+        S.DEPOT_MAX, S.DEPOT_MAX_TACHE = vrai_max, vrai_max_tache
+
+    # ── UN FLUX COUPE NE LAISSE PAS DE FICHIER PARTIEL ─────────────────
+    # Le reseau qui lache n'est pas un ValueError : avant l'audit, seul le
+    # « trop gros » effacait, et le nouvel essai de la machine trouvait son
+    # propre moignon « deja la ».
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC, "coupe.png", b"debut",
+                                 coupe=ConnectionResetError("le reseau a lache")))
+    dit(st == 500 and "lache" in d.get("erreur", "")
+        and not pose("pc", "coupe.png")
+        and "coupe.png" not in S.DEPOTS[T_PC]["noms"],
+        "un flux coupe par le reseau ne laisse pas de fichier partiel : "
+        "l'exception remonte, le moignon est efface et le nom reste libre pour "
+        "le nouvel essai",
+        f"HTTP {st} {d.get('erreur')!r}, fichier={pose('pc', 'coupe.png')}")
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC, "coupe.png", b"entier"))
+    dit(st == 200 and contenu("pc", "coupe.png") == b"entier",
+        "et le nouvel essai de la machine passe sous ce nom-la",
+        f"HTTP {st}")
+
+    # ── LE MENAGE DE TACHES EMPORTE LE REGISTRE DES DEPOTS ─────────────
+    # « garder=1 » et non zero : « finies[:-0] » est une liste vide, et
+    # purger_taches(garder=0) ne purge rien du tout. Deux travaux finis, on en
+    # garde un : c'est le plus ancien, T_PC, qui part.
+    S.TACHES[T_PC]["etat"] = "fini"
+    S.purger_taches(garder=1)
+    dit(T_PC not in S.TACHES and T_PC not in S.DEPOTS and T_LIBRE in S.DEPOTS
+        and T_LIBRE in S.TACHES,
+        "purger_taches() oublie aussi ce que le travail avait depose : DEPOTS "
+        "ne grossit pas plus longtemps que TACHES",
+        f"TACHES={sorted(k[:1] for k in S.TACHES)}, "
+        f"DEPOTS={sorted(k[:1] for k in S.DEPOTS)}")
 finally:
     S.aiohttp.ClientSession = _vraie_session
 

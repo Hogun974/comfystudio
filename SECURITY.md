@@ -62,7 +62,12 @@ quelque chose ne répond. Restent ouvertes la page elle-même (sinon on ne
 pourrait pas afficher le formulaire de connexion), les routes de session, les
 routes d'administration et `/demarrage` — qui vérifient elles-mêmes le jeton, et
 dont la fermeture condamnerait le seul moyen d'entrer sur une installation
-neuve.
+neuve —, les routes des machines à agent (`/api/noeud/*`, authentifiées par
+leur jeton), et une lecture sans effet ni secret : `/api/textes`, le
+dictionnaire de la page, sans quoi l'écran de connexion resterait français.
+(`/api/fournisseurs`, ouverte elle aussi, disait à un inconnu quelles modalités
+partaient chez un tiers ; aucune page ne la lisait, elle a été retirée le
+6 septembre 2026.)
 
 **`/api/demarrage` est de celles-là, et c'est la plus bavarde.** Elle sert la
 liste de contrôle de la [première mise en route](docs/premiere-mise-en-route.md) :
@@ -131,9 +136,10 @@ deviné, réutilisé d'un autre site, ou lu dans un journal ne suffit plus à en
 
 **Ce que ça ne protège pas** — et c'est plus long que la liste d'au-dessus :
 
-- **Pas une session déjà ouverte.** Le cookie `studio_compte` reste valable
-  jusqu'à sa péremption ; armer, désarmer ou changer de mot de passe ne le
-  révoque pas. Voir « il n'y a pas de révocation » ci-dessous.
+- **Pas une session ouverte avant, tant qu'on ne touche à rien.** Le cookie
+  `studio_compte` reste valable jusqu'à sa péremption — mais armer, désarmer
+  ou changer de mot de passe ferme désormais toutes les sessions du compte.
+  Voir « la révocation » ci-dessous.
 - **Pas l'hôte.** Le secret est en clair sur le disque (voir plus bas) : qui lit
   `conversations/_comptes.json` calcule les codes lui-même.
 - **Pas l'hameçonnage en temps réel.** Un code recopié dans une page qui imite
@@ -211,10 +217,17 @@ mot de passe, quelqu'un qui trouve un onglet ouvert armerait le facteur avec
 
 ### Les sessions sont des jetons signés
 
-Le cookie `studio_compte` contient `nom.péremption.signature`, où la signature
-est un **HMAC-SHA256 tronqué à 32 caractères hexadécimaux**. Le serveur ne
-retient rien : une session survit à un redémarrage, ce qui compte ici. La
-péremption est d'un mois.
+Le cookie `studio_compte` contient `nom.péremption.génération.signature`, où
+la signature est un **HMAC-SHA256 tronqué à 32 caractères hexadécimaux**. Le
+serveur ne retient rien : une session survit à un redémarrage, ce qui compte
+ici. La péremption est d'un mois. La *génération* est un compteur porté par le
+compte ; un jeton dont la génération n'est plus celle du compte ne désigne
+plus personne.
+
+Le cookie `studio_admin` de la console n'est **plus le jeton d'administration
+lui-même** : c'est `péremption.signature`, signé par ce jeton et valable sept
+jours. Un navigateur qui fuit livre une session qui meurt, pas le secret qui
+désarme le second facteur d'autrui.
 
 Deux choses à savoir :
 
@@ -236,11 +249,28 @@ Deux choses à savoir :
   « générer », ni « téléverser », ni le changement de mot de passe. Elle a été
   écrite au lieu d'être promise. Les machines à agent en sont exclues : pas de
   navigateur, pas d'`Origin`, une authentification par jeton.
-- **Il n'y a pas de révocation.** Se déconnecter efface le cookie du navigateur ;
-  le jeton reste valide jusqu'à sa péremption. Supprimer un compte suffit à
-  invalider ses jetons (le nom n'est plus reconnu), changer son mot de passe non.
-  Pour tout invalider d'un coup, supprimer `conversations/_session.json` : un
-  nouveau secret est tiré au démarrage suivant, et tout le monde se reconnecte.
+- **La révocation passe par la génération.** Se déconnecter efface le cookie
+  du navigateur, et lui seul : le jeton reste valide ailleurs jusqu'à sa
+  péremption — sortir sur le téléphone ne ferme pas l'ordinateur du salon.
+  Changer de mot de passe, armer ou désarmer le second facteur incrémentent la
+  génération du compte, et **toutes** ses sessions d'avant tombent, sur tous
+  les appareils : c'est le geste de qui croit son cookie volé. Supprimer un
+  compte invalide aussi ses jetons (le nom n'est plus reconnu). Pour tout
+  invalider d'un coup, supprimer `conversations/_session.json` : un nouveau
+  secret est tiré au démarrage suivant, et tout le monde se reconnecte.
+- **Toute réponse porte `X-Frame-Options: DENY`, `Referrer-Policy:
+  no-referrer` et `X-Content-Type-Options: nosniff`.** Pas de
+  `Content-Security-Policy` : les pages tiennent leur script en ligne, et une
+  CSP qui l'autorise ne protège de rien.
+- **Un corps JSON est borné à 4 Mo** (`CORPS_MAX`), routes sans session
+  comprises. Les dépôts de fichiers ne passent pas par là : `/api/televerser`
+  et `/api/noeud/fichier` lisent le flux eux-mêmes et se bornent seuls — par
+  fichier, et en cumulé par travail pour les machines à agent.
+- **Une machine à agent ne dépose que sous un travail qui lui a été confié et
+  qui court encore.** Un dépôt sous le travail d'une autre machine rend 403,
+  sous un travail fini 409, sous un identifiant inconnu 404 ; un nom déjà
+  livré n'est recouvert que par le même travail, jamais par un autre — un
+  rendu montré ne change plus de contenu après coup.
 
 ### Les secrets sont en clair sur le disque de l'hôte
 
@@ -338,8 +368,22 @@ dans le journal de la tâche.
 
 | | |
 |---|---|
-| Protégé | mots de passe (scrypt + sel), second facteur TOTP au choix de chacun, sessions (HMAC), cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt |
-| **Pas** protégé | le transit (HTTP simple, cookies sans `Secure`), les secrets au repos (JSON en clair, secrets TOTP compris), la révocation de session, l'hameçonnage en temps réel, l'hôte lui-même |
+| Protégé | mots de passe (scrypt + sel), second facteur TOTP au choix de chacun, sessions (HMAC, révoquées par la génération du compte), cookie d'administration dérivé du jeton et non le jeton, cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, en-têtes anti-cadre et anti-devinette de type, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt, dépôts d'agent liés au travail confié |
+| **Pas** protégé | le transit (HTTP simple, cookies sans `Secure`), les secrets au repos (JSON en clair, secrets TOTP compris), la déconnexion d'un seul appareil qui ne ferme pas les autres, l'hameçonnage en temps réel, l'hôte lui-même, la mise à jour automatique des agents (voir ci-dessous) |
+
+### Ce qui reste ouvert : la mise à jour automatique des agents
+
+Un agent compare à chaque annonce l'empreinte de son code à celle que le studio
+annonce, télécharge `/api/noeud/agent` quand elles diffèrent, vérifie que c'est
+du Python qui s'analyse, et se relance dessus. **Rien ne signe ce code.** Qui
+tient le studio — ou le trajet réseau, en HTTP simple — tient donc toutes les
+machines à agent, avec les droits de l'utilisateur qui les fait tourner. C'est
+un choix : la mise à jour d'un parc à la main ne se fait pas, et un studio
+compromis tient déjà les rendus, les fichiers et les clés. Deux parades
+existent, désactivées par défaut : `--empreinte` (ou `AGENT_EMPREINTE`) épingle
+l'agent sur une empreinte connue, `--sans-maj-auto` coupe tout. Une signature
+par clé privée hors du studio serait la vraie réponse ; elle demanderait de
+signer chaque version de l'agent à la main, et ce n'est pas tranché.
 
 ## Ce qui n'est pas une faille
 

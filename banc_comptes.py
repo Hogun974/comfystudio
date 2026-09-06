@@ -686,6 +686,175 @@ try:
     dit(bool(r3.mfa_confirmer("coince", mfa.code(s4))),
         "un enrolement neuf redevient possible derriere")
 
+    # ══ LA PORTE D'ADMINISTRATION ET LE FREINAGE, EXECUTES ═════════════
+    # SERVEUR.PY N'EST TOUJOURS PAS IMPORTE — il tirerait aiohttp. Mais les
+    # gardes de l'audit du 6 septembre 2026 ne se lisent pas, elles
+    # s'executent : « le cookie ne contient pas le jeton » ou « un echec trop
+    # vieux est oublie » sont des proprietes d'une VALEUR, pas d'une forme.
+    # On decoupe donc dans l'arbre de syntaxe les seules definitions dont ces
+    # gardes ont besoin — elles ne touchent qu'a hmac, hashlib, time et
+    # secrets — et on les fait tourner ici, avec un faux « web » qui ne sait
+    # que rendre une reponse et y poser un cookie. Le code qui tourne est le
+    # texte de serveur.py, pas une copie de sa logique.
+    print("\n  ── la porte d'administration et le freinage, executes ──")
+    import hashlib as _hashlib
+    import hmac as _hmac
+    import secrets as _secrets
+    import time as _time
+    import types as _types
+    import asyncio as _asyncio
+
+    VOULUS = {"_ECHECS", "ATTENTE_MAX", "OUBLI_ECHECS", "ECHECS_MAX",
+              "SESSION_ADMIN", "_oublier_les_vieux_echecs", "_freinage",
+              "_signature_admin", "session_admin", "_session_admin_valide",
+              "admin_ok", "admin_par_jeton", "api_admin_entrer"}
+    morceaux = []
+    for n in arbre.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in VOULUS:
+            morceaux.append(n)
+        elif (isinstance(n, ast.Assign) and len(n.targets) == 1
+              and isinstance(n.targets[0], ast.Name)
+              and n.targets[0].id in VOULUS):
+            morceaux.append(n)
+
+    class _Reponse:
+        def __init__(self, corps, status):
+            self.corps, self.status, self.cookies = corps, status, {}
+
+        def set_cookie(self, nom, valeur, **_):
+            self.cookies[nom] = valeur
+
+    class _Req(dict):
+        def __init__(self, entetes=None, cookies=None, corps=None):
+            super().__init__(compte="")
+            self.headers = dict(entetes or {})
+            self.cookies = dict(cookies or {})
+            self.transport = None
+            self._corps = corps
+
+        async def json(self):
+            return self._corps
+
+    JETON = "jeton-d-administration-du-banc-0123456789"
+    srv = {"hmac": _hmac, "hashlib": _hashlib, "time": _time,
+           "secrets": _secrets, "ADMIN_JETON": JETON, "COMPTES": None,
+           "print": lambda *a, **k: None,
+           "web": _types.SimpleNamespace(
+               json_response=lambda d, status=200: _Reponse(d, status))}
+    manquants = sorted(VOULUS - {getattr(m, "name", None)
+                                 or m.targets[0].id for m in morceaux})
+    try:
+        exec(compile(ast.Module(body=morceaux, type_ignores=[]), "serveur.py",
+                     "exec"), srv)
+    except Exception as e:      # noqa: BLE001 — un banc qui meurt ne mesure rien
+        manquants.append(f"{type(e).__name__}: {e}")
+    dit(not manquants,
+        "serveur.py definit les treize noms de la porte d'administration et du "
+        "freinage, et ils s'executent sans aiohttp",
+        ", ".join(manquants) or "les treize")
+
+    def appel(nom, *a):
+        """Rend ce que la fonction rend, ou None si elle manque ou leve."""
+        try:
+            f = srv[nom]
+            r = f(*a)
+            return _asyncio.run(r) if _asyncio.iscoroutine(r) else r
+        except Exception:       # noqa: BLE001
+            return None
+
+    # ── LE COOKIE N'EST PLUS LE JETON ──────────────────────────────────
+    cookie = appel("session_admin") or ""
+    fin_cookie, _, sig_cookie = cookie.partition(".")
+    dit(JETON not in cookie and fin_cookie.isdigit()
+        and len(sig_cookie) == 32 and int(sig_cookie or "0", 16) >= 0
+        and int(fin_cookie or 0) > _time.time() + 6 * 24 * 3600,
+        "le cookie d'administration est une session derivee — une peremption "
+        "et sa signature par le jeton — et ne contient PAS le jeton : un "
+        "navigateur qui fuit ne livre plus le secret maitre",
+        f"{cookie[:14]}…{cookie[-6:]} ({len(cookie)} caracteres)")
+    dit(appel("_session_admin_valide", cookie) is True
+        and appel("admin_ok", _Req(cookies={"studio_admin": cookie})) is True
+        and appel("admin_par_jeton", _Req(cookies={"studio_admin": cookie})) is True,
+        "et cette session ouvre admin_ok() comme admin_par_jeton(), sans "
+        "en-tete X-Admin", "les deux ouvrent")
+    dit(appel("admin_ok", _Req(entetes={"X-Admin": JETON})) is True
+        and appel("admin_par_jeton", _Req(entetes={"X-Admin": JETON})) is True,
+        "le jeton lui-meme, en en-tete X-Admin, ouvre toujours : c'est par lui "
+        "qu'on entre la premiere fois", "les deux ouvrent")
+    dit(appel("admin_ok", _Req(cookies={"studio_admin": JETON})) is False
+        and appel("admin_par_jeton", _Req(cookies={"studio_admin": JETON})) is False,
+        "un cookie qui vaut le jeton BRUT n'ouvre plus rien : ce que les "
+        "navigateurs d'avant gardaient, et ce qu'une capture contiendrait, "
+        "est mort", "les deux refusent")
+
+    # PERIMEE, ou signee sous un AUTRE jeton : refus dans les deux cas.
+    fin_passee = str(int(_time.time() - 1))
+    perime = f"{fin_passee}.{appel('_signature_admin', fin_passee)}"
+    dit(appel("_session_admin_valide", perime) is False
+        and appel("admin_ok", _Req(cookies={"studio_admin": perime})) is False,
+        "une session perimee n'ouvre plus, meme signee juste : elle meurt "
+        "d'elle-meme sans registre", f"fin={fin_passee}")
+    srv["ADMIN_JETON"] = "un-jeton-regenere-depuis-0123456789"
+    dit(appel("_session_admin_valide", cookie) is False
+        and appel("admin_ok", _Req(cookies={"studio_admin": cookie})) is False,
+        "et regenerer le jeton ferme les sessions derivees de l'ancien : la "
+        "signature depend du jeton du jour", "refusee sous le jeton neuf")
+    srv["ADMIN_JETON"] = JETON
+    dit(appel("_session_admin_valide", "") is False
+        and appel("_session_admin_valide", "pas-un-nombre.abcd") is False
+        and appel("_session_admin_valide", fin_cookie) is False
+        and appel("_session_admin_valide", None) is False,
+        "un cookie vide, sans point, sans signature ou qui n'est pas un "
+        "nombre est refuse sans lever : il vient du reseau",
+        "quatre formes refusees")
+
+    # LA ROUTE POSE CE COOKIE-LA. Sans ce cas, session_admin() pourrait
+    # exister et la route continuer d'ecrire ADMIN_JETON.
+    srv["_ECHECS"].clear()
+    rep = appel("api_admin_entrer", _Req(corps={"jeton": JETON}))
+    pose = (rep.cookies.get("studio_admin") if rep else None) or ""
+    dit(rep is not None and rep.status == 200 and pose
+        and JETON not in pose
+        and appel("_session_admin_valide", pose) is True,
+        "api_admin_entrer pose une session derivee valide dans le cookie, "
+        "et non plus le jeton tel quel", f"{pose[:14]}…")
+    rep = appel("api_admin_entrer", _Req(corps={"jeton": "faux"}))
+    dit(rep is not None and rep.status == 403 and not rep.cookies,
+        "et un jeton faux ne pose rien", f"HTTP {rep.status if rep else '?'}")
+
+    # ── LES ECHECS S'OUBLIENT ──────────────────────────────────────────
+    # _ECHECS ne se vidait qu'au succes : une rafale de noms inventes, un par
+    # requete et sans jamais de succes, le faisait grossir sans borne, depuis
+    # le reseau et sans session.
+    echecs = srv["_ECHECS"]
+    echecs.clear()
+    vieux, recent = ("vieux", "10.0.0.1"), ("recent", "10.0.0.2")
+    echecs[vieux] = (7, _time.time() - srv["OUBLI_ECHECS"] - 1)
+    echecs[recent] = (7, _time.time())
+    freine = appel("_freinage", recent)
+    dit(vieux not in echecs and recent in echecs and freine and freine > 0,
+        "un echec plus vieux qu'OUBLI_ECHECS est oublie au freinage suivant, "
+        "tandis qu'un echec recent reste compte et freine encore",
+        f"{sorted(echecs)} freine {freine}")
+    echecs.clear()
+    maintenant = _time.time()
+    plafond = srv["ECHECS_MAX"]
+    # Tous RECENTS — un dixieme de seconde d'ecart — pour que seule la borne
+    # de taille joue, et non l'oubli par l'age mesure juste au-dessus.
+    for i in range(plafond + 5):
+        echecs[("compte", f"10.1.{i // 256}.{i % 256}")] = (
+            1, maintenant - (plafond + 5 - i) * 0.1)
+    appel("_freinage", ("autre", "10.9.9.9"))
+    restants = sorted(echecs.values(), key=lambda v: v[1])
+    dit(len(echecs) == plafond
+        and restants[0][1] == maintenant - plafond * 0.1
+        and restants[-1][1] == maintenant - 1 * 0.1,
+        "au-dela d'ECHECS_MAX couples, les plus ANCIENS sont coupes et les "
+        "plus recents gardes : la table est bornee sans desarmer le freinage "
+        "de ceux qui essaient encore",
+        f"{len(echecs)} couples, du plus vieux a {maintenant - restants[0][1]:.0f} s")
+    echecs.clear()
+
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for x in rate:
         print(f"    RATE : {x}")
