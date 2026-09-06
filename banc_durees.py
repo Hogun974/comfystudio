@@ -189,6 +189,24 @@ dit(S.debordement_acceptable("zima", "pc", "realvis", "1216x832") is True,
     "mais on sait deja ou poser le sien — le parc, lui, a ete mesure",
     str(S.debordement_acceptable("zima", "pc", "realvis", "1216x832")))
 
+# ── la duree que l'utilisateur ECRIT, en chiffres ou en lettres ──────────
+# Ne dans le banc le 6 septembre 2026 : un `_nombre()` ecrit une seconde fois
+# plus bas dans serveur.py — pour les annonces des agents — ecrasait celui-ci
+# a l'import, et « deux minutes » valait zero. Vingt-cinq bancs verts, aucun ne
+# lisait une duree en lettres ; seul le filet de la CI contre les noms definis
+# deux fois l'a vu.
+print("\n  ── la duree demandee, en chiffres et en lettres ──")
+for texte, attendu in (("une video de deux minutes", 120.0),
+                       ("2 min", 120.0),
+                       ("1 min 30", 90.0),
+                       ("45 secondes", 45.0),
+                       ("2 a 3 min", 150.0),
+                       ("un chat qui dort", None)):
+    lu = S.duree_demandee(texte)
+    dit(lu == attendu,
+        f"« {texte} » se lit {attendu if attendu is not None else 'comme rien'}",
+        f"lu {lu}")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

@@ -2106,6 +2106,20 @@ DUREES = [
         editions=[("serveur.py", brut(
             '        if pid is not None and conv.get("proprietaire") != pid:'
             + chr(10) + "            continue" + chr(10), ""))]),
+    # Nee le 6 septembre 2026 : un second `_nombre()` dans serveur.py ecrasait
+    # celui-ci a l'import, et aucun banc ne lisait une duree en lettres.
+    dict(
+        nom="les nombres en lettres ne sont plus lus",
+        banc="banc_durees.py",
+        imite="EXACTEMENT ce qu'a fait un def ecrit deux fois : la fonction "
+              "existe, elle rend un flottant, et « deux minutes » vaut zero "
+              "sans lever — le devis de la video part sur soixante secondes",
+        rougit="« une video de deux minutes » se lit 120.0",
+        editions=[
+            ("serveur.py", brut(
+                "    return float(_MOTS_NOMBRE.get(m, m)) if m else 0.0",
+                "    return float(m) if m.isdigit() else 0.0")),
+        ]),
 ]
 
 
@@ -8833,7 +8847,7 @@ SECURITE_SEPT = [
               "foi de ce qu'une machine annonce",
         rougit="une VRAM qui n'est pas un nombre vaut zero",
         editions=[
-            ("serveur.py", brut('                    vram=_nombre(d.get("vram")),',
+            ("serveur.py", brut('                    vram=_flottant(d.get("vram")),',
                                 '                    vram=float(d.get("vram") or 0),')),
         ]),
     dict(

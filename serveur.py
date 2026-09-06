@@ -13092,8 +13092,10 @@ async def liberer_noeuds_a_url():
             _consigne_annulee(x["id"])
 
 
-def _nombre(v):
-    """Un flottant, ou 0.0 si ce que la machine a envoye n'en est pas un."""
+def _flottant(v):
+    """Un flottant, ou 0.0 si ce que la machine a envoye n'en est pas un.
+    (_nombre(), plus haut, lit des nombres ECRITS dans une demande : ce n'est
+    pas le meme travail, et le premier nom choisi ici l'ecrasait.)"""
     try:
         return float(v or 0)
     except (TypeError, ValueError):
@@ -13167,7 +13169,7 @@ async def api_noeud_annonce(req):
                     # est pas un vaut zero plutot qu'une trace de pile en 500.
                     carte=(d["carte"][:120] if isinstance(d.get("carte"), str)
                            else None),
-                    vram=_nombre(d.get("vram")),
+                    vram=_flottant(d.get("vram")),
                     # NONE ET NON ZERO QUAND LA CLE MANQUE. « float(x or 0) »
                     # lisait l'agent d'avant le 3 septembre 2026 — qui n'annonce
                     # pas ce champ — comme une carte entierement pleine, donc
@@ -13176,7 +13178,7 @@ async def api_noeud_annonce(req):
                     libre=(float(d["libre"])
                            if isinstance(d.get("libre"), (int, float))
                            else None),
-                    ram=_nombre(d.get("ram")))
+                    ram=_flottant(d.get("ram")))
     # CE QUE LA CONSIGNE PRECEDENTE A DONNE. L'agent rend le code HTTP de son
     # ComfyUI : un 404 se diagnostique tout seul, la ou la seule lecture de la
     # VRAM aurait laisse choisir entre « route inconnue » et « la carte etait
