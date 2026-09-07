@@ -2861,6 +2861,8 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
     Le compte est ecrit une seule fois, ici, plutot qu'a chaque appelant : trois
     endroits a instrumenter, c'est deux occasions d'en oublier un.
     """
+    if tid and (TACHES.get(tid) or {}).get("cerveau_lent") and not image_b64:
+        raise CerveauTropLent((TACHES.get(tid) or {}).get("cerveau_lent"))
     depart_ = time.time()
     try:
         return await _appeler_llm(texte, image_b64, systeme, json_mode, modele,
@@ -2870,6 +2872,11 @@ async def appeler_ollama(texte, image_b64=None, systeme=None, json_mode=True,
         # Sous la seconde, la ligne n'apprend rien et encombre le fil.
         if tid and mis >= 1:
             journal(tid, f"  … {mis:.0f} s")
+
+
+class CerveauTropLent(RuntimeError):
+    """Le cerveau de cette demande a depasse ANALYSE_DELAI une fois deja :
+    on ne l'attend plus pour les appels suivants de la meme demande."""
 
 
 def consigner_appel_distant(*a, **kw):
@@ -3061,7 +3068,8 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                          and not (i and (noeud(i) or {}).get("pause"))
                          for u, i in cerveaux[rang_ + 1:])
             rendu = await _ollama_local(
-                ici, url, 300 if (ici.get("images") and reste_) else 900)
+                ici, url, (300 if reste_ else 900) if ici.get("images")
+                else ANALYSE_DELAI)
             # Seulement si on l'a demande CHAUD : sans « garder », Ollama l'a
             # deja relache et il n'y a rien a fermer derriere nous.
             if garder and tid:
@@ -3069,7 +3077,19 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             return rendu
         except Exception as e:
             panne = e
-            if len(cerveaux) > 1:
+            if isinstance(e, asyncio.TimeoutError) and not ici.get("images") and tid:
+                # CE CERVEAU EST TROP LENT POUR CETTE DEMANDE, et elle fait
+                # encore deux ou trois appels apres celui-ci : enrichir,
+                # traduire, nommer le sujet. Chacun attendrait l'echeance a
+                # son tour — neuf minutes pour une demande, mesure du
+                # 7 septembre 2026 sur zima, dont le modele tourne sur le
+                # processeur. On le note sur la demande : les appels suivants
+                # ne partent pas, et l'aiguillage par mots-cles prend le
+                # relais tout de suite.
+                (TACHES.get(tid) or {})["cerveau_lent"] = titre_ol
+                journal(tid, f"{titre_ol} n'a pas repondu en {ANALYSE_DELAI} s — "
+                             f"le reste de cette demande se fera sans modele")
+            elif len(cerveaux) > 1:
                 journal(tid, f"{titre_ol} n'a pas repondu "
                              f"({type(e).__name__}) — on essaie ailleurs")
         finally:
@@ -3322,6 +3342,23 @@ def _pourquoi_aucun_cerveau():
                 "est en pause — son modele de langage avec elle")
         return f"{' et '.join(dorment)} {quoi}"
     return "aucun modele de langage joignable"
+
+
+# COMBIEN DE TEMPS UNE ANALYSE PEUT ATTENDRE UN MODELE LOCAL. L'appel de
+# texte n'avait pas d'echeance a lui — 900 s, celle des images. Mesure du
+# 7 septembre 2026, le PC en pause : sur zima, dont la carte ne tient aucun
+# modele de 7 milliards, un appel prend 119 a 300 s et plus, et une demande en
+# fait trois ou quatre. L'utilisateur attendait cinq a quinze minutes un plan
+# que l'aiguillage par mots-cles aurait donne tout de suite. Au-dela de cette
+# echeance, on renonce a CE cerveau pour CETTE demande et l'on continue sans
+# modele. Elle vaut pour le texte seulement : lire une image n'a pas de
+# raccourci, et garde ses 300 ou 900 s.
+#
+# STUDIO_ANALYSE_MAX (90 s) a existe et a ete retire le 31 aout : il bornait
+# l'analyse EMPRUNTEE par l'agent, qui prenait 162 s sur zima, et la condamnait
+# sans rien mettre a la place. Celle-ci est trois fois plus large, et elle
+# tombe sur un repli qui repond.
+ANALYSE_DELAI = int(os.environ.get("STUDIO_ANALYSE_DELAI") or 180)
 
 
 async def _ollama_local(corps, url=None, secondes=900):

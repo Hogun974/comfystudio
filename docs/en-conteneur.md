@@ -165,7 +165,7 @@ Les plus courantes :
 | `STUDIO_LLM_ECRITURE` | impose le modèle d'écriture ; vide, le studio prend le plus gros qui tienne |
 
 Les autres, plus rares, passent de la même façon : `STUDIO_TRAVAILLEURS`,
-`STUDIO_ATTENTE_CARTE`, `STUDIO_ANALYSE_PETITE`,
+`STUDIO_ATTENTE_CARTE`, `STUDIO_ANALYSE_PETITE`, `STUDIO_ANALYSE_DELAI`,
 `STUDIO_LLM_GARDER`, `STUDIO_PURGE_ORPHELINS`, `STUDIO_ADMIN`,
 `COMFY_MODELES`, `COMFY_ENTREE`, `COMFY_LANCEUR`. Leur détail est dans
 [Réglages](reglages.md).

@@ -187,6 +187,71 @@ async def main():
     dit(S.corps_ici(corps, MORT) is None or S.corps_ici(corps, MORT).get("model"),
         "et une adresse sans machine connue n'est pas jugee sur une carte qu'on ignore")
     dit(S.PART_CARTE_ANALYSE == 0.75, "la part est de trois quarts", str(S.PART_CARTE_ANALYSE))
+
+    # ── une analyse de texte a une echeance, et une demande ne l'attend qu'une fois ──
+    # Mesure du 7 septembre 2026, le PC en pause : 119 a 300 s et plus par
+    # appel sur zima, dont le modele tourne sur le processeur, et une demande
+    # fait trois ou quatre appels. L'appel de texte n'avait que l'echeance des
+    # images, 900 s. Ici, _ollama_local est remplace : on lit l'echeance qu'on
+    # lui passe, et on le fait depasser.
+    poser()
+    recus = []
+
+    async def faux_local(corps, url=None, secondes=900):
+        recus.append((bool(corps.get("images")), secondes, url))
+        if corps.get("prompt") == "depasse":
+            raise asyncio.TimeoutError()
+        return "{}"
+
+    vrai_local = S._ollama_local
+    S._ollama_local = faux_local
+    S.TACHES["banc-lent"] = {"etapes": [], "etat": "en cours"}
+    try:
+        await S._appeler_llm("x", None, None, True, None, 0.1, "banc-lent")
+        dit(recus and recus[-1][0] is False and recus[-1][1] == S.ANALYSE_DELAI == 180,
+            "un appel de TEXTE part avec ANALYSE_DELAI, 180 s, et non les 900 s des images",
+            str(recus[-1:]))
+        await S._appeler_llm("x", "aW1hZ2U=", None, True, None, 0.1, "banc-lent")
+        dit(recus and recus[-1][0] is True and recus[-1][1] in (300, 900),
+            "une IMAGE garde ses 300 ou 900 s : lire n'a pas de raccourci",
+            str(recus[-1:]))
+        del recus[:]
+        try:
+            await S._appeler_llm("depasse", None, None, True, None, 0.1, "banc-lent")
+            issue = "rendu"
+        except Exception as e:
+            issue = type(e).__name__
+        lignes = [e["msg"] for e in S.TACHES["banc-lent"]["etapes"]]
+        dit(issue != "rendu" and S.TACHES["banc-lent"].get("cerveau_lent")
+            and any("n'a pas repondu en 180 s" in l and "sans modele" in l for l in lignes),
+            "au-dela de l'echeance, la demande est marquee « cerveau lent » et le fil dit "
+            "que le reste se fera sans modele",
+            f"{issue}, marque={S.TACHES['banc-lent'].get('cerveau_lent')!r}")
+        dit(len(recus) >= 1 and all(not r[0] for r in recus),
+            "et chaque cerveau a ete essaye a l'echeance, pas au-dela",
+            f"{len(recus)} appel(s)")
+        del recus[:]
+        try:
+            await S.appeler_ollama("encore", None, None, True, tid="banc-lent")
+            issue = "rendu"
+        except S.CerveauTropLent:
+            issue = "CerveauTropLent"
+        except Exception as e:
+            issue = type(e).__name__
+        dit(issue == "CerveauTropLent" and not recus,
+            "l'appel SUIVANT de la meme demande ne part pas : CerveauTropLent, zero appel",
+            f"{issue}, {len(recus)} appel(s)")
+        S.TACHES["banc-autre"] = {"etapes": [], "etat": "en cours"}
+        rendu = await S.appeler_ollama("x", None, None, True, tid="banc-autre")
+        dit(rendu == "{}" and len(recus) == 1,
+            "alors qu'une AUTRE demande part normalement : la marque est par demande",
+            f"{len(recus)} appel(s)")
+        rendu = await S.appeler_ollama("x", "aW1hZ2U=", None, True, tid="banc-lent")
+        dit(rendu == "{}", "et une image de la demande lente part quand meme : elle n'a pas de raccourci")
+    finally:
+        S._ollama_local = vrai_local
+        S.TACHES.pop("banc-lent", None)
+        S.TACHES.pop("banc-autre", None)
     S._CERVEAUX[NAS]["modeles"] = [m for m in S._CERVEAUX[NAS]["modeles"]
                                    if m["name"] != "qwen2.5vl:7b"]
     remplace = S.corps_ici(corps, NAS)

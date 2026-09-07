@@ -81,6 +81,7 @@ Voir [Clés d'API](cles-api.md).
 | `COMFY_MODELES`, `COMFY_ENTREE` | *sous `COMFY_DIR`* | ou directement ces deux dossiers |
 | `COMFY_LANCEUR` | *deviné* | script de démarrage de ComfyUI |
 | `STUDIO_PURGE_ORPHELINS` | *(absent)* | `1` pour effacer au démarrage les fichiers que plus aucune conversation ne réclame |
+| `STUDIO_ANALYSE_DELAI` | `180` | secondes au-delà desquelles un modèle local qui n'a pas répondu à une analyse de **texte** est abandonné **pour cette demande** : l'aiguillage par mots-clés prend le relais, sans enrichissement ni traduction. Mesure du 7 septembre 2026 : 119 à 300 s par appel sur la GTX 1060 de **zima**, dont la carte ne tient aucun modèle de 7 milliards. La lecture d'image garde ses 300 ou 900 s |
 
 ## L'installeur, pas le studio
 

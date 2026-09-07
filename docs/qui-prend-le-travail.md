@@ -58,7 +58,9 @@ du plan fait trois mille jetons. Un modèle d'analyse ne prend donc que les
 modèle de texte installé qui y tienne le remplace, et le fil de la demande le
 dit (« mistral:7b plutôt que qwen2.5vl:7b : qwen2.5vl:7b déborde de la carte de
 cette machine »). Sans rien de plus petit installé, le modèle demandé reste :
-lent vaut mieux que muet. `STUDIO_ANALYSE_PETITE=1` y remet la plus petite ; voir
+lent vaut mieux que muet — mais pas indéfiniment : au-delà de
+`STUDIO_ANALYSE_DELAI` (180 s), le cerveau est abandonné pour cette demande, et
+le reste se fait par mots-clés (voir [Réglages](reglages.md)). `STUDIO_ANALYSE_PETITE=1` y remet la plus petite ; voir
 [Réglages](reglages.md) et [Le modèle de langage peut venir d'une autre
 machine](modele-de-langage-distant.md).
 

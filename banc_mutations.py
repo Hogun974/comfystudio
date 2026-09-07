@@ -8834,6 +8834,37 @@ COMPREHENSION_SEPT = [
         editions=[("serveur.py", brut(
             "PART_CARTE_ANALYSE = 0.75",
             "PART_CARTE_ANALYSE = 1.35"))]),
+    dict(
+        nom="l'analyse de texte reprend l'echeance des images",
+        banc="banc_cerveaux.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 7 SEPTEMBRE 2026 : 900 s pour tout. "
+              "Sur zima, dont le modele tourne sur le processeur, une demande "
+              "attendait trois fois cinq minutes un plan que les mots-cles "
+              "auraient donne tout de suite",
+        rougit="un appel de TEXTE part avec ANALYSE_DELAI",
+        editions=[("serveur.py", brut(
+            '                ici, url, (300 if reste_ else 900) if ici.get("images")' + chr(10)
+            + "                else ANALYSE_DELAI)",
+            '                ici, url, 300 if (ici.get("images") and reste_) else 900)'))]),
+    dict(
+        nom="l'echeance passe sans marquer la demande",
+        banc="banc_cerveaux.py",
+        imite="l'appel echoue et l'on continue comme avant : enrichir, "
+              "traduire, nommer le sujet attendent chacun l'echeance a leur "
+              "tour — neuf minutes pour une demande",
+        rougit="la demande est marquee « cerveau lent »",
+        editions=[("serveur.py", brut(
+            '                (TACHES.get(tid) or {})["cerveau_lent"] = titre_ol',
+            '                pass'))]),
+    dict(
+        nom="l'appel suivant ignore la marque",
+        banc="banc_cerveaux.py",
+        imite="la marque est posee, le fil la dit, et rien ne la lit : "
+              "l'effet promis n'existe pas",
+        rougit="CerveauTropLent, zero appel",
+        editions=[("serveur.py", brut(
+            '    if tid and (TACHES.get(tid) or {}).get("cerveau_lent") and not image_b64:',
+            '    if False and tid and (TACHES.get(tid) or {}).get("cerveau_lent") and not image_b64:'))]),
 ]
 
 SECURITE_SEPT = [
