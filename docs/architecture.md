@@ -110,12 +110,16 @@ Le 7 septembre 2026, sur vingt-six demandes de tous types soumises au studio
 déployé, huit rendaient une « réponse mal formée » deux fois de suite, puis
 tombaient sur l'aiguillage par mots-clés après deux appels perdus. Le premier
 remède essayé a été un **schéma JSON** dans le champ `format` d'Ollama
-(`SCHEMA_PLAN`), qui contraint le décodage lui-même. Mesuré aussitôt : **15 à
-36 s par analyse sur la 2080 Ti au lieu de 1 à 2**, et autant de réponses mal
-formées — le décodage contraint de `qwen2.5vl:7b` sous Ollama 0.33 coûte dix à
-vingt fois l'appel, et coupe les longues. Le schéma existe donc dans
-`corps_ollama()` (un `json_mode` qui est un dictionnaire), et l'appel du plan
-ne le passe pas ; un banc garde qu'on ne le rebranche pas sans remesurer.
+(`SCHEMA_PLAN`), qui contraint le décodage lui-même. Mesuré aussitôt : 15 à
+36 s par analyse sur la 2080 Ti au lieu de 1 à 2, et autant de réponses mal
+formées. **Mais la mesure est à refaire** : la batterie suivante, schéma
+retiré, a donné 4 à 93 s sur la même carte, et `nvidia-smi` a montré pourquoi
+— un jeu occupait la 2080 Ti à 89 % pendant les deux batteries. Le PC est la
+machine de quelqu'un ; une mesure d'analyse commence par vérifier que sa
+carte est libre. Le schéma reste donc dans `corps_ollama()` (un `json_mode`
+qui est un dictionnaire), et l'appel du plan ne le passe pas tant qu'une
+mesure carte libre n'a pas tranché ; un banc garde qu'on ne le rebranche pas
+sans elle.
 
 Le vrai défaut était dans la lecture : la réponse était prise du premier « { »
 au **dernier** « } », et un modèle qui rend deux objets à la suite, ou un objet

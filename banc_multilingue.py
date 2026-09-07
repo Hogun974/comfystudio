@@ -350,18 +350,20 @@ async def main():
                                                   "langue", "tonalite", "cases", "classement",
                                                   "questions", "raison", "parametres"},
         "quatre champs exiges, et les quinze du gabarit decrits")
-    # ET L'APPEL DU PLAN NE LE PASSE PAS, et c'est mesure : avec le schema,
-    # 15 a 36 s par analyse sur la 2080 Ti au lieu de 1 a 2, le 7 septembre
-    # 2026. La capacite reste ; ce cas garde qu'on ne la rebranche pas « pour
-    # la proprete » sans remesurer.
+    # ET L'APPEL DU PLAN NE LE PASSE PAS : avec le schema, 15 a 36 s par
+    # analyse sur la 2080 Ti au lieu de 1 a 2, le 7 septembre 2026 — mais un
+    # jeu occupait la carte a 89 % pendant la mesure, et la batterie suivante
+    # sans schema a fait 4 a 93 s. Non tranche ; la capacite reste, et ce cas
+    # garde qu'on ne la rebranche pas « pour la proprete » sans une mesure
+    # carte libre.
     arbre = ast.parse(io.open(S.__file__, encoding="utf-8").read())
     aig = next(n for n in ast.walk(arbre)
                if isinstance(n, ast.AsyncFunctionDef) and n.name == "aiguiller")
     appels = [n for n in ast.walk(aig) if isinstance(n, ast.Call)
               and isinstance(n.func, ast.Name) and n.func.id == "appeler_ollama"]
     dit(len(appels) == 1 and not any(k.arg == "json_mode" for k in appels[0].keywords),
-        "et l'appel du plan, dans aiguiller(), NE passe PAS le schema : dix a "
-        "vingt fois plus lent, mesure", f"{len(appels)} appel(s)")
+        "et l'appel du plan, dans aiguiller(), NE passe PAS le schema : la "
+        "mesure carte libre n'a pas encore tranche", f"{len(appels)} appel(s)")
 
     # ══ le premier objet JSON, pas le plus grand ═══════════════════════
     # Huit reponses mal formees sur vingt-six commencaient par « { "intention": » :

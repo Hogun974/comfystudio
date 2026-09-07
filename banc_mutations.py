@@ -8730,8 +8730,9 @@ COMPREHENSION_SEPT = [
         nom="le schema revient sur l'appel du plan",
         banc="banc_multilingue.py",
         imite="la proprete : « on a un schema, autant s'en servir ». Quinze a "
-              "trente-six secondes par analyse au lieu d'une a deux, mesure du "
-              "7 septembre 2026 sur la 2080 Ti",
+              "trente-six secondes par analyse au lieu d'une a deux le "
+              "7 septembre 2026 — mesure confondue par un jeu sur la carte, "
+              "non tranchee : on ne rebranche pas sans une mesure carte libre",
         rougit="NE passe PAS le schema",
         editions=[("serveur.py", brut(
             "            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid)\n"
