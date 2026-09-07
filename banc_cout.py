@@ -743,6 +743,42 @@ verifier("et la taille ne grave pas l'abime dans le fichier",
          chr(0xFFFD) not in open(serveur.FICHIER_COUTS, encoding="utf-8",
                                  errors="replace").read())
 
+# ── la raison du local se dit UNE fois par demande ────────────────────────
+# Une demande fait trois ou quatre appels au modele — plan, enrichissement,
+# traduction, sujet — et chacun redisait « nuage coupe pour ton compte… » :
+# quatre lignes identiques dans le fil de chaque demande, mesure du
+# 7 septembre 2026 sur le studio deploye. On coupe l'appel juste APRES la
+# ligne de journal, en remplacant corps_ollama() : aucun reseau, et la ligne
+# est deja ecrite quand l'exception part.
+def _stop(*a, **k):
+    raise RuntimeError("stop : rien ne part vers Ollama sur ce banc")
+
+
+vraie_raison, vrai_corps = serveur.raison_du_local, serveur.corps_ollama
+serveur.raison_du_local = lambda *a, **k: "nuage coupe pour ton compte : banc"
+serveur.corps_ollama = _stop
+serveur.CHOIX["llm"] = "local"
+serveur.PREFERENCES["plafond_nuage"] = 0
+for tid_ in ("fil-un", "fil-deux"):
+    serveur.TACHES[tid_] = {"proprietaire": "quelqu-un", "etapes": [], "etat": "en cours"}
+boucle = asyncio.new_event_loop()
+try:
+    for tid_ in ("fil-un", "fil-un", "fil-un", "fil-deux"):
+        try:
+            boucle.run_until_complete(
+                serveur._appeler_llm("un chat roux", None, None, False, None, 0.4, tid_))
+        except RuntimeError:
+            pass
+finally:
+    boucle.close()
+    serveur.raison_du_local, serveur.corps_ollama = vraie_raison, vrai_corps
+lignes_un = [e["msg"] for e in serveur.TACHES["fil-un"]["etapes"] if "nuage coupe" in e["msg"]]
+lignes_deux = [e["msg"] for e in serveur.TACHES["fil-deux"]["etapes"] if "nuage coupe" in e["msg"]]
+verifier("trois appels d'une meme demande n'ecrivent « nuage coupe » qu'une fois dans son fil",
+         len(lignes_un) == 1, f"{len(lignes_un)} ligne(s)")
+verifier("et une autre demande a bien la sienne : c'est par demande, pas pour toujours",
+         len(lignes_deux) == 1, f"{len(lignes_deux)} ligne(s)")
+
 shutil.rmtree(DONNEES, ignore_errors=True)
 
 print()

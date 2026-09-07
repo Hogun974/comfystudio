@@ -45,7 +45,20 @@ ordre pendant une journée. Ce dernier recours coûte de toute façon vingt à
 quarante fois le prix d'un appel direct — mesure du 31 août 2026, 3,8 s en
 direct contre 162,6 s par l'agent de **zima** — et il n'est plus borné dans le
 temps : la borne `STUDIO_ANALYSE_MAX` le condamnait sur cette machine, elle a
-été retirée. `STUDIO_ANALYSE_PETITE=1` y remet la plus petite ; voir
+été retirée.
+
+**Le modèle d'analyse doit tenir sur la carte, prompt compris.** Mesure du
+7 septembre 2026, le PC en pause : `qwen2.5vl:7b` (5,97 Go) sur la GTX 1060 de
+zima (5,9 Go) mettait 119 à 261 s par appel, six demandes sur six au-delà de
+deux minutes, quatre au-delà de cinq. Le même appel fait une à deux secondes
+sur la 2080 Ti. Le plafond ordinaire (carte plus RAM tolérée) le disait
+« tenable » ; il tient, et déborde en RAM dès que le prompt est long, et celui
+du plan fait trois mille jetons. Un modèle d'analyse ne prend donc que les
+**trois quarts de la carte** (`PART_CARTE_ANALYSE`) ; au-delà, le plus gros
+modèle de texte installé qui y tienne le remplace, et le fil de la demande le
+dit (« mistral:7b plutôt que qwen2.5vl:7b : qwen2.5vl:7b déborde de la carte de
+cette machine »). Sans rien de plus petit installé, le modèle demandé reste :
+lent vaut mieux que muet. `STUDIO_ANALYSE_PETITE=1` y remet la plus petite ; voir
 [Réglages](reglages.md) et [Le modèle de langage peut venir d'une autre
 machine](modele-de-langage-distant.md).
 

@@ -8686,6 +8686,136 @@ BOUCLE_AGENT = [
 # pour ces gardes — elles sont nees avec les cas — et banc_comptes.py execute
 # les fonctions decoupees dans l'arbre de serveur.py plutot que de les lire :
 # c'est le sens aller, la ligne NOMMEE, qui porte la preuve ici.
+# ── la comprehension, mesuree en vrai le 7 septembre 2026 ─────────────────
+# Vingt-six demandes de tous types, dont des malformees, soumises au studio
+# deploye et annulees des le plan. Quatre defauts en sont sortis ; chacun a
+# son cas et sa mutation.
+COMPREHENSION_SEPT = [
+    dict(
+        nom="« au ralenti » redevient une fluidification a lui seul",
+        banc="verifier_formulations.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 7 SEPTEMBRE 2026 : « une vague qui se "
+              "brise au ralenti » — le contenu d'une video a creer — partait "
+              "en fluidification de la video precedente, qu'il n'y avait pas, "
+              "et rendait une erreur au lieu d'un rendu",
+        rougit="« une video de 5 secondes d une vague qui se brise au ralenti »",
+        editions=[("serveur.py", brut(
+            r'r"(?:\bla|\ble|\bca|\bcette video|\bla video|\ble clip|\bcelle-ci)"' + chr(10)
+            + r'    r"\s+(?:au|en) ralenti|"' + chr(10)
+            + '    r"(?:passe|mets|met|remets|refais|rejoue)(?:-| )?(?:la|le|moi)?.{0,12}"' + chr(10)
+            + '    r"(?:au ralenti|en ralenti|slow ?motion)|"' + chr(10)
+            + r'    r"\bralentis\b)", re.I)',
+            'r"au ralenti|en ralenti|slow ?motion|ralentis)", re.I)'))]),
+    dict(
+        nom="le schema du plan retombe en « json »",
+        banc="banc_multilingue.py",
+        imite="la forme d'avant : « format: json », un JSON quelconque. Huit "
+              "reponses mal formees sur vingt-six, deux appels perdus a chaque "
+              "fois, puis l'aiguillage par mots-cles",
+        rougit="corps_ollama() envoie le SCHEMA quand on lui en donne un",
+        editions=[("serveur.py", brut(
+            '    if json_mode: corps["format"] = json_mode if isinstance(json_mode, dict) else "json"',
+            '    if json_mode: corps["format"] = "json"'))]),
+    dict(
+        nom="l'appel du plan oublie le schema",
+        banc="banc_multilingue.py",
+        imite="le schema existe, corps_ollama() sait l'envoyer, et l'appel qui "
+              "compte ne le passe pas : tout est la sauf l'effet",
+        rougit="et c'est bien l'appel du plan, dans aiguiller(), qui passe SCHEMA_PLAN",
+        editions=[("serveur.py", brut(
+            '            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid,' + chr(10)
+            + '                                        json_mode=SCHEMA_PLAN)',
+            '            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid)'))]),
+    dict(
+        nom="le schema ne permet plus « refus »",
+        banc="banc_multilingue.py",
+        imite="une intention que le gabarit demande au modele et que le schema "
+              "lui interdit : le decodage contraint ne peut plus la produire, "
+              "et une video a decrire ne sera plus jamais refusee proprement",
+        rougit="plus « question » et « refus »",
+        editions=[("serveur.py", brut(
+            '                      "lecture", "question", "refus"]',
+            '                      "lecture", "question"]'))]),
+    dict(
+        nom="le bruit part quand meme au modele",
+        banc="banc_multilingue.py",
+        imite="la garde retiree : « 🐱🌙✨ » repart pour deux appels perdus et "
+              "un renard roux invente",
+        rougit="devient une question, SANS appel au modele",
+        editions=[("serveur.py", brut(
+            "    if not a_une_image and not modele_choisi and bruit_ou_adresse(texte):",
+            "    if False and not a_une_image and not modele_choisi and bruit_ou_adresse(texte):"))]),
+    dict(
+        nom="une adresse seule n'est plus du bruit",
+        banc="banc_multilingue.py",
+        imite="la moitie de la garde : les emojis sont vus, l'adresse web — qui "
+              "a des mots, « example », « image », « png » — repart au modele "
+              "et devient un renard",
+        rougit="devient une question, SANS appel au modele",
+        editions=[("serveur.py", brut(
+            "    return bool(_ADRESSE_SEULE.match(t)) or not _UN_MOT.search(t)",
+            "    return not _UN_MOT.search(t)"))]),
+    dict(
+        nom="la longueur d'une demande n'est plus bornee",
+        banc="banc_variantes.py",
+        imite="l'etat d'avant : neuf mille caracteres tiennent le modele "
+              "trente-trois secondes, deux fois, et la demande finit en "
+              "question au bout de quatre minutes",
+        rougit="au-dela de DEMANDE_MAX",
+        editions=[("serveur.py", brut(
+            "    if len(texte) > DEMANDE_MAX:",
+            "    if False and len(texte) > DEMANDE_MAX:"))]),
+    dict(
+        nom="la borne exclut la longueur exacte",
+        banc="banc_variantes.py",
+        imite="« >= » a la place de « > » : la borne annoncee est refusee, et "
+              "le message dit un chiffre qui ne passe pas",
+        rougit="et exactement DEMANDE_MAX passe",
+        editions=[("serveur.py", brut(
+            "    if len(texte) > DEMANDE_MAX:",
+            "    if len(texte) >= DEMANDE_MAX:"))]),
+    dict(
+        nom="un texte qui n'est pas une chaine fait 500",
+        banc="banc_variantes.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 7 SEPTEMBRE 2026 : « (d.get(\"texte\") or "
+              "\"\").strip() » sur un nombre, une liste ou un dictionnaire — "
+              "AttributeError, et le studio se declare en panne sur un corps forge",
+        rougit="est refuse en 400 « demande vide », pas en 500",
+        editions=[("serveur.py", brut(
+            '    texte = d.get("texte") if isinstance(d.get("texte"), str) else ""' + chr(10)
+            + '    texte = texte.strip()',
+            '    texte = (d.get("texte") or "").strip()'))]),
+    dict(
+        nom="« nuage coupe » se redit a chaque appel",
+        banc="banc_cout.py",
+        imite="journal() a la place de journal_une_fois() : la forme la plus "
+              "naturelle, et quatre lignes identiques dans le fil de chaque "
+              "demande — plan, enrichissement, traduction, sujet",
+        rougit="n'ecrivent « nuage coupe » qu'une fois dans son fil",
+        editions=[("serveur.py", brut(
+            "            journal_une_fois(tid, pourquoi_)",
+            "            journal(tid, pourquoi_)"))]),
+    dict(
+        nom="un modele qui deborde de la carte analyse quand meme",
+        banc="banc_cerveaux.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 7 SEPTEMBRE 2026 : le modele demande "
+              "est installe, donc il sert — 119 a 261 s par appel sur la GTX "
+              "1060, et le studio sans PC met cinq minutes a comprendre",
+        rougit="deborde : le plus gros modele de texte qui tienne",
+        editions=[("serveur.py", brut(
+            "    if tailles.get(voulu, 0) <= marge:\n        return voulu",
+            "    if True:\n        return voulu"))]),
+    dict(
+        nom="la part de la carte remonte au plafond ordinaire",
+        banc="banc_cerveaux.py",
+        imite="0,75 devient 1,35 — la carte plus la RAM toleree, le plafond "
+              "de l'ecriture. 5,97 tient dans 7,96, et rien ne change",
+        rougit="deborde : le plus gros modele de texte qui tienne",
+        editions=[("serveur.py", brut(
+            "PART_CARTE_ANALYSE = 0.75",
+            "PART_CARTE_ANALYSE = 1.35"))]),
+]
+
 SECURITE_SEPT = [
     # ── 1. /api/noeud/fichier ─────────────────────────────────────────
     dict(
@@ -9285,7 +9415,8 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
-             + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT)
+             + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
+             + COMPREHENSION_SEPT)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

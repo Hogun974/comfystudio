@@ -355,6 +355,31 @@ async def main():
             f"variantes={rien!r} vaut « une seule »", f"{st} {corps}")
     dit(S.VARIANTES_MAX == 4, "la borne est a quatre", str(S.VARIANTES_MAX))
 
+    # UN TEXTE QUI N'EST PAS UNE CHAINE EST UNE DEMANDE VIDE, PAS UNE PANNE.
+    # Mesure du 7 septembre 2026 sur le studio deploye : un nombre, une liste
+    # ou un dictionnaire a la place du texte rendaient 500 « Server got itself
+    # in trouble » — « (d.get("texte") or "").strip() » sur autre chose qu'une
+    # chaine. Le studio ne doit pas se declarer en panne sur un corps forge.
+    for mauvais in (42, ["un", "chat"], {"a": 1}, True):
+        try:
+            st, corps = await poster(texte=mauvais)
+        except Exception as e:      # ce que le serveur ferait d'une exception : 500
+            st, corps = 500, {"erreur": f"{type(e).__name__}: {e}"}
+        dit(st == 400 and "vide" in str(corps.get("erreur", "")),
+            f"texte={mauvais!r} est refuse en 400 « demande vide », pas en 500",
+            f"{st} {corps.get('erreur')}")
+    st, corps = await poster(texte="", image=42)
+    dit(st == 400, "et une « image » qui n'est pas une chaine ne vaut pas une image",
+        f"{st} {corps.get('erreur')}")
+    # UNE DEMANDE A UNE LONGUEUR. Neuf mille caracteres ont tenu le modele
+    # trente-trois secondes, deux fois, puis quatre minutes en tout.
+    st, corps = await poster(texte="un paysage de montagne " * 200)
+    dit(st == 400 and str(S.DEMANDE_MAX) in str(corps.get("erreur", "")),
+        f"au-dela de DEMANDE_MAX ({S.DEMANDE_MAX}) caracteres, 400 qui dit la borne",
+        f"{st} {corps.get('erreur')}")
+    st, corps = await poster(texte="x" * S.DEMANDE_MAX)
+    dit(st == 200, "et exactement DEMANDE_MAX passe", f"{st} {corps.get('erreur')}")
+
     # Le geste ne se retient pas : c'est l'argument de poser_reglages pour le
     # brouillon, multiplie par quatre.
     dit("variantes" not in S.reglages_de(S.CONVERSATIONS["c1"]),

@@ -104,6 +104,31 @@ d'espérer sa docilité, ces règles sont appliquées après coup, en Python :
 
 Chaque règle a ses cas de test dans un dossier de travail hors du dépôt.
 
+## Ce que le modèle rend a une forme, et ce qu'on ne lui envoie pas
+
+Le plan est demandé avec un **schéma JSON** dans le champ `format` d'Ollama
+(`SCHEMA_PLAN`, Ollama 0.5 et plus), et non plus avec `format: "json"`. La
+différence est mesurée : le 7 septembre 2026, sur vingt-six demandes de tous
+types soumises au studio déployé, huit rendaient une « réponse mal formée »
+deux fois de suite, puis tombaient sur l'aiguillage par mots-clés après deux
+appels perdus. Le schéma contraint le décodage lui-même : les champs, leurs
+types, et les seules valeurs permises d'`intention`. Ce que le modèle met dans
+les champs reste son affaire.
+
+Deux choses ne partent plus au modèle. **Du bruit** — des emojis seuls, de la
+ponctuation, une adresse web — recevait deux réponses mal formées puis un
+enrichissement qui recopiait l'exemple du gabarit : un renard roux dans la
+neige, rendu à qui n'avait rien demandé. Une demande sans un seul mot lisible
+devient une question, sans appel. **Une demande trop longue** — au-delà de
+`DEMANDE_MAX`, 3 000 caractères — est refusée en 400 qui dit la borne : neuf
+mille caractères ont tenu la 2080 Ti trente-trois secondes, deux fois, avant de
+finir en question au bout de quatre minutes.
+
+Et « au ralenti » ne vaut fluidification que s'il porte sur quelque chose
+(« mets-la au ralenti ») : « une vague qui se brise au ralenti » décrit le
+contenu d'une vidéo à créer, et partait en interpolation d'une vidéo qui
+n'existait pas.
+
 ## Si Ollama est arrêté
 
 L'interface continue de fonctionner : un aiguillage par mots-clés prend le

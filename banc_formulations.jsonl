@@ -63,3 +63,7 @@
 {"texte": "decris cette video", "image": "video", "attendu": "aucun"}
 {"texte": "decris-la", "image": "audio", "attendu": "aucun"}
 {"texte": "decris-la", "image": "image", "attendu": "lecture"}
+{"texte": "une video de 5 secondes d une vague qui se brise au ralenti", "attendu": "aucun"}
+{"texte": "un clip slow motion d une goutte d eau", "attendu": "aucun"}
+{"texte": "passe-la en slow motion", "attendu": "fluidifier"}
+{"texte": "ralentis", "attendu": "fluidifier"}

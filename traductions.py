@@ -102,6 +102,9 @@ TEXTES = {
     "erreur.demande_vide": {
         "fr": "demande vide",
         "en": "empty request"},
+    "erreur.demande_trop_longue": {
+        "fr": "demande trop longue : {maxi} caracteres au plus",
+        "en": "request too long: {maxi} characters at most"},
     "erreur.taille_non_prise": {
         "fr": "taille non prise en charge",
         "en": "unsupported size"},

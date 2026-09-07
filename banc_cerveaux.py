@@ -160,6 +160,33 @@ async def main():
 
     corps = {"model": "qwen2.5vl:7b", "prompt": "x"}
     dit(S.corps_ici(corps, PC) is corps, "un modele present passe tel quel")
+
+    # ── un modele qui deborde de la carte n'analyse pas ────────────────
+    # Mesure du 7 septembre 2026, le PC en pause : qwen2.5vl:7b (5,97 Go) sur
+    # la GTX 1060 de zima (5,9 Go), 119 a 261 s par appel — le meme appel fait
+    # une a deux secondes sur la 2080 Ti. Le plafond ordinaire (carte + RAM
+    # toleree, 7,9 Go) le disait « tenable » ; il tient, et deborde des que le
+    # prompt est long. Les trois quarts de la carte, pas plus.
+    dit(S.corps_ici(corps, NAS)["model"] == "mistral:7b",
+        "sur le NAS (5,9 Go), qwen2.5vl:7b (5,97) deborde : le plus gros modele "
+        "de texte qui tienne dans les trois quarts de la carte prend l'analyse "
+        "— mistral:7b (4,37)", S.corps_ici(corps, NAS)["model"])
+    dit(S.corps_ici(corps, PC) is corps,
+        "sur le PC (11 Go) il tient dans les trois quarts, et passe tel quel")
+    S.TACHES["banc-deborde"] = {"etapes": [], "etat": "en cours"}
+    S.corps_ici(corps, NAS, "banc-deborde")
+    dit(any("deborde" in e["msg"] and "mistral:7b" in e["msg"]
+            for e in S.TACHES["banc-deborde"]["etapes"]),
+        "et le fil de la demande dit quel modele a pris la place, et pourquoi",
+        str([e["msg"] for e in S.TACHES["banc-deborde"]["etapes"]])[:90])
+    _garde = S._CERVEAUX[NAS]["modeles"]
+    S._CERVEAUX[NAS]["modeles"] = [m for m in _garde if m["name"] == "qwen2.5vl:7b"]
+    dit(S.corps_ici(corps, NAS)["model"] == "qwen2.5vl:7b",
+        "sans rien de plus petit installe, le demande reste : lent vaut mieux que muet")
+    S._CERVEAUX[NAS]["modeles"] = _garde
+    dit(S.corps_ici(corps, MORT) is None or S.corps_ici(corps, MORT).get("model"),
+        "et une adresse sans machine connue n'est pas jugee sur une carte qu'on ignore")
+    dit(S.PART_CARTE_ANALYSE == 0.75, "la part est de trois quarts", str(S.PART_CARTE_ANALYSE))
     S._CERVEAUX[NAS]["modeles"] = [m for m in S._CERVEAUX[NAS]["modeles"]
                                    if m["name"] != "qwen2.5vl:7b"]
     remplace = S.corps_ici(corps, NAS)

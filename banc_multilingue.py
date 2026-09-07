@@ -51,8 +51,10 @@ allemand et espagnol, meme registre. Ils vivent dans mesures_langues/.
     python banc_multilingue.py
 """
 import asyncio
+import ast
 import contextlib
 import io
+import re
 import os
 import sys
 import tempfile
@@ -289,6 +291,73 @@ async def main():
 
     print("\n  ── et la moisson n'apprend pas l'etranger ──")
     moisson()
+
+    # ══ du bruit n'est pas une demande ═════════════════════════════════
+    # Mesure du 7 septembre 2026 sur le studio deploye : « 🐱🌙✨ »,
+    # « ???!!!... » et une adresse web coutaient deux appels au modele —
+    # deux « reponse mal formee » — puis l'aiguillage par mots-cles
+    # enrichissait le bruit en recopiant l'exemple de son gabarit : un renard
+    # roux dans la neige, rendu a qui n'avait rien demande.
+    print("\n  ── du bruit n'est pas une demande ──")
+    for bruit in ("🐱🌙✨", "???!!!...", "42", "https://example.com/image.png",
+                  "www.example.com/x.png"):
+        intention, appele, lignes = await decide(bruit)
+        dit(intention == "question" and not appele
+            and any("aucun mot lisible" in l for l in lignes),
+            f"« {bruit} » devient une question, SANS appel au modele",
+            f"intention={intention!r}, appel={appele}")
+    intention, appele, lignes = await decide("https://example.com/image.png")
+    S.TACHES.clear()
+    tid = "banc"
+    S.TACHES[tid] = {"etapes": [], "etat": "en cours", "proprietaire": None}
+    with contextlib.redirect_stdout(io.StringIO()):
+        plan = await S.aiguiller("https://example.com/image.png", tid,
+                                 {"derniere_sortie": None, "tours": []})
+    dit(plan.get("questions") == list(S.QUESTIONS_ADRESSE)
+        and "adresse" in (plan.get("questions") or [""])[0],
+        "et une adresse seule recoit la question qui dit de deposer le fichier",
+        str(plan.get("questions"))[:80])
+    # LE TEMOIN : un mot, un vrai, part bien vers le modele.
+    intention, appele, lignes = await decide("chat")
+    dit(appele, "alors qu'un seul mot lisible — « chat » — va bien au modele",
+        f"appel={appele}")
+    dit(S.bruit_ou_adresse("un chat http://x.y/z.png") is False
+        and S.bruit_ou_adresse("été") is False,
+        "un mot accentue compte, et une adresse dans une phrase n'en fait pas une adresse seule")
+
+    # ══ le plan a une forme, imposee au modele ═════════════════════════
+    # Huit « reponse mal formee » sur vingt-six a la meme mesure : avec
+    # « format: json », Ollama ne garantit qu'un JSON quelconque. Le schema
+    # contraint le decodage : champs, types, valeurs d'« intention ».
+    print("\n  ── le plan a une forme, imposee au modele ──")
+    corps = S.corps_ollama("un chat", None, "sys", S.SCHEMA_PLAN, "m", 0.1, 0)
+    dit(corps.get("format") is S.SCHEMA_PLAN
+        and S.corps_ollama("x", None, None, True, "m", 0.1, 0).get("format") == "json"
+        and "format" not in S.corps_ollama("x", None, None, False, "m", 0.1, 0),
+        "corps_ollama() envoie le SCHEMA quand on lui en donne un, « json » sinon, rien sans",
+        str(corps.get("format"))[:40])
+    dans_gabarit = set(re.findall(r'"([a-z_0-9]+)"', S.SYSTEME.split('"intention" :', 1)[1]
+                                  .split('"modele"', 1)[0]))
+    dit(dans_gabarit and dans_gabarit <= set(S.INTENTIONS_DU_PLAN)
+        and {"question", "refus"} <= set(S.INTENTIONS_DU_PLAN)
+        and S.SCHEMA_PLAN["properties"]["intention"]["enum"] == S.INTENTIONS_DU_PLAN,
+        "les intentions permises par le schema sont celles du gabarit, plus « question » et « refus »",
+        f"gabarit={sorted(dans_gabarit)}")
+    dit(set(S.SCHEMA_PLAN["required"]) == {"intention", "modele", "prompt", "raison"}
+        and set(S.SCHEMA_PLAN["properties"]) >= {"intention", "modele", "prompt", "negatif",
+                                                  "largeur", "hauteur", "tags_audio", "paroles",
+                                                  "langue", "tonalite", "cases", "classement",
+                                                  "questions", "raison", "parametres"},
+        "quatre champs exiges, et les quinze du gabarit decrits")
+    arbre = ast.parse(io.open(S.__file__, encoding="utf-8").read())
+    aig = next(n for n in ast.walk(arbre)
+               if isinstance(n, ast.AsyncFunctionDef) and n.name == "aiguiller")
+    appels = [n for n in ast.walk(aig) if isinstance(n, ast.Call)
+              and isinstance(n.func, ast.Name) and n.func.id == "appeler_ollama"]
+    dit(len(appels) == 1 and any(k.arg == "json_mode" and isinstance(k.value, ast.Name)
+                                 and k.value.id == "SCHEMA_PLAN" for k in appels[0].keywords),
+        "et c'est bien l'appel du plan, dans aiguiller(), qui passe SCHEMA_PLAN",
+        f"{len(appels)} appel(s)")
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

@@ -1523,6 +1523,15 @@ def journal(tid, msg, **extra):
 # unet_gguf qui pointe sur le meme repertoire, filtre sur l'extension. Sans cette
 # correspondance, klein9b, flux1, wan5b et wan14b seraient declares absents et
 # retelecharges — plusieurs dizaines de gigaoctets pour rien.
+def journal_une_fois(tid, msg, **extra):
+    """Comme journal(), mais une ligne deja dans le fil de CETTE demande n'y
+    revient pas. Pour ce qui se repete a l'identique d'un appel a l'autre."""
+    if tid and any(e.get("msg") == msg
+                   for e in (TACHES.get(tid) or {}).get("etapes", [])):
+        return
+    journal(tid, msg, **extra)
+
+
 _JUMEAUX_GGUF = {"diffusion_models": "unet_gguf", "text_encoders": "clip_gguf"}
 MODELES_NOEUD = {}          # id -> {"quand": t, "dossiers": {nom: set(fichiers)}}
 FICHIER_PARC = os.path.join(DOSSIER_CONV, "_parc.json")
@@ -2941,7 +2950,12 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # sans savoir pourquoi vaut mieux que se taire.
             pourquoi_ = f"cet appel reste sur {_mot_local()}"
         if pourquoi_:
-            journal(tid, pourquoi_)
+            # UNE FOIS PAR DEMANDE. Une demande fait trois ou quatre appels au
+            # modele — plan, enrichissement, traduction, sujet — et chacun
+            # redisait « nuage coupe pour ton compte… » : quatre lignes
+            # identiques dans le fil de chaque demande, mesure du 7 septembre
+            # 2026. La raison ne change pas entre deux appels de la meme demande.
+            journal_une_fois(tid, pourquoi_)
     corps = corps_ollama(texte, image_b64, systeme, json_mode, modele,
                          temperature, garder)
     # La plus petite carte capable, AVANT celle du studio. Une analyse tient sur
@@ -3079,8 +3093,46 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     raise panne
 
 
+# LA FORME DU PLAN, IMPOSEE AU MODELE. Avec « format: json », Ollama ne
+# garantit qu'un JSON quelconque : mesure du 7 septembre 2026, huit demandes
+# sur vingt-six rendaient une « reponse mal formee », deux fois de suite, et
+# tombaient sur l'aiguillage par mots-cles apres deux appels perdus (une
+# seconde chacun sur la 2080 Ti, vingt sur zima). Un schema JSON dans
+# « format » — Ollama 0.5 et plus — contraint le decodage lui-meme : les
+# champs, leurs types, et les valeurs permises de « intention ». Ce que le
+# modele met DANS les champs reste son affaire ; qu'ils existent et se lisent
+# ne l'est plus.
+INTENTIONS_DU_PLAN = ["image", "edition", "agrandir", "detourer", "fluidifier",
+                      "planche", "objet3d", "video", "video_image", "audio",
+                      "lecture", "question", "refus"]
+SCHEMA_PLAN = {
+    "type": "object",
+    "properties": {
+        "intention": {"type": "string", "enum": INTENTIONS_DU_PLAN},
+        "modele": {"type": "string"},
+        "prompt": {"type": "string"},
+        "negatif": {"type": "string"},
+        "largeur": {"type": "integer"},
+        "hauteur": {"type": "integer"},
+        "tags_audio": {"type": "string"},
+        "paroles": {"type": "string"},
+        "langue": {"type": "string"},
+        "tonalite": {"type": "string"},
+        "cases": {"type": "array", "items": {"type": "string"}},
+        "classement": {"type": "string", "enum": ["safe", "questionable", "explicit"]},
+        "questions": {"type": "array", "items": {"type": "string"}},
+        "raison": {"type": "string"},
+        "parametres": {"type": "object"},
+    },
+    "required": ["intention", "modele", "prompt", "raison"],
+}
+
+
 def corps_ollama(texte, image_b64, systeme, json_mode, modele, temperature, garder):
-    """Le corps de la requete, tel qu'Ollama l'attend."""
+    """Le corps de la requete, tel qu'Ollama l'attend.
+
+    « json_mode » vaut False, True (un JSON quelconque) ou un SCHEMA (un JSON
+    de cette forme-la, et pas une autre)."""
     # keep_alive 0 par defaut : ComfyUI reprend la carte juste apres, et un
     # modele reste resident tant qu'on ne l'a pas relache. « garder » n'est
     # leve que pour une suite d'appels rapprochee, refermee par liberer_modele.
@@ -3097,7 +3149,7 @@ def corps_ollama(texte, image_b64, systeme, json_mode, modele, temperature, gard
              "keep_alive": garder or GARDER_LLM,
              "options": {"temperature": temperature}}
     if systeme: corps["system"] = systeme
-    if json_mode: corps["format"] = "json"
+    if json_mode: corps["format"] = json_mode if isinstance(json_mode, dict) else "json"
     if image_b64: corps["images"] = [image_b64]
     return corps
 
@@ -3142,6 +3194,37 @@ def _ecarter_modele(nom, pourquoi, url=None):
     # prochain redemarrage, sans un mot.
     if MODELE_ECRITURE == nom and not MODELE_ECRITURE_IMPOSE:
         MODELE_ECRITURE = ""      # le prochain appel en choisira un autre
+
+
+# LA PART DE LA CARTE QU'UN MODELE D'ANALYSE PEUT OCCUPER. Le plafond
+# ordinaire — la carte plus ce que la RAM tolere — dit qu'un modele de 5,97 Go
+# « tient » sur une carte de 5,9 : il tient, et deborde en RAM des que le
+# prompt est long, et celui du plan fait trois mille jetons. Mesure du
+# 7 septembre 2026, le PC en pause : qwen2.5vl:7b sur la GTX 1060 de zima,
+# 119 a 261 s par appel, six demandes sur six au-dela de deux minutes, quatre
+# au-dela de cinq. Le meme appel : une a deux secondes sur la 2080 Ti. Un
+# modele d'analyse ne prend donc que les trois quarts de la carte, le reste
+# est pour le contexte ; au-dela, le plus gros modele de texte installe qui y
+# tienne le remplace, et le fil le dit.
+PART_CARTE_ANALYSE = 0.75
+
+
+def modele_analyse_de(url, voulu):
+    """Le modele demande s'il tient sur la carte de CETTE machine avec un
+    long prompt ; sinon le plus gros modele de texte installe qui y tienne ;
+    sinon le demande — lent vaut mieux que muet. Une machine dont on ignore la
+    carte, ou l'Ollama du studio lui-meme, ne sont pas juges."""
+    ident = cerveau(url).get("noeud")
+    vram = float((ETAT_NOEUDS.get(ident) or {}).get("vram") or 0) if ident else 0.0
+    if not vram:
+        return voulu
+    marge = vram * PART_CARTE_ANALYSE
+    tailles = {m.get("name"): m.get("size", 0) / 1e9
+               for m in cerveau(url)["modeles"] if not _casse_ici(url, m.get("name"))}
+    if tailles.get(voulu, 0) <= marge:
+        return voulu
+    tenables = [(t, n) for n, t in tailles.items() if 0 < t <= marge]
+    return max(tenables)[1] if tenables else voulu
 
 
 def corps_ici(corps, url, tid=None):
@@ -3189,6 +3272,11 @@ def corps_ici(corps, url, tid=None):
             journal(tid, f"une image est jointe : {voyant} plutot que {voulu}")
         return corps if voyant == voulu else dict(corps, model=voyant)
     if _sait_lire_ici(url, voulu):
+        serre = modele_analyse_de(url, voulu)
+        if serre != voulu:
+            journal(tid, f"{serre} plutot que {voulu} : {voulu} deborde de la "
+                         f"carte de cette machine")
+            return dict(corps, model=serre)
         return corps
     remplacant = modele_ecriture_de(url)
     if not remplacant or remplacant == voulu:
@@ -3821,6 +3909,7 @@ sujet. Si tu n'as que cela, reponds AUCUN."""
 # Trois mots suffisent a nommer un sujet (« un chat noir ») ; au-dela de huit,
 # une demande contient forcement de quoi travailler et l'appel serait du gaspillage.
 MOTS_VERIF_SUJET = 8
+DEMANDE_MAX = 3000          # caracteres : voir api_generer
 # Mots qui ne designent qu'un support ou une generalite : s'il ne reste que cela,
 # c'est que le modele n'a rien trouve a extraire.
 _CREUX = {"aucun", "image", "images", "photo", "photos", "dessin", "video", "videos",
@@ -3865,6 +3954,22 @@ async def sujet_nomme(texte, tid=None):
 def sans_accents(t):
     return "".join(c for c in unicodedata.normalize("NFD", (t or "").lower())
                    if unicodedata.category(c) != "Mn")
+
+# Un mot lisible : deux lettres au moins, accents compris. Ce qui n'en a
+# aucun — emojis, ponctuation, chiffres — n'est pas une demande.
+_UN_MOT = re.compile(r"[a-zA-Z\u00c0-\u024f]{2,}")
+_ADRESSE_SEULE = re.compile(r"\s*(?:https?://|www\.)\S+\s*$", re.I)
+QUESTIONS_ADRESSE = [
+    "Je ne sais pas ouvrir une adresse web : depose le fichier lui-meme "
+    "(l'image, la video ou le son), et dis-moi ce que tu veux en faire.",
+]
+
+
+def bruit_ou_adresse(texte):
+    """Vrai si la demande n'a aucun mot lisible, ou n'est qu'une adresse web."""
+    t = texte or ""
+    return bool(_ADRESSE_SEULE.match(t)) or not _UN_MOT.search(t)
+
 
 QUESTIONS_SANS_SUJET = [
     "Que veux-tu voir, exactement ? (par exemple : un renard dans la neige, "
@@ -4339,6 +4444,20 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                 "parametres": {}, "parametres_bruts": {},
                 "raison": "agrandissement : l'image est reprise telle quelle", "raccourci": True}
 
+    # DU BRUIT N'EST PAS UNE DEMANDE. « 🐱🌙✨ », « ???!!!... », une adresse
+    # web : mesure du 7 septembre 2026, le modele rendait deux reponses mal
+    # formees, puis l'aiguillage par mots-cles enrichissait le bruit… en
+    # recopiant l'exemple de son propre gabarit — un renard roux dans la neige,
+    # rendu a qui n'avait rien demande. On ne devine pas : on demande, sans
+    # depenser un appel.
+    if not a_une_image and not modele_choisi and bruit_ou_adresse(texte):
+        journal(tid, "aucun mot lisible — precision demandee plutot que devinee")
+        return {"intention": "question", "modele": None, "prompt": None,
+                "questions": (list(QUESTIONS_ADRESSE) if _ADRESSE_SEULE.match(texte or "")
+                              else list(QUESTIONS_SANS_SUJET)),
+                "questions_forcees": True, "parametres": {}, "parametres_bruts": {},
+                "raison": "la demande ne contient aucun mot lisible"}
+
     loin = "" if image_b64 else llm_distant_possible(texte, pid)
     # La raison du local n'est plus dite ici : appeler_ollama la dit pour TOUS
     # les appels de la chaine, celui-ci compris. La repeter ferait deux lignes
@@ -4383,12 +4502,16 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
         try:
             # l'aiguilleur ne recoit PAS l'image : il n'a pas la vision, et savoir
             # qu'une image est jointe lui suffit pour choisir l'intention.
-            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid)
+            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid,
+                                        json_mode=SCHEMA_PLAN)
             m = re.search(r"\{.*\}", brut, re.S)
             plan = json.loads(m.group(0) if m else brut)
             break
         except json.JSONDecodeError:
-            journal(tid, "reponse mal formee" + (" — seconde tentative" if essai == 1 else ""))
+            # LE DEBUT DE CE QUI EST REVENU, dans le fil : sans lui, huit
+            # « reponse mal formee » sur vingt-six n'ont rien appris a personne.
+            journal(tid, "reponse mal formee" + (" — seconde tentative" if essai == 1 else "")
+                    + f" : « {' '.join((brut or '').split())[:60]} »")
         except Exception as e:
             journal(tid, f"Ollama indisponible ({type(e).__name__}) — aiguillage par mots-cles")
             return normaliser(secours(texte, a_une_image), texte,
@@ -6243,10 +6366,21 @@ def g_fluidite(video, prefixe, multiplicateur=2, fps_sortie=48.0):
     }
 
 
+# LE RALENTI N'EST UN GESTE QUE S'IL PORTE SUR QUELQUE CHOSE. « mets-la au
+# ralenti » est une fluidification de la video precedente ; « une vague qui se
+# brise au ralenti » decrit le CONTENU d'une video a creer. Mesure du
+# 7 septembre 2026 : la seconde partait en fluidification, sans video a
+# fluidifier, et rendait une erreur au lieu d'un rendu. Le ralenti ne compte
+# donc qu'avec un objet (« la », « le », « cette video », « le clip ») ou un
+# verbe de geste devant lui ; « ralentis » a l'imperatif reste un geste.
 _FLUIDE = re.compile(
     r"(plus fluide|fluidifi|interpol|moins saccad|"
     r"(?:passe|mets|met).{0,12}(?:en )?(?:48|60|120) ?(?:fps|images)|"
-    r"au ralenti|en ralenti|slow ?motion|ralentis)", re.I)
+    r"(?:\bla|\ble|\bca|\bcette video|\bla video|\ble clip|\bcelle-ci)"
+    r"\s+(?:au|en) ralenti|"
+    r"(?:passe|mets|met|remets|refais|rejoue)(?:-| )?(?:la|le|moi)?.{0,12}"
+    r"(?:au ralenti|en ralenti|slow ?motion)|"
+    r"\bralentis\b)", re.I)
 _RALENTI = re.compile(r"(ralenti|slow ?motion)", re.I)
 
 
@@ -11198,11 +11332,26 @@ async def api_generer(req):
     except Exception:
         return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
                                  status=400)
-    texte = (d.get("texte") or "").strip()
-    image = d.get("image")
+    # UNE CHAINE, OU RIEN. « (d.get("texte") or "").strip() » sur un nombre,
+    # une liste ou un dictionnaire levait AttributeError, donc 500 « Server
+    # got itself in trouble » — mesure du 7 septembre 2026 sur le studio
+    # deploye, avec trois corps malformes. Un corps qui n'est pas une demande
+    # est une demande vide, pas une panne du serveur.
+    texte = d.get("texte") if isinstance(d.get("texte"), str) else ""
+    texte = texte.strip()
+    image = d.get("image") if isinstance(d.get("image"), str) else None
     if not texte and not image:
         return web.json_response({"erreur": T("erreur.demande_vide", lg)},
                                  status=400)
+    # UNE DEMANDE A UNE LONGUEUR. Neuf mille caracteres — mesure du
+    # 7 septembre 2026 — ont tenu le modele trente-trois secondes sur la
+    # 2080 Ti, deux fois, avant de finir en « precision demandee » au bout de
+    # quatre minutes. Aucune demande de studio n'a besoin de cette longueur ;
+    # au-dela, on le dit, on ne fait pas attendre.
+    if len(texte) > DEMANDE_MAX:
+        return web.json_response(
+            {"erreur": T("erreur.demande_trop_longue", lg, maxi=DEMANDE_MAX)},
+            status=400)
     pid = qui(req)
     # La conversation d'abord : c'est elle qui porte les reglages, et une
     # demande qui n'en parle pas herite des siens. Mais on FUSIONNE sans ecrire
