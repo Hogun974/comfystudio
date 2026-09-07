@@ -3128,6 +3128,26 @@ SCHEMA_PLAN = {
 }
 
 
+def lire_objet_json(brut):
+    """Le PREMIER objet JSON complet du texte, ou JSONDecodeError.
+
+    « re.search(r"\\{.*\\}", brut, re.S) » prenait du premier « { » au DERNIER
+    « } » : un modele qui rend deux objets a la suite, ou un objet suivi d'une
+    phrase avec une accolade, donnait un texte qui n'est plus du JSON — et la
+    reponse etait declaree mal formee alors que le plan y etait, entier, au
+    debut. Mesure du 7 septembre 2026 : huit « reponse mal formee » sur
+    vingt-six commencaient toutes par « { "intention": ».
+    """
+    texte = brut or ""
+    debut = texte.find("{")
+    if debut < 0:
+        raise json.JSONDecodeError("aucun objet", texte, 0)
+    objet, _ = json.JSONDecoder().raw_decode(texte[debut:])
+    if not isinstance(objet, dict):
+        raise json.JSONDecodeError("pas un objet", texte, debut)
+    return objet
+
+
 def corps_ollama(texte, image_b64, systeme, json_mode, modele, temperature, garder):
     """Le corps de la requete, tel qu'Ollama l'attend.
 
@@ -4502,16 +4522,24 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
         try:
             # l'aiguilleur ne recoit PAS l'image : il n'a pas la vision, et savoir
             # qu'une image est jointe lui suffit pour choisir l'intention.
-            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid,
-                                        json_mode=SCHEMA_PLAN)
-            m = re.search(r"\{.*\}", brut, re.S)
-            plan = json.loads(m.group(0) if m else brut)
+            # PAS DE SCHEMA ICI, ET C'EST MESURE. Le 7 septembre 2026, le plan
+            # demande avec SCHEMA_PLAN dans « format » prenait 15 a 36 s sur la
+            # 2080 Ti — 1 a 2 s avec « json » — et rendait autant de reponses
+            # mal formees : le decodage contraint de qwen2.5vl:7b sous Ollama
+            # 0.33 coute dix a vingt fois l'appel, et coupe les longues. La
+            # capacite reste dans corps_ollama() pour un modele qui la paierait
+            # moins cher ; le plan, lui, est lu par lire_objet_json().
+            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid)
+            plan = lire_objet_json(brut)
             break
         except json.JSONDecodeError:
-            # LE DEBUT DE CE QUI EST REVENU, dans le fil : sans lui, huit
-            # « reponse mal formee » sur vingt-six n'ont rien appris a personne.
+            # LE DEBUT ET LA FIN DE CE QUI EST REVENU, dans le fil : sans eux,
+            # huit « reponse mal formee » sur vingt-six n'ont rien appris.
+            plat = " ".join((brut or "").split())
             journal(tid, "reponse mal formee" + (" — seconde tentative" if essai == 1 else "")
-                    + f" : « {' '.join((brut or '').split())[:60]} »")
+                    + f" : « {plat[:50]} … {plat[-40:]} »" if len(plat) > 90
+                    else "reponse mal formee" + (" — seconde tentative" if essai == 1 else "")
+                    + f" : « {plat} »")
         except Exception as e:
             journal(tid, f"Ollama indisponible ({type(e).__name__}) — aiguillage par mots-cles")
             return normaliser(secours(texte, a_une_image), texte,

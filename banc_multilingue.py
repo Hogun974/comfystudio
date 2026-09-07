@@ -54,6 +54,7 @@ import asyncio
 import ast
 import contextlib
 import io
+import json
 import re
 import os
 import sys
@@ -349,15 +350,53 @@ async def main():
                                                   "langue", "tonalite", "cases", "classement",
                                                   "questions", "raison", "parametres"},
         "quatre champs exiges, et les quinze du gabarit decrits")
+    # ET L'APPEL DU PLAN NE LE PASSE PAS, et c'est mesure : avec le schema,
+    # 15 a 36 s par analyse sur la 2080 Ti au lieu de 1 a 2, le 7 septembre
+    # 2026. La capacite reste ; ce cas garde qu'on ne la rebranche pas « pour
+    # la proprete » sans remesurer.
     arbre = ast.parse(io.open(S.__file__, encoding="utf-8").read())
     aig = next(n for n in ast.walk(arbre)
                if isinstance(n, ast.AsyncFunctionDef) and n.name == "aiguiller")
     appels = [n for n in ast.walk(aig) if isinstance(n, ast.Call)
               and isinstance(n.func, ast.Name) and n.func.id == "appeler_ollama"]
-    dit(len(appels) == 1 and any(k.arg == "json_mode" and isinstance(k.value, ast.Name)
-                                 and k.value.id == "SCHEMA_PLAN" for k in appels[0].keywords),
-        "et c'est bien l'appel du plan, dans aiguiller(), qui passe SCHEMA_PLAN",
-        f"{len(appels)} appel(s)")
+    dit(len(appels) == 1 and not any(k.arg == "json_mode" for k in appels[0].keywords),
+        "et l'appel du plan, dans aiguiller(), NE passe PAS le schema : dix a "
+        "vingt fois plus lent, mesure", f"{len(appels)} appel(s)")
+
+    # ══ le premier objet JSON, pas le plus grand ═══════════════════════
+    # Huit reponses mal formees sur vingt-six commencaient par « { "intention": » :
+    # le plan y etait, entier ; c'est ce qui suivait qui cassait la lecture
+    # gourmande du premier « { » au dernier « } ».
+    print("\n  ── le premier objet JSON, pas le plus grand ──")
+    def lu(texte):
+        """Ce que lire_objet_json() rend, ou le NOM de ce qu'elle leve : une
+        lecture qui leve sur un cas attendu vert doit ROUGIR, pas casser le banc."""
+        try:
+            return S.lire_objet_json(texte)
+        except json.JSONDecodeError:
+            return "JSONDecodeError"
+
+    dit(lu('{"intention": "image", "prompt": "un chat"}') ==
+        {"intention": "image", "prompt": "un chat"},
+        "un objet propre se lit tel quel")
+    dit(lu('{"intention": "image"}\n{"intention": "video"}') ==
+        {"intention": "image"},
+        "deux objets a la suite : le PREMIER, pas un texte qui n'est plus du JSON")
+    dit(lu('{"intention": "audio"} Voila le plan { et rien }') ==
+        {"intention": "audio"},
+        "un objet suivi d'une phrase avec une accolade : l'objet seul")
+    dit(lu('Bien sur ! Voici : {"intention": "planche"}') ==
+        {"intention": "planche"},
+        "et du texte avant l'objet ne gene pas")
+    for casse in ('{"intention": "im', "pas de json ici", "[1, 2]", ""):
+        try:
+            S.lire_objet_json(casse)
+            leve = "rien"
+        except json.JSONDecodeError:
+            leve = "JSONDecodeError"
+        dit(leve == "JSONDecodeError",
+            f"{casse[:22]!r} leve JSONDecodeError, celle qu'aiguiller() attrape",
+            leve)
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

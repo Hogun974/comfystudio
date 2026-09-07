@@ -8717,16 +8717,6 @@ COMPREHENSION_SEPT = [
             '    if json_mode: corps["format"] = json_mode if isinstance(json_mode, dict) else "json"',
             '    if json_mode: corps["format"] = "json"'))]),
     dict(
-        nom="l'appel du plan oublie le schema",
-        banc="banc_multilingue.py",
-        imite="le schema existe, corps_ollama() sait l'envoyer, et l'appel qui "
-              "compte ne le passe pas : tout est la sauf l'effet",
-        rougit="et c'est bien l'appel du plan, dans aiguiller(), qui passe SCHEMA_PLAN",
-        editions=[("serveur.py", brut(
-            '            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid,' + chr(10)
-            + '                                        json_mode=SCHEMA_PLAN)',
-            '            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid)'))]),
-    dict(
         nom="le schema ne permet plus « refus »",
         banc="banc_multilingue.py",
         imite="une intention que le gabarit demande au modele et que le schema "
@@ -8736,6 +8726,35 @@ COMPREHENSION_SEPT = [
         editions=[("serveur.py", brut(
             '                      "lecture", "question", "refus"]',
             '                      "lecture", "question"]'))]),
+    dict(
+        nom="le schema revient sur l'appel du plan",
+        banc="banc_multilingue.py",
+        imite="la proprete : « on a un schema, autant s'en servir ». Quinze a "
+              "trente-six secondes par analyse au lieu d'une a deux, mesure du "
+              "7 septembre 2026 sur la 2080 Ti",
+        rougit="NE passe PAS le schema",
+        editions=[("serveur.py", brut(
+            "            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid)\n"
+            "            plan = lire_objet_json(brut)",
+            "            brut = await appeler_ollama(texte, None, sys_p, temperature=0.15, tid=tid,\n"
+            "                                        json_mode=SCHEMA_PLAN)\n"
+            "            plan = lire_objet_json(brut)"))]),
+    dict(
+        nom="la lecture du plan reprend du premier « { » au dernier « } »",
+        banc="banc_multilingue.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 7 SEPTEMBRE 2026 : re.search gourmand. "
+              "Deux objets a la suite, ou une phrase apres l'objet, et le plan "
+              "entier est declare mal forme",
+        rougit="deux objets a la suite : le PREMIER",
+        editions=[("serveur.py", brut(
+            '    debut = texte.find("{")\n'
+            "    if debut < 0:\n"
+            '        raise json.JSONDecodeError("aucun objet", texte, 0)\n'
+            "    objet, _ = json.JSONDecoder().raw_decode(texte[debut:])",
+            '    m = re.search(r"\\{.*\\}", texte, re.S)\n'
+            "    if not m:\n"
+            '        raise json.JSONDecodeError("aucun objet", texte, 0)\n'
+            "    objet = json.loads(m.group(0))"))]),
     dict(
         nom="le bruit part quand meme au modele",
         banc="banc_multilingue.py",

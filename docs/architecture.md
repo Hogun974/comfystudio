@@ -106,14 +106,23 @@ Chaque règle a ses cas de test dans un dossier de travail hors du dépôt.
 
 ## Ce que le modèle rend a une forme, et ce qu'on ne lui envoie pas
 
-Le plan est demandé avec un **schéma JSON** dans le champ `format` d'Ollama
-(`SCHEMA_PLAN`, Ollama 0.5 et plus), et non plus avec `format: "json"`. La
-différence est mesurée : le 7 septembre 2026, sur vingt-six demandes de tous
-types soumises au studio déployé, huit rendaient une « réponse mal formée »
-deux fois de suite, puis tombaient sur l'aiguillage par mots-clés après deux
-appels perdus. Le schéma contraint le décodage lui-même : les champs, leurs
-types, et les seules valeurs permises d'`intention`. Ce que le modèle met dans
-les champs reste son affaire.
+Le 7 septembre 2026, sur vingt-six demandes de tous types soumises au studio
+déployé, huit rendaient une « réponse mal formée » deux fois de suite, puis
+tombaient sur l'aiguillage par mots-clés après deux appels perdus. Le premier
+remède essayé a été un **schéma JSON** dans le champ `format` d'Ollama
+(`SCHEMA_PLAN`), qui contraint le décodage lui-même. Mesuré aussitôt : **15 à
+36 s par analyse sur la 2080 Ti au lieu de 1 à 2**, et autant de réponses mal
+formées — le décodage contraint de `qwen2.5vl:7b` sous Ollama 0.33 coûte dix à
+vingt fois l'appel, et coupe les longues. Le schéma existe donc dans
+`corps_ollama()` (un `json_mode` qui est un dictionnaire), et l'appel du plan
+ne le passe pas ; un banc garde qu'on ne le rebranche pas sans remesurer.
+
+Le vrai défaut était dans la lecture : la réponse était prise du premier « { »
+au **dernier** « } », et un modèle qui rend deux objets à la suite, ou un objet
+puis une phrase avec une accolade, donnait un texte qui n'est plus du JSON —
+alors que le plan y était, entier, au début. Les huit réponses « mal formées »
+commençaient toutes par `{ "intention":`. `lire_objet_json()` prend le
+**premier objet complet** et ignore la suite.
 
 Deux choses ne partent plus au modèle. **Du bruit** — des emojis seuls, de la
 ponctuation, une adresse web — recevait deux réponses mal formées puis un
