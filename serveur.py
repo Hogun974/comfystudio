@@ -930,6 +930,88 @@ _CERVEAUX = {}
 FRAICHEUR_CERVEAU = 120
 
 
+# ══ CE QU'UN OLLAMA FAIT VRAIMENT DE LA CARTE QU'ON LUI PRETE ═══════════
+# UNE MACHINE PEUT AVOIR UNE CARTE ET NE PAS S'EN SERVIR, et rien ne le disait :
+# elle repond, elle annonce ses modeles, le studio la choisit comme cerveau, et
+# chaque analyse prend deux a cinq minutes au lieu de deux secondes. Releve du
+# 7 septembre 2026 sur zima — GTX 1060, 6,3 Go libres, vue en CUDA par le
+# ComfyUI de la MEME machine — : gemma3:4b, 5,25 Go en memoire, 0,00 sur la
+# carte. Le plus petit modele installe, qui tient trois fois dedans : ce n'est
+# pas une question de taille, cet Ollama-la n'a aucune carte.
+#
+# « /api/ps » le dit, et lui seul — ni la banniere, ni /api/tags, ni la console.
+# On le lit APRES un appel qui a reussi, le modele y est encore (keep_alive
+# vaut soixante secondes), et au plus une fois par heure et par adresse : c'est
+# un fait de MACHINE, pas un fait de demande.
+_PLACEMENT = {}                 # url -> {"part": part sur carte 0..1, "quand": t}
+PLACEMENT_FRAICHEUR = 3600.0
+# En dessous, on considere que rien n'est sur la carte. Pas zero strict : un
+# Ollama qui y pose le seul cache de contexte n'y calcule pas pour autant.
+PART_SUR_CARTE_MINIMUM = 0.05
+
+
+def sur_processeur(url):
+    """Cet Ollama a-t-il mis son dernier modele ENTIEREMENT hors de la carte.
+
+    Faux tant qu'on ne l'a pas vu : on ne declasse pas une machine sur une
+    absence de mesure. C'est la seule reponse prudente — la mesure n'existe
+    qu'apres le premier appel reussi a cette adresse.
+    """
+    part = (_PLACEMENT.get(url) or {}).get("part")
+    return part is not None and part <= PART_SUR_CARTE_MINIMUM
+
+
+def _url_du_cerveau(ident):
+    """L'adresse Ollama reconnue sur cette machine, sans rien interroger.
+
+    _CERVEAUX en lecture directe et non cerveau(), qui RELEVE quand c'est
+    perime : cette fonction est appelee depuis les routes de la console, et un
+    relevé bloquant y arreterait la boucle du serveur.
+    """
+    return next((u for u, c in _CERVEAUX.items() if c.get("noeud") == ident), None)
+
+
+def llm_sur_carte(ident):
+    """Vrai, faux, ou None quand on ne l'a pas encore vu. Pour la console."""
+    part = (_PLACEMENT.get(_url_du_cerveau(ident) or "") or {}).get("part")
+    return None if part is None else part > PART_SUR_CARTE_MINIMUM
+
+
+async def relever_placement(url, modele):
+    """Ou l'Ollama de cette adresse a mis le modele qu'il vient d'employer.
+
+    NE LEVE JAMAIS ET NE RETARDE RIEN DE PLUS DE TROIS SECONDES. Elle est
+    appelee juste apres un appel qui a REUSSI, a l'interieur du meme « try » :
+    une mesure de confort qui laisserait echapper quoi que ce soit ferait
+    passer pour une panne de cerveau une analyse qui, elle, est revenue.
+
+    L'horodatage est pose AVANT l'interrogation : deux analyses simultanees ne
+    sondent pas deux fois, et une adresse qui ne repond pas a /api/ps n'est pas
+    resondee a chaque appel.
+    """
+    try:
+        p = _PLACEMENT.get(url)
+        if p and time.time() - p["quand"] < PLACEMENT_FRAICHEUR:
+            return
+        _PLACEMENT[url] = {"part": (p or {}).get("part"), "quand": time.time()}
+        to = aiohttp.ClientTimeout(total=3)
+        async with aiohttp.ClientSession(timeout=to) as s_:
+            async with s_.get(f"{url}/api/ps") as r:
+                charges = (await r.json()).get("models") or []
+        m = next((x for x in charges if x.get("name") == modele), None)
+        taille = (m or {}).get("size") or 0
+        if not taille:
+            return
+        part = (m.get("size_vram") or 0) / taille
+        _PLACEMENT[url]["part"] = part
+        if part <= PART_SUR_CARTE_MINIMUM:
+            print(f"  {url} : {modele} tourne sur le PROCESSEUR "
+                  f"({taille / 1e9:.1f} Go, rien sur la carte) — les analyses de "
+                  f"cette machine prendront des minutes", flush=True)
+    except Exception:
+        return
+
+
 def _relever_cerveau(url):
     """Interroge cet Ollama. BLOQUANT — a n'appeler que hors boucle."""
     c = _CERVEAUX.setdefault(url, {"quand": 0.0, "modeles": [], "noeud": None,
@@ -1044,6 +1126,13 @@ def cerveaux_utilisables(image=False):
       - une carte LIBRE passe devant une carte occupee. Attendre deux minutes
         derriere un rendu quand une autre machine repond tout de suite n'a de
         sens pour personne.
+      - un Ollama qui calcule SUR LE PROCESSEUR passe apres tout le monde,
+        libre ou non, et quelle que soit la carte de sa machine. Cette
+        regle-ci precede les deux autres, et c'est un choix : la mesure dit
+        que ce cerveau-la met deux a cinq minutes (releve du 7 septembre 2026
+        sur zima), quand attendre une carte occupee coute le reste d'une etape
+        de rendu. Il reste dans la liste — un cerveau lent vaut mieux que pas
+        de cerveau — mais il y est dernier.
       - a egalite, la PLUS GROSSE carte. L'analyse est courte et elle est
         DEVANT le rendu : plus tot elle finit, plus tot la carte repart au
         travail, et plus tot l'utilisateur voit sa demande partir.
@@ -1070,9 +1159,10 @@ def cerveaux_utilisables(image=False):
             continue
         libre = not (ident and verrou_noeud(ident).locked())
         taille = (ETAT_NOEUDS.get(ident) or {}).get("vram") or 0 if ident else 0
-        bons.append((0 if libre else 1, -taille, url, ident))
-    bons.sort(key=lambda x: (x[0], x[1]))
-    return [(url, ident) for _, _, url, ident in bons]
+        bons.append((1 if sur_processeur(url) else 0,
+                     0 if libre else 1, -taille, url, ident))
+    bons.sort(key=lambda x: (x[0], x[1], x[2]))
+    return [(url, ident) for _, _, _, url, ident in bons]
 
 
 def modele_vision_de(url):
@@ -3070,6 +3160,10 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             rendu = await _ollama_local(
                 ici, url, (300 if reste_ else 900) if ici.get("images")
                 else ANALYSE_DELAI)
+            # OU CET OLLAMA A MIS LE MODELE. Ici et pas ailleurs : le modele
+            # est encore charge, et l'appel vient de reussir — sonder une
+            # adresse qui vient d'echouer n'apprendrait rien.
+            await relever_placement(url, ici.get("model") or "")
             # Seulement si on l'a demande CHAUD : sans « garder », Ollama l'a
             # deja relache et il n'y a rien a fermer derriere nous.
             if garder and tid:
@@ -13022,6 +13116,7 @@ def noeuds_agents():
                       # plus honnete que « perime » ou que « a jour ».
                       "a_jour": (None if not e.get("empreinte")
                                  else e["empreinte"] == empreinte_agent()),
+                      "llm_sur_carte": llm_sur_carte(x["id"]),
                       "pause": x.get("pause"),
                       "en_travail": len(TRAVAUX.get(x["id"], []))})
     return liste
@@ -13957,6 +14052,7 @@ def machines_connues():
                     "repond": bool(e.get("repond")), "carte": e.get("carte"),
                     "vram": e.get("vram"), "libre": e.get("libre"),
                     "vu_il_y_a": 0,
+                    "llm_sur_carte": llm_sur_carte(local["id"]),
                     # Zero en dur : la console affichait « en travail 0 » pendant
                     # qu'un rendu tournait sur cette machine.
                     "en_travail": len(TRAVAUX.get(local["id"], [])),

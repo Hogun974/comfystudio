@@ -8865,6 +8865,58 @@ COMPREHENSION_SEPT = [
         editions=[("serveur.py", brut(
             '    if tid and (TACHES.get(tid) or {}).get("cerveau_lent") and not image_b64:',
             '    if False and tid and (TACHES.get(tid) or {}).get("cerveau_lent") and not image_b64:'))]),
+    dict(
+        nom="une adresse non mesuree est declaree sur processeur",
+        banc="banc_cerveaux.py",
+        imite="la prudence inversee : sans mesure, on accuse. Toute machine "
+              "neuve serait declassee avant son premier appel, et la console "
+              "annoncerait une panne qui n'existe pas",
+        rougit="on ne declasse pas une machine sur une absence de mesure",
+        editions=[("serveur.py", brut(
+            "    return part is not None and part <= PART_SUR_CARTE_MINIMUM",
+            "    return part is None or part <= PART_SUR_CARTE_MINIMUM"))]),
+    dict(
+        nom="l'ordre des cerveaux ignore le processeur",
+        banc="banc_cerveaux.py",
+        imite="la mesure est prise, la console la montre, et le repartiteur "
+              "n'en tient pas compte : on SAIT que ce cerveau met cinq "
+              "minutes, et on le choisit quand meme en premier",
+        rougit="passe DERNIER, meme libre",
+        editions=[("serveur.py", brut(
+            "        bons.append((1 if sur_processeur(url) else 0," + chr(10)
+            + "                     0 if libre else 1, -taille, url, ident))",
+            "        bons.append((0," + chr(10)
+            + "                     0 if libre else 1, -taille, url, ident))"))]),
+    dict(
+        nom="le placement est resonde a chaque appel",
+        banc="banc_cerveaux.py",
+        imite="la fraicheur oubliee : un aller-retour HTTP de plus a CHAQUE "
+              "appel au modele, trois ou quatre par demande, pour relire un "
+              "fait de machine qui ne change pas",
+        rougit="n'est pas resondee dans l'heure",
+        editions=[("serveur.py", brut(
+            "        if p and time.time() - p[\"quand\"] < PLACEMENT_FRAICHEUR:" + chr(10)
+            + "            return",
+            "        if False:" + chr(10)
+            + "            return"))]),
+    dict(
+        nom="la mesure de placement laisse echapper ses pannes",
+        banc="banc_cerveaux.py",
+        imite="« except Exception » retreci : une mesure de confort qui leve "
+              "fait passer pour une panne de cerveau une analyse qui, elle, "
+              "est revenue — et le repli part chercher une autre machine",
+        rougit="ne leve rien",
+        editions=[("serveur.py", brut(
+            "    except Exception:" + chr(10)
+            + "        return" + chr(10)
+            + chr(10)
+            + chr(10)
+            + "def _relever_cerveau(url):",
+            "    except asyncio.CancelledError:" + chr(10)
+            + "        return" + chr(10)
+            + chr(10)
+            + chr(10)
+            + "def _relever_cerveau(url):"))]),
 ]
 
 SECURITE_SEPT = [

@@ -96,6 +96,23 @@ services:
     # prendre plus gros que la carte en esperant le debordement : Ollama y
     # arrive, mais une analyse de trois minutes devant chaque rendu ne sert
     # personne.
+    #
+    # VERIFIER QU'IL PREND LA CARTE, ET NE PAS LE CROIRE SUR PAROLE. Le bloc
+    # « deploy » ci-dessous est le MEME que celui de comfyui, qui l'obtient —
+    # et le 7 septembre 2026, sur zima, Ollama tournait quand meme entierement
+    # sur le processeur : gemma3:4b, 5,25 Go en memoire, 0,00 sur une carte de
+    # 6,3 Go libres, et deux a cinq minutes par analyse. Rien ne le disait.
+    # Depuis n'importe quelle machine du reseau :
+    #
+    #   curl -s http://LA_MACHINE:11434/api/ps
+    #
+    # « size_vram » a zero alors que « size » est plein, c'est un Ollama sur
+    # processeur ; « docker logs ollama » sur la machine dit pourquoi.
+    #
+    # « latest » CHANGE SOUS LES PIEDS, et une image plus recente que le pilote
+    # de la machine retombe sur le processeur sans se plaindre. Des qu'une
+    # version marche, l'epingler ici — « ollama/ollama:0.x.y » — est le seul
+    # remede durable. Voir docs/plusieurs-ollama.md.
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped

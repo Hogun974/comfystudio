@@ -84,6 +84,63 @@ classement disponible sans faire passer un examen à chaque modèle, et il colle
 la seule mesure qu'on ait : `qwen2.5vl:7b` lit juste, `gemma3:4b` non — il
 déclare pourtant la vision. **Une capacité déclarée n'est pas une compétence.**
 
+## Un Ollama peut avoir une carte et ne pas s'en servir
+
+C'est la panne la plus coûteuse qu'on ait rencontrée, parce que rien ne la
+signale : la machine répond, elle annonce ses modèles, le studio la choisit
+comme cerveau, et chaque analyse prend deux à cinq minutes au lieu de deux
+secondes.
+
+Relevé du 7 septembre 2026 sur **zima** (NAS ZimaOS, GTX 1060 de 6,3 Go) :
+
+| | |
+|---|---|
+| ComfyUI, même machine | `cuda:0 NVIDIA GeForce GTX 1060`, 6,28 Go libres |
+| Ollama, `/api/ps`, `gemma3:4b` | 5,25 Go en mémoire, **0,00 Go sur la carte** |
+| Une analyse du studio | 119 à 300 s, contre 1 à 2 s sur la RTX 2080 Ti |
+
+Le modèle le plus petit installé, qui tient trois fois dans la carte, est
+entièrement sur le processeur. **Ce n'est donc pas un modèle trop gros**, et
+`PART_CARTE_ANALYSE` n'y peut rien : cet Ollama-là n'a aucune carte. Le
+`zimaos-comfyui.yml` de ce dépôt lui déclare pourtant le GPU exactement comme à
+ComfyUI, qui l'obtient — les deux blocs `deploy.resources.reservations.devices`
+sont identiques. La cause est donc dans le conteneur Ollama, pas dans la
+déclaration.
+
+**Le diagnostic, depuis n'importe quelle machine du réseau**, sans rien
+installer :
+
+```bash
+curl -s http://LA_MACHINE:11434/api/ps
+```
+
+`size_vram` à `0` alors que `size` est plein, c'est un Ollama sur processeur.
+Rien d'autre ne le dit : ni la bannière, ni `/api/tags`, ni la console.
+
+**La réparation se fait sur la machine**, et elle demande son terminal :
+
+```bash
+docker logs ollama 2>&1 | grep -i "gpu\|cuda\|driver"
+```
+
+Trois réponses possibles, trois remèdes :
+
+- *« no compatible GPUs were discovered »* — le conteneur n'a pas reçu la
+  carte. Vérifier que l'installateur d'applications a bien honoré le bloc
+  `deploy` (certains le suppriment), et que `nvidia-container-toolkit` est
+  installé sur l'hôte.
+- une erreur CUDA nommant une version de pilote — l'image est plus récente que
+  le pilote de la machine. `ollama/ollama:latest` change sous les pieds :
+  épingler une version qui marchait (`ollama/ollama:0.x.y`) est le seul remède
+  durable.
+- rien du tout — l'Ollama tourne peut-être hors du conteneur qu'on croit.
+
+Tant que ce n'est pas réparé, la machine reste un cerveau **utilisable mais
+lent**. Le studio ne la met pas dehors — un cerveau lent vaut mieux que pas de
+cerveau — mais `STUDIO_ANALYSE_DELAI` (180 s) borne ce qu'une demande accepte
+de l'attendre, et le reste se fait par mots-clés. Voir
+[Réglages](reglages.md).
+
 ## Ce que la bannière annonce au démarrage
 
 Une ligne par adresse, avec le modèle d'écriture de chacune et le nom de la

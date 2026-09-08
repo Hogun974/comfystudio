@@ -47,6 +47,36 @@ travail](qui-prend-le-travail.md).
 | Aiguillage de « décris cette image » par un modèle de langage | 96 à 222 s | zima | 31 août 2026 |
 | Lecture d'image par `qwen2.5vl:7b` | 166 s (263 s avec l'aiguillage) | zima | 31 août 2026 |
 | Chaîne locale complète, avant puis après la séparation texte / vision | 119 s puis 29 s | pc + zima | 31 août 2026 |
+| Analyse d'une demande par `qwen2.5vl:7b` | **1 à 2 s** | pc | 7 septembre 2026 |
+| Plan complet, de la demande au moteur retenu | 1 à 5 s, médiane **1,6 s** | pc | 7 septembre 2026 |
+| Analyse d'une demande par `qwen2.5vl:7b` | **119 à 300 s et plus** | zima | 7 septembre 2026 |
+| `gemma3:4b` déjà chargé, un seul jeton | 3,9 s | zima | 8 septembre 2026 |
+| `gemma3:4b` en mémoire, part réellement sur la carte | 5,25 Go, dont **0,00 sur la carte** | zima | 8 septembre 2026 |
+
+**Les vingt-six demandes du 7 septembre** viennent de
+`recette_comprehension.py`, qui les soumet au studio et les annule dès que le
+plan existe. La médiane de 1,6 s est celle des demandes qui atteignent un
+plan ; les raccourcis écrits (agrandir, détourer, fluidifier) n'appellent
+aucun modèle et sortent à 0,0 s.
+
+**Les 119 à 300 s de zima ne sont pas une petite carte, c'est une carte
+inutilisée.** Le relevé du 8 septembre le prouve : le plus petit modèle
+installé, qui tient trois fois dans les 6,3 Go libres de la GTX 1060, est
+entièrement en RAM — alors que le ComfyUI de la **même machine** voit la carte
+en CUDA. Voir [Plusieurs Ollama](plusieurs-ollama.md) pour le diagnostic et le
+remède.
+
+**Une mesure de durée sur `pc` commence par regarder si sa carte est libre.**
+Le 7 septembre, deux batteries ont donné 4 à 93 s d'analyse là où la veille
+donnait 1 à 2 s ; `nvidia-smi` montrait un jeu à 89 puis 99 % de la carte. La
+conclusion qu'on en tirait — « le schéma JSON imposé au modèle coûte dix fois
+plus cher » — mesurait le jeu. Elle est restée non tranchée, et le schéma
+débranché, faute d'une mesure carte libre. `pc` est la machine de quelqu'un :
+
+```bash
+nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader
+nvidia-smi --query-compute-apps=process_name --format=csv,noheader
+```
 
 **La ligne « lecture d'image » a longtemps annoncé ~25 s.** C'était le relevé du
 28 août ; celui du 31 août donne 19 s sur la même carte, et c'est lui qui fait

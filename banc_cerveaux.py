@@ -3,12 +3,19 @@
 
     python banc_cerveaux.py
 
-Trois regles, ce sont celles de l'utilisateur :
+Quatre regles, dans cet ordre :
   - une machine EN PAUSE ne pense pas ;
+  - un Ollama qui calcule SUR LE PROCESSEUR passe apres tout le monde ;
   - une carte LIBRE passe devant une carte occupee ;
-  - a egalite, la PLUS PETITE carte.
+  - a egalite, la PLUS GROSSE carte.
 
-Et une quatrieme, qui est une regle de surete : une image a lire ne part JAMAIS
+CET EN-TETE DISAIT « la PLUS PETITE » jusqu'au 8 septembre 2026. L'ordre a ete
+inverse par l'utilisateur le 1er septembre — le corps du banc le mesure depuis
+—, et sa description est restee fausse une semaine, en tete du fichier qui
+existe pour la garder. Un banc juste sous une docstring fausse trompe mieux
+qu'un banc absent.
+
+Et une cinquieme, qui est une regle de surete : une image a lire ne part JAMAIS
 sur une machine sans modele de vision. Une description inventee est pire qu'une
 erreur, parce que rien ne la signale.
 
@@ -187,6 +194,130 @@ async def main():
     dit(S.corps_ici(corps, MORT) is None or S.corps_ici(corps, MORT).get("model"),
         "et une adresse sans machine connue n'est pas jugee sur une carte qu'on ignore")
     dit(S.PART_CARTE_ANALYSE == 0.75, "la part est de trois quarts", str(S.PART_CARTE_ANALYSE))
+
+    # ── un Ollama peut avoir une carte et ne pas s'en servir ───────────
+    # LA PANNE LA PLUS COUTEUSE DU PARC, ET LA SEULE QUI NE SE VOIE NULLE
+    # PART : la machine repond, annonce ses modeles, le studio la choisit, et
+    # chaque analyse prend deux a cinq minutes. Releve du 8 septembre 2026 sur
+    # zima — gemma3:4b, 5,25 Go en memoire, 0,00 sur une carte de 6,3 Go
+    # libres, vue en CUDA par le ComfyUI de la MEME machine. « /api/ps » le
+    # dit, et lui seul. Ici on remplace la session HTTP : c'est le VRAI
+    # relever_placement() qui tourne, sur une reponse d'Ollama fabriquee.
+    print("\n  ── ou l'Ollama met vraiment le modele ──")
+    poser()
+    S._PLACEMENT.clear()
+    dit(S.sur_processeur(NAS) is False,
+        "sans mesure, une adresse n'est PAS declaree sur processeur : on ne "
+        "declasse pas une machine sur une absence de mesure")
+    dit(S.llm_sur_carte("zima") is None,
+        "et la console ne dit rien plutot que d'accuser", str(S.llm_sur_carte("zima")))
+
+    PS = {"charge": {"models": []}, "appels": [], "leve": False}
+
+    class FausseReponse:
+        async def json(self):
+            return PS["charge"]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FausseSession:
+        def __init__(self, *a, **k):
+            pass
+
+        def get(self, url):
+            PS["appels"].append(url)
+            if PS["leve"]:
+                raise RuntimeError("injoignable")
+            return FausseReponse()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    vraie_session = S.aiohttp.ClientSession
+    S.aiohttp.ClientSession = FausseSession
+    try:
+        PS["charge"] = {"models": [{"name": "gemma3:4b", "size": 5_250_000_000,
+                                    "size_vram": 0}]}
+        await S.relever_placement(NAS, "gemma3:4b")
+        dit(S.sur_processeur(NAS) is True and PS["appels"] == [f"{NAS}/api/ps"],
+            "un modele entierement hors de la carte declare cette adresse sur "
+            "processeur, et c'est /api/ps qui l'a dit",
+            f"{S.sur_processeur(NAS)}, {PS['appels']}")
+        dit(S.llm_sur_carte("zima") is False,
+            "la console le montre sur la machine, pas sur l'adresse")
+
+        del PS["appels"][:]
+        await S.relever_placement(NAS, "gemma3:4b")
+        dit(not PS["appels"],
+            "une adresse deja mesuree n'est pas resondee dans l'heure : c'est un "
+            "fait de machine, pas un fait de demande", str(PS["appels"]))
+
+        S._PLACEMENT.clear()
+        del PS["appels"][:]
+        PS["charge"] = {"models": [{"name": "qwen2.5vl:7b", "size": 5_970_000_000,
+                                    "size_vram": 5_970_000_000}]}
+        await S.relever_placement(PC, "qwen2.5vl:7b")
+        dit(S.sur_processeur(PC) is False and S.llm_sur_carte("pc") is True,
+            "un modele pose sur la carte ne declasse rien", str(S.llm_sur_carte("pc")))
+
+        S._PLACEMENT.clear()
+        PS["charge"] = {"models": [{"name": "autre:7b", "size": 1, "size_vram": 0}]}
+        await S.relever_placement(NAS, "gemma3:4b")
+        dit(S.sur_processeur(NAS) is False,
+            "un /api/ps qui ne porte pas LE modele employe n'apprend rien, et "
+            "n'accuse personne")
+
+        S._PLACEMENT.clear()
+        PS["leve"] = True
+        try:
+            await S.relever_placement(NAS, "gemma3:4b")
+            echappe = None
+        except Exception as e:
+            # CE QUE LE STUDIO EN FERAIT : la mesure est appelee dans le meme
+            # « try » que l'appel au modele, et ce qui echappe ici passe pour
+            # une panne de cerveau. On l'attrape donc pour ROUGIR, et non pour
+            # casser le banc — un banc casse ne nomme pas la panne.
+            echappe = type(e).__name__
+        dit(echappe is None and S.sur_processeur(NAS) is False,
+            "et une adresse qui ne repond pas a /api/ps ne leve rien : la mesure "
+            "de confort ne peut pas casser l'analyse qui vient de reussir",
+            echappe or "rien n'a echappe")
+        PS["leve"] = False
+    finally:
+        S.aiohttp.ClientSession = vraie_session
+
+    # L'ORDRE. La regle passe AVANT « libre d'abord », et c'est un choix ecrit :
+    # deux a cinq minutes mesurees contre le reste d'une etape de rendu.
+    poser()
+    S._PLACEMENT.clear()
+    S._PLACEMENT[PC] = {"part": 0.0, "quand": S.time.time()}
+    l = S.cerveaux_utilisables()
+    dit([u for u, _ in l] == [NAS, PC],
+        "un Ollama sur processeur passe DERNIER, meme libre et meme sur la plus "
+        "grosse carte du parc", str([u for u, _ in l]))
+    await S.verrou_noeud("zima").acquire()
+    l = S.cerveaux_utilisables()
+    dit([u for u, _ in l] == [NAS, PC],
+        "et la carte OCCUPEE passe quand meme devant le processeur : attendre la "
+        "fin d'une etape coute moins que deux a cinq minutes",
+        str([u for u, _ in l]))
+    S.VERROUS_NOEUD["zima"].release()
+    S._PLACEMENT[NAS] = {"part": 0.0, "quand": S.time.time()}
+    l = S.cerveaux_utilisables()
+    dit(len(l) == 2,
+        "deux cerveaux sur processeur restent utilisables : un cerveau lent vaut "
+        "mieux que pas de cerveau", str(len(l)))
+    dit(S.PART_SUR_CARTE_MINIMUM == 0.05,
+        "le seuil est a cinq pour cent : un Ollama qui ne pose que son cache de "
+        "contexte sur la carte n'y calcule pas", str(S.PART_SUR_CARTE_MINIMUM))
+    S._PLACEMENT.clear()
 
     # ── une analyse de texte a une echeance, et une demande ne l'attend qu'une fois ──
     # Mesure du 7 septembre 2026, le PC en pause : 119 a 300 s et plus par

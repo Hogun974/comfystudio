@@ -917,10 +917,19 @@ async function rafraichir() {
        pleine ». */
     const vram = n.vram
       ? ` · ${n.libre == null ? "?" : n.libre} / ${n.vram} Go libres` : "";
+    /* Une machine peut avoir une carte et son Ollama ne pas s'en servir : le
+       studio ne l'apprend qu'après un appel, en lisant /api/ps. C'est la
+       panne la plus coûteuse du parc et la seule qui ne se voie nulle part —
+       elle multiplie une analyse par cent sans qu'une ligne le dise.
+       « null » veut dire « pas encore mesuré », et ne s'affiche pas : accuser
+       sur une absence de mesure serait pire que se taire. */
+    const cerveau = n.llm_sur_carte === false
+      ? '<div class="perime">modèle de langage sur le processeur — analyses lentes</div>'
+      : "";
     tr.innerHTML = `
       <td><span class="pastille ${pastille}"></span><b>${ech(n.titre || n.id)}</b>
           <div class="ident">${ech(n.id)}${n.agent ? "" : " · cette machine"}</div></td>
-      <td>${carte}<span class="detail">${vram}</span></td>
+      <td>${carte}<span class="detail">${vram}</span>${cerveau}</td>
       <td class="detail">${(n.moteurs || []).length
         ? `<b>${n.moteurs.length}</b> prêts`
         : '<span style="color:var(--rouge)">aucun</span>'}</td>
