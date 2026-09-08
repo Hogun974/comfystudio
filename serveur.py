@@ -2984,6 +2984,26 @@ def consigner_appel_distant(*a, **kw):
               flush=True)
 
 
+async def _json_objet(req):
+    """Le corps JSON de la requete, GARANTI dictionnaire.
+
+    « await req.json() » rend ce que le corps contient : « [] », « "abc" » ou
+    « 5 » sont du JSON valide, et le « d.get(...) » de la ligne suivante levait
+    alors AttributeError — 500 « Server got itself in trouble » sur un corps
+    forge, mesure le 8 septembre 2026 sur POST /api/generer. Vingt-deux routes
+    lisaient un corps de cette facon ; les garder une par une, c'etait en
+    oublier une.
+
+    Elle leve comme req.json() : le « except Exception » de chaque route rend
+    alors « corps illisible » en 400, et le « except web.HTTPException » pose
+    au-dessus laisse toujours passer le 413 d'un corps trop gros.
+    """
+    d = await req.json()
+    if not isinstance(d, dict):
+        raise ValueError("le corps JSON n'est pas un objet")
+    return d
+
+
 async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                        modele=None, temperature=0.4, tid=None, garder=0):
     """temperature : 0.4 convient a la description libre d'une image. L'aiguillage
@@ -3082,12 +3102,33 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     if not cerveaux:
         journal(tid, _pourquoi_aucun_cerveau())
     panne = None
+    # QUI A DEPASSE, sans rien decider encore. La marque « cerveau lent » etait
+    # posee ICI MEME, dans le « except » de chaque adresse — et la boucle
+    # continue apres un depassement. Une demande dont le plan expirait sur la
+    # petite carte puis revenait en une seconde sur la grosse repartait donc
+    # avec son plan ET sa marque : enrichissement, traduction et recherche de
+    # sujet levaient ensuite pour rien, et le prompt partait en francais a un
+    # moteur qui ne lit que l'anglais — ce que ce depot documente comme
+    # changeant le SUJET, pas la qualite. On ne marque plus qu'apres la
+    # boucle, et seulement si personne n'a repondu.
+    lents = []
     # UNE echeance pour toute la boucle, et non une par adresse. Attendre
     # ATTENTE_CARTE a chaque adresse faisait, a trois adresses et trois appels
     # par demande, jusqu'a quatre heures avant le premier repli.
     echeance = time.time() + ATTENTE_CARTE
+    # ECRIRE N'EST PAS ANALYSER, et l'echeance ne s'appliquait qu'a « pas une
+    # image ». Les appels d'ECRITURE — enrichissement, traduction, refrain,
+    # couplets — prennent le plus gros modele de la machine, dix-huit
+    # gigaoctets parfois, et le chargement seul depasse trois minutes. A
+    # 180 s, la premiere tentative de refrain expirait, les cinq suivantes
+    # levaient sur la marque, _ecrire_paroles rendait "" et la demande mourait
+    # sur « les paroles n'ont pas pu etre ecrites » : une erreur dure pour une
+    # carte simplement lente a charger. L'ecriture garde ses neuf cents
+    # secondes, l'analyse a les siennes.
+    ecriture = (corps.get("model") or "") == MODELE_POUR_ECRIRE
     for rang_, (url, ident) in enumerate(cerveaux):
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
+        delai = ANALYSE_DELAI
         # LE « tid » TOUJOURS, et non « seulement s'il n'y a qu'une adresse ».
         # Avec deux Ollama — le parc reel de ce projet — il valait None, et
         # journal(None, …) n'imprime que sur la sortie du studio : rien dans le
@@ -3157,9 +3198,9 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             reste_ = any(corps_ici(corps, u) is not None
                          and not (i and (noeud(i) or {}).get("pause"))
                          for u, i in cerveaux[rang_ + 1:])
-            rendu = await _ollama_local(
-                ici, url, (300 if reste_ else 900) if ici.get("images")
-                else ANALYSE_DELAI)
+            delai = ((300 if reste_ else 900) if ici.get("images")
+                     else 900 if ecriture else ANALYSE_DELAI)
+            rendu = await _ollama_local(ici, url, delai)
             # OU CET OLLAMA A MIS LE MODELE. Ici et pas ailleurs : le modele
             # est encore charge, et l'appel vient de reussir — sonder une
             # adresse qui vient d'echouer n'apprendrait rien.
@@ -3171,24 +3212,36 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             return rendu
         except Exception as e:
             panne = e
-            if isinstance(e, asyncio.TimeoutError) and not ici.get("images") and tid:
-                # CE CERVEAU EST TROP LENT POUR CETTE DEMANDE, et elle fait
-                # encore deux ou trois appels apres celui-ci : enrichir,
-                # traduire, nommer le sujet. Chacun attendrait l'echeance a
-                # son tour — neuf minutes pour une demande, mesure du
-                # 7 septembre 2026 sur zima, dont le modele tourne sur le
-                # processeur. On le note sur la demande : les appels suivants
-                # ne partent pas, et l'aiguillage par mots-cles prend le
-                # relais tout de suite.
-                (TACHES.get(tid) or {})["cerveau_lent"] = titre_ol
-                journal(tid, f"{titre_ol} n'a pas repondu en {ANALYSE_DELAI} s — "
-                             f"le reste de cette demande se fera sans modele")
+            if isinstance(e, asyncio.TimeoutError):
+                # LE MOMENT OU LA MESURE VAUT LE PLUS. Elle est prise apres un
+                # appel REUSSI, plus haut — et la machine qui en a le plus
+                # besoin est justement celle dont les appels n'aboutissent pas :
+                # sans cette ligne, un Ollama sur processeur assez lent pour
+                # depasser l'echeance ne se diagnostiquerait JAMAIS. Ici le
+                # modele est charge la-bas et calcule encore ; /api/ps dira ou.
+                await relever_placement(url, ici.get("model") or "")
+            if (isinstance(e, asyncio.TimeoutError) and not ici.get("images")
+                    and not ecriture):
+                # CE CERVEAU-CI A DEPASSE, et c'est tout ce qu'on en conclut :
+                # la boucle continue vers l'adresse suivante, qui peut tres
+                # bien repondre en une seconde. La marque, elle, se pose apres
+                # la boucle — ici, elle empoisonnait une demande qui avait
+                # pourtant obtenu son plan.
+                lents.append(titre_ol)
+                journal(tid, f"{titre_ol} n'a pas repondu en {delai:.0f} s")
             elif len(cerveaux) > 1:
                 journal(tid, f"{titre_ol} n'a pas repondu "
                              f"({type(e).__name__}) — on essaie ailleurs")
         finally:
             if verrou_ol is not None:
                 verrou_ol.release()
+    # PERSONNE N'A REPONDU, et au moins un a depasse l'echeance : cette
+    # demande fera le reste sans modele. C'est ici, apres la boucle, que la
+    # marque a un sens — pas dans le « except » d'une adresse parmi trois.
+    if lents and tid:
+        (TACHES.get(tid) or {})["cerveau_lent"] = lents[0]
+        journal(tid, f"{', '.join(lents)} n'a pas repondu en {ANALYSE_DELAI} s — "
+                     f"le reste de cette demande se fera sans modele")
     if panne is None:
         panne = RuntimeError(_pourquoi_aucun_cerveau())
     # HORS du verrou. On n'essaie une autre machine QUE si la sienne ne repond
@@ -3353,8 +3406,16 @@ def modele_analyse_de(url, voulu):
     if not vram:
         return voulu
     marge = vram * PART_CARTE_ANALYSE
+    # QUI SAIT COMPLETER, et pas seulement « le plus gros qui tienne » : sans
+    # ce filtre, une machine portant un modele d'embedding de 270 Mo a cote
+    # d'un qwen2.5vl:7b trop gros substituait l'embedding — le studio
+    # journalisait « nomic-embed-text plutot que qwen2.5vl:7b » et lui envoyait
+    # un /api/generate. La capacite est annoncee par Ollama ; absente, on
+    # suppose qu'il complete, comme partout ailleurs ici.
     tailles = {m.get("name"): m.get("size", 0) / 1e9
-               for m in cerveau(url)["modeles"] if not _casse_ici(url, m.get("name"))}
+               for m in cerveau(url)["modeles"]
+               if not _casse_ici(url, m.get("name"))
+               and "completion" in (m.get("capabilities") or ["completion"])}
     if tailles.get(voulu, 0) <= marge:
         return voulu
     tenables = [(t, n) for n, t in tailles.items() if 0 < t <= marge]
@@ -4106,9 +4167,16 @@ def sans_accents(t):
     return "".join(c for c in unicodedata.normalize("NFD", (t or "").lower())
                    if unicodedata.category(c) != "Mn")
 
-# Un mot lisible : deux lettres au moins, accents compris. Ce qui n'en a
-# aucun — emojis, ponctuation, chiffres — n'est pas une demande.
-_UN_MOT = re.compile(r"[a-zA-Z\u00c0-\u024f]{2,}")
+# Un mot lisible : deux lettres au moins, DE N'IMPORTE QUELLE ECRITURE. La
+# premiere version disait « [a-zA-Z\u00c0-\u024f] », c'est-a-dire le latin et
+# lui seul : « нарисуй кота », « 猫を描いて », « χιονισμένο » et « مدينة »
+# etaient declares sans un mot lisible et recevaient « Que veux-tu voir,
+# exactement ? ». Ce depot soutient l'etranger — banc_multilingue.py mesure
+# 345 demandes, _consigne_langue ecrit des paroles en japonais — et la garde
+# posee pour epargner deux appels sur des emojis fermait la porte a des
+# demandes parfaitement claires. « [^\W\d_] » est la meme idee sans le
+# prejuge d'alphabet : une lettre, pas un chiffre, pas un souligne.
+_UN_MOT = re.compile(r"[^\W\d_]{2,}", re.U)
 _ADRESSE_SEULE = re.compile(r"\s*(?:https?://|www\.)\S+\s*$", re.I)
 QUESTIONS_ADRESSE = [
     "Je ne sais pas ouvrir une adresse web : depose le fichier lui-meme "
@@ -4601,7 +4669,13 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
     # recopiant l'exemple de son propre gabarit — un renard roux dans la neige,
     # rendu a qui n'avait rien demande. On ne devine pas : on demande, sans
     # depenser un appel.
-    if not a_une_image and not modele_choisi and bruit_ou_adresse(texte):
+    # ET SEULEMENT AU DEBUT D'UNE CONVERSATION. « 4k », « 16:9 », « 1080p »
+    # n'ont aucun mot lisible et sont pourtant des suites parfaitement claires
+    # quand une image vient d'etre rendue. La garde epargne deux appels sur du
+    # bruit ; elle ne doit pas couter une reponse a qui poursuit.
+    if (not a_une_image and not modele_choisi
+            and not (conv or {}).get("derniere_sortie")
+            and bruit_ou_adresse(texte)):
         journal(tid, "aucun mot lisible — precision demandee plutot que devinee")
         return {"intention": "question", "modele": None, "prompt": None,
                 "questions": (list(QUESTIONS_ADRESSE) if _ADRESSE_SEULE.match(texte or "")
@@ -5453,7 +5527,7 @@ async def api_nuage(req):
     pid = qui(req)
     if req.method == "POST":
         try:
-            d = await req.json()
+            d = await _json_objet(req)
         except web.HTTPException:
             raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:
@@ -6537,9 +6611,22 @@ _FLUIDE = re.compile(
     r"(?:passe|mets|met).{0,12}(?:en )?(?:48|60|120) ?(?:fps|images)|"
     r"(?:\bla|\ble|\bca|\bcette video|\bla video|\ble clip|\bcelle-ci)"
     r"\s+(?:au|en) ralenti|"
-    r"(?:passe|mets|met|remets|refais|rejoue)(?:-| )?(?:la|le|moi)?.{0,12}"
-    r"(?:au ralenti|en ralenti|slow ?motion)|"
-    r"\bralentis\b)", re.I)
+    # LE VERBE EN TETE, ET RIEN ENTRE LUI ET LE RALENTI. Les douze
+    # caracteres libres de la version precedente laissaient passer « mets une
+    # vague au ralenti » — la panne qu'on croyait fermee, avec un verbe
+    # devant —, et sans l'ancre « filme un train qui passe en slow motion »
+    # aurait ete pris pour une fluidification. Une formule polie perd le
+    # raccourci et part au modele : c'est le bon sens de l'erreur.
+    r"^\s*(?:passe|mets|met|remets|refais|rejoue)[\s-]*(?:la|le|moi|ca)?[\s-]*"
+    r"(?:video|clip|animation|sequence|gif)?[\s-]*"
+    r"(?:(?:au|en) )?(?:ralenti|slow ?motion)|"
+    r"\bralentis\b|"
+    # « au ralenti » SEUL redevient un geste. Les douze caracteres libres de la
+    # branche precedente laissaient passer « mets une vague au ralenti » — la
+    # panne qu'on croyait fermee, avec un verbe devant — et la reecriture qui
+    # l'a fermee avait emporte la suite la plus courte qui soit : « au
+    # ralenti », deux mots apres une video, qui repartait en video neuve.
+    r"^\s*(?:au |en )?(?:ralenti|slow ?motion)\s*$)", re.I)
 _RALENTI = re.compile(r"(ralenti|slow ?motion)", re.I)
 
 
@@ -7872,7 +7959,7 @@ async def api_avis(req):
     # n'aiderait personne a rien.
     lg = langue_de(req)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -8044,7 +8131,7 @@ async def api_admin_cles_poser(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "jeton invalide"}, status=403)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -8252,7 +8339,7 @@ async def api_entrer(req):
     # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.
     lg = langue_de(req)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -8319,7 +8406,7 @@ def _ma_session(req):
 async def _corps(req, lg):
     """(dictionnaire, refus). Un corps illisible ne doit pas lever un 500."""
     try:
-        return await req.json(), None
+        return await _json_objet(req), None
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -8610,7 +8697,7 @@ async def api_admin_compte_poser(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "jeton invalide"}, status=403)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -8626,7 +8713,17 @@ async def api_admin_compte_poser(req):
                 COMPTES.changer_role(nom, bool(d.get("admin")))
     except _comptes.ErreurCompte as e:
         return web.json_response({"erreur": str(e)}, status=400)
-    return web.json_response({"ok": True, "comptes": COMPTES.liste()})
+    rep_ = web.json_response({"ok": True, "comptes": COMPTES.liste()})
+    # UN MOT DE PASSE IMPOSE A QUELQU'UN D'AUTRE LE DECONNECTE — c'est le but,
+    # et c'est pourquoi cette route ne reposait aucun cookie. Mais rien ne
+    # distinguait « je pose le mot de passe d'un autre » de « je pose le mien
+    # depuis la console » : dans le second cas, l'auteur du geste se
+    # deconnectait lui-meme, a la ligne suivante, sans un mot.
+    if (d.get("mdp") and nom
+            and nom.lower() == (req.get("compte") or "").lower()):
+        return _session_renouvelee(
+            rep_, (COMPTES.gens.get(nom.lower()) or {}).get("nom") or nom)
+    return rep_
 
 
 async def api_admin_mfa_retirer(req):
@@ -10623,7 +10720,7 @@ async def api_textes(req):
     voulue = ""
     if req.method == "POST":
         try:
-            voulue = str((await req.json()).get("langue") or "")
+            voulue = str((await _json_objet(req)).get("langue") or "")
         except web.HTTPException:
             raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:
@@ -10899,7 +10996,7 @@ async def api_reprendre(req):
     pid = qui(req)
     lg = langue_de(req)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -10964,7 +11061,7 @@ async def api_au_propre(req):
     pid = qui(req)
     lg = langue_de(req)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -11159,7 +11256,7 @@ async def api_refaire(req):
     pid = qui(req)
     lg = langue_de(req)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -11438,7 +11535,7 @@ async def api_variante_choisir(req):
     pid = qui(req)
     lg = langue_de(req)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -11485,7 +11582,7 @@ async def api_variante_choisir(req):
 async def api_generer(req):
     lg = langue_de(req)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -11905,7 +12002,7 @@ async def api_conv_reglages(req):
     if not ouvrable(conv, pid):
         return web.json_response({"erreur": "inconnue"}, status=404)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -12838,7 +12935,22 @@ async def en_tetes_surs(req, handler):
     deja ce troisieme en-tete, on l'etend au reste pour ne plus avoir a y
     penser route par route.
     """
-    rep_ = await handler(req)
+    # « TOUTE reponse » LE DIT ET DOIT LE FAIRE : un 404 du routeur, un 403
+    # d'origine refusee, le 413 que les vingt-deux gardes font justement
+    # remonter — tous naissent d'une HTTPException et sortaient donc SANS les
+    # trois en-tetes, alors que ce sont les reponses qu'un tiers provoque le
+    # plus facilement. Une HTTPException EST une reponse : on la garnit et on
+    # la relance telle quelle.
+    try:
+        rep_ = await handler(req)
+    except web.HTTPException as sortie:
+        _trois_en_tetes(sortie)
+        raise
+    _trois_en_tetes(rep_)
+    return rep_
+
+
+def _trois_en_tetes(rep_):
     rep_.headers.setdefault("X-Frame-Options", "DENY")
     rep_.headers.setdefault("Referrer-Policy", "no-referrer")
     rep_.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -13443,7 +13555,7 @@ async def api_noeud_annonce(req):
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -13647,7 +13759,7 @@ async def api_noeud_reponse(req):
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -13703,7 +13815,12 @@ async def api_noeud_fichier(req):
     # et un ensemble n'y passe pas. Cree APRES un depot reussi seulement, et
     # date : un tid admis par la tolerance du disque n'est pas dans TACHES, et
     # purger_taches() ne le retrouverait pas sans sa date.
-    depot = DEPOTS.get(tid) or {"noms": set(), "octets": 0, "quand": time.time()}
+    # setdefault ET NON get : deux depots simultanes sous le meme tid
+    # construisaient chacun leur dictionnaire, et le dernier ecrit ecrasait
+    # l'autre — le plafond par travail se contournait en parallelisant, et le
+    # nom perdu faisait refuser le reessai legitime de ce fichier-la.
+    depot = DEPOTS.setdefault(tid, {"noms": set(), "octets": 0,
+                                    "quand": time.time()})
     deposes = depot["noms"]
     # Un nom deja pose ne se recouvre que par le MEME travail : c'est le cas
     # de la machine qui reessaie apres une reponse perdue en route, et il est
@@ -13722,37 +13839,53 @@ async def api_noeud_fichier(req):
     # Quelle que soit la raison de l'arret : un flux coupe par le reseau laissait
     # un fichier partiel, que le nouvel essai de la machine trouvait « deja la ».
     taille = 0
-    deja = depot["octets"]
     if os.path.exists(cible):
         # Un nom repose par le meme travail remplace : ses anciens octets
         # sortent du cumul, sinon cinq reessais d'une video de deux gigas
         # epuisaient le plafond sans un fichier de trop sur le disque.
         try:
-            deja -= os.path.getsize(cible)
+            depot["octets"] = max(0, depot["octets"] - os.path.getsize(cible))
         except OSError:
             pass
+    # LE CUMUL EST TENU DANS LE REGISTRE PARTAGE, BLOC PAR BLOC, et non dans un
+    # instantane local. Avec « deja = depot["octets"] » lu une fois au depart,
+    # deux depots partis ensemble sous le meme travail ne se voyaient pas l'un
+    # l'autre : chacun comparait le plafond a l'etat d'AVANT, et le dernier a
+    # ecrire ecrasait le compte du premier. DEPOT_MAX_TACHE se contournait donc
+    # en parallelisant — exactement la menace qu'il existe pour fermer.
     try:
         with open(cible, "wb") as f:
             async for bloc in req.content.iter_chunked(1 << 16):
                 taille += len(bloc)
-                if taille > DEPOT_MAX or deja + taille > DEPOT_MAX_TACHE:
-                    raise ValueError("trop gros")
+                depot["octets"] += len(bloc)
+                if taille > DEPOT_MAX or depot["octets"] > DEPOT_MAX_TACHE:
+                    raise _TropGros()
                 f.write(bloc)
     except BaseException as e:
         try:
             os.remove(cible)
         except OSError:
             pass
-        if not isinstance(e, ValueError):
+        # LE FICHIER REMPLACE EST PARTI AVEC L'ESSAI MANQUE : son nom ne
+        # designe plus rien sur le disque, et ses octets sont deja sortis du
+        # cumul. Sans ces deux lignes, un reessai coupe laissait un nom qui
+        # promet un fichier absent, et le suivant recomptait des octets perdus.
+        deposes.discard(nom)
+        depot["octets"] = max(0, depot["octets"] - taille)
+        # « _TropGros » et non ValueError : n'importe quel ValueError venu
+        # d'ailleurs se rapportait « fichier trop gros ».
+        if not isinstance(e, _TropGros):
             raise
         print(f"  depot refuse de {x['id']} : {nom} depasse "
               f"{DEPOT_MAX / 1e9:.0f} Go, ou {DEPOT_MAX_TACHE / 1e9:.0f} Go "
               f"pour le travail", flush=True)
         return web.json_response({"erreur": "fichier trop gros"}, status=413)
     deposes.add(nom)
-    depot["octets"] = max(0, deja + taille)
-    DEPOTS[tid] = depot
     return web.json_response({"ok": True, "octets": taille})
+
+
+class _TropGros(Exception):
+    """Le depot depasse le plafond, par fichier ou pour le travail entier."""
 
 
 def _depot_refuse(tid, ident):
@@ -13769,7 +13902,13 @@ def _depot_refuse(tid, ident):
     if tache is not None:
         if tache.get("noeud") not in (None, ident):
             return 403, "travail confie a une autre machine"
-        if tache.get("etat") not in (None, "en cours"):
+        # « FINI », ET NON « PAS EN COURS ». Une tache passe en « erreur »
+        # des que soumettre_a_agent renonce au bout d'une heure — et la
+        # machine, elle, finit son rendu a une heure cinq et le depose. Le
+        # refuser jetait un travail bel et bien fait, que rattacher_tardif
+        # existe precisement pour recoller : lui ne refuse que « fini ». Une
+        # video wan14b de plus d'une heure est le cas vise, pas un cas d'ecole.
+        if tache.get("etat") == "fini" or tache.get("annulee"):
             return 409, "travail termine"
         return None
     for conv in CONVERSATIONS.values():
@@ -13791,7 +13930,7 @@ async def api_noeud_progres(req):
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -13903,7 +14042,7 @@ async def api_noeud_resultat(req):
     if not x:
         return web.json_response({"erreur": "jeton inconnu"}, status=401)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -14152,15 +14291,37 @@ async def api_admin_essai_llm(req):
     if not e.get("repond"):
         return web.json_response({"erreur": "cette machine ne repond pas"},
                                  status=409)
+    # LE VRAI GABARIT, ET NON UNE PHRASE COURTE. Le 8 septembre 2026, sur pc,
+    # cet essai repondait « Bleu. » pendant que TOUTE analyse revenait vide :
+    # la carte, occupee la matinee par un jeu, rendait « @@@@@@@ » des que le
+    # prompt depassait quelques centaines de jetons, et le mode JSON changeait
+    # ce charabia en reponse vide. Un essai qui passe quand la chose qu'il
+    # eprouve est cassee est pire qu'un essai absent : il donne le feu vert.
+    #
+    # On envoie donc ce que le studio envoie vraiment — le gabarit du plan, sa
+    # taille, son mode JSON — et l'on juge la reponse : un plan qui se lit, ou
+    # rien. « intention » suffit ; ce que le modele choisit ne nous regarde
+    # pas ici, seulement qu'il rende un objet lisible.
     corps = {"model": MODELE_LLM,
-             "prompt": "Reponds en un seul mot : quelle est la couleur du ciel "
-                       "par temps clair ?",
-             "stream": False, "keep_alive": 0, "options": {"temperature": 0}}
+             "system": SYSTEME.format(catalogue=catalogue_texte(),
+                                      contexte=""),
+             "prompt": "une photo d'un chat roux endormi sur un fauteuil vert",
+             "stream": False, "format": "json", "keep_alive": 0,
+             "options": {"temperature": 0}}
     debut = time.time()
     reponse, erreur = await poser_a(ident, corps, secondes=180)
+    lisible, pourquoi = False, ""
+    if not erreur:
+        try:
+            lisible = "intention" in lire_objet_json(reponse or "")
+            pourquoi = "" if lisible else "le modele a rendu un objet sans intention"
+        except Exception:
+            pourquoi = ("le modele n'a rien rendu" if not (reponse or "").strip()
+                        else "le modele a rendu quelque chose d'illisible")
     return web.json_response({"modele": corps["model"],
                               "reponse": (reponse or "").strip()[:400],
-                              "erreur": erreur,
+                              "lisible": lisible,
+                              "erreur": erreur or pourquoi,
                               "secondes": round(time.time() - debut, 1)})
 
 
@@ -14178,7 +14339,7 @@ async def api_admin_pause(req):
     if not x:
         return web.json_response({"erreur": "machine inconnue"}, status=404)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -14219,7 +14380,7 @@ async def api_admin_reglages(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
     if req.method == "POST":
         try:
-            d = await req.json()
+            d = await _json_objet(req)
         except web.HTTPException:
             raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:
@@ -14261,7 +14422,7 @@ async def api_admin_creer(req):
     if not admin_ok(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -14316,7 +14477,7 @@ async def api_admin_entrer(req):
     laisser une ligne de journal derriere lui.
     """
     try:
-        d = await req.json()
+        d = await _json_objet(req)
     except web.HTTPException:
         raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
     except Exception:
@@ -14702,7 +14863,7 @@ async def api_demarrage(req):
         return web.json_response({"erreur": "acces refuse"}, status=403)
     if req.method == "POST":
         try:
-            d = await req.json()
+            d = await _json_objet(req)
         except web.HTTPException:
             raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
         except Exception:

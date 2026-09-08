@@ -707,7 +707,17 @@ try:
     VOULUS = {"_ECHECS", "ATTENTE_MAX", "OUBLI_ECHECS", "ECHECS_MAX",
               "SESSION_ADMIN", "_oublier_les_vieux_echecs", "_freinage",
               "_signature_admin", "session_admin", "_session_admin_valide",
-              "admin_ok", "admin_par_jeton", "api_admin_entrer"}
+              "admin_ok", "admin_par_jeton", "api_admin_entrer",
+              # api_admin_entrer lit son corps par _json_objet depuis le
+              # 8 septembre 2026 : sans elle dans la liste, les deux cas de la
+              # porte d'administration rougissaient sur un NameError, c'est-a-dire
+              # sur l'absence d'une fonction et non sur ce qu'ils mesurent.
+              "_json_objet",
+              # ET LA ROUTE QUI POSE UN MOT DE PASSE, avec le renouvellement de
+              # session qu'elle appelle. Elles ne touchent qu'a COMPTES, a
+              # _comptes et au faux « web » : ce qui tourne ici est le texte de
+              # serveur.py, pas une copie de sa logique.
+              "api_admin_compte_poser", "_session_renouvelee"}
     morceaux = []
     for n in arbre.body:
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in VOULUS:
@@ -749,9 +759,10 @@ try:
     except Exception as e:      # noqa: BLE001 — un banc qui meurt ne mesure rien
         manquants.append(f"{type(e).__name__}: {e}")
     dit(not manquants,
-        "serveur.py definit les treize noms de la porte d'administration et du "
-        "freinage, et ils s'executent sans aiohttp",
-        ", ".join(manquants) or "les treize")
+        f"serveur.py definit les {len(VOULUS)} noms de la porte "
+        f"d'administration, du freinage et de la pose d'un mot de passe, et "
+        f"ils s'executent sans aiohttp",
+        ", ".join(manquants) or f"les {len(VOULUS)}")
 
     def appel(nom, *a):
         """Rend ce que la fonction rend, ou None si elle manque ou leve."""
@@ -854,6 +865,86 @@ try:
         "de ceux qui essaient encore",
         f"{len(echecs)} couples, du plus vieux a {maintenant - restants[0][1]:.0f} s")
     echecs.clear()
+
+    # ══ POSER UN MOT DE PASSE DEPUIS LA CONSOLE ════════════════════════
+    # Changer de mot de passe incremente la generation du compte : tout jeton
+    # d'avant meurt, y compris celui du navigateur qui vient de faire le geste.
+    # C'est VOULU quand l'administrateur impose un mot de passe a quelqu'un
+    # d'autre — le deconnecter partout est le but meme du geste. Mais rien ne
+    # distinguait ce cas de « je pose LE MIEN depuis la console » : l'auteur du
+    # geste se deconnectait lui-meme, a la ligne suivante, sans un mot, et se
+    # retrouvait devant la porte de connexion pour s'etre change son propre mot
+    # de passe. La route repose donc le cookie — sur CET appareil, et pour ce
+    # compte-la seulement.
+    print("\n  ── poser un mot de passe depuis la console ──")
+    r_route = neuf()                       # « jordan », administrateur
+    r_route.creer("alice", MDP)
+    srv["COMPTES"] = r_route
+    srv["_comptes"] = C
+    ADMIN = {"X-Admin": JETON}
+
+    def poser_mdp(qui_signe, nom, mdp):
+        """La route, appelee comme la console l'appelle. Rend (statut, cookie)."""
+        req = _Req(entetes=ADMIN, corps={"nom": nom, "mdp": mdp})
+        req["compte"] = qui_signe
+        rep = appel("api_admin_compte_poser", req)
+        return ((rep.status if rep else None),
+                (rep.cookies.get("studio_compte") if rep else None))
+
+    avant = r_route.jeton("jordan")
+    st, cookie_pose = poser_mdp("jordan", "jordan", "un-mot-de-passe-neuf")
+    dit(st == 200 and cookie_pose
+        and r_route.nom_du_jeton(cookie_pose) == "jordan"
+        and r_route.nom_du_jeton(avant) is None,
+        "l'administrateur qui pose SON PROPRE mot de passe recoit un cookie de "
+        "session neuf et valide, alors que celui d'avant est bien mort : il ne "
+        "se deconnecte plus lui-meme",
+        f"HTTP {st}, cookie neuf={r_route.nom_du_jeton(cookie_pose or '')!r}, "
+        f"ancien={r_route.nom_du_jeton(avant)!r}")
+
+    # LA CASSE NE FAIT PAS DEUX PERSONNES : la console renvoie le nom tel qu'il
+    # est affiche, et le compte est retrouve en minuscules partout ailleurs.
+    st, cookie_pose = poser_mdp("Jordan", "JORDAN", "encore-un-autre-mdp")
+    dit(st == 200 and cookie_pose
+        and r_route.nom_du_jeton(cookie_pose) == "jordan",
+        "et « JORDAN » depuis la session « Jordan » reste le meme compte : la "
+        "casse ne fabrique pas un tiers",
+        f"HTTP {st}, cookie={r_route.nom_du_jeton(cookie_pose or '')!r}")
+
+    jeton_alice = r_route.jeton("alice")
+    st, cookie_pose = poser_mdp("jordan", "alice", "un-mdp-impose")
+    dit(st == 200 and cookie_pose is None
+        and r_route.nom_du_jeton(jeton_alice) is None,
+        "un mot de passe IMPOSE a quelqu'un d'autre ne pose aucun cookie et "
+        "ferme bien toutes les sessions de la personne visee : c'est le but du "
+        "geste, et il n'est pas emporte par le correctif",
+        f"HTTP {st}, cookie={cookie_pose!r}, "
+        f"alice encore ouverte={r_route.nom_du_jeton(jeton_alice) is not None}")
+
+    req = _Req(entetes=ADMIN, corps={"nom": "alice", "admin": True})
+    req["compte"] = "alice"
+    rep = appel("api_admin_compte_poser", req)
+    dit(rep is not None and rep.status == 200 and not rep.cookies
+        and r_route.est_admin("alice"),
+        "changer un ROLE sans toucher au mot de passe ne repose rien : rien "
+        "n'a ferme de session",
+        f"HTTP {rep.status if rep else '?'}, cookies={rep.cookies if rep else '?'}")
+
+    # ET LA PORTE RESTE FERMEE. Reposer un cookie est une faveur faite a
+    # l'auteur du geste ; encore faut-il que le geste ait ete permis. Un compte
+    # ordinaire, sans jeton ni session d'administration, ne pose le mot de
+    # passe de personne — pas meme le sien par cette route-la.
+    r_route.creer("bob", MDP)
+    req = _Req(entetes={}, corps={"nom": "bob", "mdp": "un-mdp-vole"})
+    req["compte"] = "bob"
+    jeton_bob = r_route.jeton("bob")
+    rep = appel("api_admin_compte_poser", req)
+    dit(rep is not None and rep.status == 403 and not rep.cookies
+        and r_route.nom_du_jeton(jeton_bob) == "bob",
+        "un compte ordinaire, sans jeton ni session d'administration, est "
+        "refuse en 403 : aucun cookie pose, aucun mot de passe change",
+        f"HTTP {rep.status if rep else '?'}, "
+        f"bob inchange={r_route.nom_du_jeton(jeton_bob) == 'bob'}")
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for x in rate:

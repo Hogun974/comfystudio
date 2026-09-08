@@ -67,3 +67,18 @@
 {"texte": "un clip slow motion d une goutte d eau", "attendu": "aucun"}
 {"texte": "passe-la en slow motion", "attendu": "fluidifier"}
 {"texte": "ralentis", "attendu": "fluidifier"}
+{"texte": "mets une vague au ralenti", "attendu": "aucun"}
+{"texte": "filme un train qui passe en slow motion", "attendu": "aucun"}
+{"texte": "un cheval au ralenti dans un champ", "attendu": "aucun"}
+{"texte": "peux-tu la mettre au ralenti", "attendu": "aucun"}
+{"texte": "au ralenti", "attendu": "fluidifier"}
+{"texte": "en ralenti", "attendu": "fluidifier"}
+{"texte": "slow motion", "attendu": "fluidifier"}
+{"texte": "en slow motion", "attendu": "fluidifier"}
+{"texte": "remets-la au ralenti", "attendu": "fluidifier"}
+{"texte": "refais-la en slow motion", "attendu": "fluidifier"}
+{"texte": "rejoue la video au ralenti", "attendu": "fluidifier"}
+{"texte": "mets la video au ralenti", "attendu": "fluidifier"}
+{"texte": "mets le clip en slow motion", "attendu": "fluidifier"}
+{"texte": "passe la sequence au ralenti", "attendu": "fluidifier"}
+{"texte": "mets-moi ca au ralenti", "attendu": "fluidifier"}

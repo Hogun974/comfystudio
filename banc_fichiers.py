@@ -1179,10 +1179,16 @@ try:
     S.CONVERSATIONS.clear()
     T_PC, T_PC2, T_FINI, T_LIBRE = "a" * 32, "b" * 32, "c" * 32, "d" * 32
     T_DISQUE, T_DISQUE_FINI, T_INVENTE = "e" * 32, "f" * 32, "0" * 32
+    T_ERREUR, T_ANNULEE = "1" * 32, "2" * 32
     S.TACHES[T_PC] = {"etat": "en cours", "noeud": "pc"}
     S.TACHES[T_PC2] = {"etat": "en cours", "noeud": "pc"}
     S.TACHES[T_FINI] = {"etat": "fini", "noeud": "pc"}
     S.TACHES[T_LIBRE] = {"etat": "en cours"}
+    # « erreur » N'EST PAS « fini ». soumettre_a_agent renonce au bout d'une
+    # heure et pose cet etat-la ; la machine, elle, finit son rendu a une heure
+    # cinq et le depose. C'est le cas d'une video wan14b, pas un cas d'ecole.
+    S.TACHES[T_ERREUR] = {"etat": "erreur", "noeud": "pc"}
+    S.TACHES[T_ANNULEE] = {"etat": "en cours", "noeud": "pc", "annulee": True}
     # Deux tours sur le « disque » et absents de TACHES : c'est l'etat d'un
     # studio qui a redemarre pendant le rendu, la tolerance de rattacher_tardif.
     S.CONVERSATIONS["c-disque"] = {"id": "c-disque", "proprietaire": MOI,
@@ -1258,6 +1264,25 @@ try:
         "c'est le cas du studio qui n'a pas encore note a qui il l'a confie",
         f"HTTP {st} {d}")
 
+    # ── « FINI », ET NON « TOUT CE QUI N'EST PAS EN COURS » ────────────
+    # Le refus portait sur « etat not in (None, "en cours") », c'est-a-dire
+    # aussi sur « erreur » — l'etat que soumettre_a_agent pose quand il renonce
+    # au bout d'une heure. Le rendu qui arrivait a une heure cinq etait alors
+    # jete, alors que rattacher_tardif() existe precisement pour le recoller :
+    # un travail bel et bien fait, perdu par la seule impatience du studio.
+    st, d = lancer(deposer_agent("jeton-du-pc", T_ERREUR, "tardif.png", b"un rendu tardif"))
+    dit(st == 200 and pose("pc", "tardif.png")
+        and contenu("pc", "tardif.png") == b"un rendu tardif",
+        "un travail passe en ERREUR — l'abandon d'une heure — accepte encore "
+        "le rendu que la machine finit apres coup : c'est ce que "
+        "rattacher_tardif est la pour recoller",
+        f"HTTP {st} {d.get('erreur')!r}, fichier={pose('pc', 'tardif.png')}")
+    st, d = lancer(deposer_agent("jeton-du-pc", T_ANNULEE, "annule.png", b"trop tard"))
+    dit(st == 409 and not pose("pc", "annule.png"),
+        "mais un travail ANNULE ne recoit plus rien : personne n'attend plus "
+        "ce fichier, 409",
+        f"HTTP {st} {d.get('erreur')!r}, fichier={pose('pc', 'annule.png')}")
+
     # ── LA TOLERANCE DU REDEMARRAGE, et sa limite ──────────────────────
     st, d = lancer(deposer_agent("jeton-du-pc", T_DISQUE, "apres.png", b"apres"))
     dit(st == 200 and pose("pc", "apres.png"),
@@ -1321,6 +1346,121 @@ try:
     dit(st == 200 and contenu("pc", "coupe.png") == b"entier",
         "et le nouvel essai de la machine passe sous ce nom-la",
         f"HTTP {st}")
+
+    # ── UN ValueError VENU D'AILLEURS N'EST PAS UN FICHIER TROP GROS ───
+    # Le plafond levait un ValueError, et le rattrapage disait « si ce n'est
+    # pas un ValueError, relance » : n'importe quel ValueError venu du flux, du
+    # disque ou d'ailleurs se rapportait donc a la machine « fichier trop gros,
+    # 413 ». Elle reduisait alors la taille de son rendu pour une panne qui
+    # n'avait rien a voir. Le plafond a son exception a lui.
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC, "faux413.png", b"debut",
+                                 coupe=ValueError("le disque a dit non")))
+    dit(st == 500 and "le disque a dit non" in d.get("erreur", "")
+        and not pose("pc", "faux413.png"),
+        "un ValueError qui ne vient PAS du plafond remonte tel quel : jamais "
+        "un 413 « fichier trop gros » pour une panne qui n'en est pas une",
+        f"HTTP {st} {d.get('erreur')!r}")
+
+    # ── LE FICHIER REMPLACE EST PARTI AVEC L'ESSAI MANQUE ─────────────
+    # Reposer un nom deja pose EFFACE ce qui etait la — « wb » ouvre a vide —
+    # et le cumul du travail doit perdre ces octets-la AVANT l'ecriture, pas
+    # apres. Coupe en route, l'ancien fichier n'existe plus, ses octets etaient
+    # deja sortis du compte, et le nom doit redevenir libre : sans quoi DEPOTS
+    # promet un fichier absent et recompte des octets perdus.
+    avant_o = S.DEPOTS[T_PC]["octets"]
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC, "coupe.png", b"remplacant",
+                                 coupe=ConnectionResetError("coupe au milieu")))
+    dit(st == 500 and not pose("pc", "coupe.png")
+        and "coupe.png" not in S.DEPOTS[T_PC]["noms"]
+        and S.DEPOTS[T_PC]["octets"] == avant_o - len(b"entier"),
+        "un remplacement coupe en route rend son nom ET ses octets : le fichier "
+        "d'avant a disparu, le cumul du travail le sait, et le nom est libre",
+        f"HTTP {st}, octets {avant_o} -> {S.DEPOTS[T_PC]['octets']} "
+        f"(attendu {avant_o - len(b'entier')}), noms={sorted(S.DEPOTS[T_PC]['noms'])}")
+    st, d = lancer(deposer_agent("jeton-du-pc", T_PC, "coupe.png", b"enfin"))
+    dit(st == 200 and contenu("pc", "coupe.png") == b"enfin"
+        and "coupe.png" in S.DEPOTS[T_PC]["noms"],
+        "et l'essai suivant repose ce nom-la sans se heurter a son propre "
+        "moignon", f"HTTP {st} {d.get('erreur')!r}")
+
+    # ── DEUX DEPOTS SIMULTANES SOUS LE MEME TRAVAIL ───────────────────
+    # « DEPOTS.get(tid) or {…} » construisait un dictionnaire NEUF tant que le
+    # travail n'avait rien pose, et ne le rangeait qu'a la toute fin : deux
+    # depots partis ensemble en batissaient chacun un, et le dernier a finir
+    # ecrasait l'autre. Le nom perdu faisait ensuite refuser le reessai
+    # legitime de CE fichier-la — « un fichier de ce nom existe deja », pour un
+    # nom que DEPOTS ne connaissait plus. setdefault range l'entree AVANT
+    # l'ecriture, et les deux depots la partagent.
+    T_SIMUL = "3" * 32
+    S.TACHES[T_SIMUL] = {"etat": "en cours", "noeud": "pc"}
+
+    async def deux_depots_ensemble(tid, premier, second):
+        """Le premier depot est SUSPENDU dans sa boucle de lecture pendant que
+        le second traverse la route de bout en bout, puis il reprend.
+
+        Un vrai entrelacement, et non son imitation : le flux du premier ne
+        rend la main ni sur un octet ni sur une fin tant qu'on ne les lui donne
+        pas. On l'attend sur le fichier qu'il vient d'ouvrir, jamais sur une
+        duree — un banc qui depend de la vitesse de la machine ne mesure rien.
+        """
+        route = du_studio("api_noeud_fichier", None)
+        boucle = asyncio.get_running_loop()
+
+        class Branche(BaseProtocol):
+            """Un protocole qui se dit BRANCHE.
+
+            Sans transport, aiohttp refuse d'endormir un lecteur — « Connection
+            closed. » des la premiere attente — et le premier depot ne pourrait
+            donc pas etre suspendu. Les autres cas de cette section n'en ont
+            jamais eu besoin : ils nourrissent leur flux et sa fin d'un coup.
+            """
+
+            @property
+            def connected(self):
+                return True
+
+        def requete(nom, octets):
+            req = Req(query={"tid": tid, "nom": nom},
+                      entetes={"X-Jeton": "jeton-du-pc"}, methode="POST",
+                      chemin="/api/noeud/fichier")
+            flux = streams.StreamReader(Branche(boucle), limit=1 << 16,
+                                        loop=boucle)
+            flux.feed_data(octets)
+            req.content = flux
+            return req, flux
+
+        req_a, flux_a = requete(premier, b"premier")
+        tache_a = asyncio.create_task(route(req_a))
+        for _ in range(1000):
+            await asyncio.sleep(0.002)
+            if pose("pc", premier):
+                break
+        req_b, flux_b = requete(second, b"second")
+        flux_b.feed_eof()
+        rep_b = await route(req_b)
+        flux_a.feed_eof()
+        rep_a = await tache_a
+        return rep_a.status, rep_b.status
+
+    sa, sb = lancer(deux_depots_ensemble(T_SIMUL, "simul_a.png", "simul_b.png"))
+    dit(sa == 200 and sb == 200
+        and (S.DEPOTS.get(T_SIMUL) or {}).get("noms") == {"simul_a.png",
+                                                          "simul_b.png"}
+        and pose("pc", "simul_a.png") and pose("pc", "simul_b.png"),
+        "deux depots partis ensemble sous le meme travail sont TOUS DEUX "
+        "inscrits : l'entree de DEPOTS est posee avant l'ecriture et partagee, "
+        "aucun des deux noms ne se perd",
+        f"HTTP {sa} et {sb}, DEPOTS={S.DEPOTS.get(T_SIMUL)}")
+    # ET LEURS OCTETS AUSSI. Les NOMS se rejoignaient deja par setdefault ; le
+    # CUMUL, lui, partait d'un instantane local lu au depart — chacun comparait
+    # le plafond a l'etat d'AVANT l'autre, et le dernier a finir ecrasait le
+    # compte du premier. DEPOT_MAX_TACHE se contournait donc en parallelisant,
+    # ce qui est exactement la menace qu'il existe pour fermer.
+    dit((S.DEPOTS.get(T_SIMUL) or {}).get("octets") == len(b"premier") + len(b"second"),
+        "et le cumul du travail les compte TOUS LES DEUX : il est tenu dans le "
+        "registre partage, bloc par bloc, et non dans un instantane local",
+        f"octets={(S.DEPOTS.get(T_SIMUL) or {}).get('octets')}, attendu "
+        f"{len(b'premier') + len(b'second')}")
 
     # ── LE MENAGE DE TACHES EMPORTE LE REGISTRE DES DEPOTS ─────────────
     # « garder=1 » et non zero : « finies[:-0] » est une liste vide, et

@@ -376,6 +376,30 @@ ajoutée à son tour. **Une mutation aussi s'éprouve.**
 Voir [Qui prend le travail](qui-prend-le-travail.md) pour les règles que ces
 mutations éprouvent.
 
+## Une ancre qui a bougé ne mesure plus rien
+
+C'est la panne ordinaire de `banc_mutations.py`, pas un accident : une
+correction déplace la ligne qu'une mutation visait, l'édition ne s'applique
+plus, et la mutation cesse silencieusement de garder quoi que ce soit. Le
+8 septembre 2026, une seule journée de corrections en a périmé **huit**, dont
+deux posées le matin même.
+
+Le tour complet le disait — au bout de vingt-huit minutes, après avoir joué
+les vingt-cinq bancs et les cinq cents autres mutations. Il commence
+désormais par **relire toutes les ancres sans lancer un seul sous-processus**,
+ce qui prend moins d'une seconde pour 562 mutations, et s'arrête là si l'une
+d'elles est morte :
+
+```
+    ancre morte : le plafond par travail est oublie — serveur.py : 0 occurrence(s)
+    2 ancre(s) morte(s) : rien d'autre n'est joue.
+```
+
+C'est le même `appliquer()` que `verdict()` — deux lectures de ce qu'est une
+ancre valable finiraient par diverger —, et il porte son propre témoin : une
+ancre inventée doit être vue, sans quoi « aucune morte » serait vrai de
+n'importe quoi.
+
 ## Si tu ajoutes un banc
 
 Ajoute-lui sa mutation. **Un filet qu'on n'a jamais vu rougir ne mesure rien.**

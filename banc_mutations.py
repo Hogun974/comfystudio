@@ -1357,8 +1357,8 @@ REPARTITION = [
               "n'a pas encore lu",
         rougit="a cartes libres, la PLUS GROSSE d'abord",
         editions=[("serveur.py", brut(
-            "bons.append((0 if libre else 1, -taille, url, ident))",
-            "bons.append((0 if libre else 1, taille, url, ident))"))]),
+            "0 if libre else 1, -taille, url, ident))",
+            "0 if libre else 1, taille, url, ident))"))]),
     dict(
         nom="le verrou de carte oublie la priorite",
         banc="banc_repartition.py",
@@ -4181,7 +4181,7 @@ DEMARRAGE = [
                 '        return web.json_response({"erreur": "acces refuse"}, status=403)\n'
                 '    if req.method == "POST":\n'
                 '        try:\n'
-                '            d = await req.json()\n'
+                '            d = await _json_objet(req)\n'
                 '        except web.HTTPException:\n'
                 '            raise      # 413 « trop gros » : aiohttp l'"'"'a dit, on le laisse passer\n'
                 '        except Exception:\n'
@@ -4190,7 +4190,7 @@ DEMARRAGE = [
                 '        _ecrire_demarrage(bool(d.get("ferme")))',
                 '    if req.method == "POST":\n'
                 '        try:\n'
-                '            d = await req.json()\n'
+                '            d = await _json_objet(req)\n'
                 '        except web.HTTPException:\n'
                 '            raise      # 413 « trop gros » : aiohttp l'"'"'a dit, on le laisse passer\n'
                 '        except Exception:\n'
@@ -7099,9 +7099,8 @@ CONSOLE_SUITE = [
         rougit="il ne laisse pas le modele charge derriere lui",
         editions=[
             ("serveur.py", brut(
-                '             "stream": False, "keep_alive": 0, '
-                '"options": {"temperature": 0}}',
-                '             "stream": False, "options": {"temperature": 0}}')),
+                '             "stream": False, "format": "json", "keep_alive": 0,\n             "options": {"temperature": 0}}',
+                '             "stream": False, "format": "json",\n             "options": {"temperature": 0}}')),
         ]),
     dict(
         nom="on interroge le modele d'une machine muette",
@@ -8699,13 +8698,16 @@ COMPREHENSION_SEPT = [
               "en fluidification de la video precedente, qu'il n'y avait pas, "
               "et rendait une erreur au lieu d'un rendu",
         rougit="« une video de 5 secondes d une vague qui se brise au ralenti »",
+        # L'ANCRE A SUIVI LA REECRITURE DU 8 SEPTEMBRE 2026. _FLUIDE a ete
+        # rouvert par le bas — « au ralenti » seul redevient un geste — et
+        # l'ancienne ancre, qui recopiait les quatre branches d'un bloc, ne
+        # designait plus rien : la mutation se declarait perimee, c'est-a-dire
+        # qu'elle ne mesurait plus la panne qu'elle nomme. On mute desormais la
+        # SEULE branche qui la porte, celle du ralenti nu, en lui retirant ses
+        # deux ancres — le debut de chaine et la fin.
         editions=[("serveur.py", brut(
-            r'r"(?:\bla|\ble|\bca|\bcette video|\bla video|\ble clip|\bcelle-ci)"' + chr(10)
-            + r'    r"\s+(?:au|en) ralenti|"' + chr(10)
-            + '    r"(?:passe|mets|met|remets|refais|rejoue)(?:-| )?(?:la|le|moi)?.{0,12}"' + chr(10)
-            + '    r"(?:au ralenti|en ralenti|slow ?motion)|"' + chr(10)
-            + r'    r"\bralentis\b)", re.I)',
-            'r"au ralenti|en ralenti|slow ?motion|ralentis)", re.I)'))]),
+            r'    r"^\s*(?:au |en )?(?:ralenti|slow ?motion)\s*$)", re.I)',
+            '    r"(?:au |en )?(?:ralenti|slow ?motion))", re.I)'))]),
     dict(
         nom="le schema du plan retombe en « json »",
         banc="banc_multilingue.py",
@@ -8762,9 +8764,16 @@ COMPREHENSION_SEPT = [
         imite="la garde retiree : « 🐱🌙✨ » repart pour deux appels perdus et "
               "un renard roux invente",
         rougit="devient une question, SANS appel au modele",
+        # L'ANCRE A SUIVI LE 8 SEPTEMBRE 2026 : la garde ne mord plus qu'au
+        # DEBUT d'une conversation, et sa condition s'ecrit desormais sur trois
+        # lignes. L'ancienne ancre ne designait plus rien.
         editions=[("serveur.py", brut(
-            "    if not a_une_image and not modele_choisi and bruit_ou_adresse(texte):",
-            "    if False and not a_une_image and not modele_choisi and bruit_ou_adresse(texte):"))]),
+            "    if (not a_une_image and not modele_choisi" + chr(10)
+            + '            and not (conv or {}).get("derniere_sortie")' + chr(10)
+            + "            and bruit_ou_adresse(texte)):",
+            "    if (False and not a_une_image and not modele_choisi" + chr(10)
+            + '            and not (conv or {}).get("derniere_sortie")' + chr(10)
+            + "            and bruit_ou_adresse(texte)):"))]),
     dict(
         nom="une adresse seule n'est plus du bruit",
         banc="banc_multilingue.py",
@@ -8842,10 +8851,14 @@ COMPREHENSION_SEPT = [
               "attendait trois fois cinq minutes un plan que les mots-cles "
               "auraient donne tout de suite",
         rougit="un appel de TEXTE part avec ANALYSE_DELAI",
+        # L'ANCRE A SUIVI LE 8 SEPTEMBRE 2026 : l'echeance est calculee dans
+        # « delai » avant l'appel, et l'ecriture y a la sienne. L'ancienne
+        # ancre, qui recopiait les arguments de _ollama_local, ne designait
+        # plus rien.
         editions=[("serveur.py", brut(
-            '                ici, url, (300 if reste_ else 900) if ici.get("images")' + chr(10)
-            + "                else ANALYSE_DELAI)",
-            '                ici, url, 300 if (ici.get("images") and reste_) else 900)'))]),
+            '            delai = ((300 if reste_ else 900) if ici.get("images")' + chr(10)
+            + "                     else 900 if ecriture else ANALYSE_DELAI)",
+            '            delai = 300 if (ici.get("images") and reste_) else 900'))]),
     dict(
         nom="l'echeance passe sans marquer la demande",
         banc="banc_cerveaux.py",
@@ -8853,9 +8866,14 @@ COMPREHENSION_SEPT = [
               "traduire, nommer le sujet attendent chacun l'echeance a leur "
               "tour — neuf minutes pour une demande",
         rougit="la demande est marquee « cerveau lent »",
+        # L'ANCRE A SUIVI LE 8 SEPTEMBRE 2026 : la marque est SORTIE de la
+        # boucle — elle ne se pose plus que si aucune adresse n'a repondu — et
+        # elle porte « lents[0] ». L'ancienne ancre, dans le « except » de
+        # chaque adresse, ne designait plus rien. Le journal reste, lui : ce
+        # que ce defaut retire est la MARQUE, pas la ligne qui l'annonce.
         editions=[("serveur.py", brut(
-            '                (TACHES.get(tid) or {})["cerveau_lent"] = titre_ol',
-            '                pass'))]),
+            '        (TACHES.get(tid) or {})["cerveau_lent"] = lents[0]',
+            "        pass"))]),
     dict(
         nom="l'appel suivant ignore la marque",
         banc="banc_cerveaux.py",
@@ -8917,6 +8935,210 @@ COMPREHENSION_SEPT = [
             + chr(10)
             + chr(10)
             + "def _relever_cerveau(url):"))]),
+    dict(
+        nom="l'adresse qui depasse l'echeance n'est pas mesuree",
+        banc="banc_cerveaux.py",
+        imite="la forme evidente : on mesure apres un appel REUSSI. Or l'Ollama assez lent pour depasser est celui qui a le plus besoin du diagnostic, et il n'aboutit jamais — la seule machine du parc a rester inexpliquee serait la seule qui pose probleme",
+        rougit="une adresse qui DEPASSE l'echeance est mesuree elle aussi",
+        editions=[("serveur.py", brut(
+            '            if isinstance(e, asyncio.TimeoutError):\n                # LE MOMENT OU LA MESURE VAUT LE PLUS. Elle est prise apres un\n                # appel REUSSI, plus haut — et la machine qui en a le plus\n                # besoin est justement celle dont les appels n\'aboutissent pas :\n                # sans cette ligne, un Ollama sur processeur assez lent pour\n                # depasser l\'echeance ne se diagnostiquerait JAMAIS. Ici le\n                # modele est charge la-bas et calcule encore ; /api/ps dira ou.\n                await relever_placement(url, ici.get("model") or "")\n            if (isinstance(e, asyncio.TimeoutError) and not ici.get("images")',
+            '            if (isinstance(e, asyncio.TimeoutError) and not ici.get("images")'))]),
+    # ── LA RELECTURE ADVERSE DU 8 SEPTEMBRE 2026, DIX CORRECTIFS ──────
+    # Un defaut par correctif, et chacun imite la forme que l'on ECRIT
+    # naturellement — celle qui se defend en relecture, pas celle qu'on
+    # reconnait comme une faute.
+    dict(
+        nom="le corps JSON n'a plus besoin d'etre un objet",
+        banc="banc_variantes.py",
+        imite="se servir de ce que req.json() rend, ce que vingt-deux routes "
+              "faisaient : le « except Exception » juste au-dessus donne "
+              "l'impression que tout corps mal forme est deja pris. « [] », "
+              "« abc » et « 5 » sont pourtant du JSON parfaitement VALIDE — la "
+              "levee arrive une ligne plus bas, HORS du try, et sort en 500 "
+              "« Server got itself in trouble »",
+        rougit="est refuse en 400 « corps illisible », et non en 500",
+        editions=[("serveur.py", brut(
+            "    d = await req.json()" + chr(10)
+            + "    if not isinstance(d, dict):" + chr(10)
+            + "        raise ValueError(\"le corps JSON n'est pas un objet\")"
+            + chr(10)
+            + "    return d",
+            "    d = await req.json()" + chr(10)
+            + "    return d"))]),
+    dict(
+        nom="la marque « cerveau lent » se pose dans la boucle",
+        banc="banc_cerveaux.py",
+        imite="l'endroit ou l'on APPREND la lenteur : le « except » de "
+              "l'adresse qui vient de depasser. La marque y a l'air chez elle "
+              "— et la boucle continue vers l'adresse suivante, qui repond "
+              "parfois en une seconde. La demande repart alors avec son plan "
+              "ET sa marque, et les trois appels qui suivent levent pour rien",
+        rougit="repart avec sa reponse et SANS la marque",
+        editions=[("serveur.py", brut(
+            "                lents.append(titre_ol)",
+            "                lents.append(titre_ol)" + chr(10)
+            + '                (TACHES.get(tid) or {})["cerveau_lent"] = titre_ol'))]),
+    dict(
+        nom="ecrire est une analyse comme une autre",
+        banc="banc_cerveaux.py",
+        imite="la lecture naturelle de l'echeance : « une image a 300 ou "
+              "900 s, tout le reste a ANALYSE_DELAI ». Ecrire n'est pas une "
+              "image, donc 180 s — sauf que l'ecriture prend le plus gros "
+              "modele de la machine, dix-huit gigaoctets, dont le seul "
+              "chargement depasse trois minutes, et qu'une chanson mourait "
+              "alors sur « les paroles n'ont pas pu etre ecrites »",
+        rougit="un appel d'ECRITURE part avec neuf cents secondes",
+        editions=[("serveur.py", brut(
+            '    ecriture = (corps.get("model") or "") == MODELE_POUR_ECRIRE',
+            "    ecriture = False"))]),
+    dict(
+        nom="tout ce qui n'est pas en cours refuse le depot",
+        banc="banc_fichiers.py",
+        imite="la symetrie qu'on ecrit sans y penser : « en cours, ou rien ». "
+              "Elle attrape « erreur » avec « fini », alors qu'« erreur » est "
+              "justement l'etat que le studio pose quand IL renonce au bout "
+              "d'une heure — la machine, elle, finit son rendu a une heure "
+              "cinq et le depose",
+        rougit="accepte encore le rendu que la machine finit apres coup",
+        editions=[("serveur.py", brut(
+            '        if tache.get("etat") == "fini" or tache.get("annulee"):',
+            '        if tache.get("etat") not in (None, "en cours"):'))]),
+    dict(
+        nom="le plus gros qui tienne, sans regarder ce qu'il sait faire",
+        banc="banc_cerveaux.py",
+        imite="le seul critere qui compte pour tout le reste de ce voisinage : "
+              "la TAILLE. Un modele d'embedding de 270 Mo tient sur n'importe "
+              "quelle carte — il devient donc le remplacant tout designe des "
+              "que le modele demande deborde, et le studio annonce la "
+              "substitution comme un choix raisonne avant de lui envoyer un "
+              "/api/generate",
+        rougit="l'embedding est le SEUL a tenir, l'analyse garde le modele demande",
+        editions=[("serveur.py", brut(
+            '               for m in cerveau(url)["modeles"]' + chr(10)
+            + '               if not _casse_ici(url, m.get("name"))' + chr(10)
+            + '               and "completion" in (m.get("capabilities") or ["completion"])}',
+            '               for m in cerveau(url)["modeles"]' + chr(10)
+            + '               if not _casse_ici(url, m.get("name"))}'))]),
+    dict(
+        nom="le registre des depots se construit a part",
+        banc="banc_fichiers.py",
+        imite="« get, sinon un neuf, et je range a la fin » — la forme la plus "
+              "courante, et elle se defend : un depot qui echoue ne laisse "
+              "alors rien derriere lui. Elle ne se voit qu'a deux depots "
+              "SIMULTANES, ou chacun batit son dictionnaire et ou le dernier "
+              "range ecrase l'autre ; le nom perdu fait ensuite refuser le "
+              "reessai legitime de ce fichier-la",
+        rougit="sous le meme travail sont TOUS DEUX inscrits",
+        editions=[
+            ("serveur.py", brut(
+                '    depot = DEPOTS.setdefault(tid, {"noms": set(), "octets": 0,' + chr(10)
+                + '                                    "quand": time.time()})',
+                '    depot = DEPOTS.get(tid) or {"noms": set(), "octets": 0,' + chr(10)
+                + '                                "quand": time.time()}')),
+            # ET LE RANGEMENT A LA FIN, sans quoi la mutation ne serait pas
+            # l'ancienne forme mais une forme qui ne range JAMAIS : le premier
+            # depot venu rougirait, et l'on ne saurait plus si c'est la course
+            # qui est gardee ou le simple fait de ranger.
+            ("serveur.py", brut(
+                '    deposes.add(nom)' + chr(10)
+                + '    return web.json_response({"ok": True, "octets": taille})',
+                '    deposes.add(nom)' + chr(10)
+                + '    DEPOTS[tid] = depot' + chr(10)
+                + '    return web.json_response({"ok": True, "octets": taille})')),
+        ]),
+    dict(
+        nom="l'intergiciel ne garnit que ce qu'on lui rend",
+        banc="banc_console.py",
+        imite="la forme d'un intergiciel aiohttp telle qu'elle est ecrite "
+              "partout : appeler le handler, garnir la reponse, la rendre. Une "
+              "HTTPException ne passe pas par la valeur de retour — et c'est "
+              "pourtant elle que portent un 404 du routeur, un 403 d'origine "
+              "refusee et le 413 que les vingt-deux gardes font remonter, "
+              "c'est-a-dire les reponses qu'un tiers provoque le plus "
+              "facilement",
+        rougit="l'intergiciel garnit l'exception avant de la relancer",
+        editions=[("serveur.py", brut(
+            "    try:" + chr(10)
+            + "        rep_ = await handler(req)" + chr(10)
+            + "    except web.HTTPException as sortie:" + chr(10)
+            + "        _trois_en_tetes(sortie)" + chr(10)
+            + "        raise" + chr(10)
+            + "    _trois_en_tetes(rep_)",
+            "    rep_ = await handler(req)" + chr(10)
+            + "    _trois_en_tetes(rep_)"))]),
+    dict(
+        nom="poser un mot de passe deconnecte toujours",
+        banc="banc_comptes.py",
+        imite="la regle du fichier, et elle est juste : un mot de passe impose "
+              "a quelqu'un doit fermer toutes ses sessions, partout. Elle ne "
+              "distingue simplement pas « le sien » de « celui d'un autre » — "
+              "et l'administrateur qui change son propre mot de passe depuis "
+              "la console se deconnecte lui-meme, a la ligne suivante, sans un "
+              "mot",
+        rougit="il ne se deconnecte plus lui-meme",
+        editions=[("serveur.py", brut(
+            '    if (d.get("mdp") and nom' + chr(10)
+            + '            and nom.lower() == (req.get("compte") or "").lower()):' + chr(10)
+            + "        return _session_renouvelee(" + chr(10)
+            + '            rep_, (COMPTES.gens.get(nom.lower()) or {}).get("nom") or nom)'
+            + chr(10)
+            + "    return rep_",
+            "    return rep_"))]),
+    dict(
+        nom="un mot lisible s'ecrit en alphabet latin",
+        banc="banc_multilingue.py",
+        imite="la classe de caracteres qu'on ecrit de memoire pour dire « une "
+              "lettre » : a-z, A-Z, et la plage des accents. Elle couvre le "
+              "francais et l'anglais, donc tout ce que l'auteur relit — et "
+              "declare « sans un mot lisible » le russe, le japonais, le grec, "
+              "l'arabe et le coreen, dans un depot qui mesure 460 demandes "
+              "traduites a la main",
+        rougit="part au modele : la garde du bruit ne juge pas",
+        editions=[("serveur.py", brut(
+            '_UN_MOT = re.compile(r"[^\\W\\d_]{2,}", re.U)',
+            '_UN_MOT = re.compile(r"[a-zA-Z\\u00c0-\\u024f]{2,}")'))]),
+    dict(
+        nom="douze caracteres libres devant le ralenti",
+        banc="verifier_formulations.py",
+        imite="la souplesse qu'on ajoute pour couvrir « mets-la donc au "
+              "ralenti » : douze caracteres entre le verbe et le ralenti, et "
+              "aucune ancre en tete. Elle rattrape toutes les formulations "
+              "qu'on essaie a la main — et elle prend « mets une vague au "
+              "ralenti » pour un geste, alors que c'est un SUJET, et « filme "
+              "un train qui passe en slow motion » avec",
+        rougit="mets une vague au ralenti",
+        editions=[("serveur.py", brut(
+            '    r"^\\s*(?:passe|mets|met|remets|refais|rejoue)[\\s-]*(?:la|le|moi|ca)?[\\s-]*"'
+            + chr(10)
+            + '    r"(?:video|clip|animation|sequence|gif)?[\\s-]*"' + chr(10)
+            + '    r"(?:(?:au|en) )?(?:ralenti|slow ?motion)|"',
+            '    r"(?:passe|mets|met|remets|refais|rejoue)(?:-| )?(?:la|le|moi)?.{0,12}"'
+            + chr(10)
+            + '    r"(?:au ralenti|en ralenti|slow ?motion)|"'))]),
+    dict(
+        nom="le cumul des depots repart d'un instantane local",
+        banc="banc_fichiers.py",
+        imite="la forme naturelle : on lit le cumul une fois au depart. Deux depots partis ensemble ne se voient alors pas l'un l'autre, et le plafond par travail se contourne en parallelisant — la menace meme qu'il ferme",
+        rougit="le cumul du travail les compte TOUS LES DEUX",
+        editions=[("serveur.py", brut(
+            '                taille += len(bloc)\n                depot["octets"] += len(bloc)\n                if taille > DEPOT_MAX or depot["octets"] > DEPOT_MAX_TACHE:',
+            '                taille += len(bloc)\n                if taille > DEPOT_MAX or depot["octets"] + taille > DEPOT_MAX_TACHE:'))]),
+    dict(
+        nom="l'essai de modele reprend une phrase courte",
+        banc="banc_console.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 8 SEPTEMBRE 2026 : une question de dix mots, sans gabarit. Elle repondait « Bleu. » sur une machine ou TOUTE analyse revenait vide — un essai qui passe quand la chose qu'il eprouve est cassee donne le feu vert",
+        rougit="il envoie le VRAI gabarit du plan",
+        editions=[("serveur.py", brut(
+            '             "system": SYSTEME.format(catalogue=catalogue_texte(),\n                                      contexte=""),\n',
+            ''))]),
+    dict(
+        nom="l'essai de modele ne juge plus ce qu'on lui rend",
+        banc="banc_console.py",
+        imite="le gabarit part, la reponse revient, et personne ne la lit : la console affiche « @@@@@@@ » a cote d'un feu vert",
+        rougit="quelque chose d'illisible",
+        editions=[("serveur.py", brut(
+            '            lisible = "intention" in lire_objet_json(reponse or "")',
+            '            lisible = True'))]),
 ]
 
 SECURITE_SEPT = [
@@ -8945,10 +9167,15 @@ SECURITE_SEPT = [
               "reste ouvert au depot, et la machine qui l'a fait peut changer "
               "apres coup ce que l'utilisateur a deja vu",
         rougit="un travail TERMINE ne recoit plus rien",
+        # L'ANCRE A SUIVI LE 8 SEPTEMBRE 2026 : le refus ne porte plus sur
+        # « tout ce qui n'est pas en cours » mais sur « fini » et « annulee »,
+        # pour laisser rentrer le rendu d'un travail abandonne au bout d'une
+        # heure. L'ancienne ancre ne designait plus rien.
         editions=[
             ("serveur.py", brut(
-                '        if tache.get("etat") not in (None, "en cours"):\n'
-                '            return 409, "travail termine"\n',
+                '        if tache.get("etat") == "fini" or tache.get("annulee"):'
+                + chr(10)
+                + '            return 409, "travail termine"' + chr(10),
                 "")),
         ]),
     dict(
@@ -9011,7 +9238,7 @@ SECURITE_SEPT = [
         rougit="ce qu'un travail pose en TOUT est plafonne",
         editions=[
             ("serveur.py", brut(
-                "                if taille > DEPOT_MAX or deja + taille > DEPOT_MAX_TACHE:",
+                '                if taille > DEPOT_MAX or depot["octets"] > DEPOT_MAX_TACHE:',
                 "                if taille > DEPOT_MAX:")),
         ]),
     dict(
@@ -9022,20 +9249,16 @@ SECURITE_SEPT = [
               "la machine trouvait « deja la » — et le moignon passait pour "
               "un rendu",
         rougit="un flux coupe par le reseau ne laisse pas de fichier partiel",
+        # L'ANCRE A SUIVI LE 8 SEPTEMBRE 2026 : le rattrapage porte desormais
+        # « deposes.discard(nom) » et distingue _TropGros de ValueError, si
+        # bien que le bloc recopie ici ne designait plus rien. On mute la SEULE
+        # ligne qui porte la panne — l'exception attrapee — et tout ce qui
+        # n'est pas un depassement de plafond echappe alors sans effacer,
+        # exactement comme avant le 6 septembre.
         editions=[
             ("serveur.py", brut(
-                "    except BaseException as e:\n"
-                "        try:\n"
-                "            os.remove(cible)\n"
-                "        except OSError:\n"
-                "            pass\n"
-                "        if not isinstance(e, ValueError):\n"
-                "            raise\n",
-                "    except ValueError:\n"
-                "        try:\n"
-                "            os.remove(cible)\n"
-                "        except OSError:\n"
-                "            pass\n")),
+                "    except BaseException as e:",
+                "    except _TropGros as e:")),
         ]),
     dict(
         nom="purger_taches() garde le registre des depots",
@@ -9508,7 +9731,7 @@ SECURITE_SEPT = [
               "illisible » et cherche une faute de JSON qui n'existe pas",
         rougit="ressort en 413, tel qu'aiohttp l'a leve",
         editions=[
-            ("serveur.py", brut("    # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.\n    lg = langue_de(req)\n    try:\n        d = await req.json()\n    except web.HTTPException:\n        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer\n    except Exception:", "    # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.\n    lg = langue_de(req)\n    try:\n        d = await req.json()\n    except Exception:")),
+            ("serveur.py", brut("    # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.\n    lg = langue_de(req)\n    try:\n        d = await _json_objet(req)\n    except web.HTTPException:\n        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer\n    except Exception:", "    # le plus cher. C'est le seul travail que « Accept-Language » fasse bien.\n    lg = langue_de(req)\n    try:\n        d = await _json_objet(req)\n    except Exception:")),
         ]),
 ]
 
@@ -9611,6 +9834,51 @@ def verdict(mut, racine):
 
 
 depart = time.time()
+
+# ══ LES ANCRES, AVANT TOUT LE RESTE ═════════════════════════════════════
+# UNE EDITION DONT L'ANCRE A BOUGE NE MESURE RIEN, et elle le disait au bout de
+# vingt-huit minutes — apres avoir joue les vingt-cinq bancs et les cinq cents
+# autres mutations. Le 8 septembre 2026, dix correctifs en ont perime SIX d'un
+# coup, dont une posee le matin meme : c'est la panne ordinaire de ce fichier,
+# pas un accident. Relire les ancres ne demande aucun sous-processus et prend
+# deux secondes ; le tour complet peut ensuite se dire quelque chose.
+#
+# Le meme appliquer() que verdict(), pour qu'il n'y ait pas deux lectures de ce
+# qu'est une ancre valable — c'est la faute que ce depot a payee trois fois.
+mortes = []
+for _mut in MUTATIONS + TROUS_CONNUS:
+    _fichiers = source(_mut["banc"])
+    for _rel, _edition in _mut["editions"]:
+        if _rel not in _fichiers:
+            mortes.append(f"{_mut['nom']} — {_rel} n'est pas copie pour {_mut['banc']}")
+            continue
+        _neuf, _souci = appliquer(_fichiers[_rel], _edition)
+        if _neuf is None:
+            mortes.append(f"{_mut['nom']} — {_rel} : {_souci}")
+        else:
+            _fichiers[_rel] = _neuf
+for _m in mortes:
+    print("    ancre morte :", _m, flush=True)
+# LE TEMOIN DU CONTROLE LUI-MEME : sans lui, « aucune ancre morte » serait
+# vrai d'un controle qui ne regarde rien.
+dit(appliquer("def f():\n    return 1\n",
+              brut("return 2", "return 3"))[0] is None,
+    "et le controle voit bien une ancre qui n'existe pas : sinon il dirait "
+    "« aucune morte » de n'importe quoi")
+dit(not mortes,
+    "chaque mutation a encore son ancre dans le code qu'elle vise",
+    f"{len(mortes)} morte(s)" if mortes
+    else f"{len(MUTATIONS)} mutations relues en {time.time() - depart:.1f} s")
+if mortes:
+    # ON S'ARRETE LA. Jouer les vingt-cinq bancs et les cinq cents autres
+    # mutations pendant vingt-huit minutes pour redire ce qu'on vient de lire
+    # en deux secondes ne sert personne : ce qu'il faut, c'est reecrire ces
+    # ancres-la et relancer.
+    print(f"\n  {len(mortes)} ancre(s) morte(s) : rien d'autre n'est joue. "
+          f"Reecris-les — jouer_mutations.py les rejoue une par une — "
+          f"puis relance.", flush=True)
+    sys.exit(1)
+
 racine = tempfile.mkdtemp(prefix="banc_mutations_")
 try:
     # ── LE SENS INVERSE. Un banc qui rougit sur tout n'attrape rien : sans

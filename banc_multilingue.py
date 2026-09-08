@@ -112,18 +112,22 @@ async def _faux_ollama(*a, **k):
 S.appeler_ollama = _faux_ollama
 
 
-async def decide(texte):
+async def decide(texte, sortie="deja_la.png"):
     """Rend (intention, appel_au_modele, lignes de journal) pour une demande.
 
     Aucune image jointe, mais une sortie precedente dans la conversation :
     c'est la condition exacte du court-circuit — agrandir, detourer et
     fluidifier portent sur une image qui EXISTE.
+
+    « sortie=None » rejoue une conversation NEUVE. La garde du bruit ne mord
+    qu'au debut d'une conversation : « 4k » ou « 16:9 » n'ont aucun mot
+    lisible et sont pourtant des suites parfaitement claires apres une image.
     """
     APPELS["modele"] = 0
     tid = "banc"
     S.TACHES.clear()
     S.TACHES[tid] = {"etapes": [], "etat": "en cours", "proprietaire": None}
-    conv = {"derniere_sortie": "deja_la.png", "tours": []}
+    conv = {"derniere_sortie": sortie, "tours": []}
     muet = io.StringIO()
     with contextlib.redirect_stdout(muet):
         plan = await S.aiguiller(texte, tid, conv)
@@ -302,7 +306,7 @@ async def main():
     print("\n  ── du bruit n'est pas une demande ──")
     for bruit in ("🐱🌙✨", "???!!!...", "42", "https://example.com/image.png",
                   "www.example.com/x.png"):
-        intention, appele, lignes = await decide(bruit)
+        intention, appele, lignes = await decide(bruit, sortie=None)
         dit(intention == "question" and not appele
             and any("aucun mot lisible" in l for l in lignes),
             f"« {bruit} » devient une question, SANS appel au modele",
@@ -325,6 +329,50 @@ async def main():
     dit(S.bruit_ou_adresse("un chat http://x.y/z.png") is False
         and S.bruit_ou_adresse("été") is False,
         "un mot accentue compte, et une adresse dans une phrase n'en fait pas une adresse seule")
+
+    # ── UNE ECRITURE N'EST PAS UN ALPHABET ────────────────────────────
+    # « Un mot lisible » etait ecrit « [a-zA-ZÀ-ɏ] », c'est-a-dire le
+    # latin et lui seul. « нарисуй кота », « 猫を描いて », « χιονισμένο » et
+    # « مدينة » etaient donc declares SANS UN MOT LISIBLE et recevaient « Que
+    # veux-tu voir, exactement ? » — la garde posee pour epargner deux appels
+    # sur des emojis fermait la porte a des demandes parfaitement claires, dans
+    # le banc meme qui mesure 460 demandes traduites a la main.
+    for etranger in ("нарисуй кота", "猫を描いて", "χιονισμένο βουνό",
+                     "مدينة في الصحراء", "고양이 그려줘"):
+        intention, appele, lignes = await decide(etranger, sortie=None)
+        dit(S.bruit_ou_adresse(etranger) is False and appele
+            and not any("aucun mot lisible" in l for l in lignes),
+            f"« {etranger} » part au modele : la garde du bruit ne juge pas "
+            f"d'un alphabet",
+            f"intention={intention!r}, appel={appele}, "
+            f"bruit={S.bruit_ou_adresse(etranger)}")
+    # ET LE BRUIT RESTE DU BRUIT. Elargir aux ecritures du monde ne doit pas
+    # rouvrir la porte aux emojis, a la ponctuation ni aux chiffres seuls : ce
+    # sont eux qui coutaient deux appels et un renard roux dans la neige.
+    for bruit in ("🐱🌙✨", "???!!!...", "42", "— — —", "1080"):
+        dit(S.bruit_ou_adresse(bruit) is True,
+            f"« {bruit} » n'a toujours aucun mot lisible : ni emoji, ni "
+            f"ponctuation, ni chiffre ne font une demande",
+            f"bruit={S.bruit_ou_adresse(bruit)}")
+
+    # ── LA GARDE NE MORD QU'AU DEBUT D'UNE CONVERSATION ───────────────
+    # « 4k », « 16:9 », « 1080p » n'ont aucun mot lisible et sont pourtant des
+    # suites parfaitement claires quand une image vient d'etre rendue. La garde
+    # epargne deux appels sur du bruit ; elle ne doit pas couter une reponse a
+    # qui poursuit.
+    for suite in ("4k", "16:9", "1080p"):
+        intention, appele, lignes = await decide(suite)
+        dit(S.bruit_ou_adresse(suite) is True and appele
+            and not any("aucun mot lisible" in l for l in lignes),
+            f"« {suite} » n'a aucun mot lisible et part quand meme au modele "
+            f"quand la conversation porte deja une sortie",
+            f"intention={intention!r}, appel={appele}")
+        intention, appele, lignes = await decide(suite, sortie=None)
+        dit(intention == "question" and not appele
+            and any("aucun mot lisible" in l for l in lignes),
+            f"tandis qu'en tete d'une conversation NEUVE, « {suite} » reste "
+            f"une question sans appel au modele",
+            f"intention={intention!r}, appel={appele}")
 
     # ══ le plan a une forme, imposee au modele ═════════════════════════
     # Huit « reponse mal formee » sur vingt-six a la meme mesure : avec

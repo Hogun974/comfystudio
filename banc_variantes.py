@@ -380,6 +380,47 @@ async def main():
     st, corps = await poster(texte="x" * S.DEMANDE_MAX)
     dit(st == 200, "et exactement DEMANDE_MAX passe", f"{st} {corps.get('erreur')}")
 
+    # UN CORPS JSON QUI N'EST PAS UN OBJET N'EST PAS UNE DEMANDE. « [] »,
+    # « "abc" » et « 5 » sont du JSON parfaitement VALIDE : req.json() les
+    # rendait tels quels, le « except Exception » ne voyait rien passer, et
+    # c'est le « d.get("texte") » de la ligne SUIVANTE qui levait
+    # AttributeError — 500 « Server got itself in trouble », mesure du
+    # 8 septembre 2026 sur POST /api/generer. La garde ne peut pas vivre dans
+    # chaque route : vingt-deux la recopieraient, et l'une d'elles serait
+    # oubliee. _json_objet() est le seul endroit ou l'exiger.
+    for forge in ([], ["un chat"], "abc", 5, True):
+        try:
+            st, corps = lire(await S.api_generer(Req(corps=forge)))
+        except Exception as e:      # ce que le serveur ferait d'une exception : 500
+            st, corps = 500, {"erreur": f"{type(e).__name__}: {e}"}
+        dit(st == 400 and "illisible" in str(corps.get("erreur", "")).lower(),
+            f"un corps JSON qui vaut {forge!r} est refuse en 400 « corps "
+            f"illisible », et non en 500", f"{st} {corps.get('erreur')}")
+    st, corps = await poster()
+    dit(st == 200, "alors qu'un corps qui est bien un objet passe : la garde ne "
+                   "ferme que ce qui n'a jamais ete une demande",
+        f"{st} {corps.get('erreur')}")
+
+    # ET LE 413 TRAVERSE TOUJOURS. Le refus d'aiohttp pour un corps plus gros
+    # que CORPS_MAX est une HTTPException, pas une faute de JSON : le
+    # « except web.HTTPException: raise » est pose AU-DESSUS du « except
+    # Exception », et _json_objet() ne doit pas l'avoir referme. Sans lui, un
+    # corps de quatre mega-octets ressortait en 400 « corps illisible » et l'on
+    # cherchait une faute de syntaxe qui n'existait pas.
+    class TropGros(Req):
+        async def json(self):
+            raise S.web.HTTPRequestEntityTooLarge(max_size=S.CORPS_MAX,
+                                                  actual_size=S.CORPS_MAX + 1)
+
+    try:
+        rep_ = await S.api_generer(TropGros())
+        sorti = f"HTTP {rep_.status}"
+    except S.web.HTTPException as e:
+        sorti = f"leve {e.status}"
+    dit(sorti == "leve 413",
+        "un corps plus gros que CORPS_MAX ressort en 413 tel qu'aiohttp l'a "
+        "leve : la garde de l'objet ne l'avale pas", sorti)
+
     # Le geste ne se retient pas : c'est l'argument de poser_reglages pour le
     # brouillon, multiplie par quatre.
     dit("variantes" not in S.reglages_de(S.CONVERSATIONS["c1"]),

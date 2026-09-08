@@ -66,6 +66,30 @@ entièrement en RAM — alors que le ComfyUI de la **même machine** voit la car
 en CUDA. Voir [Plusieurs Ollama](plusieurs-ollama.md) pour le diagnostic et le
 remède.
 
+**Un modèle peut répondre FAUX sans lever la moindre erreur.** Le 8 septembre
+2026, après une matinée de jeu sur la 2080 Ti, l'Ollama de **pc** répondait
+`@@@@@@@@@@@` dès que le prompt dépassait quelques centaines de jetons — et,
+en mode JSON, une réponse **vide**. Décharger et recharger le modèle n'y
+change rien ; recharger avec un contexte de 8192 non plus. Le studio, lui,
+journalisait « réponse mal formée », se repliait sur l'aiguillage par mots-clés
+et continuait de servir : personne n'était prévenu.
+
+| ce qu'on envoie | ce qui revient |
+|---|---|
+| une phrase courte | juste |
+| le gabarit du plan (13 831 car.), sans mode JSON | `@@@@@@@@@@@` |
+| le gabarit du plan, en mode JSON | **vide** |
+| un quart du gabarit, en mode JSON | **vide** |
+
+C'est un état de machine, pas un défaut du studio — le remède est de
+redémarrer Ollama sur la machine, ou la machine. Mais deux choses en sont
+sorties ici. L'essai de modèle de `/admin` posait « quelle est la couleur du
+ciel par temps clair ? », dix mots sans gabarit : il répondait **« Bleu. »**
+pendant que toute analyse échouait. **Un essai qui passe quand la chose qu'il
+éprouve est cassée donne le feu vert ; c'est pire qu'un essai absent.** Il
+envoie désormais le vrai gabarit, en mode JSON, et juge la réponse — vide,
+illisible, ou objet sans intention sont trois refus nommés.
+
 **Une mesure de durée sur `pc` commence par regarder si sa carte est libre.**
 Le 7 septembre, deux batteries ont donné 4 à 93 s d'analyse là où la veille
 donnait 1 à 2 s ; `nvidia-smi` montrait un jeu à 89 puis 99 % de la carte. La

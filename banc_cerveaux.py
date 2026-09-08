@@ -80,7 +80,16 @@ def poser(pause_pc=False):
         {"name": "gemma3:4b", "size": 3_340_000_000,
          "capabilities": ["completion"]},
         {"name": "qwen2.5vl:7b", "size": 5_970_000_000,
-         "capabilities": ["vision", "completion"]}]}
+         "capabilities": ["vision", "completion"]},
+        # UN MODELE QUI NE COMPLETE PAS, et c'est tout ce qu'il fait ici. Un
+        # Ollama qui sert aussi une recherche par similarite en porte un ; il
+        # est minuscule — 270 Mo — donc il TIENT toujours sur la carte, et
+        # « le plus gros modele de texte qui tienne » le choisissait des que
+        # rien d'autre n'entrait. Le studio journalisait alors
+        # « nomic-embed-text plutot que qwen2.5vl:7b » et lui envoyait un
+        # /api/generate.
+        {"name": "nomic-embed-text:latest", "size": 274_000_000,
+         "capabilities": ["embedding"]}]}
     S._CERVEAUX[MORT] = {"quand": S.time.time(), "noeud": None, "modeles": []}
     S.VERROUS_NOEUD.clear()
     S.MODELES_CASSES.clear()
@@ -195,6 +204,46 @@ async def main():
         "et une adresse sans machine connue n'est pas jugee sur une carte qu'on ignore")
     dit(S.PART_CARTE_ANALYSE == 0.75, "la part est de trois quarts", str(S.PART_CARTE_ANALYSE))
 
+    # ── UN MODELE D'EMBEDDING NE REMPLACE PAS UN MODELE D'ANALYSE ──────
+    # « Le plus gros modele de texte installe qui tienne » ne regardait que la
+    # TAILLE. nomic-embed-text pese 270 Mo : il tient sur n'importe quelle
+    # carte, et il devenait donc le remplacant tout designe des que le modele
+    # demande debordait. Il ne sait pas completer — /api/generate lui rend une
+    # erreur ou du vide —, et le fil de la demande annoncait pourtant
+    # « nomic-embed-text plutot que qwen2.5vl:7b » comme un choix raisonne. La
+    # capacite est annoncee par Ollama ; absente, on suppose qu'il complete,
+    # comme partout ailleurs ici — un vieil Ollama ne doit pas devenir muet.
+    poser()
+    EMBED = "nomic-embed-text:latest"
+    taille_embed = next(m["size"] for m in S._CERVEAUX[NAS]["modeles"]
+                        if m["name"] == EMBED) / 1e9
+    S.ETAT_NOEUDS["zima"]["vram"] = 0.5      # trois quarts : 0,375 Go de marge
+    dit(taille_embed <= 0.5 * S.PART_CARTE_ANALYSE
+        and S.modele_analyse_de(NAS, "qwen2.5vl:7b") == "qwen2.5vl:7b",
+        "sur une carte ou l'embedding est le SEUL a tenir, l'analyse garde le "
+        "modele demande : lent vaut mieux qu'un modele qui ne complete pas",
+        f"{S.modele_analyse_de(NAS, 'qwen2.5vl:7b')}, "
+        f"embedding {taille_embed:.2f} Go pour {0.5 * S.PART_CARTE_ANALYSE:.3f} de marge")
+    # ET IL NE PREND PAS NON PLUS LA PLACE QUAND D'AUTRES TIENNENT : la carte
+    # revenue, c'est mistral:7b — le plus gros qui COMPLETE — et jamais lui.
+    poser()
+    dit(S.modele_analyse_de(NAS, "qwen2.5vl:7b") == "mistral:7b",
+        "et sur la vraie carte du NAS, c'est le plus gros modele QUI COMPLETE "
+        "qui prend la place", S.modele_analyse_de(NAS, "qwen2.5vl:7b"))
+    # Un modele qui n'annonce AUCUNE capacite est suppose completer : le parc
+    # porte de vieux Ollama, et une absence d'annonce ne rend personne muet.
+    poser()
+    S._CERVEAUX[NAS]["modeles"] = [
+        {"name": "vieux:7b", "size": 3_000_000_000},          # rien d'annonce
+        {"name": "enorme:70b", "size": 40_000_000_000,
+         "capabilities": ["completion"]}]
+    S.ETAT_NOEUDS["zima"]["vram"] = 11.0     # 8,25 Go de marge
+    dit(S.modele_analyse_de(NAS, "enorme:70b") == "vieux:7b",
+        "un modele sans capacite annoncee est suppose completer : un vieil "
+        "Ollama, qui n'annonce rien, ne devient pas muet",
+        S.modele_analyse_de(NAS, "enorme:70b"))
+    poser()
+
     # ── un Ollama peut avoir une carte et ne pas s'en servir ───────────
     # LA PANNE LA PLUS COUTEUSE DU PARC, ET LA SEULE QUI NE SE VOIE NULLE
     # PART : la machine repond, annonce ses modeles, le studio la choisit, et
@@ -290,6 +339,37 @@ async def main():
             "de confort ne peut pas casser l'analyse qui vient de reussir",
             echappe or "rien n'a echappe")
         PS["leve"] = False
+
+        # ET LE CAS QUI COMPTE VRAIMENT : la machine qui DEPASSE l'echeance.
+        # La mesure suit un appel REUSSI — or l'Ollama assez lent pour depasser
+        # est justement celui qui a le plus besoin d'etre diagnostique, et il
+        # n'aboutit jamais. Sans une seconde prise au moment du depassement, il
+        # ne serait mesure qu'a l'appel ou il repond, c'est-a-dire peut-etre
+        # jamais. Au depassement, le modele est charge la-bas et calcule
+        # encore : /api/ps dit ou.
+        poser()
+        S._PLACEMENT.clear()
+        del PS["appels"][:]
+        PS["charge"] = {"models": [{"name": "qwen2.5vl:7b", "size": 5_970_000_000,
+                                    "size_vram": 0}]}
+
+        async def _depasse(corps, url=None, secondes=900):
+            raise asyncio.TimeoutError()
+
+        vrai_local = S._ollama_local
+        S._ollama_local = _depasse
+        S.TACHES["banc-depasse"] = {"etapes": [], "etat": "en cours"}
+        try:
+            await S._appeler_llm("x", None, None, True, None, 0.1, "banc-depasse")
+        except Exception:
+            pass
+        finally:
+            S._ollama_local = vrai_local
+            S.TACHES.pop("banc-depasse", None)
+        dit(S.sur_processeur(PC) is True and f"{PC}/api/ps" in PS["appels"],
+            "une adresse qui DEPASSE l'echeance est mesuree elle aussi, sinon "
+            "l'Ollama le plus lent du parc serait le seul jamais diagnostique",
+            f"{S.sur_processeur(PC)}, {PS['appels']}")
     finally:
         S.aiohttp.ClientSession = vraie_session
 
@@ -325,7 +405,19 @@ async def main():
     # fait trois ou quatre appels. L'appel de texte n'avait que l'echeance des
     # images, 900 s. Ici, _ollama_local est remplace : on lit l'echeance qu'on
     # lui passe, et on le fait depasser.
+    #
+    # AUCUN OLLAMA N'EST JOIGNABLE ICI — c'est la promesse de l'en-tete — et
+    # un depassement declenche desormais une mesure de placement. Sans les deux
+    # lignes ci-dessous, chaque TimeoutError de cette section irait sonder
+    # pc.local puis nas.local POUR DE VRAI, trois secondes chacune, sur des noms
+    # qu'aucune machine de CI ne resout : un banc qui depend du reseau ne mesure
+    # pas ce qu'il croit. Une mesure fraiche fait rendre la main a
+    # relever_placement des sa premiere ligne. « part » a 1,0 et non 0,0 :
+    # declasser les deux adresses les mettrait « sur processeur » et
+    # inverserait l'ordre que ces cas empruntent.
     poser()
+    S._PLACEMENT[PC] = {"part": 1.0, "quand": S.time.time()}
+    S._PLACEMENT[NAS] = {"part": 1.0, "quand": S.time.time()}
     recus = []
 
     async def faux_local(corps, url=None, secondes=900):
@@ -379,10 +471,94 @@ async def main():
             f"{len(recus)} appel(s)")
         rendu = await S.appeler_ollama("x", "aW1hZ2U=", None, True, tid="banc-lent")
         dit(rendu == "{}", "et une image de la demande lente part quand meme : elle n'a pas de raccourci")
+
+        # ── LE PREMIER DEPASSE, LE SECOND REPOND ───────────────────────
+        # LA MARQUE ETAIT POSEE DANS LE « except » DE CHAQUE ADRESSE, et la
+        # boucle continue apres un depassement. Une demande dont le plan
+        # expirait sur la petite carte puis revenait en une seconde sur la
+        # grosse repartait donc avec son plan ET sa marque : enrichissement,
+        # traduction et recherche de sujet levaient CerveauTropLent pour rien,
+        # et le prompt partait en francais a un moteur qui ne lit que
+        # l'anglais — ce que ce depot documente comme changeant le SUJET, pas
+        # la qualite. Une adresse lente dans un parc de deux ne doit pas
+        # decider pour la demande entiere.
+        #
+        # poser() ne touche pas a _PLACEMENT : les deux mesures posees en tete
+        # de section tiennent encore, et rien ne part sur le reseau.
+        poser()
+        del recus[:]
+
+        async def premier_lent(corps, url=None, secondes=900):
+            recus.append((bool(corps.get("images")), secondes, url))
+            if url == PC:
+                raise asyncio.TimeoutError()
+            return "{}"
+
+        S._ollama_local = premier_lent
+        S.TACHES["banc-mixte"] = {"etapes": [], "etat": "en cours"}
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1,
+                                         "banc-mixte")
+        except Exception as e:      # un banc qui meurt ne nomme pas la panne
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == "{}" and [r[2] for r in recus] == [PC, NAS]
+            and not S.TACHES["banc-mixte"].get("cerveau_lent"),
+            "quand le PREMIER cerveau depasse et que le SECOND repond, la "
+            "demande repart avec sa reponse et SANS la marque « cerveau lent »",
+            f"{rendu!r}, marque={S.TACHES['banc-mixte'].get('cerveau_lent')!r}, "
+            f"essais={[r[2] for r in recus]}")
+        del recus[:]
+        try:
+            suite = await S.appeler_ollama("encore", None, None, True,
+                                           tid="banc-mixte")
+        except Exception as e:
+            suite = f"a leve {type(e).__name__}"
+        dit(suite == "{}" and [r[2] for r in recus] == [PC, NAS],
+            "et l'appel SUIVANT de cette demande part vraiment, jusqu'a la "
+            "seconde adresse : c'est l'enrichissement et la traduction qui "
+            "levaient pour rien",
+            f"{suite!r}, essais={[r[2] for r in recus]}")
+
+        # ── ECRIRE N'EST PAS ANALYSER ──────────────────────────────────
+        # L'echeance de 180 s ne visait que l'analyse, et s'appliquait pourtant
+        # a « tout ce qui n'est pas une image ». Les appels d'ECRITURE —
+        # enrichissement, traduction, refrain, couplets — prennent le plus gros
+        # modele de la machine, dix-huit gigaoctets parfois, dont le chargement
+        # seul depasse trois minutes. La premiere tentative de refrain expirait,
+        # les cinq suivantes levaient sur la marque, _ecrire_paroles rendait ""
+        # et la demande mourait sur « les paroles n'ont pas pu etre ecrites » :
+        # une erreur DURE pour une carte simplement lente a charger.
+        del recus[:]
+        S._ollama_local = faux_local
+        S.TACHES["banc-ecrit"] = {"etapes": [], "etat": "en cours"}
+        await S._appeler_llm("x", None, None, True, S.MODELE_POUR_ECRIRE, 0.1,
+                             "banc-ecrit")
+        dit(recus and recus[-1][0] is False and recus[-1][1] == 900,
+            "un appel d'ECRITURE part avec neuf cents secondes, et non les "
+            f"{S.ANALYSE_DELAI} s de l'analyse : le plus gros modele de la "
+            "machine met plus de trois minutes rien qu'a se charger",
+            str(recus[-1:]))
+        del recus[:]
+        try:
+            await S._appeler_llm("depasse", None, None, True,
+                                 S.MODELE_POUR_ECRIRE, 0.1, "banc-ecrit")
+            issue = "rendu"
+        except Exception as e:
+            issue = type(e).__name__
+        dit(issue != "rendu" and not S.TACHES["banc-ecrit"].get("cerveau_lent")
+            and len(recus) == 2 and all(r[1] == 900 for r in recus),
+            "et le depassement d'une ECRITURE ne marque PAS la demande : ce "
+            "n'est pas un diagnostic d'analyse lente, et le couplet suivant "
+            "doit pouvoir partir",
+            f"{issue}, marque={S.TACHES['banc-ecrit'].get('cerveau_lent')!r}, "
+            f"delais={[r[1] for r in recus]}")
     finally:
         S._ollama_local = vrai_local
+        S._PLACEMENT.clear()
         S.TACHES.pop("banc-lent", None)
         S.TACHES.pop("banc-autre", None)
+        S.TACHES.pop("banc-mixte", None)
+        S.TACHES.pop("banc-ecrit", None)
     S._CERVEAUX[NAS]["modeles"] = [m for m in S._CERVEAUX[NAS]["modeles"]
                                    if m["name"] != "qwen2.5vl:7b"]
     remplace = S.corps_ici(corps, NAS)

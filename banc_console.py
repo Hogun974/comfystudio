@@ -767,17 +767,43 @@ try:
     # autrement que par son usage reel peut passer l'essai et echouer le jour
     # venu ».
     demandes = []
+    REPOND = ['{"intention": "image", "modele": "flux1", "prompt": "x", "raison": "y"}']
 
     async def faux_poser(ident, corps, tid=None, secondes=900, patience=None):
         demandes.append((ident, corps, secondes))
-        return "bleu", ""
+        return REPOND[0], ""
 
     vrai_poser, S.poser_a = S.poser_a, faux_poser
     try:
         st, d = lire(lancer(S.api_admin_essai_llm(Req(match={"ident": "pc"}))))
-        dit(st == 200 and d.get("reponse") == "bleu" and not d.get("erreur"),
-            "l'essai pose une vraie question et rend ce que la machine repond",
-            f"HTTP {st}, « {d.get('reponse')} » en {d.get('secondes')} s")
+        dit(st == 200 and d.get("lisible") is True and not d.get("erreur"),
+            "l'essai rend un plan lisible quand la machine en rend un",
+            f"HTTP {st}, lisible={d.get('lisible')}, erreur={d.get('erreur')!r}")
+
+        # L'ESSAI DOIT EPROUVER CE QUE LE STUDIO ENVOIE VRAIMENT. Le
+        # 8 septembre 2026, sur pc, il repondait « Bleu. » a « quelle est la
+        # couleur du ciel » pendant que TOUTE analyse revenait vide : la carte
+        # rendait du charabia des que le prompt depassait quelques centaines de
+        # jetons, et le mode JSON changeait ce charabia en reponse vide. Un
+        # essai qui passe quand la chose qu'il eprouve est cassee donne le feu
+        # vert : c'est pire qu'un essai absent.
+        envoye = demandes[0][1] if demandes else {}
+        dit(len(envoye.get("system") or "") > 5000 and envoye.get("format") == "json",
+            "et il envoie le VRAI gabarit du plan, de sa taille et en mode JSON, "
+            "pas une phrase courte qui passe quand le reste echoue",
+            f"{len(envoye.get('system') or '')} caracteres, format="
+            f"{envoye.get('format')!r}")
+        for rendu, attendu in ((" ", "le modele n'a rien rendu"),
+                               ("@@@@@@@@@@@@", "quelque chose d'illisible"),
+                               ('{"couleur": "bleu"}', "un objet sans intention")):
+            REPOND[0] = rendu
+            st, d = lire(lancer(S.api_admin_essai_llm(Req(match={"ident": "pc"}))))
+            dit(st == 200 and d.get("lisible") is False and attendu in (d.get("erreur") or ""),
+                f"et il REFUSE {rendu.strip()[:14]!r} : « {attendu} »",
+                f"lisible={d.get('lisible')}, erreur={d.get('erreur')!r}")
+        REPOND[0] = '{"intention": "image", "modele": "flux1", "prompt": "x", "raison": "y"}'
+        del demandes[:]
+        st, d = lire(lancer(S.api_admin_essai_llm(Req(match={"ident": "pc"}))))
         dit(len(demandes) == 1 and demandes[0][0] == "pc",
             "par poser_a(), le MEME chemin que la bascule automatique : une "
             "voie de secours verifiee autrement que par son usage reel peut "
@@ -1063,6 +1089,69 @@ try:
     st, d = lire(asyncio.run(S.api_entrer(Req(admin=False))))
     dit(st == 400, "alors qu'un corps vraiment illisible rend toujours 400",
         f"HTTP {st}")
+
+    # ── UNE HTTPException EST UNE REPONSE, ET ELLE SORTAIT NUE ─────────
+    # « Toute reponse emporte les trois en-tetes » le disait sans le faire :
+    # l'intergiciel ne garnissait que ce que le handler RENDAIT. Un 404 du
+    # routeur, un 403 d'origine refusee et le 413 que les vingt-deux gardes
+    # font justement remonter naissent tous d'une LEVEE, et sortaient donc
+    # sans X-Frame-Options, sans Referrer-Policy et sans X-Content-Type-Options
+    # — alors que ce sont precisement les reponses qu'un tiers provoque le plus
+    # facilement, et celles qu'une page etrangere aurait le plus d'interet a
+    # encadrer. Une HTTPException EST une reponse : on la garnit, on la relance.
+    def leve(exception):
+        async def route(req):
+            raise exception
+        return route
+
+    for exception in (S.web.HTTPNotFound(text="rien ici"),
+                      S.web.HTTPForbidden(text="origine refusee"),
+                      S.web.HTTPRequestEntityTooLarge(
+                          max_size=S.CORPS_MAX, actual_size=S.CORPS_MAX + 1)):
+        attendu = exception.status
+        try:
+            rep = asyncio.run(S.en_tetes_surs(Req(), leve(exception)))
+            sorti, entetes = f"HTTP {rep.status}", dict(rep.headers)
+        except S.web.HTTPException as e:
+            sorti, entetes = f"leve {e.status}", dict(e.headers)
+        dit(sorti == f"leve {attendu}"
+            and entetes.get("X-Frame-Options") == "DENY"
+            and entetes.get("Referrer-Policy") == "no-referrer"
+            and entetes.get("X-Content-Type-Options") == "nosniff",
+            f"un {attendu} LEVE par la route ressort en {attendu} et porte les "
+            f"trois en-tetes : l'intergiciel garnit l'exception avant de la "
+            f"relancer",
+            f"{sorti}, {sorted(k for k in entetes if k.startswith(('X-', 'Ref')))}")
+
+    # LE MEME CHEMIN, MAIS PAR UNE VRAIE ROUTE : c'est le 413 qu'aiohttp leve
+    # au quatre-millionieme octet et que la garde « corps illisible » laisse
+    # passer exprès. Il traverse deux gardes d'affilee — celle de la route et
+    # l'intergiciel — et doit ressortir en 413 garni.
+    try:
+        rep = asyncio.run(S.en_tetes_surs(Trop(admin=False), S.api_entrer))
+        sorti, entetes = f"HTTP {rep.status}", dict(rep.headers)
+    except S.web.HTTPException as e:
+        sorti, entetes = f"leve {e.status}", dict(e.headers)
+    dit(sorti == "leve 413"
+        and entetes.get("X-Frame-Options") == "DENY"
+        and entetes.get("Referrer-Policy") == "no-referrer"
+        and entetes.get("X-Content-Type-Options") == "nosniff",
+        "et le 413 qu'une VRAIE route laisse remonter traverse l'intergiciel "
+        "de la meme facon : 413, avec ses trois en-tetes",
+        f"{sorti}, {sorted(k for k in entetes if k.startswith(('X-', 'Ref')))}")
+
+    deja_garnie = S.web.HTTPForbidden(text="origine refusee")
+    deja_garnie.headers["Referrer-Policy"] = "same-origin"
+    try:
+        rep = asyncio.run(S.en_tetes_surs(Req(), leve(deja_garnie)))
+        sorti, entetes = f"HTTP {rep.status}", dict(rep.headers)
+    except S.web.HTTPException as e:
+        sorti, entetes = f"leve {e.status}", dict(e.headers)
+    dit(sorti == "leve 403" and entetes.get("Referrer-Policy") == "same-origin"
+        and entetes.get("X-Frame-Options") == "DENY",
+        "et une exception qui portait deja l'un d'eux garde SA valeur : sur ce "
+        "chemin aussi, l'intergiciel complete sans ecraser",
+        f"{sorti}, Referrer-Policy={entetes.get('Referrer-Policy')!r}")
 finally:
     pass
 
