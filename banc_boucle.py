@@ -1296,7 +1296,7 @@ dit(_s.attentes and _s.attentes[0] == a("PAUSE_LONGUE", -1),
 print("\n  ── l'adresse du langage, cherchee a nouveau tant qu'elle manque ──")
 
 
-def chercher(repondent, depart="", prefere="http://regle:11434"):
+def langage_annonce(repondent, depart="", prefere="http://regle:11434"):
     """Lance la VRAIE langage_courant(). « repondent » : adresse -> modeles."""
     vus = []
 
@@ -1322,7 +1322,7 @@ def chercher(repondent, depart="", prefere="http://regle:11434"):
         url=(a("ADRESSE_LANGAGE", {}) or {}).get("url"))
 
 
-_c = chercher({"http://regle:11434": ["qwen2.5vl:7b"]}, depart="")
+_c = langage_annonce({"http://regle:11434": ["qwen2.5vl:7b"]}, depart="")
 dit(_c.etat == {"ok": True, "modeles": ["qwen2.5vl:7b"]} and _c.url == "http://regle:11434",
     "partie d'une adresse VIDE, l'annonce en trouve une et la retient",
     f"{_c.etat} — retenue {_c.url!r}")
@@ -1335,7 +1335,7 @@ dit("http://regle:11434" in _c.dit,
 # pas multiplier les interrogations quand l'adresse tient : trois adresses
 # sondees toutes les dix secondes, ce sont vingt-quatre secondes d'attente par
 # minute dans le pire cas.
-_c = chercher({"http://regle:11434": ["qwen2.5vl:7b"]}, depart="http://regle:11434")
+_c = langage_annonce({"http://regle:11434": ["qwen2.5vl:7b"]}, depart="http://regle:11434")
 dit(len(_c.vus) == 1,
     "quand l'adresse repond, on ne sonde qu'elle — une interrogation, pas trois",
     f"{_c.vus}")
@@ -1343,7 +1343,7 @@ dit(len(_c.vus) == 1,
 # L'ADRESSE QUI TOMBE EST ABANDONNEE. Un Ollama deplace d'un conteneur a
 # l'autre, et l'agent s'accrocherait a une adresse morte jusqu'a son
 # redemarrage.
-_c = chercher({"http://172.17.0.1:11434": ["gemma3:4b"]},
+_c = langage_annonce({"http://172.17.0.1:11434": ["gemma3:4b"]},
               depart="http://regle:11434")
 dit(_c.url == "http://172.17.0.1:11434"
     and _c.etat == {"ok": True, "modeles": ["gemma3:4b"]},
@@ -1353,7 +1353,7 @@ dit(_c.url == "http://172.17.0.1:11434"
 # ET LE DICTIONNAIRE PART TOUJOURS, MEME VIDE. Omettre « llm » laissait le
 # studio sur ce qu'il avait appris une heure plus tot : une machine dont
 # l'Ollama vient de mourir restait, pour lui, une machine a cerveau.
-_c = chercher({}, depart="http://regle:11434")
+_c = langage_annonce({}, depart="http://regle:11434")
 dit(_c.etat == {"ok": False, "modeles": []} and _c.url == "",
     "plus rien nulle part : on l'annonce, au lieu de taire la nouvelle",
     f"{_c.etat} — retenue {_c.url!r}")
