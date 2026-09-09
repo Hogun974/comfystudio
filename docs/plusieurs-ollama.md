@@ -141,6 +141,42 @@ cerveau — mais `STUDIO_ANALYSE_DELAI` (180 s) borne ce qu'une demande accepte
 de l'attendre, et le reste se fait par mots-clés. Voir
 [Réglages](reglages.md).
 
+## Deux voies vers le modèle d'une machine, et un essai qui n'en teste qu'une
+
+Le studio parle **en direct** à chaque Ollama dont `OLLAMA_URL` porte
+l'adresse : c'est le chemin de toutes les analyses, 3,8 s mesurées le 31 août.
+Il peut aussi **emprunter le modèle par l'agent** — le studio dépose une
+question, l'agent vient la chercher et la porte à son Ollama local. Cette
+seconde voie existe pour les machines que le studio ne peut pas joindre ; elle
+coûtait 74,8 s sur le PC et 162,6 s sur le NAS.
+
+L'essai de modèle de `/admin` emprunte la seconde, et il le dit désormais dans
+sa réponse. **Sans le dire, son verdict se lisait comme celui du modèle
+lui-même** — et il s'est trompé dans les deux sens en deux jours : vert le
+8 septembre 2026 quand toute analyse revenait vide, rouge le 9 quand elle
+répondait en 1,7 s.
+
+## Une machine qui prête son langage peut se taire pour toujours
+
+Défaut du 9 septembre 2026, sur `pc`, et **rien nulle part ne le disait**.
+L'agent cherchait son Ollama **une seule fois**, au démarrage : le réglage,
+puis les deux voisins de conteneur, huit secondes chacun. Ce matin-là il
+redémarre à 09:27 après sa mise à jour, `/api/tags` ne répond pas dans ce
+délai, et la machine se déclare sans langage **pour toute la vie du
+processus** — quatre modèles installés, un Ollama qui répondait à la seconde
+suivante, et le studio prévenu qu'elle n'en prêtait aucun.
+
+Rien ne cassait : la voie directe marchait, les analyses tombaient en 1,7 s.
+Seule la voie de secours était morte, et le seul symptôme visible était un
+essai de modèle qui attendait ses 180 s puis rendait « n'a pas répondu à
+temps ».
+
+L'adresse est donc **cherchée à nouveau à chaque annonce** tant qu'elle
+manque ou qu'elle ne répond plus, le fil des questions part toujours et
+attend qu'une adresse paraisse, et le changement est **écrit sur la
+console**. Le dictionnaire `llm` part avec chaque annonce, même vide : ne pas
+l'envoyer laissait le studio sur ce qu'il avait appris une heure plus tôt.
+
 ## Ce que la bannière annonce au démarrage
 
 Une ligne par adresse, avec le modèle d'écriture de chacune et le nom de la

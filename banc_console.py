@@ -809,17 +809,57 @@ try:
             "voie de secours verifiee autrement que par son usage reel peut "
             "passer l'essai et echouer le jour venu",
             f"{len(demandes)} appel(s), vers {demandes[0][0] if demandes else '?'}")
-        # « keep_alive: 0 » N'EST PAS UN DETAIL : un essai qui laisse le modele
-        # resident occupe la carte de quelqu'un qui n'a rien demande, et le
-        # studio passe son temps a rendre cette carte ailleurs.
+        # LA MEME POLITIQUE QUE PARTOUT, ET NON PLUS « keep_alive: 0 ». Ce
+        # cas exigeait zero, avec un motif honnete — « un essai qui laisse le
+        # modele resident occupe la carte de quelqu'un qui n'a rien demande ».
+        # Il a ete redresse le 9 septembre 2026 par le motif inverse, et plus
+        # fort : a zero, Ollama decharge en fin d'appel LE MODELE QUE
+        # L'ANALYSE VENAIT DE CHAUFFER. La demande suivante de l'utilisateur
+        # repartait du disque — dix a vingt secondes sur la 2080 Ti — parce
+        # qu'un administrateur avait appuye sur un bouton de diagnostic. Le
+        # premier motif tient toujours, et GARDER_LLM y repond : soixante
+        # secondes, exactement ce que coute deja n'importe quelle analyse. Un
+        # essai ne doit pas etre PLUS econome que la chose qu'il imite — c'est
+        # encore une facon de ne pas l'imiter.
         corps = demandes[0][1] if demandes else {}
-        dit(corps.get("keep_alive") == 0,
-            "et il ne laisse pas le modele charge derriere lui",
-            f"keep_alive={corps.get('keep_alive')}")
+        dit(corps.get("keep_alive") == S.GARDER_LLM,
+            "et il garde le modele le meme temps que toute analyse : ni plus, "
+            "ni moins que ce qu'il imite",
+            f"keep_alive={corps.get('keep_alive')!r} pour GARDER_LLM="
+            f"{S.GARDER_LLM!r}")
         dit(corps.get("stream") is False
             and (corps.get("options") or {}).get("temperature") == 0,
             "la question est posee sans flux et sans hasard : deux essais de "
             "suite doivent se comparer", str(corps.get("options")))
+
+        # PAR OU L'ON EST PASSE. Le studio a deux voies vers le modele
+        # d'une machine : en direct quand OLLAMA_URL porte son adresse — c'est
+        # celle de toutes les analyses, 3,8 s mesurees le 31 aout — et par
+        # l'agent, qui coutait 74,8 s sur ce meme PC. Cet essai emprunte la
+        # seconde. Sans le dire, son verdict se lisait comme celui du modele
+        # lui-meme : le 8 septembre il etait vert quand l'analyse mourait, le
+        # 9 il etait rouge quand elle repondait en 1,7 s.
+        dit("agent" in (d.get("chemin") or ""),
+            "et il NOMME la voie qu'il a prise — son verdict ne vaut que pour "
+            "elle, et le studio en a deux",
+            f"chemin={d.get('chemin')!r}")
+
+        # LE DEFAUT DU 9 SEPTEMBRE 2026. L'essai ne regardait que « repond »,
+        # la ou noeuds_a_llm() regarde AUSSI « llm ». Sur pc, dont l'agent
+        # s'annonçait sans langage, il deposait quand meme sa question dans une
+        # file que plus aucun fil ne vidait, attendait ses 180 s, et rendait
+        # « n'a pas repondu a temps » — ce qui se lit « le modele de cette
+        # machine est casse » pour une machine qui en portait quatre et dont le
+        # studio tirait un plan toutes les deux secondes par son autre voie.
+        # Mesure : trois minutes d'attente, deux fois de suite, pour une
+        # reponse que le studio pouvait donner tout de suite et mieux.
+        S.ETAT_NOEUDS["pc"]["llm"] = False
+        st, d = lire(lancer(S.api_admin_essai_llm(Req(match={"ident": "pc"}))))
+        dit(st == 409 and len(demandes) == 1 and "langage" in (d.get("erreur") or ""),
+            "une machine qui ne prete AUCUN langage est refusee tout de suite, "
+            "et nommement : rien n'est depose dans une file que personne ne vide",
+            f"HTTP {st}, {len(demandes)} appel(s), erreur={d.get('erreur')!r}")
+        S.ETAT_NOEUDS["pc"]["llm"] = True
 
         S.ETAT_NOEUDS["pc"]["repond"] = False
         st, d = lire(lancer(S.api_admin_essai_llm(Req(match={"ident": "pc"}))))

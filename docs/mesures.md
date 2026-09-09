@@ -66,6 +66,21 @@ entièrement en RAM — alors que le ComfyUI de la **même machine** voit la car
 en CUDA. Voir [Plusieurs Ollama](plusieurs-ollama.md) pour le diagnostic et le
 remède.
 
+**Un essai peut se tromper dans les deux sens en deux jours.** Le
+8 septembre 2026, l'essai de modèle de `/admin` répondait « Bleu. » sur une
+machine où toute analyse revenait vide. Le 9, corrigé, il rendait « n'a pas
+répondu à temps » sur cette même machine — qui analysait alors en 1,7 s.
+Les deux fois il disait vrai de ce qu'il mesurait, et faux de ce qu'on lui
+faisait dire : le studio a **deux voies** vers le modèle d'une machine, il en
+teste une, et son verdict ne s'affichait pas comme tel. Il nomme désormais sa
+voie.
+
+| ce qu'on lit | ce que c'est |
+|---|---|
+| analyse à 1,7 s | la voie DIRECTE, celle de `OLLAMA_URL` |
+| essai de `/admin` | la voie de SECOURS, par l'agent |
+| « n'a pas répondu à temps » | la seconde est morte ; la première va bien |
+
 **Un modèle peut répondre FAUX sans lever la moindre erreur.** Le 8 septembre
 2026, après une matinée de jeu sur la 2080 Ti, l'Ollama de **pc** répondait
 `@@@@@@@@@@@` dès que le prompt dépassait quelques centaines de jetons — et,

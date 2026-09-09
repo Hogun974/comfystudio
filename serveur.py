@@ -14291,6 +14291,17 @@ async def api_admin_essai_llm(req):
     if not e.get("repond"):
         return web.json_response({"erreur": "cette machine ne repond pas"},
                                  status=409)
+    # LA MEME CONDITION QUE noeuds_a_llm(), ET NON « elle repond ». Le
+    # 9 septembre 2026, pc s'annonçait sans langage : l'essai deposait quand
+    # meme sa question dans une file que plus personne ne vidait, attendait ses
+    # 180 s, et rendait « n'a pas repondu a temps » — ce qui se lit « le modele
+    # de cette machine est casse » pour une machine qui en portait quatre et
+    # dont le studio tirait un plan toutes les deux secondes. Le dire tout de
+    # suite, et le dire juste.
+    if not e.get("llm"):
+        return web.json_response(
+            {"erreur": "cette machine ne prete pas de modele de langage — "
+                       "son agent n'en a trouve aucun"}, status=409)
     # LE VRAI GABARIT, ET NON UNE PHRASE COURTE. Le 8 septembre 2026, sur pc,
     # cet essai repondait « Bleu. » pendant que TOUTE analyse revenait vide :
     # la carte, occupee la matinee par un jeu, rendait « @@@@@@@ » des que le
@@ -14302,11 +14313,15 @@ async def api_admin_essai_llm(req):
     # taille, son mode JSON — et l'on juge la reponse : un plan qui se lit, ou
     # rien. « intention » suffit ; ce que le modele choisit ne nous regarde
     # pas ici, seulement qu'il rende un objet lisible.
+    # « keep_alive » COMME AILLEURS, et non zero. A zero, Ollama decharge le
+    # modele en fin d'appel : l'essai payait un chargement a froid a chaque
+    # fois, ET jetait le modele que l'analyse venait de chauffer — la demande
+    # suivante de l'utilisateur repartait du disque a cause d'un essai.
     corps = {"model": MODELE_LLM,
              "system": SYSTEME.format(catalogue=catalogue_texte(),
                                       contexte=""),
              "prompt": "une photo d'un chat roux endormi sur un fauteuil vert",
-             "stream": False, "format": "json", "keep_alive": 0,
+             "stream": False, "format": "json", "keep_alive": GARDER_LLM,
              "options": {"temperature": 0}}
     debut = time.time()
     reponse, erreur = await poser_a(ident, corps, secondes=180)
@@ -14318,9 +14333,18 @@ async def api_admin_essai_llm(req):
         except Exception:
             pourquoi = ("le modele n'a rien rendu" if not (reponse or "").strip()
                         else "le modele a rendu quelque chose d'illisible")
+    # PAR OU L'ON EST PASSE. Le studio a deux voies vers le modele d'une
+    # machine : en direct quand OLLAMA_URL porte son adresse — c'est celle de
+    # toutes les analyses, 3,8 s mesurees le 31 aout — et par l'agent, qui
+    # coutait 74,8 s sur ce meme PC. Cet essai emprunte la seconde, la voie de
+    # secours, celle que rien d'autre n'exerce. Sans le dire, son verdict se
+    # lisait comme celui du modele lui-meme : vert quand l'analyse mourait le
+    # 8 septembre, rouge quand elle repondait en 1,7 s le 9.
     return web.json_response({"modele": corps["model"],
                               "reponse": (reponse or "").strip()[:400],
                               "lisible": lisible,
+                              "chemin": "par l'agent (voie de secours)",
+                              "en_direct": _url_du_cerveau(ident) or "",
                               "erreur": erreur or pourquoi,
                               "secondes": round(time.time() - debut, 1)})
 

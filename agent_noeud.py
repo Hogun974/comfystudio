@@ -343,6 +343,11 @@ def lire_sortie(comfy, f):
 # agent en conteneur se declare muet a cote d'un Ollama qui tourne.
 VOISINS_OLLAMA = ("http://host.docker.internal:11434",
                   "http://172.17.0.1:11434")
+# L'adresse ou le langage repond EN CE MOMENT, cherchee a nouveau tant qu'elle
+# est vide. Un dictionnaire, comme DEPUIS_L_ANNONCE : ecrit par le fil
+# d'annonce, lu par celui du langage, et une valeur perimee d'une annonce ne
+# coute rien.
+ADRESSE_LANGAGE = {"url": ""}
 
 
 def etat_ollama(ollama):
@@ -378,7 +383,35 @@ def trouver_ollama(prefere):
     return ""
 
 
-def servir_le_langage(studio, jeton, ollama):
+def langage_courant(prefere):
+    """Ce que cette machine prete cote langage, en RECHERCHANT si besoin.
+
+    CHERCHEE A CHAQUE ANNONCE, ET NON UNE FOIS AU DEMARRAGE. Le 9 septembre
+    2026 sur pc : l'agent redemarre a 09:27 apres sa mise a jour, /api/tags ne
+    repond pas dans les huit secondes de ce seul essai, et la machine se
+    declare sans langage POUR TOUTE LA VIE DU PROCESSUS. Quatre modeles
+    installes, un Ollama qui repondait a la seconde suivante, et le studio
+    prevenu que cette machine n'en prete aucun — sans que rien, nulle part, ne
+    le dise. L'essai de la console attendait alors ses 180 s sur une file que
+    plus aucun fil ne venait vider.
+
+    Une seule interrogation quand l'adresse tient, deux le temps d'en changer.
+    Et le dictionnaire part TOUJOURS, meme vide : l'omettre laissait le studio
+    sur un « llm » appris une heure plus tot, qu'aucune annonce ne corrigeait.
+    """
+    url = ADRESSE_LANGAGE.get("url") or ""
+    etat = etat_ollama(url) if url else None
+    if not (etat or {}).get("ok"):
+        neuve = trouver_ollama(prefere)
+        if neuve != url:
+            print(f"  Langage   : {neuve or 'aucun modele joignable'}",
+                  flush=True)
+        ADRESSE_LANGAGE["url"] = neuve
+        etat = etat_ollama(neuve) if neuve else None
+    return etat or {"ok": False, "modeles": []}
+
+
+def servir_le_langage(studio, jeton):
     """Vient chercher les questions du studio et rapporte les reponses.
 
     Un fil a part : la boucle de travail est bloquee pendant un rendu, et une
@@ -387,6 +420,13 @@ def servir_le_langage(studio, jeton, ollama):
     attente = PAUSE_COURTE
     while True:
         try:
+            # L'ADRESSE EST RELUE A CHAQUE TOUR. Passee en argument, elle
+            # figeait au demarrage la reponse a « y a-t-il un langage ici » :
+            # un fil ne partait pas, et rien ne le rattrapait ensuite.
+            ollama = ADRESSE_LANGAGE.get("url") or ""
+            if not ollama:
+                time.sleep(PAUSE_LONGUE)
+                continue
             st, q = appeler(f"{studio}/api/noeud/question", jeton, secondes=30)
             if st not in (200, 204):
                 # Studio injoignable, ou jeton refuse : ca ne guerit pas en trois
@@ -995,10 +1035,8 @@ def battre_annonce(studio, jeton, comfy, ollama):
                 # Maintenant si : sans cette ligne, une machine qui calcule
                 # declare ne rien calculer, et un studio qui redemarre dans
                 # cette fenetre relance une demande que la carte rend encore.
-                menu = {"comfy": False, "travaux": list(EN_COURS_ICI)}
-                if ollama:
-                    menu["llm"] = (etat_ollama(ollama)
-                                   or {"ok": False, "modeles": []})
+                menu = {"comfy": False, "travaux": list(EN_COURS_ICI),
+                        "llm": langage_courant(ollama)}
                 st, _ = appeler(f"{studio}/api/noeud/annonce", jeton, menu)
                 DEPUIS_L_ANNONCE["studio"] = st == 200
                 attente = PAUSE_LONGUE
@@ -1016,9 +1054,7 @@ def battre_annonce(studio, jeton, comfy, ollama):
             # retire cette liste sans nous prevenir ; une copie prise plus haut
             # Reevalue a chaque annonce : un modele peut etre telecharge ou
             # retire pendant que l'agent tourne.
-            if ollama:
-                corps["llm"] = etat_ollama(ollama) or {"ok": False,
-                                                       "modeles": []}
+            corps["llm"] = langage_courant(ollama)
             # la liste des modeles change rarement : toutes les cinq minutes
             # Le studio peut reclamer l'inventaire : il vient de redemarrer
             # et ne connait plus rien de cette machine. Repondre tout de
@@ -1146,9 +1182,12 @@ def boucle(studio, jeton, comfy, sorties="", garder=GARDE_DEFAUT, ollama="",
     # visible, et la boucle ci-dessous se bloque des qu'elle travaille.
     threading.Thread(target=battre_annonce, args=(studio, jeton, comfy, ollama),
                      daemon=True).start()
-    if ollama:
-        threading.Thread(target=servir_le_langage, args=(studio, jeton, ollama),
-                         daemon=True).start()
+    # TOUJOURS, meme sans adresse au demarrage : c'est langage_courant() qui
+    # en trouve une, et ce fil l'attend. Le demarrer sous condition rendait
+    # muette pour de bon une machine dont l'Ollama tardait de huit secondes.
+    ADRESSE_LANGAGE["url"] = ollama
+    threading.Thread(target=servir_le_langage, args=(studio, jeton),
+                     daemon=True).start()
     # Le premier battement dit si la carte repond et si le studio nous accepte.
     # Reclamer du travail avant de le savoir, c'est prendre un rendu qu'on ne
     # peut pas faire. Soixante secondes de plafond : au-dela, le battement est
@@ -1393,8 +1432,9 @@ def main():
         print(f"  Langage   : {ollama} — {len(lang['modeles'])} modele(s), "
               f"pretes au studio si le sien tombe")
     else:
-        print(f"  Langage   : aucun modele joignable (essaye {args.ollama} "
-              f"puis les voisins de conteneur)")
+        print(f"  Langage   : aucun modele joignable pour l'instant (essaye "
+              f"{args.ollama} puis les voisins de conteneur) — recherche "
+              f"reprise a chaque annonce")
     boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder,
            ollama, args.empreinte, not args.sans_maj_auto)
     return 0

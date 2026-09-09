@@ -7090,16 +7090,17 @@ CONSOLE_SUITE = [
                 "    agents = [dict(x, url=None, local=False, agent=True)" + chr(10))),
         ]),
     dict(
-        nom="l'essai du modele laisse le modele charge",
+        nom="l'essai du modele n'a plus de consigne de duree",
         banc="banc_console.py",
-        imite="un essai lance depuis /admin occupe la carte de quelqu'un qui "
-              "n'a rien demande. Le studio passe ensuite son temps a rendre "
-              "cette carte — c'est exactement le travail que « rendre la "
-              "carte » existe pour eviter",
-        rougit="il ne laisse pas le modele charge derriere lui",
+        imite="on retire la clef plutot que de choisir sa valeur. Ollama "
+              "applique alors SA duree — cinq minutes par defaut, cinq fois "
+              "celle du studio : un essai lance depuis /admin occupe la carte "
+              "de quelqu'un qui n'a rien demande, et bien plus longtemps que "
+              "n'importe quelle analyse",
+        rougit="il garde le modele le meme temps que toute analyse",
         editions=[
             ("serveur.py", brut(
-                '             "stream": False, "format": "json", "keep_alive": 0,\n             "options": {"temperature": 0}}',
+                '             "stream": False, "format": "json", "keep_alive": GARDER_LLM,\n             "options": {"temperature": 0}}',
                 '             "stream": False, "format": "json",\n             "options": {"temperature": 0}}')),
         ]),
     dict(
@@ -7603,10 +7604,10 @@ BOUCLE_AGENT = [
         rougit="et tous en daemon — sinon l'agent ne s'arreterait jamais",
         editions=[
             ("agent_noeud.py", brut(
-                '        threading.Thread(target=servir_le_langage, args=(studio, jeton, ollama),' + chr(10)
-                + '                         daemon=True).start()',
-                '        threading.Thread(target=servir_le_langage, args=(studio, jeton, ollama),' + chr(10)
-                + '                         daemon=False).start()')),
+                '    threading.Thread(target=servir_le_langage, args=(studio, jeton),' + chr(10)
+                + '                     daemon=True).start()',
+                '    threading.Thread(target=servir_le_langage, args=(studio, jeton),' + chr(10)
+                + '                     daemon=False).start()')),
         ]),
     dict(
         nom="le fil d'annonce ne sait plus qu'il y a un Ollama ici",
@@ -7621,22 +7622,19 @@ BOUCLE_AGENT = [
                 '    threading.Thread(target=battre_annonce, args=(studio, jeton, comfy, ollama),',
                 '    threading.Thread(target=battre_annonce, args=(studio, jeton, comfy, ""),')),
         ]),
-    dict(
-        nom='le fil des questions part meme sans Ollama',
-        banc="banc_boucle.py",
-        imite="une machine sans modele de langage interroge quand meme le "
-              "studio toutes les trois secondes pour des questions qu'elle ne "
-              "saurait pas traiter — et si une lui est confiee, elle repond « "
-              "ollama a repondu 0 » au lieu de laisser une autre la prendre",
-        rougit="sans modele de langage local, le fil des questions ne part "
-               "pas",
-        editions=[
-            ("agent_noeud.py", brut(
-                '    if ollama:' + chr(10)
-                + '        threading.Thread(target=servir_le_langage,',
-                '    if True:' + chr(10)
-                + '        threading.Thread(target=servir_le_langage,')),
-        ]),
+    # ICI SE TENAIT « le fil des questions part meme sans Ollama », ET ELLE
+    # GARDAIT LE DEFAUT. Elle exigeait que le fil ne parte PAS sans adresse,
+    # au motif — juste en lui-meme — qu'une machine sans langage interrogerait
+    # le studio pour rien. Le 9 septembre 2026 a montre le prix de cette
+    # exigence : sur pc, huit secondes de retard d'Ollama au demarrage, et la
+    # machine ne pretait plus jamais son langage, puisque le fil qui devait le
+    # servir n'existait pas et que rien ne le creait ensuite. Trois mutations
+    # tiennent desormais la meme ligne dans l'autre sens — « le fil des
+    # questions ne part que si l'adresse est deja connue », « le fil reclame
+    # une question qu'il ne saurait pas servir » et « l'adresse du langage est
+    # cherchee une fois pour toutes » : le fil part toujours, ET il ne vide
+    # aucune file tant qu'il n'a pas d'adresse. Le motif d'origine est donc
+    # tenu, sans le defaut qu'il portait.
     dict(
         nom='la boucle reclame du travail sans carte',
         banc="banc_boucle.py",
@@ -9139,6 +9137,62 @@ COMPREHENSION_SEPT = [
         editions=[("serveur.py", brut(
             '            lisible = "intention" in lire_objet_json(reponse or "")',
             '            lisible = True'))]),
+    dict(
+        nom="l'adresse du langage est cherchee une fois pour toutes",
+        banc='banc_boucle.py',
+        imite="LA FORME NATURELLE : on ne cherche que si l'on n'a AUCUNE adresse. Celle qu'on a ne se corrige alors jamais, quand bien meme elle ne repondrait plus — un Ollama deplace d'un conteneur a l'autre, et la machine se tait jusqu'au redemarrage de son agent",
+        rougit='une adresse qui ne repond plus est laissee pour une qui repond',
+        editions=[('agent_noeud.py', brut(
+            '    url = ADRESSE_LANGAGE.get("url") or ""\n    etat = etat_ollama(url) if url else None\n    if not (etat or {}).get("ok"):',
+            '    url = ADRESSE_LANGAGE.get("url") or ""\n    etat = etat_ollama(url) if url else None\n    if not url:'))]),
+    dict(
+        nom="le fil des questions ne part que si l'adresse est deja connue",
+        banc='banc_boucle.py',
+        imite="L'ETAT DU DEPOT JUSQU'AU 9 SEPTEMBRE 2026. Huit secondes de retard sur /api/tags au demarrage, et la machine ne prete plus jamais son langage : le fil qui devait servir les questions n'existe pas, et rien ne le cree ensuite",
+        rougit='sans adresse au demarrage, le fil des questions part QUAND MEME',
+        editions=[('agent_noeud.py', brut(
+            '    ADRESSE_LANGAGE["url"] = ollama\n    threading.Thread(target=servir_le_langage, args=(studio, jeton),\n                     daemon=True).start()',
+            '    ADRESSE_LANGAGE["url"] = ollama\n    if ollama:\n        threading.Thread(target=servir_le_langage, args=(studio, jeton),\n                         daemon=True).start()'))]),
+    dict(
+        nom="le fil reclame une question qu'il ne saurait pas servir",
+        banc='banc_boucle.py',
+        imite="on retire l'attente : le fil interroge le studio sans adresse. Le studio retire la question A LA REMISE — elle serait donc PERDUE pour la machine qui, elle, aurait su y repondre",
+        rougit='sans adresse, le fil ne demande AUCUNE question',
+        editions=[('agent_noeud.py', brut(
+            '            ollama = ADRESSE_LANGAGE.get("url") or ""\n            if not ollama:\n                time.sleep(PAUSE_LONGUE)\n                continue\n',
+            '            ollama = ADRESSE_LANGAGE.get("url") or ""\n'))]),
+    dict(
+        nom="un langage disparu n'est pas annonce",
+        banc='banc_boucle.py',
+        imite="la forme naturelle : on rend ce qu'on a trouve, et rien quand on n'a rien trouve. Le studio reste alors sur ce qu'il avait appris une heure plus tot — une machine dont l'Ollama vient de mourir demeure, pour lui, une machine a cerveau",
+        rougit="plus rien nulle part : on l'annonce",
+        editions=[('agent_noeud.py', brut(
+            '    return etat or {"ok": False, "modeles": []}',
+            '    return etat'))]),
+    dict(
+        nom="l'essai de modele ne regarde pas si la machine prete du langage",
+        banc='banc_console.py',
+        imite="L'ETAT DU DEPOT JUSQU'AU 9 SEPTEMBRE 2026 : l'essai ne verifiait que « repond ». Il deposait sa question dans une file que plus aucun fil ne vidait, attendait 180 s, et rendait « n'a pas repondu a temps » d'une machine qui portait quatre modeles",
+        rougit='une machine qui ne prete AUCUN langage est refusee tout de suite',
+        editions=[('serveur.py', brut(
+            '    if not e.get("llm"):\n        return web.json_response(\n            {"erreur": "cette machine ne prete pas de modele de langage — "\n                       "son agent n\'en a trouve aucun"}, status=409)\n',
+            ''))]),
+    dict(
+        nom="l'essai de modele ne dit plus par ou il est passe",
+        banc='banc_console.py',
+        imite="le studio a deux voies vers le modele d'une machine, et cet essai n'en prend qu'une. Sans le dire, son verdict se lit comme celui du modele lui-meme — vert quand l'analyse mourait, rouge quand elle repondait en 1,7 s",
+        rougit="il NOMME la voie qu'il a prise",
+        editions=[('serveur.py', brut(
+            '                              "chemin": "par l\'agent (voie de secours)",\n',
+            ''))]),
+    dict(
+        nom="l'essai de modele decharge le modele que l'analyse vient de chauffer",
+        banc='banc_console.py',
+        imite="le motif est honnete — ne pas laisser un modele resident sur la carte de quelqu'un. Mais a zero, Ollama decharge en fin d'appel : la demande suivante de l'utilisateur repart du disque parce qu'un administrateur a appuye sur un bouton de diagnostic",
+        rougit='il garde le modele le meme temps que toute analyse',
+        editions=[('serveur.py', brut(
+            '             "stream": False, "format": "json", "keep_alive": GARDER_LLM,',
+            '             "stream": False, "format": "json", "keep_alive": 0,'))]),
 ]
 
 SECURITE_SEPT = [

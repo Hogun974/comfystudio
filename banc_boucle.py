@@ -503,6 +503,8 @@ for _nom, _quoi in [
         ("insister", "la livraison qui garde un travail deja fait"),
         ("servir_le_langage", "le fil qui prete le modele local au studio"),
         ("trouver_ollama", "le choix de l'Ollama, reglage puis voisins"),
+        ("langage_courant", "la recherche d'adresse RECOMMENCEE a chaque annonce"),
+        ("ADRESSE_LANGAGE", "l'adresse ou le langage repond en ce moment"),
         ("modeles_comfy", "l'inventaire des modeles de cette machine"),
         ("main", "la porte d'entree et ses arguments"),
         ("battre_annonce", "le fil qui rend la machine visible"),
@@ -534,15 +536,32 @@ dit(all(f.daemon for f in _t.fils),
 dit([f.args for f in _t.fils] == [("http://comfy",),
                                   ("http://studio", "JETON", "http://comfy",
                                    "http://ollama:11434"),
-                                  ("http://studio", "JETON",
-                                   "http://ollama:11434")],
+                                  ("http://studio", "JETON")],
     "chaque fil recoit ce qu'il lui faut, et rien de plus",
     f"{[f.args for f in _t.fils]}")
 
+# L'ADRESSE NE VOYAGE PLUS PAR ARGUMENT. Passee au fil, elle figeait pour la
+# vie du processus la reponse a « y a-t-il un langage ici ».
+dit((AGENT.ADRESSE_LANGAGE or {}).get("url") == "http://ollama:11434",
+    "l'adresse trouvee au demarrage est POSEE, et non passee au fil",
+    f"{AGENT.ADRESSE_LANGAGE}")
+
+# CE CAS DISAIT L'INVERSE JUSQU'AU 9 SEPTEMBRE 2026 : « sans modele de langage
+# local, le fil des questions ne part pas ». Mesure ce jour-la sur pc — l'agent
+# redemarre apres sa mise a jour, /api/tags tarde au-dela des huit secondes de
+# l'unique essai, et la machine se declare sans langage POUR TOUJOURS. Quatre
+# modeles installes, un Ollama qui repondait a la seconde suivante, et le
+# studio prevenu qu'elle n'en pretait aucun. Le fil part donc toujours : c'est
+# langage_courant() qui trouve une adresse, et lui qui l'attend.
 _sans = tourner([(200, TRAVAIL)], ollama="")
-dit([f.cible for f in _sans.fils] == ["ecouter_progression", "battre_annonce"],
-    "sans modele de langage local, le fil des questions ne part pas",
+dit([f.cible for f in _sans.fils] == ["ecouter_progression", "battre_annonce",
+                                      "servir_le_langage"],
+    "sans adresse au demarrage, le fil des questions part QUAND MEME : "
+    "c'est l'annonce qui en cherchera une",
     f"{[f.cible for f in _sans.fils]}")
+dit((AGENT.ADRESSE_LANGAGE or {}).get("url") == "",
+    "et il demarre sur une adresse vide, qu'il attendra sans rien demander",
+    f"{AGENT.ADRESSE_LANGAGE}")
 
 print("\n  ── pas de carte, pas de studio : on ne prend rien ──")
 
@@ -1098,7 +1117,8 @@ print("\n  ── le modele local, prete au studio quand le sien tombe ──")
 
 
 def servir(questions, generation=(200, {"response": "bonjour"}),
-           reponse=(200, {"ok": True}), tours=1, budget=60):
+           reponse=(200, {"ok": True}), tours=1, budget=60,
+           adresse="http://ollama:11434"):
     """Lance le VRAI servir_le_langage() contre un faux studio et un faux
     Ollama."""
     horloge = Horloge(budget)
@@ -1124,11 +1144,13 @@ def servir(questions, generation=(200, {"response": "bonjour"}),
         return reponse
 
     sauves = [pose("appeler", appeler), pose("time", horloge)]
+    if hasattr(AGENT, "ADRESSE_LANGAGE"):
+        AGENT.ADRESSE_LANGAGE["url"] = adresse
     sortie, souci = io.StringIO(), ""
     try:
         with redirect_stdout(sortie):
             a("servir_le_langage", _absente("servir_le_langage"))(
-                "http://studio", "JETON", "http://ollama:11434")
+                "http://studio", "JETON")
     except Stop:
         pass
     except Exception as e:
@@ -1143,6 +1165,25 @@ def servir(questions, generation=(200, {"response": "bonjour"}),
 _QUESTION = (200, {"qid": "q-42", "corps": {"model": "qwen2.5:7b",
                                             "prompt": "un chat en pixel art",
                                             "stream": False}})
+
+# SANS ADRESSE, IL ATTEND — ET NE DEMANDE RIEN. Interroger le studio pour une
+# question qu'on ne saurait pas poser reviendrait a VIDER la file : le studio
+# retire la question a la remise, et elle serait perdue pour la machine qui,
+# elle, aurait pu y repondre.
+# « tours » ETROIT, ET C'EST LA MUTATION QUI L'A EXIGE. Sous la mutation
+# qui retire l'attente, le fil reclame une question, la sert, et
+# recommence sans jamais dormir : rien n'arrete alors ce banc, puisque
+# c'est le budget de l'horloge — donc les attentes — qui le borne. Trois
+# tours suffisent a le voir demander ce qu'il ne saurait pas servir.
+_vide = servir([_QUESTION], adresse="", tours=3, budget=90)
+dit(not [x for x in _vide.appels if x.url.endswith("/api/noeud/question")],
+    "sans adresse, le fil ne demande AUCUNE question : il ne viderait pas une "
+    "file qu'il ne sait pas servir",
+    f"{[x.url for x in _vide.appels][:3]}")
+dit(bool(_vide.attentes) and all(d == AGENT.PAUSE_LONGUE
+                                 for d in _vide.attentes),
+    "et il dort d'un sommeil long entre deux regards — pas d'attente vive",
+    f"{_vide.attentes[:5]}")
 
 _s = servir([_QUESTION])
 _gen = next((a for a in _s.appels if a.url.endswith("/api/generate")), None)
@@ -1240,6 +1281,82 @@ dit(_s.attentes and _s.attentes[0] == a("PAUSE_LONGUE", -1),
     "et l'incident coute vingt secondes, pas la machine",
     f"{_s.attentes[:2]}")
 
+
+# ══════════════════════════════════════════════════════════════════════
+#  3 bis. langage_courant() — la recherche qui RECOMMENCE
+# ══════════════════════════════════════════════════════════════════════
+# LE DEFAUT DU 9 SEPTEMBRE 2026, ET IL ETAIT MUET. trouver_ollama() etait
+# appelee une fois, dans main(), et son resultat portait pour la vie du
+# processus : une seule interrogation de huit secondes decidait si cette
+# machine pretait du langage. Sur pc, l'agent redemarre a 09:27 apres sa mise a
+# jour, /api/tags ne repond pas dans ce delai — et le studio apprend « llm:
+# false » d'une machine portant quatre modeles, dont celui qu'il utilisait
+# quatre secondes plus tot par son autre voie. Rien ne le disait ; l'essai de
+# la console attendait ses 180 s sur une file que plus aucun fil ne vidait.
+print("\n  ── l'adresse du langage, cherchee a nouveau tant qu'elle manque ──")
+
+
+def chercher(repondent, depart="", prefere="http://regle:11434"):
+    """Lance la VRAIE langage_courant(). « repondent » : adresse -> modeles."""
+    vus = []
+
+    def appeler(url, jeton=None, corps=None, methode=None, brut=None,
+                secondes=60):
+        vus.append(url)
+        base = url[:-len("/api/tags")] if url.endswith("/api/tags") else url
+        if base in repondent:
+            return 200, {"models": [{"name": m} for m in repondent[base]]}
+        return 0, "URLError: [Errno 111] Connection refused"
+
+    sauves = [pose("appeler", appeler)]
+    if hasattr(AGENT, "ADRESSE_LANGAGE"):
+        AGENT.ADRESSE_LANGAGE["url"] = depart
+    sortie = io.StringIO()
+    try:
+        with redirect_stdout(sortie):
+            etat = a("langage_courant", _absente("langage_courant"))(prefere)
+    finally:
+        reprendre(sauves)
+    return types.SimpleNamespace(
+        etat=etat, vus=vus, dit=sortie.getvalue(),
+        url=(a("ADRESSE_LANGAGE", {}) or {}).get("url"))
+
+
+_c = chercher({"http://regle:11434": ["qwen2.5vl:7b"]}, depart="")
+dit(_c.etat == {"ok": True, "modeles": ["qwen2.5vl:7b"]} and _c.url == "http://regle:11434",
+    "partie d'une adresse VIDE, l'annonce en trouve une et la retient",
+    f"{_c.etat} — retenue {_c.url!r}")
+dit("http://regle:11434" in _c.dit,
+    "et elle le DIT : une machine qui se met a preter du langage ne doit pas "
+    "le faire en silence",
+    repr(_c.dit.strip()[:90]))
+
+# LE CAS ORDINAIRE NE COUTE QU'UN APPEL. Rechercher a chaque annonce ne doit
+# pas multiplier les interrogations quand l'adresse tient : trois adresses
+# sondees toutes les dix secondes, ce sont vingt-quatre secondes d'attente par
+# minute dans le pire cas.
+_c = chercher({"http://regle:11434": ["qwen2.5vl:7b"]}, depart="http://regle:11434")
+dit(len(_c.vus) == 1,
+    "quand l'adresse repond, on ne sonde qu'elle — une interrogation, pas trois",
+    f"{_c.vus}")
+
+# L'ADRESSE QUI TOMBE EST ABANDONNEE. Un Ollama deplace d'un conteneur a
+# l'autre, et l'agent s'accrocherait a une adresse morte jusqu'a son
+# redemarrage.
+_c = chercher({"http://172.17.0.1:11434": ["gemma3:4b"]},
+              depart="http://regle:11434")
+dit(_c.url == "http://172.17.0.1:11434"
+    and _c.etat == {"ok": True, "modeles": ["gemma3:4b"]},
+    "une adresse qui ne repond plus est laissee pour une qui repond",
+    f"{_c.url!r} — {_c.etat}")
+
+# ET LE DICTIONNAIRE PART TOUJOURS, MEME VIDE. Omettre « llm » laissait le
+# studio sur ce qu'il avait appris une heure plus tot : une machine dont
+# l'Ollama vient de mourir restait, pour lui, une machine a cerveau.
+_c = chercher({}, depart="http://regle:11434")
+dit(_c.etat == {"ok": False, "modeles": []} and _c.url == "",
+    "plus rien nulle part : on l'annonce, au lieu de taire la nouvelle",
+    f"{_c.etat} — retenue {_c.url!r}")
 
 # ══════════════════════════════════════════════════════════════════════
 #  4. trouver_ollama() et modeles_comfy() — ce que la machine sait faire
