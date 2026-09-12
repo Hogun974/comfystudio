@@ -128,6 +128,96 @@ def ecrire_config(d):
         print(f"  reglages non enregistres : {e}")
 
 
+# ══════════════════════════ une seule instance ════════════════════════
+# DEUX AGENTS DANS LE MEME DOSSIER, C'EST DEUX FOIS LE MEME JETON. Tous deux
+# s'annoncent, tous deux reclament du travail, et le studio croit avoir deux
+# machines la ou il n'y a qu'une carte. Ce garde est le PREALABLE a une tache
+# planifiee qui se relance periodiquement : sans lui, chaque tour poserait un
+# agent de plus. Ce n'est pas une precaution de principe.
+#
+# UN VERROU DU SYSTEME, ET NON UN FICHIER TEMOIN. Un fichier de presence cree
+# au demarrage et efface a la fermeture ne survit pas a une coupure de courant
+# ni a un « kill » : au retour, le fichier est la, l'agent refuse de demarrer,
+# et la machine reste hors du parc jusqu'a ce qu'un humain s'en aperçoive.
+# C'est mot pour mot la panne du 10 septembre 2026 que ce garde existe pour
+# rendre impossible ; la reproduire en la corrigeant serait absurde. Un verrou
+# pose par le systeme tombe tout seul quand le processus meurt, quelle qu'en
+# soit la façon.
+VERROU = {"fichier": None}
+
+
+def chemin_du_verrou():
+    """A cote du fichier de reglages, et calcule A L'APPEL.
+
+    Fige au chargement du module, il designerait le depot de celui qui lance un
+    banc : banc_boucle.py deplace CONFIG dans un bac le temps de chaque main(),
+    et c'est cette indirection-la qui l'isole. Deux dossiers de noeud sur une
+    meme machine ont donc deux verrous — c'est le bon grain : ce qu'on interdit,
+    c'est deux agents pour UNE configuration, pas deux noeuds sur une machine.
+    """
+    return CONFIG + ".verrou"
+
+
+def _bloquer(f, poser):
+    """Pose ou retire le verrou du systeme sur le premier octet de f.
+
+    ON CHOISIT PAR L'IMPORT, ET NON PAR os.name. banc_agent.py fait tourner
+    se_mettre_a_jour_seul() avec un faux os qui annonce « nt » sur une machine
+    Linux, pour eprouver les guillemets d'execv : un branchement sur os.name y
+    importerait msvcrt sous Linux et tuerait le banc. Le module qui existe dit
+    la plateforme mieux qu'un drapeau qu'un banc a le droit de mentir.
+    """
+    f.seek(0)
+    try:
+        import fcntl
+    except ImportError:
+        import msvcrt
+        msvcrt.locking(f.fileno(),
+                       msvcrt.LK_NBLCK if poser else msvcrt.LK_UNLCK, 1)
+        return
+    fcntl.flock(f.fileno(),
+                (fcntl.LOCK_EX | fcntl.LOCK_NB) if poser else fcntl.LOCK_UN)
+
+
+def prendre_le_verrou():
+    """Vrai si cette instance a le droit de servir, faux si une autre sert."""
+    if VERROU["fichier"] is not None:
+        return True
+    try:
+        f = open(chemin_du_verrou(), "a+b")
+    except OSError as e:
+        # UN DOSSIER OU L'ON NE PEUT PAS ECRIRE N'EMPECHE PAS DE SERVIR. Ce
+        # garde evite un doublon ; il ne vaut pas d'ecarter une machine qui,
+        # sans lui, travaillait tres bien. On le dit, et on continue.
+        print(f"  verrou impossible a poser ({e}) — on sert quand meme",
+              flush=True)
+        return True
+    try:
+        _bloquer(f, True)
+    except OSError:
+        f.close()
+        return False
+    VERROU["fichier"] = f
+    return True
+
+
+def rendre_le_verrou():
+    """Rend le verrou. VRAI s'il etait bien tenu — voir l'appel avant execv."""
+    f = VERROU["fichier"]
+    if f is None:
+        return False
+    VERROU["fichier"] = None
+    try:
+        _bloquer(f, False)
+    except OSError:
+        pass
+    try:
+        f.close()
+    except OSError:
+        pass
+    return True
+
+
 # ══════════════════════════ reseau ════════════════════════════════════
 def appeler(url, jeton=None, corps=None, methode=None, brut=None, secondes=60):
     """Un appel HTTP, avec le jeton en en-tete. Rend (statut, objet)."""
@@ -833,6 +923,13 @@ def se_mettre_a_jour_seul(studio, attendue, epinglee):
         return None
     print("  redemarrage sur la nouvelle version", flush=True)
     os.environ[MARQUE_MAJ] = attendue
+    # LE VERROU PART AVANT execv, ET REVIENT SI execv ECHOUE. Sous Windows,
+    # os.execv n'est pas un vrai exec : le CRT lance un NOUVEAU processus et
+    # fait mourir celui-ci. Les deux se chevauchent donc un instant, et un
+    # verrou encore tenu ferait refuser le successeur — l'agent mourrait de sa
+    # propre mise a jour. Le repli ci-dessous ne rattraperait meme pas ça,
+    # puisque execv, lui, aurait reussi.
+    tenu = rendre_le_verrou()
     try:
         # LES GUILLEMETS SOUS WINDOWS. os.execv y recolle les arguments en une
         # seule ligne de commande, SANS les proteger : un espace dans le chemin
@@ -854,6 +951,13 @@ def se_mettre_a_jour_seul(studio, attendue, epinglee):
         # execv a echoue : le processus est intact, sur l'ANCIEN code, avec le
         # nouveau fichier sur le disque. Le dire, et continuer de travailler —
         # le prochain demarrage prendra la nouvelle version.
+        #
+        # ET REPRENDRE LE VERROU, puisqu'on continue de servir. On ne le
+        # reprend QUE si on le tenait : appelee sous --maj, ou depuis un banc
+        # qui n'est jamais passe par main(), cette fonction n'a rien lache, et
+        # en poser un ici creerait un fichier a cote du vrai agent du depot.
+        if tenu:
+            prendre_le_verrou()
         print(f"  redemarrage impossible ({e}) — la nouvelle version prendra "
               f"effet au prochain lancement", flush=True)
     return None
@@ -1412,31 +1516,52 @@ def main():
         # que rien ne soit jamais efface.
         print(f"  dossier de sorties introuvable : {sorties}")
         return 1
-    ecrire_config({"studio": studio, "jeton": args.jeton, "comfy": args.comfy,
-                   "sorties": sorties, "garder_heures": args.garder,
-                   "ollama": args.ollama})
-    print("=" * 60)
-    print("  Agent ComfyStudio")
-    print("=" * 60)
-    if sorties:
-        print(f"  Sorties   : {sorties} — effacees {args.garder:.0f} h apres depot")
-    else:
-        # Le dire une fois, au demarrage : un disque qui se remplit en silence
-        # est plus penible qu'un dossier suppose, mais effacer au hasard le
-        # serait bien davantage.
-        print("  Sorties   : dossier inconnu — rien ne sera efface ici "
-              "(--sorties CHEMIN pour l'activer)")
-    ollama = trouver_ollama(args.ollama)
-    if ollama:
-        lang = etat_ollama(ollama) or {"modeles": []}
-        print(f"  Langage   : {ollama} — {len(lang['modeles'])} modele(s), "
-              f"pretes au studio si le sien tombe")
-    else:
-        print(f"  Langage   : aucun modele joignable pour l'instant (essaye "
-              f"{args.ollama} puis les voisins de conteneur) — recherche "
-              f"reprise a chaque annonce")
-    boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder,
-           ollama, args.empreinte, not args.sans_maj_auto)
+    # LE GARDE SE PREND ICI : apres tous les refus, et surtout apres la branche
+    # « --maj » plus haut, qui ne doit JAMAIS verrouiller — maj_noeud lance ce
+    # mode sur un parc dont les agents tournent deja.
+    #
+    # ET L'ON SORT EN 0. « Un agent sert deja » n'est pas un echec : c'est le
+    # cas normal des qu'une tache planifiee repasse toutes les dix minutes pour
+    # verifier que la machine est en service. Rendre 1 ferait conclure au
+    # planificateur que la tache echoue, et son « relancer 999 fois toutes les
+    # minutes » se mettrait a battre dans le vide.
+    if not prendre_le_verrou():
+        print(f"  un agent sert deja depuis ce dossier "
+              f"({chemin_du_verrou()}) — celui-ci s'arrete, l'autre continue")
+        return 0
+    try:
+        ecrire_config({"studio": studio, "jeton": args.jeton,
+                       "comfy": args.comfy, "sorties": sorties,
+                       "garder_heures": args.garder, "ollama": args.ollama})
+        print("=" * 60)
+        print("  Agent ComfyStudio")
+        print("=" * 60)
+        if sorties:
+            print(f"  Sorties   : {sorties} — effacees {args.garder:.0f} h "
+                  f"apres depot")
+        else:
+            # Le dire une fois, au demarrage : un disque qui se remplit en
+            # silence est plus penible qu'un dossier suppose, mais effacer au
+            # hasard le serait bien davantage.
+            print("  Sorties   : dossier inconnu — rien ne sera efface ici "
+                  "(--sorties CHEMIN pour l'activer)")
+        ollama = trouver_ollama(args.ollama)
+        if ollama:
+            lang = etat_ollama(ollama) or {"modeles": []}
+            print(f"  Langage   : {ollama} — {len(lang['modeles'])} modele(s), "
+                  f"pretes au studio si le sien tombe")
+        else:
+            print(f"  Langage   : aucun modele joignable pour l'instant (essaye "
+                  f"{args.ollama} puis les voisins de conteneur) — recherche "
+                  f"reprise a chaque annonce")
+        boucle(studio, args.jeton, args.comfy.rstrip("/"), sorties, args.garder,
+               ollama, args.empreinte, not args.sans_maj_auto)
+    finally:
+        # boucle() ne rend jamais la main en service : ce « finally » sert au
+        # ctrl+C, et surtout a banc_boucle.py, qui appelle main() des dizaines
+        # de fois dans UN processus avec boucle() remplacee par un temoin. Sans
+        # lui, le deuxieme cas se verrouillerait contre le premier.
+        rendre_le_verrou()
     return 0
 
 

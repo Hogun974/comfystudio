@@ -87,6 +87,48 @@ session, ce qui était compté comme un point à régler, et l'agent n'était pa
 lancé. Le correctif existait depuis le 4 septembre, dans le dépôt, à huit jours
 et un copier-coller de la machine qui en avait besoin.
 
+## Un seul agent par configuration
+
+Deux agents dans un même dossier, c'est **deux fois le même jeton** : les deux
+s'annoncent, les deux réclament du travail, et le studio croit avoir deux
+machines là où il n'y a qu'une carte.
+
+L'agent prend donc un **verrou du système** à côté de son fichier de réglages,
+`agent_noeud.json.verrou`. Un second lancement dans le même dossier le dit et
+**sort en 0** — « un agent sert déjà » n'est pas un échec. Deux dossiers de
+nœud sur une même machine ont deux verrous et cohabitent sans se voir : ce
+qu'on interdit, c'est deux agents pour *une* configuration.
+
+**Un verrou du système, et non un fichier témoin.** Un fichier créé au
+démarrage et effacé à la fermeture ne survit ni à une coupure de courant ni à
+un `kill` : au retour il est là, l'agent refuse de démarrer, et la machine
+reste hors du parc — exactement la panne qu'on vient de corriger. Le verrou du
+système, lui, tombe avec le processus quelle qu'en soit la cause. Mesuré :
+premier agent `PRIS`, second `REFUSÉ`, et après un `kill` brutal du premier, le
+troisième obtient `PRIS`.
+
+`--maj` **n'est jamais bloqué** : `maj_noeud` met à jour un parc dont les
+agents tournent. Et le verrou est rendu juste avant `os.execv` puis repris si
+celui-ci échoue — sous Windows `execv` n'est pas un vrai `exec`, les deux
+processus se chevauchent un instant, et un verrou encore tenu ferait mourir
+l'agent de sa propre mise à jour.
+
+## La tâche Windows repasse toutes les dix minutes
+
+C'est le garde ci-dessus qui rend cela sans danger, et les deux ne valent
+qu'ensemble. `service/noeud_windows.ps1` pose désormais une **répétition** sur
+son déclencheur : un déclencheur d'ouverture de session ne se produit qu'une
+fois, et tout ce qui casse ensuite laisse la machine dehors jusqu'à la
+prochaine session.
+
+Le fichier annonçait auparavant « la tâche se relance toute seule si l'agent
+s'arrête » en ne posant que `RestartOnFailure`. C'était faux deux fois : avec
+`--fond` le lanceur détache l'agent et sort en 0, donc le planificateur voit
+une réussite et ne surveille plus rien ; et le 10 septembre, la tâche sortie en
+1 n'a jamais été relancée alors que `RestartOnFailure` était bien enregistré à
+999 essais toutes les minutes. Une répétition ne suppose rien de l'état du
+processus : elle relance le lanceur, qui constate.
+
 ## Mettre à jour un parc
 
 L'agent est servi par le studio (`/api/noeud/agent`). Mettre à jour revient donc

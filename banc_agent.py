@@ -648,6 +648,47 @@ dit("prochain lancement" in _repli.dit,
     "et il annonce que la nouvelle version prendra effet au lancement suivant",
     _repli.dit.strip().splitlines()[-1][:90] if _repli.dit.strip() else "muet")
 
+# ══ LE VERROU D'INSTANCE UNIQUE, AVANT ET APRES execv ══════════════════
+# SOUS WINDOWS, os.execv N'EST PAS UN VRAI exec : le CRT lance un NOUVEAU
+# processus et fait mourir celui-ci. Les deux se chevauchent un instant. Un
+# verrou encore tenu ferait donc refuser le successeur, et l'agent mourrait de
+# sa propre mise a jour — sans que le repli ci-dessus ne rattrape quoi que ce
+# soit, puisque execv, lui, aurait REUSSI. C'est la panne la plus chere du
+# garde, et la seule que son auteur ne verrait jamais sur sa machine Linux.
+#
+# AGENT.CONFIG est deplace dans un bac le temps de ces deux cas : le repli
+# REPREND le verrou, et sans cette precaution il en poserait un a cote du vrai
+# agent du depot.
+_vieux_config = AGENT.CONFIG
+
+
+def _verrou_pose(dossier):
+    """Un descripteur verrouille, range dans VERROU comme main() l'aurait fait."""
+    AGENT.CONFIG = os.path.join(dossier, "agent_noeud.json")
+    f = io.open(AGENT.CONFIG + ".verrou", "a+b")
+    AGENT._bloquer(f, True)
+    AGENT.VERROU["fichier"] = f
+    return f
+
+
+_verrou_pose(os.path.dirname(bac(AVANT)))
+_avec = maj_seule()
+_rendu_avant = AGENT.VERROU["fichier"] is None
+AGENT.rendre_le_verrou()
+dit(_avec.redemarre and _rendu_avant,
+    "le verrou est rendu AVANT execv : le successeur pourra le prendre",
+    f"redemarre={_avec.redemarre}, encore tenu={not _rendu_avant}")
+
+_verrou_pose(os.path.dirname(bac(AVANT)))
+_replie = maj_seule(execv_leve=OSError("Cannot allocate memory"))
+_repris = AGENT.VERROU["fichier"] is not None
+AGENT.rendre_le_verrou()
+AGENT.CONFIG = _vieux_config
+dit(not _replie.redemarre and _repris,
+    "et repris quand execv echoue : l'agent continue de servir, donc de tenir "
+    "sa place",
+    f"redemarre={_replie.redemarre}, repris={_repris}")
+
 # ══ CE QUI ARRIVE QUAND LE STUDIO SERT UN AGENT CASSE ══════════════════
 # Le refus d'ast.parse() doit remonter jusqu'ici : ni ecriture, ni redemarrage,
 # ET PAS DE MARQUEUR. Poser le marqueur sur une tentative qui n'a rien tente

@@ -510,6 +510,7 @@ BESOINS = {
     # mesurerait rien de plus et le ferait chercher un studio.
     "banc_noeud.py": ["banc_noeud.py", "noeud.sh", "maj_noeud.sh",
                       "noeud.bat", "maj_noeud.bat",
+                      "service/noeud_windows.ps1",
                       "installer.py", "installation.py", "catalogue.py",
                       "LANCER ComfyStudio.bat",
                       "paquet/construire_windows.bat"],
@@ -4968,6 +4969,20 @@ MAJ_AGENT = [
             + 'm.startswith(\'"\') else m' + chr(10)
             + "                        for m in morceaux]" + chr(10),
             ""))]),
+    dict(
+        nom="le verrou d'instance n'est plus rendu avant le redemarrage",
+        banc="banc_agent.py",
+        imite="on NOTE qu'on tient le verrou, on oublie de le rendre. Sous "
+              "Windows os.execv n'est pas un vrai exec : le CRT lance un "
+              "nouveau processus et fait mourir celui-ci, les deux se "
+              "chevauchent, et le successeur trouve la place prise. L'agent "
+              "meurt alors de sa PROPRE mise a jour — et le repli ne rattrape "
+              "rien, puisque execv, lui, a reussi. Invisible sous Linux, donc "
+              "invisible sur la CI",
+        rougit="le verrou est rendu AVANT execv",
+        editions=[("agent_noeud.py", brut(
+            "    tenu = rendre_le_verrou()",
+            '    tenu = VERROU["fichier"] is not None'))]),
 ]
 
 RENDU_AGENT = [
@@ -8562,10 +8577,15 @@ BOUCLE_AGENT = [
         rougit="les reglages sont ecrits pour le prochain lancement, sans "
                "arguments",
         editions=[
+            # REINDENTEE LE 12 SEPTEMBRE 2026 : le garde d'instance unique a
+            # place le corps de main() sous un « try », et l'ancre a suivi.
+            # C'est le controle d'ancres qui l'a trouvee morte — sans lui, la
+            # mutation se serait declaree VERTE en ne mesurant plus rien, ce
+            # qui est le pire des verdicts.
             ("agent_noeud.py", brut(
-                '    ecrire_config({"studio": studio, "jeton": args.jeton, "comfy": args.comfy,' + chr(10)
-                + '                   "sorties": sorties, "garder_heures": args.garder,' + chr(10)
-                + '                   "ollama": args.ollama})' + chr(10),
+                '        ecrire_config({"studio": studio, "jeton": args.jeton,' + chr(10)
+                + '                       "comfy": args.comfy, "sorties": sorties,' + chr(10)
+                + '                       "garder_heures": args.garder, "ollama": args.ollama})' + chr(10),
                 '')),
         ]),
     dict(
@@ -8694,6 +8714,73 @@ BOUCLE_AGENT = [
                 + '                           f"ancienne ?", flush=True)',
                 '                print("  carte rendue au systeme", flush=True)')),
         ]),
+    # ── le garde d'instance unique, ne le 12 septembre 2026 ──────────────
+    # Il est le PREALABLE a une tache planifiee qui repasse toutes les dix
+    # minutes : sans lui, chaque tour poserait un agent de plus, et le studio
+    # croirait avoir deux machines la ou il n'y a qu'une carte.
+    dict(
+        nom="l'agent ne verifie plus qu'il est seul",
+        banc="banc_boucle.py",
+        imite="le garde retire. Deux agents dans un dossier, c'est deux fois "
+              "le meme jeton : tous deux s'annoncent, tous deux reclament du "
+              "travail, et la carte fait deux choses a la fois. Avec une tache "
+              "planifiee qui repasse, il s'en ajoute un tous les quarts d'heure",
+        rougit="un agent sert deja dans ce dossier : le second ne se met pas "
+               "en service",
+        editions=[("agent_noeud.py", brut(
+            "    if not prendre_le_verrou():" + chr(10)
+            + '        print(f"  un agent sert deja depuis ce dossier "' + chr(10)
+            + '              f"({chemin_du_verrou()}) — celui-ci s\'arrete, '
+            + 'l\'autre continue")' + chr(10)
+            + "        return 0" + chr(10),
+            ""))]),
+    dict(
+        nom="le refus de doublon devient un echec",
+        banc="banc_boucle.py",
+        imite="« un agent sert deja » rendu comme une panne. La tache "
+              "planifiee repasse toutes les dix minutes et tombera sur ce cas "
+              "a CHAQUE tour : le planificateur conclurait que la tache "
+              "echoue, et son « relancer 999 fois toutes les minutes » se "
+              "mettrait a battre dans le vide",
+        rougit="et il sort en ZERO",
+        editions=[("agent_noeud.py", brut(
+            "        return 0" + chr(10) + "    try:",
+            "        return 1" + chr(10) + "    try:"))]),
+    dict(
+        nom="le garde est pris avant la branche --maj",
+        banc="banc_boucle.py",
+        imite="l'ordre inverse, qui semble plus prudent. maj_noeud lance "
+              "« --maj » sur un parc dont les agents TOURNENT : verrouiller "
+              "avant cette branche condamnerait la mise a jour de toutes les "
+              "machines en service, et l'on ne pourrait plus jamais corriger "
+              "un agent a distance",
+        rougit="--maj traverse le garde",
+        editions=[("agent_noeud.py", brut(
+            "    if args.maj:",
+            "    if not prendre_le_verrou():" + chr(10)
+            + "        return 0" + chr(10)
+            + "    if args.maj:"))]),
+    dict(
+        nom="le verrou n'est plus rendu quand main() sort",
+        banc="banc_boucle.py",
+        imite="le « finally » vide. En service cela ne se voit pas — boucle() "
+              "ne rend jamais la main — mais un ctrl+C suivi d'un relancement "
+              "immediat trouverait la place prise par un processus mort, et "
+              "banc_boucle.py, qui appelle main() des dizaines de fois dans UN "
+              "processus, se verrouillerait contre lui-meme",
+        rougit="main() rend le verrou en sortant",
+        editions=[("agent_noeud.py", brut(
+            "    finally:" + chr(10)
+            + "        # boucle() ne rend jamais la main en service : ce "
+            + "« finally » sert au" + chr(10)
+            + "        # ctrl+C, et surtout a banc_boucle.py, qui appelle "
+            + "main() des dizaines" + chr(10)
+            + "        # de fois dans UN processus avec boucle() remplacee par "
+            + "un temoin. Sans" + chr(10)
+            + "        # lui, le deuxieme cas se verrouillerait contre le "
+            + "premier." + chr(10)
+            + "        rendre_le_verrou()",
+            "    finally:" + chr(10) + "        pass"))]),
 ]
 
 

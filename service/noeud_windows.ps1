@@ -12,8 +12,26 @@
         graphique pour voir la carte sur beaucoup d'installations ;
       - creer un service demande l'elevation, une tache utilisateur non.
 
-    La tache se relance toute seule si l'agent s'arrete : c'est la difference
-    entre « lance au demarrage » et « en service ».
+    LA TACHE REPASSE TOUTES LES DIX MINUTES, et c'est ce qui fait la difference
+    entre « lance a l'ouverture de session » et « en service ».
+
+    Ce fichier a longtemps annonce « la tache se relance toute seule si l'agent
+    s'arrete » en ne posant que RestartOnFailure. C'etait faux deux fois, et
+    mesure le 12 septembre 2026 :
+
+      - avec --fond, le .bat detache l'agent et sort en 0. Le planificateur voit
+        une REUSSITE ; l'agent qui meurt ensuite n'est plus son affaire, et il
+        ne relance rien ;
+      - le 10 septembre la tache est sortie en 1 a l'ouverture de session, et
+        RestartOnFailure — pourtant enregistre a 999 essais toutes les minutes —
+        n'a rien relance : LastRunTime est reste fige deux jours. La machine est
+        restee hors du parc jusqu'a ce qu'une demande soit refusee.
+
+    La repetition, elle, ne suppose rien de l'etat du processus : elle relance
+    le lanceur, qui constate. C'est le garde d'instance unique d'agent_noeud.py
+    qui rend cela sans danger — sans lui, chaque tour poserait un agent de plus,
+    et MultipleInstancesPolicy n'y peut rien puisque l'instance de TACHE, elle,
+    est terminee depuis longtemps.
 
     Usage :
         powershell -ExecutionPolicy Bypass -File service\noeud_windows.ps1 -Dossier D:\NoeudPC
@@ -53,6 +71,17 @@ $declencheur = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 # Un delai laisse le reseau et les services de la carte se lever : sans lui,
 # l'agent teste un ComfyUI qui n'ecoute pas encore et repart en attente longue.
 $declencheur.Delay = "PT45S"
+# LA REPETITION EST CE QUI TIENT LA PROMESSE DE L'EN-TETE. Un declencheur
+# d'ouverture de session ne se produit qu'une fois ; tout ce qui casse ensuite
+# — ComfyUI pas encore leve, agent tue, mise a jour ratee — laisse la machine
+# dehors jusqu'a la prochaine session. Dix minutes : assez rare pour ne rien
+# couter, assez frequent pour qu'une absence ne dure pas la journee.
+# On recopie la repetition d'un declencheur « Once », seul moyen de la
+# construire avec ce module.
+$modele = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+    -RepetitionInterval (New-TimeSpan -Minutes 10) `
+    -RepetitionDuration ([TimeSpan]::MaxValue)
+$declencheur.Repetition = $modele.Repetition
 
 $reglages = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -72,4 +101,5 @@ Register-ScheduledTask -TaskName $Nom -Action $action -Trigger $declencheur `
 
 Write-Host "  tache enregistree : $Nom"
 Write-Host "  dossier           : $Dossier"
-Write-Host "  se lance a l'ouverture de session, 45 s apres, et se relance si elle tombe"
+Write-Host "  se lance a l'ouverture de session, 45 s apres, puis repasse toutes les 10 min"
+Write-Host "  un agent deja en service refuse le doublon et sort en 0 : c'est voulu"

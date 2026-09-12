@@ -687,6 +687,39 @@ for _bat_forf in ("noeud.bat", "maj_noeud.bat"):
         "releve de texte : cmd.exe n'est pas sur les runners de la CI ; "
         + " / ".join(_forf_fautifs))
 
+# ══════════ 8. la tache Windows tient-elle ce qu'elle annonce ════════
+# RELEVE DE TEXTE, faute de planificateur Windows sur les runners.
+#
+# `service/noeud_windows.ps1` a longtemps annonce « la tache se relance toute
+# seule si l'agent s'arrete » en ne posant que RestartOnFailure. Mesure du
+# 12 septembre 2026 sur pc : la tache est sortie en 1 le 10 a l'ouverture de
+# session, RestartOnFailure etait bien enregistre — 999 essais, une minute — et
+# LastRunTime est reste fige DEUX JOURS. La machine est restee hors du parc
+# jusqu'a ce qu'une demande soit refusee faute de carte.
+#
+# Ce qui tient la promesse, c'est la REPETITION du declencheur : elle ne
+# suppose rien de l'etat du processus. On exige donc la propriete, pas la
+# phrase — une promesse en commentaire ne relance aucune machine.
+with io.open(os.path.join(ICI, "service", "noeud_windows.ps1"),
+             encoding="utf-8", errors="replace") as f:
+    _ps1 = f.read()
+dit(re.search(r"\$declencheur\.Repetition\s*=", _ps1) is not None,
+    "la tache Windows repasse periodiquement, et ne se fie pas au seul "
+    "« relancer si la tache echoue »",
+    "releve de texte : pas de planificateur Windows sur les runners de la CI")
+
+# ET LE GARDE EST CE QUI REND LA REPETITION SANS DANGER. L'un sans l'autre est
+# pire que rien : repeter sans garde pose un agent de plus tous les quarts
+# d'heure, et MultipleInstancesPolicy n'y peut rien — avec --fond, l'instance
+# de TACHE est terminee trois secondes apres son lancement.
+with io.open(os.path.join(ICI, "agent_noeud.py"), encoding="utf-8",
+             errors="replace") as f:
+    _agent_texte = f.read()
+dit("def prendre_le_verrou" in _agent_texte
+    and "def rendre_le_verrou" in _agent_texte,
+    "et l'agent porte le garde d'instance unique qui la rend sans danger",
+    "releve de texte ; le comportement est mesure par banc_boucle.py")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees "
       f"— {time.time() - _depart:.1f} s")
 sys.exit(1 if rate else 0)

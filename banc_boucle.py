@@ -1542,14 +1542,20 @@ print("\n  ── la porte d'entree : arguments, environnement, reglages ──"
 
 
 def lancer_main(argv, environ=None, config=None, ollama_repond=True,
-                modeles=("qwen",)):
+                modeles=("qwen",), dossier=None):
     """Lance le VRAI main(), boucle() remplacee par un temoin.
 
     AGENT.CONFIG est deplace dans un bac : sans cela, ce banc ECRIRAIT
     agent_noeud.json a cote du vrai agent du depot — la meme precaution que
     banc_agent.py prend pour AGENT.__file__, et pour la meme raison.
+
+    « dossier » sert au garde d'instance unique, et a lui seul : deux
+    lancements ne se voient que s'ils partagent une configuration, donc un
+    verrou. Sans ce parametre chaque appel aurait son bac, et deux agents
+    concurrents ne se rencontreraient jamais — le cas serait vert sans avoir
+    rien mesure.
     """
-    dossier = bac()
+    dossier = dossier or bac()
     chemin = os.path.join(dossier, "agent_noeud.json")
     if config is not None:
         with io.open(chemin, "w", encoding="utf-8") as f:
@@ -1628,6 +1634,86 @@ dit(_m.code == 7 and _m.maj == ("http://s:8199", "abc123")
     and _m.boucle is None and _m.ecrit is None,
     "--maj se passe de jeton, rend le code de la mise a jour, et ne lance rien",
     f"code={_m.code}, maj={_m.maj}")
+
+
+# ══════════════════ un seul agent par configuration ══════════════════
+# DEUX AGENTS DANS UN DOSSIER, C'EST DEUX FOIS LE MEME JETON : le studio croit
+# avoir deux machines la ou il n'y a qu'une carte, et les deux se disputent le
+# travail. Ce garde est le prealable a une tache planifiee qui repasse toutes
+# les dix minutes verifier que la machine sert — sans lui, chaque tour poserait
+# un agent de plus.
+def occuper_le_verrou(dossier):
+    """Tient le verrou de CE dossier comme le ferait un AUTRE processus.
+
+    ON N'APPELLE PAS prendre_le_verrou(), ET C'EST TOUT L'OBJET DE CETTE
+    FONCTION. Il retient son fichier dans VERROU, et main() y lirait « je le
+    tiens deja » : on mesurerait la REENTRANCE — inoffensive, un processus
+    n'etant jamais qu'un agent — au lieu de la CONCURRENCE. Premiere ecriture
+    de ce cas, et elle passait au vert en ne mesurant rien.
+
+    Un descripteur independant verrouille par le systeme est exactement ce que
+    rencontre un second agent : flock comme msvcrt refusent le second
+    descripteur, meme ouvert par le meme processus.
+
+    Passe par a() : sur un agent d'AVANT le garde, _bloquer n'existe pas, rien
+    n'est verrouille, et le cas rougit au lieu de tuer le banc.
+    """
+    chemin = os.path.join(dossier, "agent_noeud.json") + ".verrou"
+    f = io.open(chemin, "a+b")
+    a("_bloquer", lambda *x: None)(f, True)
+    return f
+
+
+_partage = bac()
+_tenu = occuper_le_verrou(_partage)
+_second = lancer_main(["--studio", "http://s:8199", "--jeton", "ABC"],
+                      dossier=_partage)
+dit(_second.boucle is None,
+    "un agent sert deja dans ce dossier : le second ne se met pas en service",
+    f"boucle={_second.boucle}")
+
+# ZERO, ET NON UN. Une tache planifiee qui repasse toutes les dix minutes
+# tombera sur ce cas a CHAQUE tour : c'est le fonctionnement normal, pas un
+# echec. Un code non nul ferait conclure au planificateur que la tache echoue,
+# et son « relancer 999 fois toutes les minutes » se mettrait a battre dans le
+# vide.
+dit(_second.code == 0,
+    "et il sort en ZERO : « un agent sert deja » n'est pas un echec",
+    f"code={_second.code}")
+
+dit("deja" in _second.dit and _partage in _second.dit,
+    "il le dit, en nommant le dossier ou l'autre sert",
+    f"{_second.dit.strip()[:90]}")
+
+# LE VERROU NE BLOQUE PAS UNE MISE A JOUR. maj_noeud lance « --maj » sur un
+# parc dont les agents tournent : le prendre avant cette branche condamnerait
+# la mise a jour de tout un parc en service.
+_pendant = lancer_main(["--studio", "http://s:8199", "--maj"], dossier=_partage)
+dit(_pendant.code == 7 and _pendant.maj is not None,
+    "--maj traverse le garde : on met a jour une machine en service",
+    f"code={_pendant.code}, maj={_pendant.maj}")
+
+a("_bloquer", lambda *x: None)(_tenu, False)
+_tenu.close()
+_apres = lancer_main(["--studio", "http://s:8199", "--jeton", "ABC"],
+                     dossier=_partage)
+dit(_apres.boucle is not None,
+    "le verrou rendu, un agent repart dans le meme dossier",
+    f"boucle={_apres.boucle is not None}")
+
+# ET IL EST RENDU QUAND main() REND LA MAIN — CE QUI NE SE LIT PAS EN
+# RELANÇANT main(). Premiere ecriture de ce cas : un second lancement, en
+# attendant qu'il soit refuse. Il ne l'etait pas. prendre_le_verrou() court-
+# circuite sur « je le tiens deja », qui est juste — un processus n'est jamais
+# qu'un agent — de sorte qu'un verrou FUITE est invisible au lancement suivant
+# du meme processus. Mesure du 12 septembre 2026 : le « finally » retire, le
+# cas restait vert et la mutation passait au travers.
+#
+# On regarde donc l'etat, seul endroit ou la fuite se voie.
+dit(a("VERROU", {"fichier": "<cet agent n'a pas de garde>"})["fichier"] is None,
+    "main() rend le verrou en sortant, et ne le laisse pas trainer au "
+    "processus",
+    f"{a('VERROU', {'fichier': '<absent>'})['fichier']}")
 
 _m = lancer_main(["--studio", "http://s:8199/", "--jeton", "ABC",
                   "--comfy", "http://c:8188/"])

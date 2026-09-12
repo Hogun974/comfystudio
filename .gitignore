@@ -19,6 +19,9 @@ sorties/
 *.log
 sorties/
 agent_noeud.json
+# Le verrou d'instance unique, pose a cote des reglages. Il ne vit que le temps
+# d'un agent en service : le systeme le relache a la mort du processus.
+agent_noeud.json.verrou
 
 # Retours des utilisateurs : contiennent leurs demandes
 avis.jsonl
