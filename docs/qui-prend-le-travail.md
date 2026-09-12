@@ -238,6 +238,25 @@ La phrase vit dans `refus_moteur()` et non dans `executer()`, pour qu'un banc
 puisse l'atteindre sans monter un rendu entier. Laissée là-bas, elle n'était
 gardée par rien.
 
+**Et ces refus se traduisent.** Ils partaient en français dans toutes les
+langues : le filet d'`executer()` les journalisait par « ERREUR : {quoi} » avec
+`quoi=str(e)`, et une valeur qui n'est pas une marque traverse `rendre()` telle
+quelle — le gabarit se traduisait, son contenu jamais. Les cinq refus sont
+maintenant des `RefusMoteur`, une exception qui porte à la fois la phrase
+française (celle qu'on écrit sur le disque, relue par le studio) et **sa clé**
+(celle que lit la page). Le filet préfère la clé quand l'exception en a une.
+
+Deux règles à connaître avant d'en ajouter une :
+
+- **la clé s'écrit en toutes lettres dans `serveur.py`.** `banc_traductions.py`
+  relève les chaînes littérales du fichier pour vérifier qu'aucune entrée du
+  dictionnaire ne dort ; une clé construite à l'exécution serait invisible,
+  donc déclarée morte ;
+- **pas de sous-phrase française dans une valeur.** Le message de VRAM
+  interpolait un `{detail}` qui était lui-même une demi-phrase : traduire le
+  gabarit sans elle aurait rendu du franglais. Deux clés valent mieux qu'un
+  trou.
+
 ### Et `/admin` disait la même contre-vérité
 
 La même racine, trouvée en cherchant la première : le détail d'une machine

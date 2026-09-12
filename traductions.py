@@ -349,6 +349,62 @@ TEXTES = {
     "panne.echec": {
         "fr": "ERREUR : {quoi}",
         "en": "ERROR: {quoi}"},
+    # LES REFUS D'executer(), QUI PARTAIENT EN FRANCAIS DANS TOUTES LES
+    # LANGUES. Ce sont des « raise » rattrapes par le filet, dont le texte
+    # passait tel quel dans le {quoi} de panne.echec — et une valeur qui n'est
+    # pas une marque traverse sans etre traduite. Ils sont desormais des
+    # marques imbriquees : le gabarit « ERREUR : {quoi} » se traduit, et son
+    # contenu aussi.
+    "panne.comfy_muet": {
+        "fr": "ComfyUI ne repond pas — est-il demarre ?",
+        "en": "ComfyUI is not answering — is it running?"},
+    "panne.comfy_muet_et_machines": {
+        "fr": "ComfyUI ne repond pas — est-il demarre ? Les machines "
+              "declarees non plus : leur agent tourne-t-il ?",
+        "en": "ComfyUI is not answering — is it running? Neither are the "
+              "declared machines: is their agent running?"},
+    "panne.sans_comfy_machines_muettes": {
+        "fr": "cette machine n'a pas de ComfyUI, et aucune des machines "
+              "declarees ne repond : leur agent tourne-t-il ? L'etat de "
+              "chacune est dans /admin.",
+        "en": "this machine has no ComfyUI, and none of the declared machines "
+              "is answering: is their agent running? The state of each one is "
+              "in /admin."},
+    "panne.sans_comfy_sans_machine": {
+        "fr": "cette machine n'a pas de ComfyUI, et aucune machine a carte "
+              "n'est declaree. Ajoutes-en une dans /admin : elle viendra "
+              "chercher le travail d'elle-meme, sans rien ouvrir sur le "
+              "reseau.",
+        "en": "this machine has no ComfyUI, and no machine with a graphics "
+              "card is declared. Add one in /admin: it will come and fetch "
+              "the work by itself, without opening anything on the network."},
+    "panne.moteur_nulle_part": {
+        "fr": "{moteur} n'est disponible sur aucune machine joignable "
+              "({machines}) : modele absent, ou carte trop petite. Le detail "
+              "est dans /admin, en ouvrant la machine.",
+        "en": "{moteur} is available on no reachable machine ({machines}): "
+              "model missing, or card too small. The details are in /admin, "
+              "by opening the machine."},
+    # SANS L'AGE, ET C'EST DELIBERE. Une premiere version portait « vue il y a
+    # {age} » — mais rendre() ne traduit pas les VALEURS, et _duree_courte()
+    # rend « 3 j » : l'anglophone lisait « last seen 3 j ago ». L'age se lit
+    # dans /admin, sous la machine, avec le reste de son etat.
+    "panne.moteur_machines_absentes": {
+        "fr": "{moteur} : aucune machine joignable ne sait le faire, mais "
+              "{machines} le savait. Rallume-la, ou verifie son agent — "
+              "l'etat de chacune est dans /admin.",
+        "en": "{moteur}: no reachable machine can do it, but {machines} "
+              "could. Wake it up, or check its agent — the state of each one "
+              "is in /admin."},
+    "panne.vram_moteur_ailleurs": {
+        "fr": "{moteur} reclame {vram} Go de VRAM : la plus grosse carte "
+              "joignable en a {grosse}, mais il lui manque le modele.",
+        "en": "{moteur} needs {vram} GB of VRAM: the largest reachable card "
+              "has {grosse}, but it is missing the model."},
+    "panne.vram_trop_petite": {
+        "fr": "{moteur} reclame {vram} Go de VRAM : la carte n'en a que "
+              "{dispo}.",
+        "en": "{moteur} needs {vram} GB of VRAM: the card only has {dispo}."},
     "panne.echec_inattendu": {
         "fr": "ERREUR inattendue : {quoi}",
         "en": "unexpected ERROR: {quoi}"},

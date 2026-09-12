@@ -3294,6 +3294,37 @@ LANGUES = [
         editions=[
             ("serveur.py", brut('             or chemin == "/api/textes"\n', "")),
         ]),
+    dict(
+        nom="un refus cesse de citer sa cle en toutes lettres",
+        banc="banc_traductions.py",
+        imite="la cle cesse d'etre posee par le serveur, et l'entree du "
+              "dictionnaire se met a dormir. Elle reste traduite, relue a "
+              "chaque revue, et ne sera jamais affichee — pendant que le refus "
+              "qu'elle devait porter repart en francais dans toutes les "
+              "langues. Le releve des cles CITEES ne voit que les chaines "
+              "litterales : une cle construite a l'execution serait invisible "
+              "de la meme facon",
+        rougit="et aucune cle de panne ne dort : le serveur les pose toutes",
+        editions=[
+            ("serveur.py", brut(
+                'panne_de("panne.moteur_nulle_part",',
+                'panne_de("panne.echec",'))]),
+    dict(
+        nom="le filet aplatit la marque d'un refus en texte",
+        banc="banc_refaire.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 13 SEPTEMBRE 2026, et la moitie qui "
+              "manquait : les cles etaient ecrites, traduites, relues par le "
+              "banc des traductions — et le filet d'executer() les jetait, "
+              "puisqu'il posait str(e). Le gabarit « ERREUR : {quoi} » se "
+              "traduisait, son contenu jamais. Une correction entiere annulee "
+              "par une seule ligne, et rien nulle part ne l'aurait dit",
+        rougit="une panne qui porte une marque l'imbrique, au lieu d'aplatir "
+               "du francais dans la phrase anglaise",
+        editions=[
+            ("serveur.py", brut(
+                '                               quoi=getattr(e, "marque", None)'
+                ' or str(e)))',
+                '                               quoi=str(e)))'))]),
 ]
 
 

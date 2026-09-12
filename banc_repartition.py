@@ -35,6 +35,11 @@ import tempfile
 os.environ["STUDIO_DONNEES"] = tempfile.mkdtemp(prefix="banc_repartition_")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import serveur as S  # noqa: E402
+# TRADUCTIONS AUSSI, depuis que les refus portent une cle : un cas rend la
+# marque en francais et la compare a la phrase, l'autre exige que l'anglais
+# differe. Rien a declarer dans BESOINS — le banc importe serveur.py, qui
+# importe traductions, donc le bac a sable le copie deja.
+import traductions as TR  # noqa: E402
 
 ok, rate = [], []
 
@@ -1182,22 +1187,45 @@ dit([t for t, _ in _absentes] == ["PC (RTX 2080 Ti)"],
     "muette mais capable : elle est nommee",
     f"{[t for t, _ in _absentes]}")
 
-_phrase = S.refus_moteur(CLE, [x for x in S.tous_les_noeuds()
-                               if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")])
+_refus = S.refus_moteur(CLE, [x for x in S.tous_les_noeuds()
+                              if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")])
+_phrase = str(_refus)
 dit("PC (RTX 2080 Ti)" in _phrase and "Rallume" in _phrase,
     "et le refus dit de la rallumer, au lieu d'accuser celles qui repondent",
     _phrase[:100])
+
+# ET IL PORTE SA CLE. Sans elle, la phrase partait dans le « {quoi} » de
+# panne.echec comme une chaine ordinaire — et rendre() laisse traverser ce qui
+# n'est PAS une marque. Le gabarit se traduisait, son contenu jamais : un
+# anglophone lisait « ERROR: » suivi d'une phrase francaise.
+dit(isinstance(_refus, S.RefusMoteur)
+    and (_refus.marque or {}).get("cle") == "panne.moteur_machines_absentes"
+    and TR.rendre(_refus.marque, "fr") == _phrase,
+    "et sa cle, rendue en francais, EST la phrase qu'il porte",
+    f"{(_refus.marque or {}).get('cle')} — "
+    f"« {TR.rendre(_refus.marque, 'fr')[:55]} »")
+
+dit(TR.rendre(_refus.marque, "en") != _phrase
+    and "no reachable machine" in TR.rendre(_refus.marque, "en"),
+    "et en anglais, elle rend l'anglais",
+    TR.rendre(_refus.marque, "en")[:70])
 
 # LE SENS INVERSE. Sans lui, le cas ci-dessus serait vert d'une fonction qui
 # nommerait une machine absente a tout propos — y compris quand il n'y en a
 # aucune, ou quand celle qui manque n'a jamais su faire ce travail.
 S.MODELES_NOEUD.clear()
-_phrase = S.refus_moteur(CLE, [x for x in S.tous_les_noeuds()
-                               if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")])
+_refus = S.refus_moteur(CLE, [x for x in S.tous_les_noeuds()
+                              if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")])
+_phrase = str(_refus)
 dit("n'est disponible sur aucune machine joignable" in _phrase
     and "Rallume" not in _phrase,
     "aucune absente ne savait faire ca : on retrouve l'ancienne phrase",
     _phrase[:100])
+
+dit((_refus.marque or {}).get("cle") == "panne.moteur_nulle_part"
+    and TR.rendre(_refus.marque, "fr") == _phrase,
+    "et l'ancienne phrase porte SA cle, elle aussi",
+    f"{(_refus.marque or {}).get('cle')}")
 
 # ET UNE CARTE TROP PETITE NE COMPTE PAS. Une machine absente qui n'aurait de
 # toute facon pas tenu le moteur n'est pas la reponse : la rallumer ne

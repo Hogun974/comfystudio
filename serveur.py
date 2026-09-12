@@ -1859,8 +1859,39 @@ def muettes_capables(cle):
     return trouvees
 
 
+class RefusMoteur(RuntimeError):
+    """Un refus qui porte SA CLE, et dont le texte reste la phrase francaise.
+
+    Les cinq refus d'executer() etaient des RuntimeError nues. Le filet les
+    rattrape et les journalise par « ERREUR : {quoi} » avec quoi=str(e) — or
+    une valeur qui n'est PAS une marque traverse rendre() telle quelle. Le
+    gabarit se traduisait donc, et son contenu jamais : un anglophone lisait
+    « ERROR: » suivi d'une phrase francaise.
+
+    Une RuntimeError parce que c'est EXACTEMENT ce que les cinq sites levaient
+    avant : rien en aval ne change de comportement.
+
+    Un premier jet justifiait ce choix par « soumettre_robuste() rattrape
+    Exception pour reprendre ailleurs ». C'etait faux deux fois, et la
+    relecture l'a dit : cette fonction ne rattrape que MachineIncapable et
+    PanneNoeud, et une RuntimeError EST une Exception — le choix de la classe
+    n'aurait donc rien protege. Ces refus ne l'atteignent de toute facon
+    jamais : ils sont leves au CHOIX de la machine, avant toute soumission.
+
+    __str__ RESTE LA PHRASE FRANCAISE. Le tour ecrit sur le disque la garde —
+    il est relu par le studio, pas par la page —, les bancs qui cherchent une
+    sous-chaine continuent de la trouver, et « raise refus_moteur(...) » se lit
+    mieux que « raise RuntimeError(refus_moteur(...)) ».
+    """
+
+    def __init__(self, refus, marque):
+        self.refus = refus
+        self.marque = marque
+        super().__init__(refus)
+
+
 def refus_moteur(cle, vivantes):
-    """La phrase d'un refus : une machine MANQUE, ou aucune ne convient.
+    """Le refus d'un moteur : une machine MANQUE, ou aucune ne convient.
 
     Deux refus qui se ressemblent et n'appellent pas du tout le meme geste —
     l'un envoie telecharger un modele, l'autre rallumer une machine.
@@ -1870,19 +1901,39 @@ def refus_moteur(cle, vivantes):
     la-bas, la phrase n'etait gardee par aucun banc, et rien n'aurait dit
     qu'elle se trompait de geste. Elle s'est trompee le 12 septembre 2026 —
     « pc » manquait depuis deux jours, et son nom n'apparaissait nulle part.
+
+    LES CLES SONT ECRITES EN TOUTES LETTRES, et il le faut :
+    banc_traductions.py releve les chaines litterales de ce fichier pour
+    verifier qu'aucune entree du dictionnaire ne dort. Une cle construite a
+    l'execution serait invisible, donc declaree morte.
     """
     absentes = muettes_capables(cle)
     if absentes:
-        quoi = " et ".join(
-            titre + (f" (vue il y a {_duree_courte(age)})" if age else "")
-            for titre, age in absentes[:3])
-        return (f"{CATALOGUE[cle]['titre']} : aucune machine joignable ne sait "
-                f"le faire, mais {quoi} le savait. Rallume-la, ou verifie son "
-                f"agent — l'etat de chacune est dans /admin.")
+        noms = " et ".join(titre for titre, _age in absentes[:3])
+        # PAS D'AGE DANS CETTE PHRASE, ET C'EST LA RELECTURE QUI L'A TRANCHE.
+        # Une premiere version disait « vue il y a {age} », l'age venant de
+        # _duree_courte() : « 3 j ». Or rendre() ne traduit pas les VALEURS
+        # d'une marque — l'anglophone lisait « last seen 3 j ago », du francais
+        # au milieu de l'anglais, c'est-a-dire le defaut meme que ces cles
+        # existent pour supprimer. Imbriquer une marque pour l'age est
+        # impossible : la page ne resout qu'UN niveau, et celle-ci est deja
+        # imbriquee dans panne.echec.
+        #
+        # L'age n'est pas perdu : /admin le donne, et plus lisiblement — « vue
+        # il y a 3 j » sous la machine, avec le reste de son etat.
+        return RefusMoteur(
+            f"{CATALOGUE[cle]['titre']} : aucune machine joignable ne sait le "
+            f"faire, mais {noms} le savait. Rallume-la, ou verifie son agent — "
+            f"l'etat de chacune est dans /admin.",
+            panne_de("panne.moteur_machines_absentes",
+                     moteur=CATALOGUE[cle]["titre"], machines=noms))
     noms = ", ".join(x.get("titre", x["id"]) for x in vivantes)
-    return (f"{CATALOGUE[cle]['titre']} n'est disponible sur aucune machine "
-            f"joignable ({noms}) : modele absent, ou carte trop petite. "
-            f"Le detail est dans /admin, en ouvrant la machine.")
+    return RefusMoteur(
+        f"{CATALOGUE[cle]['titre']} n'est disponible sur aucune machine "
+        f"joignable ({noms}) : modele absent, ou carte trop petite. "
+        f"Le detail est dans /admin, en ouvrant la machine.",
+        panne_de("panne.moteur_nulle_part",
+                 moteur=CATALOGUE[cle]["titre"], machines=noms))
 
 def _mot_local():
     """« le modele local », ou « le modele du parc » quand le studio n'a rien.
@@ -10185,39 +10236,58 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 # le monde verifier un ComfyUI inexistant a ete releve comme le
                 # message le plus decourageant d'une installation neuve.
                 if output_comfy_a_nous():
-                    raise RuntimeError(
-                        "ComfyUI ne repond pas — est-il demarre ?"
-                        + (" Les machines declarees non plus : leur agent "
-                           "tourne-t-il ?" if REGISTRE else ""))
+                    if REGISTRE:
+                        raise RefusMoteur(
+                            "ComfyUI ne repond pas — est-il demarre ? Les "
+                            "machines declarees non plus : leur agent "
+                            "tourne-t-il ?",
+                            panne_de("panne.comfy_muet_et_machines"))
+                    raise RefusMoteur(
+                        "ComfyUI ne repond pas — est-il demarre ?",
+                        panne_de("panne.comfy_muet"))
                 if REGISTRE:
                     # Des machines sont declarees mais aucune ne s'annonce :
                     # c'est leur agent qu'il faut regarder, pas un ComfyUI qui
                     # n'existe pas ici.
-                    raise RuntimeError(
+                    raise RefusMoteur(
                         "cette machine n'a pas de ComfyUI, et aucune des "
                         "machines declarees ne repond : leur agent tourne-t-il ? "
-                        "L'etat de chacune est dans /admin.")
-                raise RuntimeError(
+                        "L'etat de chacune est dans /admin.",
+                        panne_de("panne.sans_comfy_machines_muettes"))
+                raise RefusMoteur(
                     "cette machine n'a pas de ComfyUI, et aucune machine a "
                     "carte n'est declaree. Ajoutes-en une dans /admin : elle "
                     "viendra chercher le travail d'elle-meme, sans rien ouvrir "
-                    "sur le reseau.")
+                    "sur le reseau.",
+                    panne_de("panne.sans_comfy_sans_machine"))
             if not any(x.get("local") for x in vivantes):
                 # Des machines repondent, mais aucune ne convient a ce moteur.
                 # Le dire, plutot que d'accuser un ComfyUI qui va tres bien —
                 # et nommer, s'il y en a une, la machine ABSENTE qui savait
                 # faire ce travail. La phrase est choisie par refus_moteur(),
                 # ou un banc peut l'atteindre sans monter un rendu.
-                raise RuntimeError(refus_moteur(cle, vivantes))
+                raise refus_moteur(cle, vivantes)
             cible = noeud_local()
             dispo = vram_de(cible["id"])
             if besoin > dispo:
                 grosse = max((vram_de(x["id"]) for x in NOEUDS), default=0.0)
-                detail = (f"la plus grosse carte joignable en a {grosse}, mais il lui "
-                          f"manque le modele" if grosse >= besoin else
-                          f"la carte n'en a que {dispo}")
-                raise RuntimeError(f"{CATALOGUE[cle]['titre']} reclame {besoin} Go de "
-                                   f"VRAM : {detail}.")
+                # DEUX PHRASES, ET NON UNE A TROU. « detail » etait une
+                # sous-phrase francaise glissee dans un gabarit : traduire le
+                # gabarit sans elle aurait rendu une phrase a moitie anglaise.
+                if grosse >= besoin:
+                    raise RefusMoteur(
+                        f"{CATALOGUE[cle]['titre']} reclame {besoin} Go de "
+                        f"VRAM : la plus grosse carte joignable en a {grosse}, "
+                        f"mais il lui manque le modele.",
+                        panne_de("panne.vram_moteur_ailleurs",
+                                 moteur=CATALOGUE[cle]["titre"], vram=besoin,
+                                 grosse=grosse))
+                raise RefusMoteur(
+                    f"{CATALOGUE[cle]['titre']} reclame {besoin} Go de VRAM : "
+                    f"la carte n'en a que {dispo}.",
+                    panne_de("panne.vram_trop_petite",
+                             moteur=CATALOGUE[cle]["titre"], vram=besoin,
+                             dispo=dispo))
         ident = cible["id"]
         # Retenu sur la tache : sans cela, interrompre un rendu frappait a la
         # porte de la machine du studio, qui n'est pas forcement celle qui
@@ -10700,8 +10770,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # « ERREUR : {quoi} » se traduit, le texte de l'exception non. Une
         # KeyError s'ecrit pareil dans toutes les langues, et la reecrire
         # serait inventer un diagnostic.
+        #
+        # SAUF QUAND L'EXCEPTION PORTE SA CLE. Les refus d'ici ne sont pas des
+        # accidents de Python mais des phrases ecrites pour etre lues : elles
+        # arrivent avec leur marque, et rendre() la resout AVANT de composer
+        # « ERREUR : {quoi} ». Le gabarit et son contenu se traduisent alors
+        # tous les deux. Sans cette ligne, un anglophone lisait « ERROR: »
+        # suivi d'une phrase francaise.
         journal(tid, f"ERREUR : {e}", etat="erreur",
-                **marque_panne("panne.echec", quoi=str(e)))
+                **marque_panne("panne.echec",
+                               quoi=getattr(e, "marque", None) or str(e)))
 
 # ══════════════════════════════ routes ═════════════════════════════════
 @web.middleware

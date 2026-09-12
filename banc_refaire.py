@@ -134,7 +134,10 @@ PID = "u" * 32
 GRAPHES = []            # [(tid, ident, graphe)] : ce que la carte a VRAIMENT recu
 DISTANTS = []           # [(fournisseur, plan)] : ce qui est parti au loin
 APPELS = {"paroles": 0, "aiguiller": 0}
-ECHEC = {"soumettre": False}
+# « refus » PORTE UNE EXCEPTION, la ou « soumettre » ne porte qu'un drapeau :
+# le filet d'executer() traite differemment une panne qui arrive avec sa cle et
+# une RuntimeError nue, et c'est cette jointure-la que personne ne gardait.
+ECHEC = {"soumettre": False, "refus": None}
 
 
 # ── les faux : tout ce qui sort de la machine ───────────────────────────
@@ -149,7 +152,9 @@ async def faux_soumettre(g, tid, ident, cle, patience=1800, viser="petite",
                          taille=None):
     GRAPHES.append((tid, ident, copy.deepcopy(g)))
     if ECHEC["soumettre"]:
-        raise RuntimeError("la carte a lache")
+        # L'exception posee si on en a pose une, la RuntimeError nue sinon :
+        # les cas qui mesurent le chemin ordinaire ne changent pas d'un iota.
+        raise ECHEC["refus"] or RuntimeError("la carte a lache")
     return ([{"filename": f"{tid[:8]}_00001_.png", "subfolder": "u/image",
               "type": "output", "noeud": ident}], 42.0)
 
@@ -205,6 +210,10 @@ def poser():
     del DISTANTS[:]
     APPELS.update(paroles=0, aiguiller=0)
     ECHEC["soumettre"] = False
+    # Sans cette remise a zero, une marque posee par une section fuiterait dans
+    # les suivantes, qui rappellent poser() : leurs pannes changeraient de
+    # forme sans que rien ne le dise.
+    ECHEC["refus"] = None
     dossiers = {}
     for cle in (CLE, AUDIO):
         for sous, nom, _repo, _distant in S.CATALOGUE[cle]["fichiers"]:
@@ -1421,6 +1430,43 @@ async def main():
     dit(marque.get("valeurs", {}).get("quoi") == "la carte a lache",
         "le gabarit est traduisible, la valeur reste ce que Python a dit",
         str(marque.get("valeurs")))
+
+    # ══ ET QUAND LA PANNE PORTE DEJA SA CLE ════════════════════════════
+    # Le cas ci-dessus mesure le chemin ORDINAIRE : une exception Python dont
+    # le texte est technique, et qui traverse en clair. Les refus de machine,
+    # eux, sont des phrases ecrites pour etre lues, et ils arrivent avec leur
+    # marque. Le filet doit la PREFERER a str(e) — sinon le gabarit se traduit
+    # et son contenu jamais, et l'anglophone lit « ERROR: » suivi de francais.
+    #
+    # UN SECOND RENDU, et non le meme : panne.echec ne porte qu'un {quoi}, et
+    # le cas precedent exige que ce {quoi} soit la chaine « la carte a lache ».
+    # Les deux chemins ne tiennent pas dans un seul.
+    conv = poser()
+    tombe2 = poser_tour()
+    st, corps = await refaire(tombe2)
+    tid2 = corps.get("id")
+    # LA VRAIE FABRIQUE DU SERVEUR, et non un RefusMoteur bricole ici : ce
+    # qu'on mesure doit etre ce que le code leve pour de bon.
+    ECHEC["refus"] = S.refus_moteur("detourer", [])
+    ECHEC["soumettre"] = True
+    await tourner()
+    ECHEC["soumettre"] = False
+    ECHEC["refus"] = None
+    st_, etat2 = lire(await S.api_etat(Req(match={"tid": tid2})))
+    marque2 = etat2.get(S.MARQUE_PANNE) or {}
+    # LE TEMOIN D'ABORD : sans lui, la mesure qui suit serait verte d'une
+    # demande qui n'a jamais echoue, ou d'un etat sans marque du tout.
+    dit(st_ == 200 and etat2.get("etat") == "erreur"
+        and marque2.get("cle") == "panne.echec",
+        "le second rendu a echoue lui aussi, et sa ligne porte une cle",
+        f"{st_} {etat2.get('etat')} {marque2.get('cle')}")
+
+    _en = TR.rendre(marque2, "en")
+    dit(isinstance(marque2.get("valeurs", {}).get("quoi"), dict)
+        and _en.startswith("ERROR") and "joignable" not in _en,
+        "une panne qui porte une marque l'imbrique, au lieu d'aplatir du "
+        "francais dans la phrase anglaise",
+        f"« {_en[:80]} »")
 
     # ══ 14. LA LANGUE DE CELUI QUI LIT ══════════════════════════════════
     print("\n  ── la langue vient du choix, pas du systeme ──")
