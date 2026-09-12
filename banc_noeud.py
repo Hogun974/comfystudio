@@ -738,13 +738,18 @@ dit("MaxValue" not in _ps1_code,
 # pire que rien : repeter sans garde pose un agent de plus tous les quarts
 # d'heure, et MultipleInstancesPolicy n'y peut rien — avec --fond, l'instance
 # de TACHE est terminee trois secondes apres son lancement.
-with io.open(os.path.join(ICI, "agent_noeud.py"), encoding="utf-8",
-             errors="replace") as f:
-    _agent_texte = f.read()
-dit("def prendre_le_verrou" in _agent_texte
-    and "def rendre_le_verrou" in _agent_texte,
-    "et l'agent porte le garde d'instance unique qui la rend sans danger",
-    "releve de texte ; le comportement est mesure par banc_boucle.py")
+#
+# CE CAS N'EST PAS ICI, ET C'EST VOULU. Il y a ete, une heure, sous la forme
+# d'un releve de texte sur agent_noeud.py — que BESOINS exclut de ce banc en
+# toutes lettres. Le fichier n'existe donc pas dans le bac a sable : le banc y
+# mourait sur un FileNotFoundError, le « sens inverse » de banc_mutations.py le
+# voyait rouge sur le depot sain, et la CI sortait en 1. Mesure du 12 septembre
+# 2026, apres un tour complet perdu.
+#
+# Le garde est mesure la ou il s'execute : banc_boucle.py le fait vivre — six
+# cas, dont le refus du doublon et le verrou rendu en sortant — et banc_agent.py
+# tient les deux moments d'execv. Un releve de texte de plus n'aurait rien
+# ajoute a cela, et il a coute une CI rouge.
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees "
       f"— {time.time() - _depart:.1f} s")
