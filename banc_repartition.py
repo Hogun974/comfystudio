@@ -1127,6 +1127,88 @@ async def _annonces_hostiles():
 
 asyncio.run(_annonces_hostiles())
 
+
+# ══ CE QUE LE REFUS DIT QUAND UNE MACHINE MANQUE ═══════════════════════
+# Le 12 septembre 2026, une retouche a ete refusee par « n'est disponible sur
+# aucune machine joignable (NAS ZimaOS) : modele absent, ou carte trop
+# petite ». C'etait vrai de la ZimaOS, et ce n'etait pas la reponse : « pc »
+# savait le faire et manquait depuis deux jours. Le refus ne regardait que les
+# machines VIVANTES, et rien nulle part ne nommait l'absente.
+#
+# La phrase vit desormais dans refus_moteur(), justement pour qu'un banc
+# puisse l'atteindre : laissee dans executer(), il aurait fallu monter un
+# rendu entier, et personne ne l'a jamais fait.
+print("\n  ── le refus nomme-t-il la machine qui manque ? ──")
+
+dit(S._duree_courte(45) == "45 s" and S._duree_courte(1200) == "20 min"
+    and S._duree_courte(7200) == "2 h" and S._duree_courte(172800) == "2 j",
+    "une duree se dit en secondes, minutes, heures ou jours",
+    " / ".join(S._duree_courte(x) for x in (45, 1200, 7200, 172800)))
+# 225152 s, c'est l'age reel du dernier releve de « pc » ce jour-la. Le depot
+# ne savait dire que « 225152 s », que personne ne lit.
+dit(S._duree_courte(225152).endswith(" j"),
+    "et deux jours d'absence ne s'annoncent pas en 225152 secondes",
+    S._duree_courte(225152))
+
+
+def _inventaire(ident, cle, quand):
+    """Pose, pour cette machine, l'inventaire qu'elle avait au dernier releve."""
+    dossiers = {}
+    for sous, nom, _repo, _distant in S.CATALOGUE[cle]["fichiers"]:
+        dossiers.setdefault(sous, set()).add(nom)
+    S.MODELES_NOEUD[ident] = {"quand": quand, "dossiers": dossiers}
+
+
+poser(vram_studio=0.0)
+S.MODELES_NOEUD.clear()
+_vieux = S.time.time() - 225152
+_inventaire("pc", CLE, _vieux)
+
+# L'AGE NE COMPTE PAS POUR CETTE QUESTION-LA, et c'est tout l'objet de
+# portait(). manquants() perime son cache a trois minutes et declare alors TOUT
+# absent sur une machine distante : c'est la bonne prudence avant de confier un
+# rendu, et la mauvaise reponse quand on cherche a EXPLIQUER un refus.
+dit(S.portait(CLE, "pc"),
+    "une machine qui portait le moteur il y a deux jours le portait, et on le "
+    "sait encore",
+    f"releve il y a {S._duree_courte(S.time.time() - _vieux)}")
+dit(not S.portait(CLE, "zima"),
+    "une machine dont on n'a aucun inventaire ne l'a pas porte")
+
+# La machine se tait : c'est exactement l'etat du 12 septembre.
+S.ETAT_NOEUDS["pc"]["repond"] = False
+_absentes = S.muettes_capables(CLE)
+dit([t for t, _ in _absentes] == ["PC (RTX 2080 Ti)"],
+    "muette mais capable : elle est nommee",
+    f"{[t for t, _ in _absentes]}")
+
+_phrase = S.refus_moteur(CLE, [x for x in S.tous_les_noeuds()
+                               if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")])
+dit("PC (RTX 2080 Ti)" in _phrase and "Rallume" in _phrase,
+    "et le refus dit de la rallumer, au lieu d'accuser celles qui repondent",
+    _phrase[:100])
+
+# LE SENS INVERSE. Sans lui, le cas ci-dessus serait vert d'une fonction qui
+# nommerait une machine absente a tout propos — y compris quand il n'y en a
+# aucune, ou quand celle qui manque n'a jamais su faire ce travail.
+S.MODELES_NOEUD.clear()
+_phrase = S.refus_moteur(CLE, [x for x in S.tous_les_noeuds()
+                               if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")])
+dit("n'est disponible sur aucune machine joignable" in _phrase
+    and "Rallume" not in _phrase,
+    "aucune absente ne savait faire ca : on retrouve l'ancienne phrase",
+    _phrase[:100])
+
+# ET UNE CARTE TROP PETITE NE COMPTE PAS. Une machine absente qui n'aurait de
+# toute facon pas tenu le moteur n'est pas la reponse : la rallumer ne
+# changerait rien, et l'envoyer chercher serait une fausse piste.
+_inventaire("pc", CLE, _vieux)
+S.ETAT_NOEUDS["pc"]["vram"] = 0.5
+S.ETAT_NOEUDS["pc"]["ram"] = 4.0
+dit(S.muettes_capables(CLE) == [],
+    "une absente dont la carte n'aurait jamais tenu le moteur n'est pas nommee",
+    f"{S.muettes_capables(CLE)}")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

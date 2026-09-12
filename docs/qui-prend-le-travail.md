@@ -201,14 +201,52 @@ chose que le premier choix.
 Le détail du bouton — ce qu'il reprend, ce qu'il ne reprend pas, et pourquoi il
 est séparé du pouce — est dans [Pouce en l'air, pouce en bas](avis.md).
 
+## Quand rien ne convient, le refus nomme ce qui manque
+
+Deux refus se ressemblent et n'appellent pas du tout le même geste :
+
+| ce que le studio dit | ce qu'il faut faire |
+|---|---|
+| aucune machine joignable ne sait le faire | télécharger le modèle, ou prendre un moteur plus petit |
+| une machine **absente** le savait | la rallumer, ou regarder son agent |
+
+Le 12 septembre 2026, une retouche a été refusée par le premier message alors
+que la réponse était le second : `pc` savait la faire et manquait du parc
+depuis deux jours. Le refus ne regardait que les machines **vivantes**, et le
+nom de l'absente n'apparaissait nulle part — il fallait ouvrir `/admin` pour
+le découvrir, ce que personne ne fait quand tout marchait la veille.
+
+Le studio garde pourtant ce qu'il faut : `_parc.json` conserve, pour chaque
+machine, sa carte, sa mémoire et **la liste des fichiers relevés**, avec la
+date du relevé. Une machine éteinte reste donc connue pour ce qu'elle portait.
+
+**Deux questions, deux fonctions, et il ne faut pas les confondre :**
+
+- `manquants()` répond « cette machine peut-elle travailler *maintenant* ». Il
+  périme son relevé au bout de trois minutes et considère alors tout absent sur
+  une machine distante. C'est la bonne prudence avant de confier un rendu ;
+- `portait()` répond « qu'avait-elle au dernier relevé, quel qu'en soit l'âge ».
+  C'est la seule information dont on dispose pour **expliquer** un refus, et
+  elle ne sert **jamais** à choisir une machine — un inventaire de deux jours ne
+  dit pas ce qu'il y a sur le disque aujourd'hui.
+
+Une machine absente n'est nommée que si sa carte aurait tenu le moteur :
+envoyer rallumer une machine qui aurait de toute façon refusé le travail coûte
+plus cher que le refus lui-même.
+
+La phrase vit dans `refus_moteur()` et non dans `executer()`, pour qu'un banc
+puisse l'atteindre sans monter un rendu entier. Laissée là-bas, elle n'était
+gardée par rien.
+
 ## Ce que les bancs vérifient
 
-`banc_repartition.py` (**76** vérifications) et `banc_cerveaux.py` (**39**)
-tiennent cette page : relevé le **3 septembre 2026**, sans carte, sans ComfyUI
+`banc_repartition.py` (**94** vérifications) et `banc_cerveaux.py` (**72**)
+tiennent cette page : relevé le **12 septembre 2026**, sans carte, sans ComfyUI
 et sans réseau — le parc y est posé en mémoire. Les bancs grossissent ;
-lance-les plutôt que de recopier ces nombres — il en comptait 48 la veille,
-avant que la libération de la VRAM n'en ajoute 28 (voir [Rendre la carte quand
-plus rien ne la demande](rendre-la-carte.md)).
+lance-les plutôt que de recopier ces nombres — il en comptait 48 le 2 septembre,
+puis 76 après la libération de la VRAM (voir [Rendre la carte quand plus rien
+ne la demande](rendre-la-carte.md)), et 94 depuis que le refus nomme la machine
+absente.
 
 Deux des cas de `banc_repartition.py` ne mesuraient rien à l'origine : les trois
 gardes du « pas de carte, pas de rendu » se recouvrent, la première suffit à

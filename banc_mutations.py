@@ -1537,6 +1537,89 @@ REPARTITION = [
             + '                else:' + chr(10)
             + '                    neuf = max(entre,'
             + ' key=lambda x: vram_de(x["id"]))' + chr(10)))]),
+    # ── le refus qui nomme la machine manquante, 12 septembre 2026 ───────
+    # Une retouche refusee par « aucune machine joignable ne sait le faire »
+    # alors que « pc » savait le faire et manquait depuis deux jours. Le refus
+    # ne regardait que les machines VIVANTES.
+    dict(
+        nom="le refus ne nomme plus la machine absente qui savait faire",
+        banc="banc_repartition.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 12 SEPTEMBRE 2026. On accuse celles qui "
+              "repondent — « modele absent, ou carte trop petite » — quand la "
+              "reponse etait « rallume pc ». Vrai de ce qu'il regarde, et faux "
+              "de ce qu'il faut faire",
+        rougit="et le refus dit de la rallumer",
+        editions=[
+            ("serveur.py", brut(
+                "    absentes = muettes_capables(cle)" + chr(10)
+                + "    if absentes:",
+                "    absentes = muettes_capables(cle)" + chr(10)
+                + "    if False:"))]),
+    dict(
+        nom="le refus nomme une absente meme quand il n'y en a aucune",
+        banc="banc_repartition.py",
+        imite="le sens inverse du precedent : une phrase qui envoie rallumer "
+              "une machine a tout propos, y compris quand aucune ne manque ou "
+              "qu'aucune des manquantes n'a jamais su faire ce travail. "
+              "L'utilisateur va chercher une machine qui n'existe pas",
+        rougit="aucune absente ne savait faire ca : on retrouve l'ancienne "
+               "phrase",
+        editions=[
+            ("serveur.py", brut(
+                "    absentes = muettes_capables(cle)" + chr(10)
+                + "    if absentes:",
+                "    absentes = muettes_capables(cle)" + chr(10)
+                + "    if True:"))]),
+    dict(
+        nom="portait() perime son inventaire comme manquants()",
+        banc="banc_repartition.py",
+        imite="l'harmonisation qui semble evidente : les deux fonctions lisent "
+              "le meme cache, pourquoi l'une l'oublierait-elle a trois minutes "
+              "et pas l'autre ? Parce qu'elles ne repondent pas a la meme "
+              "question. Perimee, celle-ci ne sait plus rien d'une machine "
+              "absente depuis deux jours — c'est-a-dire de tous les cas ou on "
+              "l'interroge",
+        rougit="une machine qui portait le moteur il y a deux jours le "
+               "portait, et on le sait encore",
+        editions=[
+            ("serveur.py", brut(
+                '    inv = MODELES_NOEUD.get(ident) or {}' + chr(10)
+                + '    dossiers = inv.get("dossiers")',
+                '    inv = MODELES_NOEUD.get(ident) or {}' + chr(10)
+                + '    if time.time() - (inv.get("quand") or 0)'
+                + ' > 3 * FRAICHEUR_MODELES:' + chr(10)
+                + '        return False' + chr(10)
+                + '    dossiers = inv.get("dossiers")'))]),
+    dict(
+        nom="une absente est nommee sans regarder la taille de sa carte",
+        banc="banc_repartition.py",
+        imite="on envoie rallumer une machine qui, de toute façon, n'aurait "
+              "jamais tenu le moteur. La fausse piste coute plus cher que le "
+              "refus : l'utilisateur reveille une machine, attend, et se fait "
+              "refuser de nouveau",
+        rougit="une absente dont la carte n'aurait jamais tenu le moteur n'est "
+               "pas nommee",
+        editions=[
+            ("serveur.py", brut(
+                "        if besoin and _vram_utile(ident) < besoin:" + chr(10)
+                + "            continue" + chr(10),
+                ""))]),
+    dict(
+        nom="une duree se redit en secondes, quelle qu'elle soit",
+        banc="banc_repartition.py",
+        imite="ce que le depot savait faire avant, et qui est juste tant qu'on "
+              "parle de secondes : « vue il y a 225152 s ». Personne ne lit ce "
+              "nombre, donc personne n'apprend que la machine manque depuis "
+              "deux jours",
+        rougit="une duree se dit en secondes, minutes, heures ou jours",
+        editions=[
+            ("serveur.py", brut(
+                "    s = max(0.0, float(secondes or 0))" + chr(10)
+                + "    if s < 90:" + chr(10)
+                + '        return f"{s:.0f} s"',
+                "    s = max(0.0, float(secondes or 0))" + chr(10)
+                + "    if True:" + chr(10)
+                + '        return f"{s:.0f} s"'))]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────

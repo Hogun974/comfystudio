@@ -1759,6 +1759,109 @@ def manquants(cle, ident=None):
             absents.append((sous, nom, repo, distant))
     return absents
 
+
+def _duree_courte(secondes):
+    """« 45 s », « 12 min », « 3 h », « 2 j ». Pour une PHRASE, pas pour un calcul.
+
+    Le depot ne savait dire qu'une chose, « {x:.0f} s », et c'est juste tant
+    qu'on parle de secondes : une machine absente depuis deux jours s'y
+    annoncait « 225152 s », que personne ne lit. Les seuils sont grossiers a
+    dessein — on nomme un ordre de grandeur pour que l'utilisateur sache s'il
+    s'agit d'un hoquet ou d'un oubli ; la date exacte est dans /admin.
+    """
+    s = max(0.0, float(secondes or 0))
+    if s < 90:
+        return f"{s:.0f} s"
+    if s < 90 * 60:
+        return f"{s / 60:.0f} min"
+    if s < 48 * 3600:
+        return f"{s / 3600:.0f} h"
+    return f"{s / 86400:.0f} j"
+
+
+def portait(cle, ident):
+    """Cette machine portait-elle ce moteur AU DERNIER RELEVE, quel qu'en soit
+    l'age.
+
+    DEUX QUESTIONS, ET NON UNE. manquants() repond « peut-elle travailler
+    maintenant » : il perime son cache a trois minutes et declare alors TOUT
+    absent sur une machine distante, ce qui est la bonne prudence avant de
+    confier un rendu. Celle-ci repond « qu'avait-elle la derniere fois qu'on a
+    regarde » — et c'est la seule dont on dispose pour EXPLIQUER un refus.
+
+    Les confondre, c'est ce qui faisait dire au studio « modele absent » d'une
+    machine dont il gardait la liste des fichiers sur son disque. Le
+    12 septembre 2026, une retouche a ete refusee sans que rien ne nomme la
+    machine qui savait la faire et qui manquait depuis deux jours.
+
+    NE SERT JAMAIS A CHOISIR UNE MACHINE. Un inventaire de deux jours ne dit
+    pas ce qu'il y a sur le disque aujourd'hui ; il dit ce qu'on en savait.
+    """
+    inv = MODELES_NOEUD.get(ident) or {}
+    dossiers = inv.get("dossiers")
+    if not dossiers:
+        return False
+    return all(any(nom in dossiers.get(d, set())
+                   for d in _dossiers_a_lire(sous, nom))
+               for sous, nom, _repo, _distant in CATALOGUE[cle]["fichiers"])
+
+
+def muettes_capables(cle):
+    """Les machines declarees qui ne repondent plus, mais qui savaient faire ca.
+
+    Rend une liste de (titre, secondes depuis le dernier releve), la plus
+    fraiche d'abord. Sert a nommer ce qui manque plutot que d'accuser celles
+    qui sont la : « aucune machine joignable ne sait faire ça » est vrai et
+    inutile quand la bonne reponse est « rallume pc ».
+
+    L'AGE VIENT DE L'INVENTAIRE, PAS DE « vu ». sauver_parc() ne garde rien de
+    vivant — au redemarrage du studio, « vu » vaut zero pour tout le monde et
+    ne distingue pas une machine partie depuis deux jours d'un studio qui vient
+    de se lever. « quand », lui, est persiste avec les fichiers releves.
+    """
+    besoin = CATALOGUE[cle].get("vram", 0)
+    trouvees = []
+    for x in tous_les_noeuds():
+        ident = x["id"]
+        e = ETAT_NOEUDS.get(ident) or {}
+        if e.get("repond") or x.get("local"):
+            continue
+        if besoin and _vram_utile(ident) < besoin:
+            continue
+        if not portait(cle, ident):
+            continue
+        quand = (MODELES_NOEUD.get(ident) or {}).get("quand") or 0
+        trouvees.append((x.get("titre", ident),
+                         time.time() - quand if quand else None))
+    trouvees.sort(key=lambda t: (t[1] is None, t[1] or 0))
+    return trouvees
+
+
+def refus_moteur(cle, vivantes):
+    """La phrase d'un refus : une machine MANQUE, ou aucune ne convient.
+
+    Deux refus qui se ressemblent et n'appellent pas du tout le meme geste —
+    l'un envoie telecharger un modele, l'autre rallumer une machine.
+
+    UNE FONCTION, ET NON DEUX f-strings DANS executer(). C'est la seule facon
+    d'eprouver ce que lit l'utilisateur sans monter un rendu entier : laissee
+    la-bas, la phrase n'etait gardee par aucun banc, et rien n'aurait dit
+    qu'elle se trompait de geste. Elle s'est trompee le 12 septembre 2026 —
+    « pc » manquait depuis deux jours, et son nom n'apparaissait nulle part.
+    """
+    absentes = muettes_capables(cle)
+    if absentes:
+        quoi = " et ".join(
+            titre + (f" (vue il y a {_duree_courte(age)})" if age else "")
+            for titre, age in absentes[:3])
+        return (f"{CATALOGUE[cle]['titre']} : aucune machine joignable ne sait "
+                f"le faire, mais {quoi} le savait. Rallume-la, ou verifie son "
+                f"agent — l'etat de chacune est dans /admin.")
+    noms = ", ".join(x.get("titre", x["id"]) for x in vivantes)
+    return (f"{CATALOGUE[cle]['titre']} n'est disponible sur aucune machine "
+            f"joignable ({noms}) : modele absent, ou carte trop petite. "
+            f"Le detail est dans /admin, en ouvrant la machine.")
+
 def _mot_local():
     """« le modele local », ou « le modele du parc » quand le studio n'a rien.
 
@@ -10079,12 +10182,11 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                     "sur le reseau.")
             if not any(x.get("local") for x in vivantes):
                 # Des machines repondent, mais aucune ne convient a ce moteur.
-                # Le dire, plutot que d'accuser un ComfyUI qui va tres bien.
-                noms = ", ".join(x.get("titre", x["id"]) for x in vivantes)
-                raise RuntimeError(
-                    f"{CATALOGUE[cle]['titre']} n'est disponible sur aucune "
-                    f"machine joignable ({noms}) : modele absent, ou carte trop "
-                    f"petite. Le detail est dans /admin, en ouvrant la machine.")
+                # Le dire, plutot que d'accuser un ComfyUI qui va tres bien —
+                # et nommer, s'il y en a une, la machine ABSENTE qui savait
+                # faire ce travail. La phrase est choisie par refus_moteur(),
+                # ou un banc peut l'atteindre sans monter un rendu.
+                raise RuntimeError(refus_moteur(cle, vivantes))
             cible = noeud_local()
             dispo = vram_de(cible["id"])
             if besoin > dispo:
