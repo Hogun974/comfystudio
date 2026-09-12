@@ -1571,25 +1571,28 @@ REPARTITION = [
                 "    absentes = muettes_capables(cle)" + chr(10)
                 + "    if True:"))]),
     dict(
-        nom="portait() perime son inventaire comme manquants()",
+        nom="manquants_au_releve() perime son inventaire comme manquants()",
         banc="banc_repartition.py",
         imite="l'harmonisation qui semble evidente : les deux fonctions lisent "
               "le meme cache, pourquoi l'une l'oublierait-elle a trois minutes "
               "et pas l'autre ? Parce qu'elles ne repondent pas a la meme "
               "question. Perimee, celle-ci ne sait plus rien d'une machine "
               "absente depuis deux jours — c'est-a-dire de tous les cas ou on "
-              "l'interroge",
+              "l'interroge — et /admin se remet a ranger dans « absents » des "
+              "moteurs dont il affiche les fichiers six lignes plus bas",
         rougit="une machine qui portait le moteur il y a deux jours le "
                "portait, et on le sait encore",
         editions=[
             ("serveur.py", brut(
-                '    inv = MODELES_NOEUD.get(ident) or {}' + chr(10)
-                + '    dossiers = inv.get("dossiers")',
+                '    dossiers = (MODELES_NOEUD.get(ident) or {})'
+                '.get("dossiers") or {}' + chr(10)
+                + '    return [(sous, nom, repo, distant)',
                 '    inv = MODELES_NOEUD.get(ident) or {}' + chr(10)
                 + '    if time.time() - (inv.get("quand") or 0)'
                 + ' > 3 * FRAICHEUR_MODELES:' + chr(10)
-                + '        return False' + chr(10)
-                + '    dossiers = inv.get("dossiers")'))]),
+                + '        return list(CATALOGUE[cle]["fichiers"])' + chr(10)
+                + '    dossiers = inv.get("dossiers") or {}' + chr(10)
+                + '    return [(sous, nom, repo, distant)'))]),
     dict(
         nom="une absente est nommee sans regarder la taille de sa carte",
         banc="banc_repartition.py",
@@ -1620,6 +1623,24 @@ REPARTITION = [
                 "    s = max(0.0, float(secondes or 0))" + chr(10)
                 + "    if True:" + chr(10)
                 + '        return f"{s:.0f} s"'))]),
+    dict(
+        nom="portait() se passe de la garde « sans releve, c'est non »",
+        banc="banc_repartition.py",
+        imite="la ligne qui a l'air redondante : puisque manquants_au_releve() "
+              "rend deja tout absent quand on n'a rien releve, pourquoi "
+              "verifier deux fois ? Parce qu'un moteur dont la liste de "
+              "fichiers serait VIDE rend alors [] — donc « portait » vrai — "
+              "d'une machine dont on n'a jamais rien su, et un refus irait "
+              "dire « rallume-la, elle savait le faire » sans aucune preuve",
+        rougit="un moteur sans fichier ne rend pas « portait » vrai d'une "
+               "machine dont on ignore tout",
+        editions=[
+            ("serveur.py", brut(
+                '    if not (MODELES_NOEUD.get(ident) or {}).get("dossiers"):'
+                + chr(10)
+                + "        return False" + chr(10)
+                + "    return not manquants_au_releve(cle, ident)",
+                "    return not manquants_au_releve(cle, ident)"))]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -7552,6 +7573,58 @@ CONSOLE_SUITE = [
                 '        "pilotable": local(req) and bool(lanceur),\n',
                 '        "pilotable": bool(lanceur),\n')),
         ]),
+    # ── /admin mentait sur une machine muette, 12 septembre 2026 ────────
+    dict(
+        nom="le detail d'une machine muette la declare vide de tout modele",
+        banc="banc_console.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 12 SEPTEMBRE 2026. manquants() jette "
+              "son cache au-dela de trois minutes et rend TOUS les fichiers "
+              "d'un noeud distant : la page rangeait les vingt moteurs d'une "
+              "machine silencieuse dans « absents » tout en affichant ses "
+              "fichiers six lignes plus bas. Releve sur « pc » pendant qu'on "
+              "cherchait pourquoi une retouche etait refusee — la page disait "
+              "« modele absent » de ce qu'elle montrait present",
+        rougit="muette depuis deux jours, elle porte toujours ce qu'elle "
+               "portait",
+        editions=[
+            ("serveur.py", brut(
+                "    lire_absents = manquants_au_releve if d_apres_releve"
+                " else manquants",
+                "    lire_absents = manquants")),
+        ]),
+    dict(
+        nom="le detail ne dit plus qu'il parle d'apres un releve",
+        banc="banc_console.py",
+        imite="les trois listes restent justes, et plus rien ne distingue « je "
+              "viens de le voir » de « c'est ce qu'elle avait il y a deux "
+              "jours ». Un souvenir passe pour une mesure, et la page ne peut "
+              "plus prevenir — c'est la moitie du defaut qu'on vient de "
+              "corriger, la moitie honnete",
+        rougit="et la route dit qu'elle parle d'apres un releve, avec son age",
+        editions=[
+            ("serveur.py", brut(
+                '        "d_apres_releve": d_apres_releve,\n', "")),
+        ]),
+    dict(
+        nom="le detail parle d'un age qu'il ignore",
+        banc="banc_console.py",
+        imite="on retire l'exigence d'une date. « quand » peut manquer — "
+              "charger_parc() ecrit « garde.get(\"quand\") or 0 » — et l'age "
+              "devient alors immense : le drapeau passe a vrai tandis que "
+              "« releve_il_y_a » reste NUL, puisqu'il n'est calcule que si "
+              "« quand » est vrai. La page ecrit « d'apres le releve JAMAIS — "
+              "cette machine ne repond plus »",
+        rougit="un releve sans date ne se declare pas",
+        editions=[
+            ("serveur.py", brut(
+                "        not est_local(ident) and _inventaire_connu(ident)"
+                " and connu.get(\"quand\")" + chr(10)
+                + '        and time.time() - connu["quand"]'
+                + " > 3 * FRAICHEUR_MODELES)",
+                "        not est_local(ident) and _inventaire_connu(ident)"
+                + chr(10)
+                + '        and time.time() - (connu.get("quand") or 0)'
+                + " > 3 * FRAICHEUR_MODELES)"))]),
 ]
 
 

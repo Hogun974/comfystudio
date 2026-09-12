@@ -758,6 +758,106 @@ try:
         f"{len(d.get('prets', []))} prets, {len(d.get('absents', []))} absents, "
         f"{len(d.get('trop_gros', []))} trop gros")
 
+    # ── UNE MACHINE MUETTE N'A PAS PERDU SES MODELES ──────────────────
+    # manquants() jette son cache au-dela de 3 x FRAICHEUR_MODELES et rend
+    # alors TOUS les fichiers d'un noeud distant. Cette page rangeait donc les
+    # vingt moteurs d'une machine silencieuse dans « absents » — en affichant
+    # ses fichiers juste en dessous, dans « dossiers ». Releve sur « pc » le
+    # 12 septembre 2026, absente depuis deux jours, pendant qu'on cherchait
+    # pourquoi une retouche etait refusee : la page disait « modele absent » de
+    # ce qu'elle montrait presente.
+    _cle_essai = "detourer"
+    _fichiers = {}
+    for _sous, _nom, _r, _d in S.CATALOGUE[_cle_essai]["fichiers"]:
+        _fichiers.setdefault(_sous, set()).add(_nom)
+
+    def _detail_avec(age):
+        poser("pc")
+        S.ETAT_NOEUDS["pc"].update(repond=False, vram=11.0, ram=63.8)
+        S.MODELES_NOEUD["pc"] = {"quand": time.time() - age,
+                                 "dossiers": _fichiers}
+        return lire(lancer(S.api_admin_noeud_detail(Req(match={"ident": "pc"}))))
+
+    _st, _frais = _detail_avec(10)
+    dit(_st == 200 and _frais.get("d_apres_releve") is False
+        and _cle_essai in [m["cle"] for m in _frais["prets"]],
+        "un inventaire frais se lit tel quel, et le moteur y est pret",
+        f"HTTP {_st}, d_apres_releve={_frais.get('d_apres_releve')}")
+
+    _st, _vieux = _detail_avec(225152)
+    dit(_st == 200 and _cle_essai in [m["cle"] for m in _vieux["prets"]],
+        "muette depuis deux jours, elle porte toujours ce qu'elle portait",
+        f"{len(_vieux['prets'])} prets, {len(_vieux['absents'])} absents")
+
+    # LE DIRE, ET NE PAS FAIRE PASSER UN SOUVENIR POUR UNE MESURE. Sans ce
+    # champ, la page ne peut pas distinguer « je viens de le voir » de « c'est
+    # ce qu'elle avait il y a deux jours » — et c'est justement la difference
+    # que cette route existe pour montrer.
+    dit(_vieux.get("d_apres_releve") is True
+        and _vieux.get("releve_il_y_a", 0) > 3 * S.FRAICHEUR_MODELES,
+        "et la route dit qu'elle parle d'apres un releve, avec son age",
+        f"d_apres_releve={_vieux.get('d_apres_releve')}, "
+        f"releve_il_y_a={_vieux.get('releve_il_y_a')}")
+
+    # LES TROIS LISTES RESTENT TOUJOURS LA. web/admin.html lit
+    # « d.prets.length » sans garde : une liste absente casserait le pli de la
+    # machine au lieu de l'afficher a moitie.
+    dit(all(isinstance(_vieux.get(k), list)
+            for k in ("prets", "absents", "trop_gros")),
+        "les trois listes sont servies dans les deux cas, jamais omises",
+        ", ".join(f"{k}={len(_vieux.get(k, []))}"
+                  for k in ("prets", "absents", "trop_gros")))
+
+    # ET UNE MACHINE DONT ON N'A AUCUN RELEVE NE DEVIENT PAS CAPABLE. « on n'en
+    # sait rien » doit rester « tout est absent » : l'inverse ferait promettre
+    # a /admin des moteurs que personne n'a jamais vus sur ce disque.
+    poser("pc")
+    S.ETAT_NOEUDS["pc"].update(repond=False, vram=11.0, ram=63.8)
+    S.MODELES_NOEUD["pc"] = {"quand": time.time() - 225152, "dossiers": {}}
+    _st, _vide = lire(lancer(S.api_admin_noeud_detail(Req(match={"ident": "pc"}))))
+    dit(_st == 200 and _vide.get("d_apres_releve") is False
+        and not _vide["prets"],
+        "sans aucun releve, rien n'est declare pret : on n'en sait rien",
+        f"d_apres_releve={_vide.get('d_apres_releve')}, "
+        f"{len(_vide['prets'])} prets")
+
+    # UNE DATE, OU PAS DE DRAPEAU. « quand » peut manquer : charger_parc()
+    # ecrit « garde.get("quand") or 0 », donc une entree de _parc.json sans
+    # cette clef vaut zero. L'age devenait immense, le drapeau passait a vrai,
+    # et « releve_il_y_a » restait NUL — il n'est calcule que si « quand » est
+    # vrai. La page affichait alors « d'apres le releve JAMAIS ». Trouve en
+    # relisant le correctif, pas en l'ecrivant.
+    poser("pc")
+    S.ETAT_NOEUDS["pc"].update(repond=False, vram=11.0, ram=63.8)
+    S.MODELES_NOEUD["pc"] = {"quand": 0, "dossiers": _fichiers}
+    _st, _sans_date = lire(lancer(
+        S.api_admin_noeud_detail(Req(match={"ident": "pc"}))))
+    dit(_st == 200 and _sans_date.get("d_apres_releve") is False,
+        "un releve sans date ne se declare pas : on ne parle pas d'un age "
+        "qu'on ignore",
+        f"d_apres_releve={_sans_date.get('d_apres_releve')}, "
+        f"releve_il_y_a={_sans_date.get('releve_il_y_a')}")
+
+    # L'INVARIANT QUE LA PAGE SUPPOSE. web/admin.html ecrit « d'apres le
+    # releve ${delai(d.releve_il_y_a)} » : si le drapeau est vrai, l'age doit
+    # exister, sinon la phrase se termine par « jamais ».
+    dit(all(not r.get("d_apres_releve") or r.get("releve_il_y_a") is not None
+            for r in (_frais, _vieux, _vide, _sans_date)),
+        "quand la route parle d'apres un releve, elle en donne toujours l'age",
+        ", ".join(f"{r.get('d_apres_releve')}/{r.get('releve_il_y_a')}"
+                  for r in (_frais, _vieux, _vide, _sans_date)))
+
+    # ON REMET LE MONDE COMME ON L'A TROUVE. Les cas ci-dessus ont pose une
+    # machine MUETTE ; la section suivante — l'essai du modele de langage —
+    # part de celle que la section 5 avait posee au debut, qui repond. Sans ces
+    # deux lignes, dix cas plus bas echouent sur « cette machine ne repond
+    # pas » et accusent l'essai de modele, qui n'y est pour rien. Mesure du
+    # 12 septembre 2026 : c'est exactement ce qui est arrive en ecrivant ce
+    # bloc.
+    poser("pc")
+    S.ETAT_NOEUDS["pc"].update(carte="RTX 2080 Ti", libre=9.4, ram=63.8,
+                               llm=True, llm_modeles=["qwen2.5vl:7b"])
+
     st, d = lire(lancer(S.api_admin_noeud_detail(Req(match={"ident": "nulle"}))))
     dit(st == 404, "une machine inconnue rend 404", f"HTTP {st}")
 

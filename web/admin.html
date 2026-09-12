@@ -399,7 +399,11 @@ function delai(s) {
   if (s === null || s === undefined) return "jamais";
   if (s < 60) return `il y a ${s} s`;
   if (s < 3600) return `il y a ${Math.round(s / 60)} min`;
-  return `il y a ${Math.round(s / 3600)} h`;
+  // LES JOURS, parce qu'une machine absente deux jours s'affichait « il y a
+  // 72 h » — un nombre qu'on relit deux fois avant de comprendre qu'il faut
+  // aller la rallumer. Vu le 12 septembre 2026 sur « pc ».
+  if (s < 48 * 3600) return `il y a ${Math.round(s / 3600)} h`;
+  return `il y a ${Math.round(s / 86400)} j`;
 }
 
 /* Echappe aussi les guillemets : cette fonction sert dans des ATTRIBUTS
@@ -495,11 +499,20 @@ async function detailMachine(ident, ou) {
     essai.append(b2, dit);
     z.appendChild(essai);
   }
+  // CE QUE VALENT LES TROIS LISTES QUI SUIVENT. Quand la machine s'est taue,
+  // elles disent ce qu'elle PORTAIT au dernier relevé, pas ce qu'elle porte :
+  // le dire ici, juste au-dessus, plutôt que de laisser croire à une mesure.
+  // Et delai() plutôt que « ${…} s » à la main — un relevé de deux jours
+  // s'affichait « il y a 225152 s ».
   bloc("inventaire", d.inventaire_connu
-        ? `relevé il y a ${d.releve_il_y_a} s` : "inconnu — rien ne sera envoyé ici", "mono");
+        ? (d.d_apres_releve
+            ? `d'après le relevé ${delai(d.releve_il_y_a)} — cette machine ne répond plus`
+            : `relevé ${delai(d.releve_il_y_a)}`)
+        : "inconnu — rien ne sera envoyé ici", "mono");
   bloc(`${d.prets.length} moteurs prêts`,
        d.prets.map(m => m.titre).join(" · ") || "aucun");
-  bloc(`${d.absents.length} moteurs dont le modèle manque ici`,
+  bloc(`${d.absents.length} moteurs dont le modèle ` +
+       (d.d_apres_releve ? "manquait au dernier relevé" : "manque ici"),
        d.absents.map(m => `${m.titre} → ${(m.fichiers || []).join(", ")}`).join("\n"), "mono");
   bloc(`${d.trop_gros.length} moteurs trop lourds pour cette carte`,
        d.trop_gros.map(m => `${m.titre} (${m.vram} Go)`).join(" · "), "mono");

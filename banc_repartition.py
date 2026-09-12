@@ -1209,6 +1209,27 @@ dit(S.muettes_capables(CLE) == [],
     "une absente dont la carte n'aurait jamais tenu le moteur n'est pas nommee",
     f"{S.muettes_capables(CLE)}")
 
+# UN MOTEUR SANS FICHIER NE REND PERSONNE CAPABLE. portait() est devenu « not
+# manquants_au_releve(...) », et sans garde une liste de fichiers VIDE rendrait
+# vrai d'une machine dont on n'a jamais rien su : muettes_capables() la
+# nommerait dans un refus — « rallume-la, elle savait le faire » — sans la
+# moindre preuve. Aucun moteur du catalogue n'est dans ce cas aujourd'hui ;
+# c'est bien pourquoi ce cas existe, car le jour ou l'un d'eux le sera,
+# personne ne fera le lien.
+poser(vram_studio=0.0)
+S.MODELES_NOEUD.clear()
+S.CATALOGUE["_essai_sans_fichier"] = {"titre": "moteur sans fichier",
+                                      "vram": 1.0, "type": "image",
+                                      "fichiers": []}
+try:
+    _sans = S.portait("_essai_sans_fichier", "pc")
+    dit(_sans is False,
+        "un moteur sans fichier ne rend pas « portait » vrai d'une machine "
+        "dont on ignore tout",
+        f"portait() = {_sans}")
+finally:
+    del S.CATALOGUE["_essai_sans_fichier"]
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

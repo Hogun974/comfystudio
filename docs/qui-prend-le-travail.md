@@ -238,6 +238,28 @@ La phrase vit dans `refus_moteur()` et non dans `executer()`, pour qu'un banc
 puisse l'atteindre sans monter un rendu entier. Laissée là-bas, elle n'était
 gardée par rien.
 
+### Et `/admin` disait la même contre-vérité
+
+La même racine, trouvée en cherchant la première : le détail d'une machine
+rangeait **tous** ses moteurs dans « absents » dès qu'elle s'était tue depuis
+plus de trois minutes — en affichant ses fichiers six lignes plus bas, dans
+`dossiers`. On y lisait « modèle absent » de ce que la page montrait présent.
+
+Elle lit maintenant le dernier relevé quand l'inventaire est périmé, **et le
+dit** : la route rend `d_apres_releve`, la page écrit « d'après le relevé il y
+a 3 j — cette machine ne répond plus », et le titre des absents devient
+« manquait au dernier relevé ». Sans ce champ, un souvenir passerait pour une
+mesure.
+
+Deux garde-fous qui comptent autant que la correction :
+
+- **la péremption reste entière partout ailleurs.** Les douze autres appels de
+  `manquants()` sont sur le chemin du *choix* d'une machine, où la prudence est
+  la bonne réponse. Ici on ne confie rien, on explique ;
+- **sans aucun relevé, rien n'est déclaré prêt.** « On n'en sait rien » doit
+  rester « tout est absent » — l'inverse promettrait des moteurs que personne
+  n'a jamais vus sur ce disque.
+
 ## Ce que les bancs vérifient
 
 `banc_repartition.py` (**94** vérifications) et `banc_cerveaux.py` (**72**)

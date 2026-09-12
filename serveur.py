@@ -1796,14 +1796,36 @@ def portait(cle, ident):
 
     NE SERT JAMAIS A CHOISIR UNE MACHINE. Un inventaire de deux jours ne dit
     pas ce qu'il y a sur le disque aujourd'hui ; il dit ce qu'on en savait.
+
+    SANS AUCUN RELEVE, C'EST NON — et cette ligne n'est pas redondante. Sans
+    elle, un moteur dont la liste de fichiers serait VIDE rendrait « portait »
+    vrai d'une machine dont on n'a jamais rien su : muettes_capables() la
+    nommerait dans un refus, « rallume-la, elle savait le faire », sans la
+    moindre preuve. Aucun moteur du catalogue n'est dans ce cas aujourd'hui ;
+    le jour ou l'un d'eux le sera, personne ne fera le lien.
     """
-    inv = MODELES_NOEUD.get(ident) or {}
-    dossiers = inv.get("dossiers")
-    if not dossiers:
+    if not (MODELES_NOEUD.get(ident) or {}).get("dossiers"):
         return False
-    return all(any(nom in dossiers.get(d, set())
-                   for d in _dossiers_a_lire(sous, nom))
-               for sous, nom, _repo, _distant in CATALOGUE[cle]["fichiers"])
+    return not manquants_au_releve(cle, ident)
+
+
+def manquants_au_releve(cle, ident):
+    """Les fichiers qui manquaient AU DERNIER RELEVE, quel qu'en soit l'age.
+
+    Le pendant de manquants() pour la seconde question. Meme lecture des
+    dossiers, meme traitement des jumeaux .gguf — et aucune peremption : sans
+    releve du tout, on rend la liste entiere, ce qui est l'aveu juste (« on n'en
+    sait rien ») et non une affirmation.
+
+    UNE SEULE LECTURE DE « CE QU'ELLE PORTAIT », et portait() n'en est que le
+    resume booleen : deux lectures divergent, c'est la faute que ce depot a
+    payee trois fois.
+    """
+    dossiers = (MODELES_NOEUD.get(ident) or {}).get("dossiers") or {}
+    return [(sous, nom, repo, distant)
+            for sous, nom, repo, distant in CATALOGUE[cle]["fichiers"]
+            if not any(nom in dossiers.get(d, set())
+                       for d in _dossiers_a_lire(sous, nom))]
 
 
 def muettes_capables(cle):
@@ -14350,18 +14372,48 @@ async def api_admin_noeud_detail(req):
         return web.json_response({"erreur": "machine inconnue"}, status=404)
     e = ETAT_NOEUDS.get(ident) or {}
     dispo = _vram_utile(ident)
+    connu = MODELES_NOEUD.get(ident) or {}
+    # D'APRES LE DERNIER RELEVE, PLUTOT QUE DE MENTIR. manquants() jette son
+    # cache au-dela de 3 x FRAICHEUR_MODELES et rend alors TOUS les fichiers
+    # d'un noeud distant. Cette page rangeait donc les vingt moteurs d'une
+    # machine silencieuse dans « absents » — en affichant ses fichiers six
+    # lignes plus bas, dans « dossiers ». Releve sur « pc » le 12 septembre
+    # 2026, absente depuis deux jours, pendant qu'on cherchait justement
+    # pourquoi une retouche etait refusee : la page disait « modele absent » de
+    # ce qu'elle montrait presente.
+    #
+    # LA PEREMPTION RESTE ENTIERE PARTOUT AILLEURS. C'est la bonne prudence
+    # avant de CONFIER un rendu, et aucun des douze autres appels de
+    # manquants() ne change. Ici on ne confie rien, on EXPLIQUE — et l'on dit
+    # d'ou l'on parle, par « d_apres_releve », plutot que de faire passer un
+    # souvenir pour une mesure.
+    # ET IL FAUT UNE DATE POUR PARLER D'UN AGE. « quand » peut manquer :
+    # charger_parc() ecrit « garde.get("quand") or 0 », donc une entree de
+    # _parc.json sans cette clef vaut zero. L'age devenait alors immense, le
+    # drapeau passait a vrai — et « releve_il_y_a », lui, restait nul, parce
+    # qu'il n'est calcule que si « quand » est vrai. La page affichait
+    # « d'apres le releve JAMAIS — cette machine ne repond plus ». Exiger la
+    # date ici tient l'invariant que la page suppose : d_apres_releve vrai
+    # implique un age connu.
+    d_apres_releve = bool(
+        not est_local(ident) and _inventaire_connu(ident) and connu.get("quand")
+        and time.time() - connu["quand"] > 3 * FRAICHEUR_MODELES)
+    lire_absents = manquants_au_releve if d_apres_releve else manquants
     prets, absents, trop_gros = [], [], []
     for cle, m in CATALOGUE.items():
         fiche = {"cle": cle, "titre": m.get("titre", cle),
                  "vram": m.get("vram", 0), "type": m.get("type")}
         if m.get("vram", 0) > dispo:
             trop_gros.append(fiche)
-        elif manquants(cle, ident):
-            fiche["fichiers"] = [nom for _, nom, _, _ in manquants(cle, ident)]
+            continue
+        # UN SEUL APPEL, ET NON DEUX : la version d'avant appelait manquants()
+        # une fois pour trancher et une fois pour la liste.
+        sans = lire_absents(cle, ident)
+        if sans:
+            fiche["fichiers"] = [nom for _, nom, _, _ in sans]
             absents.append(fiche)
         else:
             prets.append(fiche)
-    connu = MODELES_NOEUD.get(ident) or {}
     dossiers = {k: sorted(v) for k, v in (connu.get("dossiers") or {}).items() if v}
     return web.json_response({
         "id": ident, "titre": x.get("titre", ident), "agent": bool(x.get("agent")),
@@ -14372,6 +14424,11 @@ async def api_admin_noeud_detail(req):
         "inventaire_connu": _inventaire_connu(ident),
         "releve_il_y_a": (round(time.time() - connu["quand"])
                           if connu.get("quand") else None),
+        # CE QUE VALENT LES TROIS LISTES CI-DESSOUS. Vrai : elles disent ce que
+        # la machine PORTAIT au dernier releve, pas ce qu'elle porte. Sans ce
+        # champ, la page ne peut pas faire la difference — et c'est justement
+        # la difference que cette route existe pour montrer.
+        "d_apres_releve": d_apres_releve,
         "prets": prets, "absents": absents, "trop_gros": trop_gros,
         "dossiers": dossiers,
     })
