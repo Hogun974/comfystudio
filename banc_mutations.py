@@ -295,6 +295,19 @@ import sys
 import tempfile
 import time
 
+# ET LE LANCEUR LUI-MEME. Il pose PYTHONIOENCODING pour ses fils (voir plus
+# bas, au lancement des bancs), ce qui met ses fils a l'abri de la console
+# cp1252 — mais pas LUI. Son propre dit() sort un tiret cadratin des qu'une
+# mutation a un detail, et sa derniere ligne, celle qui porte le verdict, en
+# sort un toujours. Sans ces quatre lignes il meurt sur son resume apres avoir
+# fait tout le travail : une pile d'appels au lieu du compte des survivantes.
+# Mesure du 13 septembre 2026, en meme temps que banc_catalogue.py.
+for _flux in (sys.stdout, sys.stderr):
+    try:
+        _flux.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ICI = os.path.dirname(os.path.abspath(__file__))
 ok, rate, signales = [], [], []
 
@@ -604,8 +617,16 @@ BESOINS = {
     # catalogue.py pour les tailles, installation.py et serveur.py parce que
     # le banc y cherche les poids encore mis en phrase a la main. Sans
     # serveur.py, son aveu d'ATTENDU_AILLEURS se declarerait perime.
+    # traductions.py DEPUIS LE 13 SEPTEMBRE 2026 : ce banc tient les VINGT
+    # moteurs de catalogue.py et exige que chacun ait ses deux entrees au
+    # dictionnaire. Les quatre moteurs DISTANTS vivent dans serveur.py et sont
+    # tenus par banc_repartition.py, qui l'importe deja — les couvrir ici
+    # ferait entrer aiohttp dans un banc qui ne lit serveur.py que comme du
+    # texte. Les clefs « moteur.* » etant composees a l'execution, ni
+    # banc_traductions.py (qui ne releve la dormance que pour « panne. ») ni
+    # banc_page.py (« page. ») ne verrait une entree manquante ou orpheline.
     "banc_catalogue.py": ["banc_catalogue.py", "catalogue.py",
-                          "installation.py", "serveur.py"],
+                          "installation.py", "serveur.py", "traductions.py"],
     # Il importe serveur.py pour appeler les veut_* directement, et relit ses
     # 64 cas dans banc_formulations.jsonl. Sans ce fichier de cas, il ne
     # verifie plus rien et s'arrete sur une erreur d'ouverture — un plantage
@@ -1641,6 +1662,73 @@ REPARTITION = [
                 + "        return False" + chr(10)
                 + "    return not manquants_au_releve(cle, ident)",
                 "    return not manquants_au_releve(cle, ident)"))]),
+    # LES MOTEURS DISTANTS ET LES CLEFS ORPHELINES, du 13 septembre 2026.
+    # banc_catalogue.py tient les vingt moteurs de catalogue.py ; les quatre
+    # distants vivent dans serveur.py et lui imposeraient d'importer aiohttp.
+    # C'est donc ici, et nulle part ailleurs, que ces deux cas sont eprouves.
+    dict(
+        nom="un moteur DISTANT perd son anglais",
+        banc="banc_repartition.py",
+        imite="la faute deja faite une fois : les quatre distants oublies au "
+              "dictionnaire parce qu'ils ne sont pas dans catalogue.py. "
+              "api_modeles les sert cote a cote avec les autres, et le menu "
+              "anglais portait quatre lignes francaises au milieu",
+        rougit="chaque moteur distant a lui aussi ses deux entrees, dans les "
+               "deux langues",
+        editions=[("traductions.py", brut(
+            '    "moteur.meshy.titre": {"fr": "Meshy — distant", '
+            '"en": "Meshy — remote"},',
+            '    "moteur.meshy.titre": {"fr": "Meshy — distant", '
+            '"en": ""},'))]),
+    dict(
+        nom="une clef « moteur. » survit au moteur qu'elle nommait",
+        banc="banc_repartition.py",
+        imite="un moteur retire, sa traduction laissee derriere : elle ne sera "
+              "plus jamais lue, mais elle est relue a chaque revue et donne "
+              "l'impression de couvrir un chemin qui existe encore — le "
+              "reproche exact que banc_traductions.py fait aux clefs de panne "
+              "dormantes",
+        rougit="et aucune entree « moteur. » ne designe un moteur qui n'existe "
+               "plus",
+        editions=[("traductions.py", brut(
+            '    "moteur.veo.pour": {',
+            '    "moteur.sdxl_retire.titre": {"fr": "moteur retire",' + chr(10)
+            + '                                "en": "removed engine"},'
+            + chr(10)
+            + '    "moteur.veo.pour": {'))]),
+    dict(
+        nom="un moteur distant perd son francais",
+        banc="banc_repartition.py",
+        imite="l'entree distante ecrite {\"fr\": \"\", \"en\": \"...\"}. Le "
+              "releve d'a cote ne regarde que l'anglais : le francais des "
+              "quatre distants n'etait garde par personne, et un lecteur "
+              "francais voit une <option> sans texte",
+        rougit="et leur francais est la aussi, pas seulement leur anglais",
+        editions=[("traductions.py", brut(
+            '    "moteur.lyria.titre": {"fr": "Lyria 3 (Google) — distant",',
+            '    "moteur.lyria.titre": {"fr": "",'))]),
+    dict(
+        nom="le francais d'un distant derive de serveur.py",
+        banc="banc_repartition.py",
+        imite="le titre reecrit au dictionnaire seul : l'ecran montre un "
+              "titre, MOTEURS_DISTANTS en porte un autre, et rien ne les "
+              "rapproche — la derive que banc_catalogue.py interdit depuis "
+              "toujours aux vingt locaux",
+        rougit="et c'est celui de serveur.py, mot pour mot",
+        editions=[("traductions.py", brut(
+            '    "moteur.veo.titre": {"fr": "Veo 3.1 (Google) — distant",',
+            '    "moteur.veo.titre": {"fr": "Veo 3.1 (Google) — DISTANT",'))]),
+    dict(
+        nom="la case vide retraverse dit_moteur",
+        banc="banc_repartition.py",
+        imite="la garde d'origine, qui ne comparait qu'a la CLEF. T() ne "
+              "replie sur le francais que si la case vaut None, et \"\" n'est "
+              "pas None : mesure du 13 septembre 2026, dit_moteur rendait "
+              "\"\" et le menu affichait une ligne sans texte",
+        rougit="une case vide replie sur le francais, comme une clef absente",
+        editions=[("serveur.py", brut(
+            "    return defaut if rendu == k or not rendu.strip() else rendu",
+            "    return defaut if rendu == k else rendu"))]),
 ]
 
 # ──────────────────────────────────────────────────────────────────────
@@ -2127,6 +2215,64 @@ CATALOGUE = [
             "# union : deux moteurs partagent des fichiers" + chr(10)
             + "        print(f\"\\n  Proposition : {', '.join(conseil)}  "
               "(environ {total:.0f} Go)\")"))]),
+    # LES TROIS CAS DE TRADUCTION, du 13 septembre 2026. La famille
+    # « moteur.* » n'est vue NI par banc_traductions.py (qui ne verifie la
+    # dormance que des clefs de panne) NI par banc_page.py (qui ne regarde que
+    # « page.* ») : sans ces trois mutations, les trois cas neufs de
+    # banc_catalogue.py ne sont eprouves par rien.
+    dict(
+        nom="un moteur perd son titre au dictionnaire",
+        banc="banc_catalogue.py",
+        imite="la faute qui vient toujours : un moteur ajoute au catalogue et "
+              "ses deux entrees oubliees. T() rend alors la clef elle-meme, et "
+              "le menu affiche « moteur.agrandir.titre » a la place du nom",
+        rougit="chaque moteur du catalogue a son titre ET sa description au "
+               "dictionnaire",
+        editions=[("traductions.py", brut(
+            '    "moteur.agrandir.titre": {"fr": "Agrandissement 4x '
+            '(UltraSharp)",',
+            '    "moteur.agrandir.TITRE": {"fr": "Agrandissement 4x '
+            '(UltraSharp)",'))]),
+    dict(
+        nom="le francais du dictionnaire s'ecarte de celui du catalogue",
+        banc="banc_catalogue.py",
+        imite="une traduction qui « ameliore » le francais en passant : "
+              "l'interface francaise change sans que personne ne l'ait "
+              "demande, et le catalogue — qui reste la source des prompts du "
+              "modele — cesse de dire ce que l'ecran dit",
+        rougit="et son francais est celui du catalogue, mot pour mot",
+        editions=[("traductions.py", brut(
+            '        "fr": "agrandir une image existante sans en changer le '
+            'contenu : 4x, "',
+            '        "fr": "agrandir une image existante sans en changer le '
+            'contenu : 4X, "'))]),
+    dict(
+        nom="un anglais vide, et la traduction n'est qu'annoncee",
+        banc="banc_catalogue.py",
+        imite="l'entree existe, le francais est juste, et « en » est vide : "
+              "T() retombe sur le francais EN SILENCE. Le menu anglais garde "
+              "une ligne francaise au milieu, et rien ne le signale — c'est le "
+              "cas que le releve des clefs manquantes ne peut pas attraper",
+        rougit="et chacune porte un anglais, sans quoi la traduction n'est "
+               "qu'annoncee",
+        editions=[("traductions.py", brut(
+            '    "moteur.objet3d.titre": {"fr": "Hunyuan3D 2.0", '
+            '"en": "Hunyuan3D 2.0"},',
+            '    "moteur.objet3d.titre": {"fr": "Hunyuan3D 2.0", '
+            '"en": ""},'))]),
+    dict(
+        nom="une entree sans francais du tout passe le mot pour mot",
+        banc="banc_catalogue.py",
+        imite="le releve qui BLANCHISSAIT l'absence : « pas de francais » "
+              "n'est pas « un francais identique ». Une entree ecrite "
+              "{\"en\": \"...\"} toute seule passait les TROIS cas de la "
+              "section — la clef existe, son francais ne differe pas puisqu'il "
+              "n'y en a aucun, et l'anglais est la",
+        rougit="et son francais est celui du catalogue, mot pour mot",
+        editions=[("traductions.py", brut(
+            '    "moteur.objet3d.titre": {"fr": "Hunyuan3D 2.0", '
+            '"en": "Hunyuan3D 2.0"},',
+            '    "moteur.objet3d.titre": {"en": "Hunyuan3D 2.0"},'))]),
 ]
 
 

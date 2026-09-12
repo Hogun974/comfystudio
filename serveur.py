@@ -10947,16 +10947,62 @@ async def api_textes(req):
     return rep_
 
 
-async def api_modeles(_):
+def dit_moteur(cle, champ, defaut, langue):
+    """Le titre ou la description d'un moteur, dans la langue du lecteur.
+
+    REPLI SUR LE FRANCAIS, ET NON SUR LA CLE. T() rend la cle quand l'entree
+    manque — « moteur.klein12b.titre » s'afficherait dans le menu, en francais
+    comme en anglais. Le catalogue est une liste ouverte, alimentee par des
+    commits qui n'ont aucune raison de penser au dictionnaire : un moteur
+    ajoute sans ses deux entrees est l'etat PAR DEFAUT, pas l'exception. On
+    rend donc le francais du catalogue, qui est toujours vrai, plutot qu'une
+    clef qui ne l'est jamais.
+
+    ET SUR UNE CASE VIDE, pas seulement sur une clef absente. T() ne replie sur
+    le francais que si la case vaut None ; une chaine vide n'est pas None, elle
+    traverse, et ce qui arrive a l'ecran est un libelle VIDE — une <option>
+    sans texte dans le menu des moteurs, une pastille de reglages muette, une
+    signature de rendu blanche. Mesure du 13 septembre 2026 : avec
+    {"fr": ""}, dit_moteur rendait "".
+
+    LA GARDE EST ICI ET NON DANS T(), et ce n'est pas une commodite. T() n'a
+    rien sur quoi replier — son seul repli est la clef, c'est-a-dire exactement
+    ce qu'on refuse d'afficher — alors qu'ici le francais du catalogue est sous
+    la main. Elever la regle au dictionnaire changerait le sens de TOUTES les
+    familles pour un gain nul : aucune entree ne porte de case vide aujourd'hui
+    (releve du 13 septembre 2026, zero sur tout le dictionnaire). C'est une
+    garde contre la prochaine, pas contre une existante.
+    """
+    k = f"moteur.{cle}.{champ}"
+    rendu = T(k, langue)
+    return defaut if rendu == k or not rendu.strip() else rendu
+
+
+async def api_modeles(req):
     """Les moteurs locaux, puis ceux qu'une cle rend joignables.
 
     Un moteur distant sans cle n'est pas montre : proposer un choix qui echouera
     a coup sur ne rend service a personne.
+
+    TRADUIT ICI, ET NON DANS LA PAGE, et c'est tout l'interet : c'est le SEUL
+    site d'affichage des moteurs. La page ne lit que cle/titre/present/distant,
+    et /admin n'a aucun T() — il est en francais en dur, par choix. Composer les
+    cles a l'ecran aurait mis « moteur.detourer.titre » dans le menu au premier
+    moteur ajoute sans traduction, et aurait emporte le menu ENTIER le jour ou
+    /api/textes echoue. Rendu ici, le JSON garde exactement sa forme et la page
+    ne change pas d'une ligne.
+
+    DEUX SOURCES : catalogue.py pour les moteurs locaux, MOTEURS_DISTANTS ici
+    meme. Les oublier aurait laisse quatre lignes francaises au milieu d'un
+    menu anglais.
     """
-    liste = [dict(cle=c, titre=m["titre"], type=m["type"], pour=m["pour"],
+    lg = langue_de(req)
+    liste = [dict(cle=c, titre=dit_moteur(c, "titre", m["titre"], lg),
+                  type=m["type"], pour=dit_moteur(c, "pour", m["pour"], lg),
                   duree=m["duree"], distant=False,
                   present=not manquants_partout(c)) for c, m in CATALOGUE.items()]
-    liste += [dict(cle=c, titre=m["titre"], type=m["type"], pour=m["pour"],
+    liste += [dict(cle=c, titre=dit_moteur(c, "titre", m["titre"], lg),
+                   type=m["type"], pour=dit_moteur(c, "pour", m["pour"], lg),
                    duree=m["duree"], distant=True, present=True)
               for c, m in MOTEURS_DISTANTS.items() if moteur_distant_pret(c)]
     return web.json_response(liste)

@@ -550,10 +550,27 @@ sont faits). *Ferme la gêne. Pas une panne : la gêne.*
 >
 > **Ce qui reste français malgré tout** : la console `/admin`, entièrement en
 > dur — elle s'adresse à qui tient le jeton, pas aux invités —, le journal
-> (tranché plus bas), les îlots servis par le serveur — titre d'un moteur, libellé d'une modalité de
+> (tranché plus bas), les îlots servis par le serveur — libellé d'une modalité de
 > nuage, nom d'une intention, mot du devis (« 4 min ») —, et le `Précisions : `
 > que la réponse à une question **envoie** au moteur : le studio a un pivot, et
 > c'est le français.
+>
+> **Le titre d'un moteur était de cette liste. Il n'y est plus, depuis le
+> 13 septembre 2026.** C'était l'îlot le plus visible de tous : le menu des
+> moteurs est la première chose qu'on lit en arrivant, et il restait français au
+> milieu d'une page anglaise. Les vingt moteurs de `catalogue.py` et les quatre
+> distants de `serveur.py` portent désormais `moteur.<clé>.titre` et
+> `moteur.<clé>.pour` au dictionnaire — **48 clés** — et `api_modeles` les sert
+> par `dit_moteur()`, dans la langue de la requête.
+>
+> **Le français du dictionnaire doit être celui du catalogue, mot pour mot**, et
+> c'est vérifié. Le catalogue reste la source des prompts envoyés au modèle : si
+> une traduction « améliorait » le français d'un seul côté, l'écran dirait autre
+> chose que ce que le moteur reçoit, sans qu'une ligne ait bougé. `banc_catalogue.py`
+> tient les vingt locaux ; les quatre distants vivent dans `serveur.py` et
+> l'obligeraient à importer aiohttp, donc c'est `banc_repartition.py` qui les
+> tient — avec le sens inverse, qu'une clé `moteur.` ne survive pas au moteur
+> qu'elle nommait.
 
 > **Deux choix arrêtés en le faisant.**
 >

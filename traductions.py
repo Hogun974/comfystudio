@@ -260,6 +260,175 @@ TEXTES = {
     "famille.video": {"fr": "video", "en": "video"},
     "famille.audio": {"fr": "morceau", "en": "audio"},
     "famille.objet3d": {"fr": "objet 3D", "en": "3D object"},
+    # ── les moteurs du catalogue ────────────────────────────────────────
+    # catalogue.py ne porte qu'UN titre et UNE description par moteur, en
+    # francais : ils ressortaient tels quels dans l'interface anglaise, jusque
+    # dans les refus — « ERROR: Retouche du sujet (klein + BiRefNet): no
+    # reachable machine can do it ». Une phrase anglaise dont le sujet est
+    # francais.
+    #
+    # COMPOSEES A L'EXECUTION, comme famille.* : « moteur. » + la clef du
+    # catalogue + « .titre ». banc_traductions.py ne peut donc pas verifier
+    # qu'aucune ne dort — son releve ne voit que les chaines litterales. Le
+    # controle est pris a l'envers, et il est plus fort : chaque moteur du
+    # catalogue DOIT avoir ses deux entrees, dans les deux langues.
+    #
+    # TOUS LES MOTEURS, Y COMPRIS CEUX DONT LE TITRE NE CHANGE PAS. T() rend
+    # la CLE quand l'entree manque — « moteur.detourer.titre » a l'ecran —,
+    # donc une couverture partielle afficherait de la plomberie. « FLUX.1 dev »
+    # est un nom de produit : il s'ecrit pareil dans les deux langues, et c'est
+    # une reponse, pas un oubli. famille.image le fait deja.
+    "moteur.klein4b.titre": {"fr": "FLUX.2 klein 4B", "en": "FLUX.2 klein 4B"},
+    "moteur.klein4b.pour": {
+        "fr": "polyvalent, tres bon suivi du prompt, seul modele fiable pour "
+              "du texte lisible dans l'image",
+        "en": "versatile, very good prompt adherence, the only model reliable "
+              "for legible text inside the image"},
+    "moteur.klein9b.titre": {"fr": "FLUX.2 klein 9B", "en": "FLUX.2 klein 9B"},
+    "moteur.klein9b.pour": {
+        "fr": "comme klein 4B mais matieres et decors plus riches ; le texte y "
+              "devient illisible",
+        "en": "like klein 4B but richer materials and scenery; text becomes "
+              "illegible"},
+    "moteur.flux1.titre": {"fr": "FLUX.1 dev", "en": "FLUX.1 dev"},
+    "moteur.flux1.pour": {
+        "fr": "photographie et cinema : lumiere, atmosphere, profondeur de "
+              "champ",
+        "en": "photography and cinema: light, atmosphere, depth of field"},
+    "moteur.realvis.titre": {"fr": "RealVisXL V5.0", "en": "RealVisXL V5.0"},
+    "moteur.realvis.pour": {
+        "fr": "photorealisme direct : portraits, produits, scenes reelles",
+        "en": "straight photorealism: portraits, products, real scenes"},
+    "moteur.pony.titre": {"fr": "Pony Diffusion V6 XL",
+                          "en": "Pony Diffusion V6 XL"},
+    "moteur.pony.pour": {
+        "fr": "anime, manga, illustration, personnages stylises, fan-art",
+        "en": "anime, manga, illustration, stylised characters, fan art"},
+    "moteur.edition.titre": {"fr": "FLUX.2 klein — edition",
+                             "en": "FLUX.2 klein — editing"},
+    "moteur.edition.pour": {
+        "fr": "modifier une image existante d'apres une consigne",
+        "en": "change an existing image from an instruction"},
+    "moteur.wan5b.titre": {"fr": "Wan 2.2 TI2V-5B", "en": "Wan 2.2 TI2V-5B"},
+    "moteur.wan5b.pour": {
+        "fr": "video a partir d'un texte seul",
+        "en": "video from text alone"},
+    "moteur.wan14b.titre": {"fr": "Wan 2.2 I2V-A14B",
+                            "en": "Wan 2.2 I2V-A14B"},
+    "moteur.wan14b.pour": {
+        "fr": "animer une image existante",
+        "en": "animate an existing image"},
+    "moteur.audio.titre": {"fr": "ACE-Step 1.5 turbo",
+                           "en": "ACE-Step 1.5 turbo"},
+    "moteur.audio.pour": {
+        "fr": "musique vite produite pour degrossir une idee ; 8 etapes, "
+              "rendu grossier",
+        "en": "music produced quickly to rough out an idea; 8 steps, coarse "
+              "result"},
+    "moteur.planche.titre": {"fr": "Planche BD / manga",
+                             "en": "Comic / manga page"},
+    "moteur.planche.pour": {
+        "fr": "planche de bande dessinee ou de manga : plusieurs cases, "
+              "gouttieres, bulles VIDES",
+        "en": "a comic or manga page: several panels, gutters, EMPTY speech "
+              "bubbles"},
+    "moteur.fluidifier.titre": {"fr": "Fluidite video (FILM)",
+                                "en": "Video smoothing (FILM)"},
+    "moteur.fluidifier.pour": {
+        "fr": "intercaler des images dans une video : plus fluide a duree "
+              "egale, ou ralenti propre",
+        "en": "insert frames into a video: smoother at the same length, or "
+              "clean slow motion"},
+    "moteur.retoucher_fond.titre": {
+        "fr": "Retouche du fond (klein + BiRefNet)",
+        "en": "Background retouch (klein + BiRefNet)"},
+    "moteur.retoucher_fond.pour": {
+        "fr": "changer le decor autour du sujet en gardant le sujet exactement "
+              "tel quel",
+        "en": "change the scenery around the subject while keeping the subject "
+              "exactly as it is"},
+    "moteur.retoucher_sujet.titre": {
+        "fr": "Retouche du sujet (klein + BiRefNet)",
+        "en": "Subject retouch (klein + BiRefNet)"},
+    "moteur.retoucher_sujet.pour": {
+        "fr": "effacer ou remplacer le sujet d'une image en gardant le decor "
+              "exactement tel quel",
+        "en": "erase or replace the subject of an image while keeping the "
+              "scenery exactly as it is"},
+    "moteur.retoucher_zone.titre": {
+        "fr": "Retouche d'une zone nommee (klein + SAM 3.1)",
+        "en": "Named-area retouch (klein + SAM 3.1)"},
+    "moteur.retoucher_zone.pour": {
+        "fr": "refaire une partie precise d'une image designee par son nom — "
+              "le ciel, une voiture, un panneau — en laissant tout le reste "
+              "intact",
+        "en": "redo a precise part of an image named in words — the sky, a "
+              "car, a sign — leaving everything else intact"},
+    "moteur.detourer.titre": {"fr": "Detourage (BiRefNet)",
+                              "en": "Cutout (BiRefNet)"},
+    "moteur.detourer.pour": {
+        "fr": "isoler le sujet d'une image et rendre le fond transparent",
+        "en": "isolate the subject of an image and make the background "
+              "transparent"},
+    "moteur.agrandir.titre": {"fr": "Agrandissement 4x (UltraSharp)",
+                              "en": "4x upscale (UltraSharp)"},
+    "moteur.agrandir.pour": {
+        "fr": "agrandir une image existante sans en changer le contenu : 4x, "
+              "textures et details restaures",
+        "en": "enlarge an existing image without changing its content: 4x, "
+              "textures and detail restored"},
+    "moteur.objet3d.titre": {"fr": "Hunyuan3D 2.0", "en": "Hunyuan3D 2.0"},
+    "moteur.objet3d.pour": {
+        "fr": "modele 3D au format .glb a partir d'une image ; sans image "
+              "fournie, une image est generee d'abord",
+        "en": "a 3D model in .glb format from an image; with no image "
+              "supplied, one is generated first"},
+    "moteur.klein9bhd.titre": {"fr": "FLUX.2 klein 9B pleine precision",
+                               "en": "FLUX.2 klein 9B full precision"},
+    "moteur.klein9bhd.pour": {
+        "fr": "comme klein 9B, mais l'encodeur de texte est en pleine "
+              "precision : le suivi du prompt et les details montent d'un "
+              "cran. Exige une grosse carte.",
+        "en": "like klein 9B, but the text encoder runs at full precision: "
+              "prompt adherence and detail go up a notch. Needs a large card."},
+    "moteur.flux1hd.titre": {"fr": "FLUX.1 dev pleine precision",
+                             "en": "FLUX.1 dev full precision"},
+    "moteur.flux1hd.pour": {
+        "fr": "FLUX.1 dev sans quantification, avec l'encodeur T5 complet : la "
+              "meilleure photographie possible ici. Exige une tres grosse "
+              "carte.",
+        "en": "FLUX.1 dev without quantisation, with the full T5 encoder: the "
+              "best photography possible here. Needs a very large card."},
+    "moteur.audioplus.titre": {"fr": "ACE-Step 1.5 SFT",
+                               "en": "ACE-Step 1.5 SFT"},
+    "moteur.audioplus.pour": {
+        "fr": "musique soignee : 50 etapes au lieu de 8, nettement plus "
+              "musical. A choisir des que la qualite compte",
+        "en": "polished music: 50 steps instead of 8, markedly more musical. "
+              "Choose it as soon as quality matters"},
+    # LES MOTEURS DISTANTS, qui ne vivent PAS dans catalogue.py mais dans
+    # serveur.py (MOTEURS_DISTANTS). Deux sources, une seule liste a l'ecran :
+    # api_modeles les sert cote a cote, et les oublier ici aurait laisse quatre
+    # lignes francaises au milieu d'un menu anglais. Je les avais oubliees.
+    "moteur.nanobanana.titre": {"fr": "Nano Banana (Gemini) — distant",
+                                "en": "Nano Banana (Gemini) — remote"},
+    "moteur.nanobanana.pour": {
+        "fr": "image rapide, excellente sur le texte et la retouche guidee",
+        "en": "fast image, excellent at text and guided retouching"},
+    "moteur.lyria.titre": {"fr": "Lyria 3 (Google) — distant",
+                           "en": "Lyria 3 (Google) — remote"},
+    "moteur.lyria.pour": {
+        "fr": "musique en une dizaine de secondes, clips d'environ 30 s",
+        "en": "music in about ten seconds, clips of roughly 30 s"},
+    "moteur.meshy.titre": {"fr": "Meshy — distant", "en": "Meshy — remote"},
+    "moteur.meshy.pour": {
+        "fr": "maillage texture a partir d'une image, rendu en .glb",
+        "en": "textured mesh from an image, delivered as .glb"},
+    "moteur.veo.titre": {"fr": "Veo 3.1 (Google) — distant",
+                         "en": "Veo 3.1 (Google) — remote"},
+    "moteur.veo.pour": {
+        "fr": "video avec son, facturee a la seconde",
+        "en": "video with sound, billed by the second"},
     # UNE PHRASE, ET NON str(e). La route /api/reprendre rendait l'exception
     # Python telle quelle a l'ecran — « ERREUR : KeyError('sdxl_vieux') » —,
     # le meme message qui n'apprend rien a personne que ce depot chasse

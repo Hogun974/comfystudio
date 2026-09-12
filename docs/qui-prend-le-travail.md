@@ -263,13 +263,24 @@ Deux règles à connaître avant d'en ajouter une :
 le titre du catalogue — « Retouche du sujet (klein + BiRefNet) ». Il traverse
 donc tel quel : la phrase anglaise est anglaise, son sujet reste français.
 
-Ce n'est pas un oubli mais une limite mesurée : `catalogue.py` n'a qu'un
-`titre=` par moteur, aucun `titre_en`, et aucun de ces titres n'existe au
-dictionnaire. Les traduire est un chantier d'une autre taille — il faudrait y
-passer aussi les `pour=`, que la page affiche partout ailleurs. Tant que ce
-n'est pas fait, un lecteur anglophone lit une phrase anglaise dont le nom du
-moteur est français, ce qui reste très au-dessus de la phrase entièrement
-française d'avant.
+Ce n'est pas un oubli mais une limite mesurée : le `{moteur}` d'une marque de
+panne est une **valeur**, et `rendre()` ne traduit pas les valeurs. La rendre
+traduisible demanderait de l'imbriquer comme marque — impossible, la page ne
+résout qu'**un** niveau, et celle-ci est déjà imbriquée dans `panne.echec`.
+
+**Et depuis le 13 septembre 2026, ce titre existe pourtant en anglais.** Les
+48 clés `moteur.<clé>.titre` et `moteur.<clé>.pour` sont au dictionnaire, et le
+menu des moteurs se traduit entièrement. La phrase de refus, elle, ne les lit
+pas : elle reçoit le titre français comme **valeur déjà interpolée**, et la
+limite ci-dessus n'a pas bougé d'un pouce. C'est le piège le plus discret de ce
+chantier — la traduction existe, elle est juste, elle est vérifiée par deux
+bancs, et elle n'arrive quand même pas jusqu'à cette phrase-là. Le jour où
+`rendre()` résoudra deux niveaux, c'est la première à reprendre.
+
+*(Corrigé le 13 septembre 2026 : ce paragraphe affirmait aussi qu'il faudrait
+« y passer aussi les `pour=`, que la page affiche partout ailleurs ». C'est
+faux, et la mesure l'a montré — `web/` ne lit ce champ nulle part. Une phrase
+écrite de mémoire plutôt que relevée.)*
 
 ### Et `/admin` disait la même contre-vérité
 

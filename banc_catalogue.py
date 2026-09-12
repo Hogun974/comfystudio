@@ -26,9 +26,31 @@ import re
 import sys
 import tempfile
 
+# LA CONSOLE WINDOWS ECRIT EN cp1252, et ce banc n'importe pas serveur.py —
+# c'est serveur.py qui reconfigure la sortie pour tout le reste du depot. Sans
+# ces quatre lignes, le banc MEURT sur son propre affichage : une pile d'appels
+# « UnicodeEncodeError: 'charmap' codec can't encode characters » a la place du
+# verdict, alors qu'aucune verification n'a echoue. Mesure du 13 septembre
+# 2026. Ce n'est pas qu'une affaire de titre de section : le tiret cadratin de
+# dit() sort des qu'une verification a un DETAIL, donc le banc etait deja a une
+# ligne de detail de mourir. La CI et le lanceur de banc_mutations.py ne le
+# voient pas — ils posent PYTHONIOENCODING pour leurs fils, et le defaut
+# n'apparait QUE lance a la main, ce que fait tout contributeur.
+for _flux in (sys.stdout, sys.stderr):
+    try:
+        _flux.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 import catalogue as C  # noqa: E402
+# LE DICTIONNAIRE, PAS LE SERVEUR. Depuis que les titres et les descriptions
+# des moteurs se traduisent, il faut quelqu'un pour verifier qu'aucun moteur
+# n'a ete ajoute sans ses deux entrees. Ce banc connait la liste des moteurs ;
+# traductions.py n'importe rien et ne coute rien. Importer serveur.py ici, en
+# revanche, y ferait entrer aiohttp — il n'est lu que comme du TEXTE, plus bas.
+import traductions as TR  # noqa: E402
 
 ok, rate = [], []
 
@@ -216,6 +238,55 @@ if paires:
     ensemble, separes = C.poids([a, b]), C.poids([a]) + C.poids([b])
     dit(ensemble < separes - 0.5, f"et poids() les compte une seule fois — {a} + {b}",
         f"{ensemble} Go ensemble contre {separes:.1f} additionnes")
+
+# ══════ chaque moteur a-t-il ses deux entrees au dictionnaire ? ═══════
+# LE SEUL FILET DE LA FAMILLE « moteur.* », et il faut le dire : ces clefs sont
+# composees a l'execution — « moteur. » + la clef du catalogue + « .titre ».
+# banc_traductions.py ne releve la dormance que pour « panne. », banc_page.py
+# que pour « page. » : une entree manquante, orpheline ou mal ecrite ne serait
+# vue NULLE PART.
+#
+# Et elle ne se verrait pas non plus a l'ecran : dit_moteur() retombe sur le
+# francais du catalogue plutot que d'afficher « moteur.klein12b.titre ». Ce
+# repli est le bon choix pour l'utilisateur — et c'est exactement ce qui rend
+# ce cas necessaire, puisqu'il rend la panne SILENCIEUSE. Sans lui, un moteur
+# ajoute sans traduction resterait francais pour toujours, et le depot vert.
+print("\n  ── les moteurs, et ce que le dictionnaire en dit ──")
+_sans = [f"moteur.{cle}.{champ}"
+         for cle in C.CATALOGUE for champ in ("titre", "pour")
+         if f"moteur.{cle}.{champ}" not in TR.TEXTES]
+dit(not _sans,
+    "chaque moteur du catalogue a son titre ET sa description au dictionnaire",
+    f"{len(_sans)} manquante(s) : " + ", ".join(_sans[:3]) if _sans
+    else f"{2 * len(C.CATALOGUE)} entrees pour {len(C.CATALOGUE)} moteurs")
+
+# LE FRANCAIS DOIT ETRE CELUI DU CATALOGUE, MOT POUR MOT. Sans ce cas, une
+# traduction pourrait reecrire le francais en croyant l'ameliorer : l'interface
+# francaise changerait sans que personne ne l'ait demande, et le catalogue —
+# qui reste la source pour les prompts du modele — dirait autre chose que
+# l'ecran.
+# AUCUNE TOLERANCE POUR None. Ce releve blanchissait l'absence : « pas de
+# francais » n'est pas « un francais identique », et une entree ecrite
+# {"en": "..."} toute seule passait les TROIS cas de cette section — la clef
+# existe, son francais « ne differe pas » puisqu'il n'y en a aucun, et
+# l'anglais est la. Les vingt moteurs portent leurs deux champs au catalogue
+# (releve du 13 septembre 2026), donc l'egalite stricte est exigible.
+_ecart = [(cle, champ) for cle in C.CATALOGUE for champ in ("titre", "pour")
+          if (TR.TEXTES.get(f"moteur.{cle}.{champ}") or {}).get("fr")
+          != C.CATALOGUE[cle].get(champ)]
+dit(not _ecart,
+    "et son francais est celui du catalogue, mot pour mot",
+    f"{len(_ecart)} ecart(s) : {_ecart[:3]}")
+
+# ET L'ANGLAIS EXISTE VRAIMENT. « en » absent ferait retomber T() sur le
+# francais en silence : la traduction aurait l'air faite.
+_sans_en = [f"moteur.{cle}.{champ}"
+            for cle in C.CATALOGUE for champ in ("titre", "pour")
+            if not (TR.TEXTES.get(f"moteur.{cle}.{champ}") or {}).get("en")]
+dit(not _sans_en,
+    "et chacune porte un anglais, sans quoi la traduction n'est qu'annoncee",
+    f"{len(_sans_en)} sans anglais : " + ", ".join(_sans_en[:3]) if _sans_en
+    else "les deux langues partout")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

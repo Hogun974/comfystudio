@@ -414,5 +414,23 @@ avec le même `verdict()` que le lanceur, et dit `[rouge]`, `[vert]`, `[casse]`
 ou `[perimee]` — ce dernier quand l'ancre de l'édition n'existe plus dans le code,
 ce qui arrive à chaque fois qu'on déplace la ligne qu'une mutation visait.
 Vingt secondes au lieu de vingt minutes ; le tour complet reste celui de la CI.
+
+**Et donne-lui sa sortie en UTF-8.** Un banc qui n'importe pas `serveur.py` —
+c'est lui qui reconfigure la sortie pour tout le reste du dépôt — meurt sur son
+propre affichage au premier tiret cadratin ou guillemet français :
+`UnicodeEncodeError: 'charmap' codec can't encode characters`, une pile
+d'appels à la place du verdict, alors qu'**aucune vérification n'a échoué**.
+Les quatre lignes qui l'évitent sont en tête de `banc_traductions.py`, à
+recopier telles quelles.
+
+**Ce défaut ne se voit pas d'où on le cherche.** La CI et `banc_mutations.py`
+posent `PYTHONIOENCODING` pour leurs fils : les bancs y passent verts. Il
+n'apparaît qu'en lançant le banc à la main — c'est-à-dire exactement chez le
+contributeur, et nulle part chez celui qui a écrit le banc. Relevé le
+2 septembre 2026 sur `banc_page.py`, qui s'arrêtait à la vérification 30 sur
+38 ; puis le 13 septembre sur `banc_catalogue.py`, dont un titre de section
+suffisait à tuer les 21 — et sur `banc_mutations.py` lui-même, qui mettait ses
+fils à l'abri depuis toujours et laissait sa propre ligne de verdict dehors.
+
 Le détail de ce qui est attendu d'une contribution est dans
 [`CONTRIBUTING.md`](../CONTRIBUTING.md).

@@ -1258,6 +1258,84 @@ try:
 finally:
     del S.CATALOGUE["_essai_sans_fichier"]
 
+# ══════ les moteurs DISTANTS, et les clefs orphelines ═════════════════
+# banc_catalogue.py tient les vingt moteurs de catalogue.py ; il ne peut pas
+# tenir les quatre distants, qui vivent dans serveur.py et lui imposeraient
+# d'importer aiohttp. Ce banc-ci a deja les deux sous la main.
+#
+# CE QUI PROTEGE CE RELEVE, C'EST LE « finally » CI-DESSUS, et rien d'autre.
+# serveur.py fait « from catalogue import CATALOGUE » : S.CATALOGUE EST
+# catalogue.CATALOGUE, le meme objet, et lire l'un ou l'autre revient
+# exactement au meme. Le moteur fictif du cas precedent ne compte pas ici
+# parce que son « del » l'a retire, un point c'est tout. Si ce del saute un
+# jour, _connus grossit et le releve devient PLUS permissif — sans rien dire.
+# (Corrige le 13 septembre 2026 : ce commentaire annoncait une isolation par
+# le nom qui n'a jamais existe, et aurait rassure le prochain lecteur a tort.)
+import catalogue as CAT  # noqa: E402
+
+print("\n  ── les moteurs distants, et les clefs sans moteur ──")
+_sans_d = [f"moteur.{cle}.{champ}"
+           for cle in S.MOTEURS_DISTANTS for champ in ("titre", "pour")
+           if not (TR.TEXTES.get(f"moteur.{cle}.{champ}") or {}).get("en")]
+dit(not _sans_d,
+    "chaque moteur distant a lui aussi ses deux entrees, dans les deux langues",
+    f"{len(_sans_d)} manquante(s) : " + ", ".join(_sans_d[:3]) if _sans_d
+    else f"{2 * len(S.MOTEURS_DISTANTS)} entrees pour "
+         f"{len(S.MOTEURS_DISTANTS)} moteurs distants")
+
+# ET LEUR FRANCAIS, QUE PERSONNE NE GARDAIT. Le releve ci-dessus ne regarde
+# que « en ». Une entree distante ecrite {"fr": "", "en": "..."} passait donc
+# entiere, alors que c'est mot pour mot la faute que la mutation d'a cote
+# imite du cote anglais. Les vingt locaux sont couverts par banc_catalogue.py ;
+# les quatre distants ne l'etaient par personne.
+_fr_d = [f"moteur.{cle}.{champ}"
+         for cle in S.MOTEURS_DISTANTS for champ in ("titre", "pour")
+         if not (TR.TEXTES.get(f"moteur.{cle}.{champ}") or {}).get("fr")]
+dit(not _fr_d,
+    "et leur francais est la aussi, pas seulement leur anglais",
+    f"{len(_fr_d)} sans francais : " + ", ".join(_fr_d[:3]) if _fr_d
+    else f"{2 * len(S.MOTEURS_DISTANTS)} cases francaises pleines")
+
+# ET MOT POUR MOT, comme banc_catalogue.py l'exige des vingt locaux. Sans ce
+# cas, le francais d'un distant pouvait deriver de serveur.py sans qu'un mot
+# le dise : l'ecran aurait montre un titre, le code en aurait porte un autre.
+_derive = [(cle, champ) for cle in S.MOTEURS_DISTANTS
+           for champ in ("titre", "pour")
+           if (TR.TEXTES.get(f"moteur.{cle}.{champ}") or {}).get("fr")
+           != S.MOTEURS_DISTANTS[cle].get(champ)]
+dit(not _derive,
+    "et c'est celui de serveur.py, mot pour mot",
+    f"{len(_derive)} ecart(s) : {_derive[:3]}")
+
+# UNE CASE VIDE NE DOIT PAS ATTEINDRE L'ECRAN. T() ne replie sur le francais
+# que si la case vaut None : "" n'est pas None, il traversait dit_moteur — qui
+# ne comparait qu'a la clef — et le menu affichait une <option> sans texte.
+# On repose l'entree d'origine quoi qu'il arrive, comme le moteur fictif.
+_avant = TR.TEXTES.get("moteur.meshy.titre")
+TR.TEXTES["moteur.meshy.titre"] = {"fr": "", "en": ""}
+try:
+    _vide = S.dit_moteur("meshy", "titre", "REPLI", "fr")
+finally:
+    if _avant is None:
+        TR.TEXTES.pop("moteur.meshy.titre", None)
+    else:
+        TR.TEXTES["moteur.meshy.titre"] = _avant
+dit(_vide == "REPLI",
+    "une case vide replie sur le francais, comme une clef absente",
+    f"dit_moteur() = {_vide!r}")
+
+# LE SENS INVERSE, et il compte autant : une clef qui ne designe plus aucun
+# moteur ne sera jamais lue. Elle reste traduite, relue a chaque revue, et
+# donne l'impression de couvrir un chemin qui n'existe plus — le reproche que
+# banc_traductions.py fait aux clefs de panne dormantes.
+_connus = set(CAT.CATALOGUE) | set(S.MOTEURS_DISTANTS)
+_orphelines = sorted(k for k in TR.TEXTES
+                     if k.startswith("moteur.") and k.split(".")[1] not in _connus)
+dit(not _orphelines,
+    "et aucune entree « moteur. » ne designe un moteur qui n'existe plus",
+    f"{len(_orphelines)} orpheline(s) : " + ", ".join(_orphelines[:3])
+    if _orphelines else f"{len(_connus)} moteurs connus")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)
