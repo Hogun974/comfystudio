@@ -255,7 +255,21 @@ Deux règles à connaître avant d'en ajouter une :
 - **pas de sous-phrase française dans une valeur.** Le message de VRAM
   interpolait un `{detail}` qui était lui-même une demi-phrase : traduire le
   gabarit sans elle aurait rendu du franglais. Deux clés valent mieux qu'un
-  trou.
+  trou. Même raison pour l'âge d'une machine absente, qui a quitté la phrase :
+  `_duree_courte()` rend « 3 j », et l'anglais aurait lu « last seen 3 j ago ».
+  Il se lit dans `/admin`, mieux et en entier.
+
+**Ce qui reste français, et pourquoi.** Le `{moteur}` d'une de ces phrases est
+le titre du catalogue — « Retouche du sujet (klein + BiRefNet) ». Il traverse
+donc tel quel : la phrase anglaise est anglaise, son sujet reste français.
+
+Ce n'est pas un oubli mais une limite mesurée : `catalogue.py` n'a qu'un
+`titre=` par moteur, aucun `titre_en`, et aucun de ces titres n'existe au
+dictionnaire. Les traduire est un chantier d'une autre taille — il faudrait y
+passer aussi les `pour=`, que la page affiche partout ailleurs. Tant que ce
+n'est pas fait, un lecteur anglophone lit une phrase anglaise dont le nom du
+moteur est français, ce qui reste très au-dessus de la phrase entièrement
+française d'avant.
 
 ### Et `/admin` disait la même contre-vérité
 
