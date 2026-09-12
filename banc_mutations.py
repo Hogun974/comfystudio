@@ -5447,6 +5447,21 @@ NOEUD = [
                 "for /f \"delims=\" %%j in ('\"\"%PY%\" -c \"import json,io;"
                 "print^(json.load^(io.open^('%CONFIG%'^)^).get^('jeton',''^)^)"
                 "\"\" 2^>nul') do set \"JETON=%%j\""))]),
+    dict(
+        nom="la repetition de la tache Windows redevient impossible a enregistrer",
+        banc="banc_noeud.py",
+        imite="la forme qu'on ecrit spontanement pour dire « indefiniment ». "
+              "[TimeSpan]::MaxValue rend « P99999999DT23H59M59S », que "
+              "Register-ScheduledTask REFUSE. Le piege est que l'affectation "
+              "de la propriete, elle, reussit : on croit avoir verifie. Et "
+              "comme le script desenregistre AVANT de reenregistrer, l'echec "
+              "laisse la machine SANS aucune tache — arrive sur pc le "
+              "12 septembre 2026, retabli a la main",
+        rougit="et sa duree de repetition s'enregistre vraiment",
+        editions=[
+            ("service/noeud_windows.ps1", brut(
+                "$declencheur.Repetition.Duration = ''",
+                "$declencheur.Repetition.Duration = [TimeSpan]::MaxValue"))]),
 ]
 
 

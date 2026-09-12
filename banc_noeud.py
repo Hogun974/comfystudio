@@ -708,6 +708,32 @@ dit(re.search(r"\$declencheur\.Repetition\s*=", _ps1) is not None,
     "« relancer si la tache echoue »",
     "releve de texte : pas de planificateur Windows sur les runners de la CI")
 
+# ET LA DUREE N'EST PAS [TimeSpan]::MaxValue. Le cas ci-dessus, ecrit seul,
+# etait vert sur la version qui NE S'ENREGISTRAIT PAS : il exige qu'une
+# repetition soit ecrite, pas qu'elle soit acceptee. Mesure du 12 septembre
+# 2026 : MaxValue rend « P99999999DT23H59M59S » et Register-ScheduledTask le
+# refuse — « valeur incorrectement formatee ou hors limites ».
+#
+# Le piege est que l'AFFECTATION de la propriete reussit : on croit avoir
+# verifie. Et comme le script desenregistre AVANT de reenregistrer, l'echec
+# laisse la machine SANS tache — c'est arrive sur pc, il a fallu la retablir a
+# la main. Une duree vide vaut « indefiniment » et s'enregistre.
+# ON REGARDE LE CODE, ET NON LE FICHIER. Premiere ecriture de ce cas :
+# « "MaxValue" not in _ps1 ». Il rougissait sur le fichier CORRIGE, puisque le
+# commentaire qui nomme le piege contient forcement le mot — la garde
+# interdisait donc d'expliquer ce qu'elle garde. Et surtout : la mutation se
+# declarait rouge alors que le cas l'etait DEJA sans elle. jouer_mutations ne
+# verifie que l'echec sous mutation, jamais le vert de depart ; un cas rouge au
+# repos rend donc toutes ses mutations « bonnes » sans rien mesurer.
+#
+# Le retrait des commentaires est naif — « # » jusqu'au bout de la ligne — et
+# suffit ici : aucune chaine de ce fichier n'en contient.
+_ps1_code = re.sub(r"#.*", "", re.sub(r"<#.*?#>", "", _ps1, flags=re.S))
+dit("MaxValue" not in _ps1_code,
+    "et sa duree de repetition s'enregistre vraiment : pas de "
+    "[TimeSpan]::MaxValue, que le planificateur refuse",
+    "releve de texte ; l'echec laisse la machine sans tache du tout")
+
 # ET LE GARDE EST CE QUI REND LA REPETITION SANS DANGER. L'un sans l'autre est
 # pire que rien : repeter sans garde pose un agent de plus tous les quarts
 # d'heure, et MultipleInstancesPolicy n'y peut rien — avec --fond, l'instance

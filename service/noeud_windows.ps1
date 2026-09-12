@@ -78,10 +78,21 @@ $declencheur.Delay = "PT45S"
 # couter, assez frequent pour qu'une absence ne dure pas la journee.
 # On recopie la repetition d'un declencheur « Once », seul moyen de la
 # construire avec ce module.
+#
+# ET SURTOUT PAS [TimeSpan]::MaxValue POUR LA DUREE. Il rend
+# « P99999999DT23H59M59S », que le planificateur REFUSE a l'enregistrement :
+# « valeur incorrectement formatee ou hors limites ». Le piege est qu'AFFECTER
+# la propriete, lui, reussit : on croit avoir verifie, et c'est Register qui
+# tombe — apres l'Unregister ci-dessous, donc en laissant la machine SANS
+# tache. Mesure du 12 septembre 2026, sur cette panne exacte.
+#
+# Une duree VIDE veut dire « indefiniment », et c'est precisement ce qu'on
+# veut. Mesure : duree vide ACCEPTEE, duree bornee acceptee aussi,
+# [TimeSpan]::MaxValue refusee.
 $modele = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-    -RepetitionInterval (New-TimeSpan -Minutes 10) `
-    -RepetitionDuration ([TimeSpan]::MaxValue)
+    -RepetitionInterval (New-TimeSpan -Minutes 10)
 $declencheur.Repetition = $modele.Repetition
+$declencheur.Repetition.Duration = ''
 
 $reglages = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
