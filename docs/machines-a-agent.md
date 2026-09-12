@@ -113,6 +113,25 @@ celui-ci échoue — sous Windows `execv` n'est pas un vrai `exec`, les deux
 processus se chevauchent un instant, et un verrou encore tenu ferait mourir
 l'agent de sa propre mise à jour.
 
+## Le fichier que la tâche lance
+
+La tâche planifiée ne lance pas `noeud.bat` directement, mais un
+**`demarrer.bat`** posé à côté, qui porte ce qui est propre à la machine :
+l'adresse du studio et le dossier de sorties de son ComfyUI. Il survit ainsi
+aux mises à jour de `noeud.bat`, qu'on repose depuis le studio sans rien
+perdre.
+
+Le dépôt en sert un exemple, [`service/demarrer.exemple.bat`](../service/demarrer.exemple.bat) :
+copie-le sous le nom `demarrer.bat` et règle les deux lignes marquées. **Le
+jeton n'y est jamais écrit** — il est lu au vol dans un fichier tenu à part,
+pour qu'il ne traîne ni dans ce fichier, ni dans un dépôt, ni dans l'historique
+de la console.
+
+Il transmet ses arguments (`%*`), et ce n'est pas un détail : la tâche lance
+`demarrer.bat --fond`, et sans cette transmission l'agent démarrerait au
+premier plan — le lanceur ne rendrait jamais la main, la tâche resterait « en
+cours », et sa répétition ne repasserait plus.
+
 ## La tâche Windows repasse toutes les dix minutes
 
 C'est le garde ci-dessus qui rend cela sans danger, et les deux ne valent

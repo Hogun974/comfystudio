@@ -760,6 +760,60 @@ dit("MaxValue" not in _ps1_code,
 # tient les deux moments d'execv. Un releve de texte de plus n'aurait rien
 # ajoute a cela, et il a coute une CI rouge.
 
+# ══════ 9. le fichier que la tache lance, et que le depot ignorait ═══
+# service/noeud_windows.ps1 enregistre une tache qui lance « demarrer.bat », un
+# fichier que le depot ne fournissait PAS : il n'existait que sur la machine de
+# l'auteur, portait l'adresse du studio et le chemin des sorties, et rien ne
+# l'eprouvait. Le depot en sert desormais un exemple.
+with io.open(os.path.join(ICI, "service", "demarrer.exemple.bat"),
+             encoding="utf-8", errors="replace") as f:
+    _dem = f.read()
+
+# LE JETON NE S'ECRIT PAS DANS UN FICHIER QUI PEUT PARTIR EN DEPOT. Il est lu
+# au vol depuis un fichier tenu a part. On exige la lecture, et que la valeur
+# passee a noeud.bat soit la VARIABLE et non une chaine.
+_appels = [l.strip() for l in _dem.splitlines() if "noeud.bat" in l and "--jeton" in l]
+dit(bool(re.search(r"set /p JETON=<", _dem)) and bool(_appels)
+    and all("--jeton %JETON%" in l for l in _appels),
+    "l'exemple de demarrer.bat lit le jeton dans un fichier a part, et ne le "
+    "pose jamais en clair",
+    f"releve de texte ; {len(_appels)} appel(s) a noeud.bat")
+
+# « %* » TRANSMIS, SANS QUOI LA TACHE PLANIFIEE NE REND JAMAIS LA MAIN. Elle
+# lance « demarrer.bat --fond » ; sans transmission, l'agent demarre au premier
+# plan, le lanceur ne sort pas, la tache reste « en cours » — et sa repetition
+# ne repasse plus, ce qui annule tout le travail du 12 septembre 2026.
+dit(bool(_appels) and all(l.rstrip().endswith("%*") for l in _appels),
+    "et il transmet ses arguments, sans quoi --fond n'atteindrait pas le "
+    "lanceur",
+    f"releve de texte ; {_appels[0][-40:] if _appels else 'aucun appel'}")
+
+# LE NOM QUE LA TACHE ATTEND. L'exemple doit dire sous quel nom le copier, et
+# ce nom doit etre celui que le script d'installation lance par defaut : deux
+# fichiers qui se citent l'un l'autre derivent des qu'on en renomme un.
+_defaut = re.search(r'\$Script\s*=\s*"([^"]+)"', _ps1)
+dit(_defaut is not None and _defaut.group(1) in _dem,
+    "et il nomme le fichier que la tache planifiee lance vraiment",
+    f"noeud_windows.ps1 lance « {_defaut.group(1) if _defaut else '?'} »")
+
+# ASCII STRICT HORS COMMENTAIRES. cmd.exe lit un .bat dans la page de codes de
+# la console : un caractere hors ASCII y devient illisible, et dans une valeur
+# entre guillemets il peut couper la ligne. C'est ce qui est arrive au .ps1 le
+# 12 septembre 2026 — un tiret long dont le dernier octet, 0x94, a ete pris
+# pour une fin de chaine. Les REM s'en moquent ; le reste, non.
+for _nom_bat in ("noeud.bat", "maj_noeud.bat",
+                 os.path.join("service", "demarrer.exemple.bat")):
+    with io.open(os.path.join(ICI, _nom_bat), encoding="utf-8",
+                 errors="replace") as f:
+        _lignes_bat = f.read().splitlines()
+    _hors = [l.strip()[:60] for l in _lignes_bat
+             if not l.lstrip().upper().startswith("REM")
+             and any(ord(c) > 127 for c in l)]
+    dit(not _hors,
+        f"{os.path.basename(_nom_bat)} n'a aucun caractere hors ASCII en "
+        f"dehors de ses commentaires",
+        f"{len(_hors)} ligne(s) : " + " / ".join(_hors[:2]))
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees "
       f"— {time.time() - _depart:.1f} s")
 sys.exit(1 if rate else 0)

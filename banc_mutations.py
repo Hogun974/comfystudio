@@ -511,6 +511,7 @@ BESOINS = {
     "banc_noeud.py": ["banc_noeud.py", "noeud.sh", "maj_noeud.sh",
                       "noeud.bat", "maj_noeud.bat",
                       "service/noeud_windows.ps1",
+                      "service/demarrer.exemple.bat",
                       "installer.py", "installation.py", "catalogue.py",
                       "LANCER ComfyStudio.bat",
                       "paquet/construire_windows.bat"],
@@ -5462,6 +5463,63 @@ NOEUD = [
             ("service/noeud_windows.ps1", brut(
                 "$declencheur.Repetition.Duration = ''",
                 "$declencheur.Repetition.Duration = [TimeSpan]::MaxValue"))]),
+    # ── le fichier que la tache lance, arrive au depot le 12 septembre 2026 ──
+    dict(
+        nom="le jeton du noeud repart en clair dans le fichier de demarrage",
+        banc="banc_noeud.py",
+        imite="la forme la plus courte, et celle qu'on ecrit quand on veut que "
+              "« ca marche tout de suite ». Le jeton d'un noeud vaut droit de "
+              "faire travailler sa carte ; ecrit la, il part au premier depot, "
+              "a la premiere sauvegarde, au premier partage du dossier",
+        rougit="l'exemple de demarrer.bat lit le jeton dans un fichier a part",
+        editions=[
+            ("service/demarrer.exemple.bat", brut(
+                '  call "%~dp0noeud.bat" --studio %STUDIO% --jeton %JETON%'
+                ' --sorties "%SORTIES%" %*',
+                '  call "%~dp0noeud.bat" --studio %STUDIO% --jeton J3T0N-EN-CLAIR'
+                ' --sorties "%SORTIES%" %*'))]),
+    dict(
+        nom="le fichier de demarrage ne transmet plus ses arguments",
+        banc="banc_noeud.py",
+        imite="on oublie « %* ». La tache planifiee lance « demarrer.bat "
+              "--fond » : sans transmission, l'agent demarre au PREMIER PLAN, "
+              "le lanceur ne rend jamais la main, la tache reste « en cours » "
+              "pour toujours — et sa repetition ne repasse plus. Tout le "
+              "travail de la journee est annule par un oubli de deux "
+              "caracteres, et rien ne le dirait",
+        rougit="et il transmet ses arguments",
+        editions=[
+            ("service/demarrer.exemple.bat", brut(
+                '  call "%~dp0noeud.bat" --studio %STUDIO% --jeton %JETON%'
+                ' --sorties "%SORTIES%" %*',
+                '  call "%~dp0noeud.bat" --studio %STUDIO% --jeton %JETON%'
+                ' --sorties "%SORTIES%"'))]),
+    dict(
+        nom="un caractere hors ASCII entre dans une ligne executee du .bat",
+        banc="banc_noeud.py",
+        imite="un tiret long dans un « echo », pose sans y penser en relisant. "
+              "cmd.exe lit le fichier dans la page de codes de la console : "
+              "l'affichage devient illisible, et dans une valeur entre "
+              "guillemets le meme octet coupe la ligne. C'est exactement ce "
+              "qui est arrive au .ps1 le 12 septembre 2026",
+        rougit="demarrer.exemple.bat n'a aucun caractere hors ASCII en dehors "
+               "de ses commentaires",
+        editions=[
+            ("service/demarrer.exemple.bat", brut(
+                "  echo   [X] %FICHIER_JETON% est vide",
+                "  echo   [X] %FICHIER_JETON% est vide — rien a faire"))]),
+    dict(
+        nom="le script d'installation lance un fichier que l'exemple ne nomme pas",
+        banc="banc_noeud.py",
+        imite="on renomme d'un cote et pas de l'autre. Le .ps1 enregistre une "
+              "tache qui lance un fichier absent de la machine, la tache sort "
+              "en erreur a chaque battement, et l'exemple continue d'expliquer "
+              "comment fabriquer un fichier que plus personne ne lance",
+        rougit="et il nomme le fichier que la tache planifiee lance vraiment",
+        editions=[
+            ("service/noeud_windows.ps1", brut(
+                '[string]$Script  = "demarrer.bat",',
+                '[string]$Script  = "lancer_le_noeud.bat",'))]),
 ]
 
 
