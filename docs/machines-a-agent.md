@@ -67,6 +67,26 @@ suivants n'ont plus besoin d'arguments.
 Pour ne mettre à jour que l'agent, sans le reste : `maj_noeud.sh` ou
 `maj_noeud.bat`.
 
+**Le lanceur, lui, ne se met jamais à jour.** L'agent se remplace tout seul à
+chaque battement ; `noeud.sh` et `noeud.bat` restent à la version posée le jour
+de l'enrôlement, et rien ne le signale. Un défaut corrigé ici n'atteint donc
+jamais une machine déjà enrôlée — il faut y reposer le fichier à la main, ou le
+reprendre du studio :
+
+```powershell
+curl.exe -fsS http://IP-DU-STUDIO:8199/api/noeud/noeud.bat -o noeud.bat
+```
+
+Mesure du 12 septembre 2026. Le nœud `pc` était sorti du parc depuis deux jours
+et une demande de retouche a été refusée faute de machine capable — la seule
+machine restante n'avait ni la carte ni les modèles. En remontant : sa tâche
+planifiée s'était lancée une fois, avait rendu le code 1, et n'avait jamais
+réessayé. Elle exécutait un `noeud.bat` du 29 août, d'avant la séparation du
+consultatif et du bloquant : ComfyUI n'était pas encore levé à l'ouverture de
+session, ce qui était compté comme un point à régler, et l'agent n'était pas
+lancé. Le correctif existait depuis le 4 septembre, dans le dépôt, à huit jours
+et un copier-coller de la machine qui en avait besoin.
+
 ## Mettre à jour un parc
 
 L'agent est servi par le studio (`/api/noeud/agent`). Mettre à jour revient donc

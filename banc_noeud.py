@@ -645,6 +645,48 @@ dit(bool(_ecrit) and all("os.environ[" in l and "sys.argv" not in l
     "il l'ecrit dans agent_noeud.json, en lisant le jeton dans l'environnement",
     f"releve de texte : {len(_ecrit)} ligne(s) d'ecriture")
 
+# ══════════════ 7. cmd mange les virgules d'un « for /f » ════════════
+# RELEVE DE TEXTE, faute de cmd.exe sur les runners — meme raison qu'au-dessus.
+#
+# Le 12 septembre 2026, le noeud « pc » est sorti du parc pendant deux jours et
+# la demande de l'utilisateur a ete refusee, faute de machine capable. En
+# remontant : noeud.bat ne relisait PAS agent_noeud.json. La virgule et le
+# point-virgule sont des separateurs de jetons pour « for /f » ; cmd les mange
+# avant de lancer la commande, et le Python embarque recevait
+# « import json io print(...).get('studio' '') ». La SyntaxError partait dans
+# le « 2>nul » : variable vide, « aucune adresse de studio », sortie en 1.
+#
+# noeud.sh tient la meme promesse depuis toujours, et le cas « un second
+# lancement sans argument reprend studio et jeton du fichier » le mesure — POUR
+# LUI SEUL. Le jumeau Windows portait une copie que rien ne lancait.
+#
+# Le remede etait deja dans le fichier, pour l'empreinte de l'agent : passer le
+# code par une variable relue en « !...! », qui se developpe APRES l'analyse de
+# la ligne. C'est cette propriete-la qu'on exige ici, et non la presence d'un
+# nom : une ligne peut porter « !LIRE! » ET une virgule en clair a cote.
+_RE_FORF = re.compile(r"for /f .*?\bin \('(.*)'\)", re.I)
+for _bat_forf in ("noeud.bat", "maj_noeud.bat"):
+    with io.open(os.path.join(ICI, _bat_forf), encoding="utf-8",
+                 errors="replace") as f:
+        _forf_lignes = [l for l in f.read().splitlines()
+                        if l.lstrip().lower().startswith("for /f")]
+    _forf_fautifs = []
+    for _forf_l in _forf_lignes:
+        _forf_m = _RE_FORF.search(_forf_l)
+        if not _forf_m or "%PY%" not in _forf_m.group(1):
+            continue
+        # Ce qui est relu en « !...! » se developpe apres l'analyse de la
+        # ligne : cmd ne peut plus rien y manger. On le retire avant de
+        # chercher ce qui reste en clair.
+        _forf_clair = re.sub(r"![A-Za-z_]+!", "", _forf_m.group(1))
+        if "," in _forf_clair or ";" in _forf_clair:
+            _forf_fautifs.append(_forf_l.strip())
+    dit(not _forf_fautifs,
+        f"{_bat_forf} ne passe au Python embarque ni virgule ni point-virgule "
+        f"en clair dans un « for /f » — cmd les mangerait",
+        "releve de texte : cmd.exe n'est pas sur les runners de la CI ; "
+        + " / ".join(_forf_fautifs))
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees "
       f"— {time.time() - _depart:.1f} s")
 sys.exit(1 if rate else 0)

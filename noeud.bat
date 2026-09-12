@@ -252,9 +252,21 @@ echo Studio
 echo ------
 REM Les parentheses du Python embarque fermeraient un bloc if : on lit
 REM donc la configuration au premier niveau, jamais entre parentheses.
+REM
+REM ET LE CODE PASSE PAR UNE VARIABLE RELUE EN !...!, comme celui de
+REM l'empreinte trente lignes plus bas. Ecrit en clair dans le "for /f", la
+REM VIRGULE et le POINT-VIRGULE y sont des separateurs de jetons : cmd les
+REM mange AVANT de lancer quoi que ce soit, et le Python embarque recevait
+REM "import json io print(...).get('studio' '')". La SyntaxError partait
+REM dans le "2>nul" : une variable vide, "aucune adresse de studio", et une
+REM sortie en 1 — alors que ce fichier promet en tete que les lancements
+REM suivants n'ont plus besoin d'arguments, et que noeud.sh, lui, le tient.
+REM Mesure du 12 septembre 2026 sur pc : forme en clair, vide ; forme
+REM retardee, l'adresse. La lecture retardee developpe APRES l'analyse.
 if defined STUDIO goto :studio_su
 if not exist "%CONFIG%" goto :studio_su
-for /f "delims=" %%s in ('""%PY%" -c "import json,io;print^(json.load^(io.open^('%CONFIG%'^)^).get^('studio',''^)^)"" 2^>nul') do set "STUDIO=%%s"
+set "LIRE=import json,io;print(json.load(io.open('%CONFIG%')).get('studio',''))"
+for /f "delims=" %%s in ('""%PY%" -c "!LIRE!"" 2^>nul') do set "STUDIO=%%s"
 if defined STUDIO echo       adresse retenue du dernier lancement
 :studio_su
 if defined STUDIO goto :studio_connu
@@ -313,7 +325,11 @@ if exist "%AGENT%.neuf" (
 )
 if defined JETON goto :jeton_su
 if not exist "%CONFIG%" goto :jeton_su
-for /f "delims=" %%j in ('""%PY%" -c "import json,io;print^(json.load^(io.open^('%CONFIG%'^)^).get^('jeton',''^)^)"" 2^>nul') do set "JETON=%%j"
+REM Meme raison qu'a l'adresse du studio, vingt lignes plus haut : la virgule
+REM et le point-virgule sont des separateurs de "for /f". Sans cette variable
+REM relue en !...!, une machine deja enrolee redemandait son jeton au clavier.
+set "LIREJ=import json,io;print(json.load(io.open('%CONFIG%')).get('jeton',''))"
+for /f "delims=" %%j in ('""%PY%" -c "!LIREJ!"" 2^>nul') do set "JETON=%%j"
 if defined JETON echo   [ok] jeton retenu du dernier lancement
 :jeton_su
 

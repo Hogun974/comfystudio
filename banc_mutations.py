@@ -494,17 +494,22 @@ BESOINS = {
     # scripts, et le trio de l'installeur — installer.py, installation.py et le
     # catalogue que celui-ci importe — parce que sa derniere section demande
     # POUR DE VRAI, en sous-processus, quel interpreteur fera tourner le studio.
-    # Les deux .bat sont la pour un releve de TEXTE, et le banc le dit : cmd.exe
+    # Les .bat y sont pour un releve de TEXTE, et le banc le dit : cmd.exe
     # n'existe pas sur les runners Ubuntu de la CI, et un cas qui ne tournerait
     # que sur une machine serait vert chez tout le monde sans avoir rien mesure.
     # Sans eux, ce releve mourrait a l'ouverture, ce qui ressemblerait a une
     # mutation attrapee.
     #
+    # noeud.bat EST ARRIVE LE 12 SEPTEMBRE 2026, et son absence est exactement
+    # ce qui a laisse passer le defaut : le lanceur Windows ne relisait pas
+    # agent_noeud.json, faute d'avoir echappe les virgules d'un "for /f", et
+    # aucun banc ne lisait ce fichier.
+    #
     # PAS agent_noeud.py : le banc sert son PROPRE agent, un temoin de trois
     # lignes qui ecrit ce qu'il a lu dans agent_noeud.json. Copier le vrai ne
     # mesurerait rien de plus et le ferait chercher un studio.
     "banc_noeud.py": ["banc_noeud.py", "noeud.sh", "maj_noeud.sh",
-                      "maj_noeud.bat",
+                      "noeud.bat", "maj_noeud.bat",
                       "installer.py", "installation.py", "catalogue.py",
                       "LANCER ComfyStudio.bat",
                       "paquet/construire_windows.bat"],
@@ -5383,6 +5388,50 @@ NOEUD = [
         editions=[
             ("maj_noeud.bat", brut("jeton=os.environ['JETON_A_ECRIRE']",
                                    "jeton=sys.argv[1]"))]),
+    # LES DEUX SUIVANTES REJOUENT L'ETAT DU DEPOT JUSQU'AU 12 SEPTEMBRE 2026,
+    # et elles visent le meme releve de texte, pour la meme raison assumee
+    # qu'au-dessus : sur une machine Linux, ce qu'on peut tenir d'un .bat,
+    # c'est ce qui y est ecrit.
+    dict(
+        nom="le lanceur Windows repasse ses virgules en clair au « for /f »",
+        banc="banc_noeud.py",
+        imite="L'ETAT REEL DU DEPOT JUSQU'AU 12 SEPTEMBRE 2026. La virgule et "
+              "le point-virgule sont des separateurs de jetons pour « for /f » : "
+              "cmd les mange avant de lancer la commande, et le Python embarque "
+              "recoit « import json io print(...).get('studio' '') ». La "
+              "SyntaxError part dans le « 2>nul », la variable reste vide, et "
+              "une machine deja enrolee ne retrouve plus son studio — « aucune "
+              "adresse de studio », sortie en 1, agent jamais lance. C'est ce "
+              "qui a sorti le noeud « pc » du parc pendant deux jours",
+        rougit="noeud.bat ne passe au Python embarque ni virgule ni "
+               "point-virgule en clair dans un « for /f »",
+        editions=[
+            ("noeud.bat", brut(
+                "set \"LIRE=import json,io;print(json.load(io.open('%CONFIG%'))"
+                ".get('studio',''))\"\n"
+                "for /f \"delims=\" %%s in ('\"\"%PY%\" -c \"!LIRE!\"\""
+                " 2^>nul') do set \"STUDIO=%%s\"",
+                "for /f \"delims=\" %%s in ('\"\"%PY%\" -c \"import json,io;"
+                "print^(json.load^(io.open^('%CONFIG%'^)^).get^('studio',''^)^)"
+                "\"\" 2^>nul') do set \"STUDIO=%%s\""))]),
+    dict(
+        nom="le jeton retenu se perd dans les memes virgules",
+        banc="banc_noeud.py",
+        imite="le jumeau du defaut precedent, vingt lignes plus bas : une "
+              "machine deja enrolee redemande son jeton au clavier a chaque "
+              "lancement. En tache planifiee, personne n'est la pour le taper — "
+              "elle attend une saisie qui ne viendra jamais",
+        rougit="noeud.bat ne passe au Python embarque ni virgule ni "
+               "point-virgule en clair dans un « for /f »",
+        editions=[
+            ("noeud.bat", brut(
+                "set \"LIREJ=import json,io;print(json.load(io.open('%CONFIG%'))"
+                ".get('jeton',''))\"\n"
+                "for /f \"delims=\" %%j in ('\"\"%PY%\" -c \"!LIREJ!\"\""
+                " 2^>nul') do set \"JETON=%%j\"",
+                "for /f \"delims=\" %%j in ('\"\"%PY%\" -c \"import json,io;"
+                "print^(json.load^(io.open^('%CONFIG%'^)^).get^('jeton',''^)^)"
+                "\"\" 2^>nul') do set \"JETON=%%j\""))]),
 ]
 
 
