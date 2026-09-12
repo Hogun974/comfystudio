@@ -703,9 +703,18 @@ for _bat_forf in ("noeud.bat", "maj_noeud.bat"):
 with io.open(os.path.join(ICI, "service", "noeud_windows.ps1"),
              encoding="utf-8", errors="replace") as f:
     _ps1 = f.read()
-dit(re.search(r"\$declencheur\.Repetition\s*=", _ps1) is not None,
-    "la tache Windows repasse periodiquement, et ne se fie pas au seul "
-    "« relancer si la tache echoue »",
+# LA REPETITION DOIT VIVRE SUR UN DECLENCHEUR QUI NE DEPEND PAS DE LA SESSION.
+# Premiere ecriture de ce cas : « $declencheur.Repetition = » suffisait. La
+# tache l'affichait bien, et n'a RIEN execute en vingt minutes — la repetition
+# d'un declencheur ne demarre qu'au moment ou ce declencheur se produit, et une
+# session deja ouverte a consomme le sien. On exige donc les deux : un
+# declencheur « Once » qui porte le battement, ET les deux declencheurs passes
+# ensemble a l'enregistrement.
+dit(re.search(r"-Once\b[^\n]*`?\s*\n?[^\n]*-RepetitionInterval", _ps1)
+    is not None
+    and re.search(r"-Trigger\s+@\(", _ps1) is not None,
+    "le battement de la tache Windows tient sur un declencheur « Once », pas "
+    "sur celui de l'ouverture de session qu'une session deja ouverte a consomme",
     "releve de texte : pas de planificateur Windows sur les runners de la CI")
 
 # ET LA DUREE N'EST PAS [TimeSpan]::MaxValue. Le cas ci-dessus, ecrit seul,

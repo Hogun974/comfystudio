@@ -67,31 +67,36 @@ if (-not (Test-Path $lanceur)) {
 
 $action = New-ScheduledTaskAction -Execute "cmd.exe" `
     -Argument "/c `"$lanceur`" --fond" -WorkingDirectory $Dossier
-$declencheur = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$ouverture = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 # Un delai laisse le reseau et les services de la carte se lever : sans lui,
 # l'agent teste un ComfyUI qui n'ecoute pas encore et repart en attente longue.
-$declencheur.Delay = "PT45S"
-# LA REPETITION EST CE QUI TIENT LA PROMESSE DE L'EN-TETE. Un declencheur
-# d'ouverture de session ne se produit qu'une fois ; tout ce qui casse ensuite
-# — ComfyUI pas encore leve, agent tue, mise a jour ratee — laisse la machine
-# dehors jusqu'a la prochaine session. Dix minutes : assez rare pour ne rien
-# couter, assez frequent pour qu'une absence ne dure pas la journee.
-# On recopie la repetition d'un declencheur « Once », seul moyen de la
-# construire avec ce module.
+$ouverture.Delay = "PT45S"
+# LA REPETITION NE PEUT PAS VIVRE SUR LE DECLENCHEUR D'OUVERTURE DE SESSION,
+# et c'est la seule chose qui compte ici. La repetition d'un declencheur ne
+# demarre QU'AU MOMENT OU CE DECLENCHEUR SE PRODUIT. Une session ouverte depuis
+# le matin a deja consomme le sien : la tache ne se declenchera plus avant la
+# prochaine ouverture, et la repetition reste inerte tout ce temps — c'est-a-dire
+# exactement pendant la panne qu'elle doit couvrir.
+#
+# Mesure du 12 septembre 2026 : posee sur le declencheur d'ouverture, la tache
+# affichait « repetition PT10M » et n'a RIEN execute en vingt minutes —
+# NextRunTime vide, LastTaskResult 267011, « la tache n'a jamais ete executee ».
+#
+# Il faut donc un second declencheur qui ne depende d'aucune session. « Once »,
+# a l'instant de l'enregistrement, porte la repetition ; celui d'ouverture garde
+# son delai pour le demarrage de la machine.
 #
 # ET SURTOUT PAS [TimeSpan]::MaxValue POUR LA DUREE. Il rend
 # « P99999999DT23H59M59S », que le planificateur REFUSE a l'enregistrement :
 # « valeur incorrectement formatee ou hors limites ». Le piege est qu'AFFECTER
 # la propriete, lui, reussit : on croit avoir verifie, et c'est Register qui
 # tombe — apres l'Unregister ci-dessous, donc en laissant la machine SANS
-# tache. Mesure du 12 septembre 2026, sur cette panne exacte.
+# tache. Mesure du meme jour, sur cette panne exacte.
 #
-# Une duree VIDE veut dire « indefiniment », et c'est precisement ce qu'on
-# veut. Mesure : duree vide ACCEPTEE, duree bornee acceptee aussi,
-# [TimeSpan]::MaxValue refusee.
-$modele = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+# Une duree VIDE veut dire « indefiniment ». Mesure : duree vide ACCEPTEE,
+# duree bornee acceptee aussi, [TimeSpan]::MaxValue refusee.
+$declencheur = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes 10)
-$declencheur.Repetition = $modele.Repetition
 $declencheur.Repetition.Duration = ''
 
 $reglages = New-ScheduledTaskSettingsSet `
@@ -106,11 +111,20 @@ $reglages.DisallowStartIfOnBatteries = $false
 if (Get-ScheduledTask -TaskName $Nom -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $Nom -Confirm:$false
 }
-Register-ScheduledTask -TaskName $Nom -Action $action -Trigger $declencheur `
+Register-ScheduledTask -TaskName $Nom -Action $action `
+    -Trigger @($ouverture, $declencheur) `
     -Settings $reglages -Description `
     "Met cette machine au service d'un ComfyStudio : demarre ComfyUI si besoin, puis l'agent." | Out-Null
 
 Write-Host "  tache enregistree : $Nom"
 Write-Host "  dossier           : $Dossier"
-Write-Host "  se lance a l'ouverture de session, 45 s apres, puis repasse toutes les 10 min"
+# ASCII STRICT DANS LES CHAINES. Ce fichier n'a pas de BOM, et Windows
+# PowerShell 5.1 le lit alors dans la page de codes ANSI : le tiret long
+# « — » (E2 80 94) y devient trois caracteres dont le dernier, 0x94, est un
+# guillemet courbe — que PowerShell accepte comme fin de chaine. La chaine se
+# fermait au milieu de la ligne, et le parseur reclamait un terminateur deux
+# lignes plus loin. Les commentaires, eux, s'en moquent. Mesure du 12 septembre
+# 2026.
+Write-Host "  deux declencheurs : l'ouverture de session (45 s apres), et un battement"
+Write-Host "  de 10 min qui ne depend d'aucune session : c'est lui qui rattrape une chute"
 Write-Host "  un agent deja en service refuse le doublon et sort en 0 : c'est voulu"
