@@ -1,0 +1,589 @@
+{
+  "name": "ComfyStudio — rendu long, prévenu par rappel",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## ComfyStudio — rendu long, prévenu par rappel\n\n1. Adresse du studio et credential « ComfyStudio » : comme dans n8n-rendu-comfystudio.json.\n2. **Déclare dans la clé l'hôte de l'adresse de reprise** — celui de `WEBHOOK_URL` de n8n, avec son port —, sinon le studio refuse la demande (400 `rappel_refuse`).\n\nLe POST part **sans** `attendre`, avec `rappel` = l'adresse de reprise de cette exécution. Le nœud Wait dort jusqu'au rappel, **une heure au plus** : un rappel peut se perdre. Le Switch lit `body.evenement` — `rendu.fini`, `rendu.question`, `rendu.erreur`, `rendu.annule` ; `rappel.essai` ne fait rien. Réveillé par le délai, il relit le rendu par son `id` et aiguille sur `etat`.\n\n**La clé ne suit jamais une adresse lue dans le rappel** : le téléchargement est construit sur l'adresse du studio et l'`id` rendu par le POST. Le corps du rappel n'est pas vérifié ici ; pour la signature, voir la recette du nœud Code dans la doc.\n\nDétail : docs/piloter-par-programme.md, « Sans attendre : le rappel »",
+        "height": 520,
+        "width": 520
+      },
+      "id": "e120fe08-a9d3-5613-84fd-d70b8668d1bc",
+      "name": "À lire d'abord",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -620
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e19c4a32-9a31-5f47-a077-8a3b6647923c",
+      "name": "Lancer à la main",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://STUDIO:8199/api/v1/rendus",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $execution.id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"demande\": \"une petite vidéo d'un renard qui court\",\n  \"rappel\": \"{{ $execution.resumeUrl }}\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "32521002-d464-5012-8487-08f47f89cd00",
+      "name": "Demander le rendu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "ComfyStudio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "limitWaitTime": true,
+        "limitType": "afterTimeInterval",
+        "resumeAmount": 1,
+        "resumeUnit": "hours",
+        "options": {}
+      },
+      "id": "c94e6eb5-25a5-5385-b9a3-2e8278467c62",
+      "name": "Attendre le rappel",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "webhookId": "dd8c0714-ebc5-50a7-b8cf-6ca777f647b1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "5f082c12-4773-5c74-b2f1-373598cd3b73",
+                    "leftValue": "={{ $json.body.evenement }}",
+                    "rightValue": "rendu.fini",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rendu.fini"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "7844c7b9-8901-5fdd-a418-4a1d4b491229",
+                    "leftValue": "={{ $json.body.evenement }}",
+                    "rightValue": "rendu.question",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rendu.question"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "4cd417c4-045e-52b7-ab0c-27d0def4283e",
+                    "leftValue": "={{ $json.body.evenement }}",
+                    "rightValue": "rendu.erreur",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rendu.erreur"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "b4de9af6-1ae3-5d07-bfb8-5e7a040d2f69",
+                    "leftValue": "={{ $json.body.evenement }}",
+                    "rightValue": "rendu.annule",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rendu.annule"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "id": "59efcb03-ac86-55d6-b4f5-c1d678585691",
+                    "leftValue": "={{ $json.body.evenement }}",
+                    "rightValue": "rappel.essai",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rappel.essai"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "délai écoulé"
+        }
+      },
+      "id": "2c100131-b4fa-5704-9944-527159b12f1b",
+      "name": "Quel événement ?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://STUDIO:8199/api/v1/rendus/{{ $('Demander le rendu').first().json.id }}/fichiers/0",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "70ad1d09-7dfc-5ca0-ac8a-e391bcb923ed",
+      "name": "Télécharger le premier fichier",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        -320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "ComfyStudio"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "61215482-3946-5f2e-913a-5533e8824239",
+      "name": "Le studio pose une question",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Rendu en erreur : {{ $json.body ? $json.body.rendu.erreur.message : $json.erreur.message }}"
+      },
+      "id": "6c11e8ac-bbab-5833-8450-6bb3429444e9",
+      "name": "Le rendu a échoué",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        -20
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "605f62db-f119-5bb8-a9bc-4808a94a86b3",
+      "name": "Annulé",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        120
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a9ef7eb0-b60c-59bd-8ba9-156c305ec7ce",
+      "name": "Essai de branchement : rien à faire",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://STUDIO:8199/api/v1/rendus/{{ $('Demander le rendu').first().json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "01aef583-bba0-53d5-8ad5-b64c05c6e0dc",
+      "name": "Relire le rendu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        420
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "ComfyStudio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "a4ccf208-562f-5a20-8db4-603d175ed96a",
+                    "leftValue": "={{ $json.etat }}",
+                    "rightValue": "fini",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "fini"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "84957835-5041-554a-8f65-c6d1bce45bf4",
+                    "leftValue": "={{ $json.etat }}",
+                    "rightValue": "question",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "question"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "cc746f29-83cb-5bb4-b004-04ecdd9691ff",
+                    "leftValue": "={{ $json.etat }}",
+                    "rightValue": "erreur",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "erreur"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "417d50d2-f23d-53ed-8699-1410fb317f55",
+                    "leftValue": "={{ $json.etat }}",
+                    "rightValue": "annule",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "annule"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "pas encore final"
+        }
+      },
+      "id": "5e5577d0-1d99-5ee8-b15c-5a1208ac2231",
+      "name": "Quel état ?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        1160,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Rendu {{ $json.id }} toujours « {{ $json.etat }} » après une heure : relis-le plus tard, il n'est pas perdu."
+      },
+      "id": "b31cbf47-331d-50b2-8556-019945ec22f0",
+      "name": "Toujours pas fini",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        560
+      ]
+    }
+  ],
+  "connections": {
+    "Lancer à la main": {
+      "main": [
+        [
+          {
+            "node": "Demander le rendu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demander le rendu": {
+      "main": [
+        [
+          {
+            "node": "Attendre le rappel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attendre le rappel": {
+      "main": [
+        [
+          {
+            "node": "Quel événement ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quel événement ?": {
+      "main": [
+        [
+          {
+            "node": "Télécharger le premier fichier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Le studio pose une question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Le rendu a échoué",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Annulé",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Essai de branchement : rien à faire",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Relire le rendu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relire le rendu": {
+      "main": [
+        [
+          {
+            "node": "Quel état ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quel état ?": {
+      "main": [
+        [
+          {
+            "node": "Télécharger le premier fichier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Le studio pose une question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Le rendu a échoué",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Annulé",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Toujours pas fini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

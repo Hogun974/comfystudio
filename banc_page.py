@@ -1901,6 +1901,36 @@ dit(len(_peintres) == 1 and len(_tours) == 1 and _relance,
     else "le pilote ne repeint rien apres le POST" if not _relance
     else f"{_tours[0]}() -> {_peintres[0]}(), relance par piloterMoteur()")
 
+# ══ LE FORMULAIRE DE CREATION D'UNE CLE envoie chaque reglage que le magasin
+# accepte. Un reglage ajoute a acces.Acces.creer() sans case dans la page
+# n'existe pour personne : le proprietaire ne le voit pas, et la cle nait avec
+# le defaut. Les parametres sont LUS dans acces.py (par ast, sans importer),
+# pas recopies ici : le prochain reglage tombe sous la garde tout seul.
+print("\n  ── le formulaire des cles d'acces ──")
+ACCES_SRC = io.open(os.path.join(ICI, "acces.py"), encoding="utf-8").read()
+reglages_cle = []
+for _n in ast.walk(ast.parse(ACCES_SRC)):
+    if isinstance(_n, ast.FunctionDef) and _n.name == "creer":
+        reglages_cle = [a.arg for a in _n.args.kwonlyargs if a.arg != "maintenant"]
+_envoi = re.search(r'fetch\("/api/compte/acces",\s*\{\s*method:\s*"POST".*?'
+                   r'JSON\.stringify\(\{(.*?)\}\)\s*\}\)', PAGE, re.S)
+_corps = _envoi.group(1) if _envoi else ""
+_envoyes = set(re.findall(r'\b([a-z_]+)\s*:', _corps))
+dit(len(reglages_cle) >= 6 and _envoi,
+    "temoin : les reglages de creer() et le corps envoye par la page sont lus",
+    f"{reglages_cle}")
+_oublies = [r for r in reglages_cle if r not in _envoyes]
+dit(not _oublies,
+    "la page envoie chaque reglage que creer() accepte",
+    ", ".join(_oublies) or ", ".join(reglages_cle))
+# Les cases et leur releve : le meme nom des deux cotes. Un nom different
+# enverrait une liste vide — donc une cle qui peut TOUT, sans un mot.
+_poses = set(re.findall(r'caseOp\.name\s*=\s*"([a-z_]+)"', PAGE))
+_lus = set(re.findall(r"querySelectorAll\('input\[name=\"([a-z_]+)\"\]:checked'\)", PAGE))
+dit(_poses and _poses == _lus,
+    "les cases « ce que la cle peut faire » sont relues sous leur propre nom",
+    f"posees {sorted(_poses)}, relues {sorted(_lus)}")
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

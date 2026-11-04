@@ -428,7 +428,8 @@ BESOINS = {
     # pendant des jours. Le fichier est ouvert sous try la-bas : sans lui le
     # banc ROUGIT sur un cas nomme au lieu de mourir.
     "banc_page.py": ["banc_page.py", "web/index.html", "web/demarrage.html",
-                     "web/admin.html", "traductions.py", "serveur.py"],
+                     "web/admin.html", "traductions.py", "serveur.py",
+                     "acces.py"],
     # LE SEUL BANC AVEC banc_page.py A LIRE DEUX MONDES : comptes.py qu'il
     # IMPORTE (et mfa.py avec lui, que comptes.py importe en tete), et
     # serveur.py qu'il LIT par l'arbre de syntaxe pour la derniere section — un
@@ -481,6 +482,10 @@ BESOINS = {
     # que son module. banc_rappels.py lance un vrai petit serveur aiohttp sur
     # 127.0.0.1, mais n'ouvre aucun fichier du depot de plus.
     "banc_acces.py": ["banc_acces.py", "acces.py"],
+    "banc_exemples.py": ["banc_exemples.py", "contrat.py", "acces.py",
+                             "mcp.py", "rappels.py", "serveur.py",
+                             "exemples/n8n-rendu-comfystudio.json",
+                             "exemples/n8n-rappel-comfystudio.json"],
     "banc_rappels.py": ["banc_rappels.py", "rappels.py"],
     "banc_mcp.py": ["banc_mcp.py", "mcp.py"],
     # Il importe serveur.py pour comparer le routeur au contrat : tout ce que
@@ -12292,8 +12297,10 @@ EXPIRATION = [
         rougit="une cle creee pour 30 jours porte sa date de fin",
         editions=[("serveur.py", brut(
             '                          par_jour=d.get("par_jour", 0),' + chr(10)
-            + '                          expire_jours=d.get("expire_jours", 0))',
-            '                          par_jour=d.get("par_jour", 0))'))]),
+            + '                          expire_jours=d.get("expire_jours", 0),' + chr(10)
+            + '                          operations=d.get("operations"))',
+            '                          par_jour=d.get("par_jour", 0),' + chr(10)
+            + '                          operations=d.get("operations"))'))]),
     dict(
         nom="le contrat ne decrit pas la date de fin",
         banc="banc_contrat.py",
@@ -12596,6 +12603,387 @@ RELECTURE_RENOUVELER = [
 ]
 
 
+# CE QUE LA CLE PEUT FAIRE (4 novembre 2026). Une cle de detourage volee ne
+# lance pas de video : a l'entree quand le moteur est impose, apres l'analyse
+# sinon. Chaque garde a son defaut plausible, et chacun doit rougir.
+OPERATIONS_CLE = [
+    dict(
+        nom="operation_permise laisse tout passer",
+        banc="banc_acces.py",
+        imite="la liste ecrite sur la fiche et jamais lue : la case cochee "
+              "rassure le proprietaire, la cle volee lance quand meme la video",
+        rougit="operation_permise : familles, questions, et types inconnus fermes",
+        editions=[("acces.py", brut(
+            "    return f is not None and f in operations",
+            "    return True"))]),
+    dict(
+        nom="un type sans famille est ouvert a une cle restreinte",
+        banc="banc_acces.py",
+        imite="« pas de famille connue, on laisse passer » : le moteur ajoute "
+              "demain au catalogue sans passer par FAMILLES s'ouvre a toutes "
+              "les cles qui avaient choisi",
+        rougit="operation_permise : familles, questions, et types inconnus fermes",
+        editions=[("acces.py", brut(
+            "    return f is not None and f in operations",
+            "    return f is None or f in operations"))]),
+    dict(
+        nom="une liste d'operations abimee se lit comme tout",
+        banc="banc_acces.py",
+        imite="le champ optionnel non verifie au chargement : une chaine "
+              "« detourer » ecrite a la main dans le fichier passe, et la cle "
+              "qu'on avait fermee s'ouvre",
+        rougit="une liste abimee ('detourer') rend le fichier illisible",
+        editions=[("acces.py", brut(
+            "                        and (x.get(\"operations\") is None" + chr(10)
+            + "                             or (isinstance(x[\"operations\"], list)" + chr(10)
+            + "                                 and all(isinstance(o, str) and o in OPERATIONS" + chr(10)
+            + "                                         for o in x[\"operations\"])))):",
+            "                        ):"))]),
+    dict(
+        nom="les familles gardent l'ordre et les doublons de la requete",
+        banc="banc_acces.py",
+        imite="la liste recopiee telle quelle : deux cles qui permettent la "
+              "meme chose se lisent differemment, et « detourer » deux fois "
+              "s'affiche deux fois",
+        rougit="les familles sont rangees dans l'ordre d'OPERATIONS, sans doublon",
+        editions=[("acces.py", brut(
+            "    return [o for o in OPERATIONS if o in operations]",
+            "    return list(operations)"))]),
+    dict(
+        nom="la fiche publique rend la liste de la cle elle-meme",
+        banc="banc_acces.py",
+        imite="« list() ne sert a rien » : un appelant qui ajoute une famille "
+              "a la fiche qu'on lui a rendue ouvre la cle en memoire",
+        rougit="modifier la fiche publique ne touche pas la cle",
+        editions=[("acces.py", brut(
+            "            \"operations\": list(fiche.get(\"operations\") or []),",
+            "            \"operations\": fiche.get(\"operations\") or [],"))]),
+    dict(
+        nom="la route de creation oublie operations",
+        banc="banc_pilotage.py",
+        imite="le champ ajoute au magasin et a la page, pas a la route qui "
+              "relie les deux : la cle nait avec le defaut, donc peut tout",
+        rougit="POST /api/compte/acces transmet « operations » a la cle",
+        editions=[("serveur.py", brut(
+            "                          expire_jours=d.get(\"expire_jours\", 0)," + chr(10)
+            + "                          operations=d.get(\"operations\"))",
+            "                          expire_jours=d.get(\"expire_jours\", 0))"))]),
+    dict(
+        nom="le moteur impose n'est pas compare a ce que la cle permet",
+        banc="banc_pilotage.py",
+        imite="la garde laissee a l'analyse seule : le refus arrive apres le "
+              "202, la demande a pris sa place en file et son unite du jour",
+        rougit="un moteur « wan5b » (video) sur une cle d'images rend 403",
+        editions=[("serveur.py", brut(
+            "        if not _acces.operation_permise(ops, type_):" + chr(10)
+            + "            oublier_image()",
+            "        if False:" + chr(10)
+            + "            oublier_image()"))]),
+    dict(
+        nom="la marque de la tache ne porte pas la liste",
+        banc="banc_pilotage.py",
+        imite="la liste lue sur la fiche a l'entree et pas recopiee : apres "
+              "l'analyse, executer() ne sait plus rien de la cle, et un "
+              "redemarrage n'en retrouverait rien non plus",
+        rougit="temoin : un moteur d'image passe, et la tache comme son entree de file",
+        editions=[("serveur.py", brut(
+            "              \"base\": base_publique(req), \"langue\": lg," + chr(10)
+            + "              \"operations\": list(ops)}",
+            "              \"base\": base_publique(req), \"langue\": lg}"))]),
+    dict(
+        nom="executer ne verifie pas l'operation apres l'analyse",
+        banc="banc_pilotage.py",
+        imite="la garde d'entree seule : sans moteur impose, une cle de "
+              "detourage dont la demande se lit « video » rend la video",
+        rougit="une demande que l'analyse lit « video » sur une cle d'images finit en",
+        editions=[("serveur.py", brut(
+            "        if refus_op:" + chr(10)
+            + "            raise RefusMoteur(",
+            "        if False:" + chr(10)
+            + "            raise RefusMoteur("))]),
+    dict(
+        nom="la garde des operations vient apres l'enrichissement",
+        banc="banc_pilotage.py",
+        imite="la garde posee pres du choix du moteur, plus bas : le refus "
+              "tombe quand meme, mais apres un appel complet au modele de "
+              "langage, a chaque demande refusee",
+        rougit="et rien n'a travaille : ni enrichissement par le modele de langage",
+        editions=[("serveur.py", brut(
+            "        refus_op = operation_refusee(tid, plan, texte)" + chr(10)
+            + "        if refus_op:" + chr(10)
+            + "            raise RefusMoteur(\"cette cle d'acces ne permet pas cette operation\"," + chr(10)
+            + "                              refus_op)" + chr(10),
+            "")),
+                  ("serveur.py", brut(
+            "        cle = plan[\"modele\"]" + chr(10) + chr(10)
+            + "        # Le studio n'a pas su preparer la demande",
+            "        cle = plan[\"modele\"]" + chr(10)
+            + "        refus_op = operation_refusee(tid, plan, texte)" + chr(10)
+            + "        if refus_op:" + chr(10)
+            + "            raise RefusMoteur(\"cette cle d'acces ne permet pas cette operation\"," + chr(10)
+            + "                              refus_op)" + chr(10) + chr(10)
+            + "        # Le studio n'a pas su preparer la demande"))]),
+    dict(
+        nom="la liste des moteurs montre ce que la cle ne peut pas lancer",
+        banc="banc_pilotage.py",
+        imite="le filtre oublie dans /api/v1/moteurs : l'assistant choisit "
+              "une video dans la liste, et recoit un 403",
+        rougit="GET /api/v1/moteurs ne montre a une cle d'images que des moteurs d'image",
+        editions=[("serveur.py", brut(
+            "    return [m for m in liste if _acces.operation_permise(ops, m[\"type\"])]",
+            "    return liste"))]),
+    dict(
+        nom="un type du catalogue manque a FAMILLES",
+        banc="banc_pilotage.py",
+        imite="la planche oubliee dans la table : une cle « image » qui demande "
+              "une planche est refusee sans que rien ne dise pourquoi",
+        rougit="chaque type de moteur du catalogue et du nuage a sa famille",
+        editions=[("acces.py", brut(
+            "    \"image\": \"image\", \"planche\": \"image\",",
+            "    \"image\": \"image\","))]),
+    dict(
+        nom="erreur.code d'un rendu reste l'enveloppe echec",
+        banc="banc_pilotage.py",
+        imite="la cle de la marque exterieure lue seule : chaque refus "
+              "d'executer() se lit « echec », et le workflow n'a rien sur quoi "
+              "brancher",
+        rougit="« erreur.code » d'un rendu dit la raison imbriquee",
+        editions=[("serveur.py", brut(
+            "    if panne[\"cle\"] == \"panne.echec\" and isinstance(quoi, dict) and quoi.get(\"cle\"):",
+            "    if False:"))]),
+    dict(
+        nom="le contrat annonce d'autres familles que acces.py",
+        banc="banc_contrat.py",
+        imite="l'enumeration recopiee a la main dans le contrat : la famille "
+              "ajoutee a acces.py n'existe pas pour l'outil qui lit le contrat",
+        rougit="les familles d'« operations » sont celles d'acces.OPERATIONS",
+        editions=[("contrat.py", brut(
+            "                                     \"enum\": list(_acces.OPERATIONS)},",
+            "                                     \"enum\": list(_acces.OPERATIONS)[:-1]},"))]),
+    dict(
+        nom="le contrat ne dit pas le 403 de POST /api/v1/rendus",
+        banc="banc_contrat.py",
+        imite="le refus ajoute a la table et pas a la route : un client "
+              "genere depuis le contrat ne s'attend pas a ce statut",
+        rougit="POST /api/v1/rendus annonce le 403",
+        editions=[("contrat.py", brut(
+            "            \"responses\": dict(_communes(400, 403, 404, 413, 422), **{",
+            "            \"responses\": dict(_communes(400, 404, 413, 422), **{"))]),
+    dict(
+        nom="la page n'envoie pas les cases cochees",
+        banc="banc_page.py",
+        imite="les cases dessinees et jamais relues : le proprietaire coche "
+              "« detourer », la cle nait et peut tout",
+        rougit="la page envoie chaque reglage que creer() accepte",
+        editions=[("web/index.html", brut(
+            "                               expire_jours: Number(f.expire_jours.value)," + chr(10)
+            + "                               operations: Array.from(" + chr(10)
+            + "                                 corps.querySelectorAll('input[name=\"operation\"]:checked')," + chr(10)
+            + "                                 x => x.value) }) });",
+            "                               expire_jours: Number(f.expire_jours.value) }) });"))]),
+    dict(
+        nom="les cases sont relues sous un autre nom",
+        banc="banc_page.py",
+        imite="la case renommee « op » d'un cote seulement : la liste envoyee "
+              "est toujours vide, donc la cle peut tout, sans un mot",
+        rougit="les cases « ce que la cle peut faire » sont relues sous leur propre nom",
+        editions=[("web/index.html", brut(
+            "      caseOp.type = \"checkbox\"; caseOp.name = \"operation\"; caseOp.value = o;",
+            "      caseOp.type = \"checkbox\"; caseOp.name = \"op\"; caseOp.value = o;"))]),
+]
+
+
+# LES EXEMPLES N8N (4 novembre 2026) : ce qu'on importe sans le relire.
+EXEMPLES_N8N = [
+    # ──────────────────────────────────────────────────────────────────────
+    #  banc_exemples.py — dix mutations : neuf dans les exemples, une
+    #  dans le contrat (la preuve que le banc lit le contrat, pas une copie)
+    # ──────────────────────────────────────────────────────────────────────
+    dict(
+        nom="l'en-tete d'idempotence mal nomme",
+        banc="banc_exemples.py",
+        imite="« Idempotence-Key » au lieu de « Idempotency-Key » : n8n "
+              "l'envoie sans broncher, le studio l'ignore, et chaque Retry On "
+              "Fail relance un rendu de plus — du temps de carte pour une "
+              "image que personne n'a demandee deux fois",
+        rougit="[rendu] l'Idempotency-Key est posee sur le POST /api/v1/rendus",
+        editions=[("exemples/n8n-rendu-comfystudio.json", brut(
+            '"name": "Idempotency-Key",',
+            '"name": "Idempotence-Key",'))]),
+    dict(
+        nom="attendre monte a 600 sans monter le timeout",
+        banc="banc_exemples.py",
+        imite="on lit « 600 au plus » dans la doc et on monte attendre pour "
+              "les videos, en oubliant le timeout du noeud : n8n coupe a "
+              "330 s, l'execution echoue, Retry On Fail redemande — et sans "
+              "Idempotency-Key ce serait un rendu de plus a chaque essai",
+        rougit="[rendu] le timeout n8n depasse « attendre » d'au moins 10 s",
+        editions=[("exemples/n8n-rendu-comfystudio.json", brut(
+            '\\"attendre\\": 300',
+            '\\"attendre\\": 600'))]),
+    dict(
+        nom="tout 429 est reessaye, reessayer_dans ou pas",
+        banc="banc_exemples.py",
+        imite="la garde teste que la reponse a un statut au lieu de tester "
+              "« reessayer_dans » : un 429 cle_file_variantes, que le studio "
+              "rend SANS delai parce qu'attendre n'y changera rien, fait "
+              "boucler le workflow jusqu'a sa borne",
+        rougit="[rendu] un 429 sans reessayer_dans n'est pas reessaye",
+        editions=[("exemples/n8n-rendu-comfystudio.json", brut(
+            '"leftValue": "={{ $json.body.reessayer_dans }}",\n'
+            '              "operator": {\n'
+            '                "type": "number",\n'
+            '                "operation": "exists",',
+            '"leftValue": "={{ $json.statusCode }}",\n'
+            '              "operator": {\n'
+            '                "type": "number",\n'
+            '                "operation": "exists",'))]),
+    dict(
+        nom="le POST leve sur un 429 au lieu de le rendre",
+        banc="banc_exemples.py",
+        imite="« Never Error » decoche : n8n leve sur tout 4xx avant que le "
+              "Switch ne lise statusCode. La branche du 429 est dessinee, "
+              "relue, juste — et jamais prise",
+        rougit="[rendu] le statut est lu sur un POST regle Never Error et reponse complete",
+        editions=[("exemples/n8n-rendu-comfystudio.json", brut(
+            '"neverError": true',
+            '"neverError": false'))]),
+    dict(
+        nom="un champ lu sans body derriere une reponse complete",
+        banc="banc_exemples.py",
+        imite="LA faute n8n : avec « Include Response Headers and Status », le "
+              "rendu est dans $json.body, et « $json.fichiers » vaut "
+              "undefined. Le If tombe a faux a chaque fois : chaque rendu "
+              "fini devient « fini sans fichier », sans erreur",
+        rougit="[rendu] chaque champ lu dans une expression existe dans ce que le studio rend",
+        editions=[("exemples/n8n-rendu-comfystudio.json", brut(
+            '"leftValue": "={{ $json.body.fichiers.length }}",',
+            '"leftValue": "={{ $json.fichiers.length }}",'))]),
+    dict(
+        nom="la relecture bornee sur la position et non sur $runIndex",
+        banc="banc_exemples.py",
+        imite="« relire tant qu'on est pres du debut de la file » : un rendu "
+              "en attente_machine reste a la meme position pour toujours, et "
+              "l'execution relit le studio toutes les cinq minutes, des jours "
+              "durant",
+        rougit="[rendu] chaque boucle passe par un If borne sur $runIndex",
+        editions=[("exemples/n8n-rendu-comfystudio.json", brut(
+            '"leftValue": "={{ $runIndex }}",\n'
+            '              "rightValue": 6,',
+            '"leftValue": "={{ $json.body.position }}",\n'
+            '              "rightValue": 6,'))]),
+    dict(
+        nom="une cle d'acces collee dans la note",
+        banc="banc_exemples.py",
+        imite="la note « pour se souvenir » porte la cle entiere ; le "
+              "workflow exporte part dans un ticket, un forum, le depot — et "
+              "la cle contourne le second facteur pour toujours",
+        rougit="[rappel] aucune cle d'acces ni secret dans le fichier",
+        editions=[("exemples/n8n-rappel-comfystudio.json", brut(
+            "credential « ComfyStudio » : comme dans",
+            "credential « ComfyStudio » (Bearer "
+            "cs_92d11256_zjtwJKMBYwqvQ7gAZt0Wa34PXhlK5_0ibWF7LdPd4RY) : comme dans"))]),
+    dict(
+        nom="un evenement que le studio n'envoie pas",
+        banc="banc_exemples.py",
+        imite="« rendu.termine », le nom mal tape que rappels.py cite deja : "
+              "le Switch n'a plus de branche pour rendu.fini. Chaque rappel "
+              "de succes tombe dans le repli du delai et ne marche que parce "
+              "que la relecture rattrape — une branche morte que l'exemple "
+              "enseigne, et qu'un workflow sans relecture paierait",
+        rougit="[rappel] les evenements du Switch sont ceux que le studio envoie",
+        editions=[("exemples/n8n-rappel-comfystudio.json", brut(
+            '"rightValue": "rendu.fini",',
+            '"rightValue": "rendu.termine",'))]),
+    dict(
+        nom="le telechargement suit l'adresse lue dans le rappel",
+        banc="banc_exemples.py",
+        imite="la recette de la doc, « {{ $json.body.rendu.fichiers[0].url }} », "
+              "derriere un rappel dont la signature n'est pas verifiee : qui "
+              "connait l'adresse de reprise POSTe un corps qui dit « va "
+              "chercher chez moi », et le credential y pose la cle d'acces",
+        rougit="[rappel] la cle ne part que vers http://STUDIO:8199/api/v1/",
+        editions=[("exemples/n8n-rappel-comfystudio.json", brut(
+            '"url": "=http://STUDIO:8199/api/v1/rendus/'
+            '{{ $(\'Demander le rendu\').first().json.id }}/fichiers/0",',
+            '"url": "={{ $json.body.rendu.fichiers[0].url }}",'))]),
+    dict(
+        nom="le contrat gagne un etat final que les exemples ignorent",
+        banc="banc_exemples.py",
+        imite="un etat « expire » ajoute au contrat et au studio, pas aux "
+              "exemples : leur aiguillage le prend pour un etat non final et "
+              "relit jusqu'a sa borne un rendu qui ne bougera plus. C'est la "
+              "preuve que le banc lit ETATS_FINAUX dans contrat.py, et non "
+              "une liste recopiee",
+        rougit="[rendu] chaque etat final du contrat a sa branche dans l'aiguillage",
+        editions=[("contrat.py", brut(
+            'ETATS_FINAUX = ("question", "fini", "erreur", "annule")',
+            'ETATS_FINAUX = ("question", "fini", "erreur", "annule", "expire")'))]),
+]
+
+# LE CONTRAT RELU (4 novembre 2026) : une liste fermee doit le dire.
+CONTRAT_RELU = [
+    dict(
+        nom="le contrat ouvre la liste des types d'image",
+        banc="banc_contrat.py",
+        imite="« png, jpg, jpeg, webp… » : les points de suspension "
+              "laissent croire qu'on peut envoyer « gif » ou « svg », que le "
+              "studio refuse — et un client genere n'a pas d'enumeration",
+        rougit="« image_type » enumere exactement les types que serveur.py accepte",
+        editions=[("contrat.py", brut(
+            'TYPES_IMAGE = ("png", "jpg", "jpeg", "webp")',
+            'TYPES_IMAGE = ("png", "jpg", "jpeg", "webp", "gif")'))]),
+]
+
+
+# LA RELECTURE DES OPERATIONS (4 novembre 2026) : trois ecarts entre ce que
+# la garde lisait et ce que executer() fait vraiment.
+RELECTURE_OPERATIONS = [
+    dict(
+        nom="une lecture se juge sur le moteur qu'elle garde",
+        banc="banc_pilotage.py",
+        imite="« le type du moteur d'abord » sans exception : le modele de "
+              "langage rend lecture + klein4b, et la cle « lecture » est "
+              "refusee pour l'usage meme qu'elle sert",
+        rougit="une lecture qui garde un moteur d'image est une lecture",
+        editions=[("serveur.py", brut(
+            "    if intention == \"lecture\":" + chr(10)
+            + "        return \"lecture\"" + chr(10)
+            + "    if intention == \"edition\" and texte",
+            "    if intention == \"edition\" and texte"))]),
+    dict(
+        nom="la garde ne prevoit pas la bascule du meme personnage",
+        banc="banc_pilotage.py",
+        imite="la garde lit « edition », executer() rend une image neuve six "
+              "lignes plus bas : la cle « retouche » genere, la cle « image » "
+              "est refusee",
+        rougit="une retouche du « meme personnage » est jugee image neuve",
+        editions=[("serveur.py", brut(
+            "    if intention == \"edition\" and texte and veut_meme_personnage(texte):" + chr(10)
+            + "        return \"image\"" + chr(10),
+            ""))]),
+    dict(
+        nom="executer ne passe pas la demande a la garde",
+        banc="banc_pilotage.py",
+        imite="la regle du meme personnage ecrite, mais appelee sans le texte "
+              "qu'elle lit : elle ne mord jamais",
+        rougit="executer() arrete la retouche qui deviendrait une image neuve",
+        editions=[("serveur.py", brut(
+            "        refus_op = operation_refusee(tid, plan, texte)",
+            "        refus_op = operation_refusee(tid, plan)"))]),
+    dict(
+        nom="erreur.code distingue le refus du garde-fou par le genre",
+        banc="banc_pilotage.py",
+        imite="la cle interne exposee telle quelle : « refus_mineurs_genre » "
+              "apres la file, « refus_mineurs » avant — le workflow branche sur "
+              "le code documente rate le refus du prompt reecrit",
+        rougit="« erreur.code » d'un rendu dit la raison imbriquee",
+        editions=[("serveur.py", brut(
+            "CODES_DE_PANNE = {\"refus_mineurs_genre\": \"refus_mineurs\"}",
+            "CODES_DE_PANNE = {}"))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -12607,7 +12995,8 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + LISTE_ESSAI + HUMAINS_DABORD + RAPPELS_PERSISTANTS
              + CODES_FICHIERS + IDEMPOTENCE_DISQUE + EXPIRATION
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
-             + RELECTURE_RENOUVELER)
+             + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
+             + CONTRAT_RELU + RELECTURE_OPERATIONS)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

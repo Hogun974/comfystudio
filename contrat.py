@@ -49,6 +49,10 @@ ATTENDRE_MCP = 45
 ETATS = ("en_file", "en_cours", "attente_machine", "question",
          "fini", "erreur", "annule")
 ETATS_FINAUX = ("question", "fini", "erreur", "annule")
+# Les extensions qu'« image_type » accepte : TYPES_IMAGE de serveur.py,
+# relu par banc_contrat.py. Une liste FERMEE : le type devient l'extension
+# du fichier ecrit, il ne vient jamais du client.
+TYPES_IMAGE = ("png", "jpg", "jpeg", "webp")
 LIEN_DUREE = 24 * 3600
 IDEMPOTENCE_DUREE = 24 * 3600
 IDEMPOTENCE_LONGUEUR = 200
@@ -105,6 +109,12 @@ REFUS = {
                                    "porte cet identifiant."),
     "cle_sans_nuage": (400, "Moteur distant demandé, et la clé n'a pas droit au "
                             "nuage (ou la demande l'a retiré)."),
+    "cle_operation_interdite": (403, "Le moteur imposé fait une opération que "
+                                     "la clé ne permet pas (son champ "
+                                     "« operations »). Sans moteur imposé, le "
+                                     "même refus arrive après l'analyse, comme "
+                                     "rendu en « erreur » de même code. Ne pas "
+                                     "réessayer : changer de moteur ou de clé."),
     "refus_mineurs": (422, "Contenu sexuel impliquant des mineurs : refusé "
                            "avant la file, rien n'est compté."),
     "rendu_inconnu": (404, "Aucun rendu de CETTE clé ne porte cet identifiant "
@@ -191,8 +201,8 @@ def _schemas():
                                             "bleu »)."},
             "cree": {"type": nul,
                      "description": "Heure locale du studio, "
-                                    "« AAAA-MM-JJTHH:MM:SS+HHMM » (décalage "
-                                    "sans deux-points). Null quand le rendu "
+                                    "« AAAA-MM-JJTHH:MM:SS+01:00 » (RFC 3339, "
+                                    "décalage avec deux-points). Null quand le rendu "
                                     "n'est plus en mémoire."},
             "intention": {"type": nul},
             "moteur": {"type": nul},
@@ -209,8 +219,12 @@ def _schemas():
                 "type": ["object", "null"],
                 "properties": {
                     "code": {"type": "string",
-                             "description": "« annule », ou le code de la "
-                                            "panne (« inconnue » à défaut)."},
+                             "description": "« annule », ou la raison : "
+                                            "« refus_mineurs », "
+                                            "« cle_operation_interdite », "
+                                            "« moteur_nulle_part »… ; "
+                                            "« echec » pour une panne sans "
+                                            "phrase, « inconnue » à défaut."},
                     "message": {"type": "string"}}},
             "journal": {"type": "array", "items": {"type": nul},
                         "description": "Les cinq dernières lignes du fil du "
@@ -291,8 +305,11 @@ def _schemas():
                                             "au-delà, passer par "
                                             "/api/v1/fichiers."},
             "image_type": {"type": "string", "default": "png",
-                           "description": "Extension de l'image base64 : "
-                                          "png, jpg, jpeg, webp…"},
+                           "enum": list(TYPES_IMAGE),
+                           "description": "Extension de l'image base64, "
+                                          "dans cette liste et nulle autre : "
+                                          "elle devient celle du fichier "
+                                          "écrit."},
             "conversation": {"type": "string",
                              "description": "Une conversation de CETTE clé, "
                                             "pour enchaîner sur son contexte."},
@@ -358,6 +375,15 @@ def _schemas():
                                               "date jusqu'à laquelle l'ancien "
                                               "secret vaut encore ; null "
                                               "sinon."},
+            "operations": {"type": "array", "uniqueItems": True,
+                           "items": {"type": "string",
+                                     "enum": list(_acces.OPERATIONS)},
+                           "description": "Ce que la clé peut faire ; vide : "
+                                          "tout. Un moteur d'une autre "
+                                          "famille est refusé (403 "
+                                          "« cle_operation_interdite »), et "
+                                          "GET /api/v1/moteurs ne le montre "
+                                          "pas."},
         },
     }
     evenement = {
@@ -544,7 +570,7 @@ def _chemins():
             "parameters": [_ref("parameters", "IdempotencyKey")],
             "requestBody": {"required": True,
                             "content": _json(_ref("schemas", "DemandeRendu"))},
-            "responses": dict(_communes(400, 404, 413, 422), **{
+            "responses": dict(_communes(400, 403, 404, 413, 422), **{
                 "202": rendu_cree,
                 "200": {"description": "Déjà dans un état final, ou rejoué par "
                                        "Idempotency-Key (en-tête "
@@ -693,8 +719,9 @@ def _rappel():
             f"Un POST à la fin du rendu (fini, erreur, question, annule). "
             f"Attentes avant chaque essai : {essais} s ; réessayé sur 408, "
             f"425, 429, 5xx, délai ({_rappels.DELAI_REPONSE} s) ou "
-            f"injoignable ; jamais de redirection suivie. Non persisté : un "
-            f"studio qui s'arrête pendant les essais perd ce rappel."),
+            f"injoignable ; jamais de redirection suivie. Inscrit sur le "
+            f"disque dès son premier essai : un studio qui redémarre "
+            f"pendant les essais reprend la livraison."),
         "parameters": entetes,
         "requestBody": {"required": True,
                         "content": _json(_ref("schemas", "EvenementRappel"))},

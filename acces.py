@@ -116,6 +116,78 @@ EXPIRATIONS = (0, 7, 30, 90, 365)
 # rappel suivent la cle — seul le secret d'acces change.
 GRACE_RENOUVELLEMENT = 24 * 3600
 
+# CE QU'UNE CLE PEUT FAIRE. Une cle branchee sur un workflow de detourage n'a
+# aucune raison de pouvoir lancer une video de huit minutes : volee, elle ne
+# doit ouvrir que ce qu'elle servait. Huit familles et non les treize types du
+# catalogue : c'est le mot que lit le proprietaire en cochant, et « retoucher
+# le fond » sans « retoucher le sujet » n'est une frontiere pour personne.
+# Une liste vide veut dire « tout », le defaut, et les familles qu'on ajoutera
+# un jour avec — une cle d'avant n'a pas a se fermer a ce qu'elle ignorait.
+OPERATIONS = ("image", "retouche", "video", "audio", "agrandir", "detourer",
+              "objet3d", "lecture")
+
+# Le type d'un moteur (CATALOGUE[...]["type"]) ou l'intention d'un plan, vers
+# sa famille. Un type ABSENT d'ici n'a pas de famille : operation_permise() le
+# refuse a une cle restreinte. Un moteur ajoute au catalogue sans passer par
+# cette table reste ferme aux cles qui ont choisi — la faute se voit, elle ne
+# s'ouvre pas.
+FAMILLES = {
+    "image": "image", "planche": "image",
+    "edition": "retouche", "retoucher_fond": "retouche",
+    "retoucher_sujet": "retouche", "retoucher_zone": "retouche",
+    "video": "video", "video_image": "video", "fluidifier": "video",
+    "audio": "audio", "agrandir": "agrandir", "detourer": "detourer",
+    "objet3d": "objet3d", "lecture": "lecture",
+}
+
+# Ni l'une ni l'autre ne produit rien : une question demande une precision, un
+# refus n'a rien rendu. Les fermer a une cle restreinte la ferait echouer la
+# ou le studio voulait seulement lui parler.
+SANS_RENDU = ("question", "refus")
+
+
+def operations_valides(operations):
+    """La liste des familles d'une cle, dans l'ordre d'OPERATIONS. Leve
+    ErreurAcces sur autre chose qu'une liste de familles connues.
+
+    None ou [] : toutes. L'ordre est celui d'OPERATIONS et non celui de la
+    requete, pour que deux cles qui permettent la meme chose se lisent pareil
+    dans la liste.
+    """
+    if operations is None:
+        return []
+    if isinstance(operations, (str, bytes)) or not isinstance(operations, (list, tuple)):
+        # Une chaine seule serait parcourue lettre par lettre.
+        raise ErreurAcces("operations : une liste parmi " + ", ".join(OPERATIONS),
+                          cle="erreur.acces_operations",
+                          familles=", ".join(OPERATIONS))
+    for o in operations:
+        if not isinstance(o, str) or o not in OPERATIONS:
+            raise ErreurAcces("operations : une liste parmi " + ", ".join(OPERATIONS),
+                              cle="erreur.acces_operations",
+                              familles=", ".join(OPERATIONS))
+    return [o for o in OPERATIONS if o in operations]
+
+
+def famille(type_):
+    """La famille d'un type de moteur ou d'une intention, ou None."""
+    return FAMILLES.get(type_) if isinstance(type_, str) else None
+
+
+def operation_permise(operations, type_):
+    """Une cle qui permet « operations » peut-elle faire « type_ » ?
+
+    « operations » est la liste de la fiche (vide : tout). Prend la liste et
+    non la fiche : la tache en garde une copie sur sa marque, qui survit au
+    redemarrage comme le droit au nuage.
+    """
+    if not operations:
+        return True
+    if type_ in SANS_RENDU:
+        return True
+    f = famille(type_)
+    return f is not None and f in operations
+
 
 def expiree(fiche, maintenant=None):
     """Vrai si la fiche porte une date de fin, et qu'elle est passee."""
@@ -294,7 +366,15 @@ class Acces:
                         and (x.get("empreinte_ancienne") is None
                              or (isinstance(x["empreinte_ancienne"], str)
                                  and isinstance(x.get("ancienne_jusqu"), (int, float))
-                                 and not isinstance(x["ancienne_jusqu"], bool)))):
+                                 and not isinstance(x["ancienne_jusqu"], bool)))
+                        # Ce que la cle peut faire. Absente : tout. Une liste
+                        # abimee vaut fichier illisible, et non « tout » : lire
+                        # une restriction cassee comme une absence de
+                        # restriction ouvrirait la cle qu'on avait fermee.
+                        and (x.get("operations") is None
+                             or (isinstance(x["operations"], list)
+                                 and all(isinstance(o, str) and o in OPERATIONS
+                                         for o in x["operations"])))):
                     raise ValueError(f"fiche mal formee : {x.get('id')!r}")
                 fiches[x["id"]] = x
         except FileNotFoundError:
@@ -358,7 +438,7 @@ class Acces:
     # ── cles ─────────────────────────────────────────────────────────────
     def creer(self, compte, nom, generation, *, nuage=False, hotes=(),
               en_file=EN_FILE_DEFAUT, par_jour=0, expire_jours=0,
-              maintenant=None):
+              operations=None, maintenant=None):
         """Une cle neuve. Rend {"cle", "secret_rappel", "fiche"}.
 
         LA CLE ET LE SECRET DE RAPPEL SONT MONTRES UNE FOIS, ICI. Le studio ne
@@ -422,6 +502,7 @@ class Acces:
         expire_jours = _entier(expire_jours, 0, EXPIRE_JOURS_MAX,
                                "duree de vie en jours (0 = sans fin)",
                                cle="erreur.acces_expire")
+        operations = operations_valides(operations)
         if sum(1 for f in self.fiches.values()
                if f["compte"] == compte) >= CLES_PAR_COMPTE:
             raise ErreurAcces(f"{CLES_PAR_COMPTE} cles au plus par compte : "
@@ -447,6 +528,7 @@ class Acces:
             "nuage": bool(nuage), "hotes": propres, "en_file": en_file,
             "par_jour": par_jour,
             "expire": quand + expire_jours * 86400 if expire_jours else None,
+            "operations": operations,
         }
         try:
             self.sauver()
@@ -618,6 +700,9 @@ class Acces:
                                if fiche.get("empreinte_ancienne")
                                and (fiche.get("ancienne_jusqu") or 0) > time.time()
                                else None),
+            # Ce que la cle peut faire ; vide : tout. Une copie, pour qu'un
+            # appelant qui la modifie ne touche pas la fiche.
+            "operations": list(fiche.get("operations") or []),
         }
 
     def liste(self, compte=None):

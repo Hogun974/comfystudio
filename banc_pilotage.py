@@ -2283,6 +2283,202 @@ async def s_rappels_persistants():
         jamais.set()
 
 
+async def s_operations():
+    """Ce que la cle peut faire. Une cle de detourage volee ne doit pas lancer
+    de video — ni a l'entree quand le moteur est impose, ni apres l'analyse
+    quand c'est le studio qui a decide."""
+    remise_a_zero()
+    # PAR LA ROUTE de la page d'abord : un champ que la route ne transmet pas
+    # a creer() ferait naitre une cle qui peut tout, sans un mot.
+    biscuit = {"studio_compte": S.COMPTES.jeton("lou")}
+    st, c, _r = await appel(Req("/api/compte/acces", "POST", cookies=biscuit,
+                                corps={"mdp": MDP_NEUF, "nom": "detourage du salon",
+                                       "operations": ["detourer"]}),
+                            S.api_creer_acces)
+    dit(st == 201 and ((c or {}).get("fiche") or {}).get("operations") == ["detourer"]
+        and (S.ACCES.fiche(((c or {}).get("fiche") or {}).get("id", "")) or {}).get("operations") == ["detourer"],
+        "POST /api/compte/acces transmet « operations » a la cle", f"HTTP {st}")
+    if st == 201:
+        S.ACCES.revoquer(c["fiche"]["id"])
+    st, c, _r = await appel(Req("/api/compte/acces", "POST", cookies=biscuit,
+                                corps={"mdp": MDP_NEUF, "nom": "mal ecrite",
+                                       "operations": ["peindre"]}),
+                            S.api_creer_acces)
+    dit(st == 400 and code(c) == "acces_operations",
+        "une famille inconnue rend 400 « acces_operations », et aucune cle",
+        f"HTTP {st} {code(c)}")
+    st, c, _r = await appel(Req("/api/compte/acces", cookies=biscuit), S.api_mes_acces)
+    dit(st == 200 and ((c or {}).get("bornes") or {}).get("operations") == list(acces.OPERATIONS),
+        "la liste du proprietaire donne a la page les familles a cocher",
+        repr(((c or {}).get("bornes") or {}).get("operations")))
+    seule_image = nouvelle_cle("lou", "images seulement", operations=["image"])
+    k_img = seule_image["cle"]
+    f_img = fiche_de(k_img)
+    dit(f_img["operations"] == ["image"],
+        "la fiche reconnue porte la liste de la cle", repr(f_img.get("operations")))
+
+    # ── A L'ENTREE : le moteur impose dit deja l'operation ─────────────
+    for moteur, famille in (("wan5b", "video"), ("edition", "retouche"),
+                            ("wan14b", "video")):
+        avant, jour = etat_des_registres(), S._lances_aujourdhui(f_img["id"])
+        st, c, _r = await lancer(k_img, {"demande": "un renard qui court",
+                                         "moteur": moteur})
+        dit(st == 403 and code(c) == "cle_operation_interdite"
+            and rien_de_plus(avant)
+            and S._lances_aujourdhui(f_img["id"]) == jour,
+            f"un moteur « {moteur} » ({famille}) sur une cle d'images rend 403 "
+            f"« cle_operation_interdite », sans file ni plafond",
+            f"HTTP {st} {code(c)}")
+    st, c, _r = await lancer(k_img, {"demande": "un renard", "moteur": "wan5b"})
+    dit("reessayer_dans" not in (c or {}) and f"« video »" in (c or {}).get("erreur", "")
+        and "image" in (c or {}).get("erreur", ""),
+        "le refus nomme l'operation et ce que la cle permet, sans delai a attendre",
+        (c or {}).get("erreur", ""))
+    st, c, _r = await lancer(k_img, {"demande": "un renard", "moteur": "klein4b"})
+    t_ok = S.TACHES.get((c or {}).get("id")) or {}
+    dit(st == 202 and (t_ok.get("api") or {}).get("operations") == ["image"]
+        and (S.EN_FILE.get((c or {}).get("id")) or {}).get("api", {}).get("operations") == ["image"],
+        "temoin : un moteur d'image passe, et la tache comme son entree de file "
+        "portent la liste (elle va sur le disque)", f"HTTP {st}")
+    st, c, _r = await lancer(k_img, {"demande": "un renard qui court dans la neige"})
+    dit(st == 202,
+        "sans moteur impose, la demande entre : seule l'analyse sait ce qui sera fait",
+        f"HTTP {st}")
+    st, c, _r = await lancer(K_N8N, {"demande": "un renard", "moteur": "wan5b"})
+    dit(st == 202 and ((S.TACHES.get((c or {}).get("id")) or {}).get("api") or {}).get("operations") == [],
+        "temoin : une cle sans liste lance la video", f"HTTP {st}")
+    vider_file()
+
+    # ── LA LISTE DES MOTEURS ne montre que ce que la cle permet ─────────
+    _st, c1, _r = await appel(Req("/api/v1/moteurs", cle=k_img), S.api_v1_moteurs)
+    _st, c2, _r = await appel(Req("/api/v1/moteurs", cle=K_N8N), S.api_v1_moteurs)
+    types1 = {m.get("type") for m in (c1 or {}).get("moteurs") or []}
+    types2 = {m.get("type") for m in (c2 or {}).get("moteurs") or []}
+    dit(types1 and types1 <= {"image", "planche"} and "video" in types2,
+        "GET /api/v1/moteurs ne montre a une cle d'images que des moteurs d'image",
+        f"{sorted(types1)} contre {len(types2)} types pour une cle sans liste")
+
+    # ── CHAQUE MOTEUR A SA FAMILLE. Un type oublie dans acces.FAMILLES
+    # serait ferme EN SILENCE a toute cle restreinte, y compris a celle qui
+    # coche la bonne famille.
+    sans = sorted({m["type"] for m in list(S.CATALOGUE.values())
+                   + list(S.MOTEURS_DISTANTS.values())
+                   if acces.famille(m["type"]) is None})
+    dit(not sans, "chaque type de moteur du catalogue et du nuage a sa famille",
+        ", ".join(sans) or f"{len(S.CATALOGUE) + len(S.MOTEURS_DISTANTS)} moteurs")
+    sans_i = sorted(i for i in S.INTENTIONS_DU_PLAN
+                    if i not in acces.SANS_RENDU and acces.famille(i) is None)
+    dit(not sans_i, "et chaque intention de l'analyse qui produit quelque chose aussi",
+        ", ".join(sans_i) or f"{len(S.INTENTIONS_DU_PLAN)} intentions")
+
+    # ── APRES L'ANALYSE : executer() arrete la demande avant tout travail ─
+    appels = {"enrichir": 0, "soumettre": 0}
+    plan_du_banc = {}
+
+    async def faux_aiguiller(texte, tid, conv, img_b64, **_k):
+        return dict(plan_du_banc)
+
+    async def faux_enrichir(plan, texte, tid):
+        appels["enrichir"] += 1
+        raise RuntimeError("arret du banc apres la garde des operations")
+
+    async def faux_soumettre(*_a, **_k):
+        appels["soumettre"] += 1
+        raise RuntimeError("le banc ne rend rien")
+
+    garde = (S.aiguiller, S.enrichir, S.soumettre_robuste)
+    S.aiguiller, S.enrichir, S.soumettre_robuste = faux_aiguiller, faux_enrichir, faux_soumettre
+    try:
+        async def executer_pour(fiche, plan, texte="un renard qui court dans la neige"):
+            plan_du_banc.clear()
+            plan_du_banc.update(plan)
+            tid, conv = poser_rendu(fiche, "en cours")
+            S.TACHES[tid]["api"]["operations"] = list(fiche.get("operations") or [])
+            appels.update(enrichir=0, soumettre=0)
+            await S.executer(tid, texte, conv)
+            t = S.TACHES[tid]
+            return tid, conv, t, S.rendu_public(tid, conv, t, None, "", "fr")
+
+        video = {"intention": "video", "modele": "wan5b", "prompt": "a fox running",
+                 "raison": "banc", "parametres": {}}
+        tid, conv, t, r = await executer_pour(f_img, video)
+        dit(r["etat"] == "erreur"
+            and (r["erreur"] or {}).get("code") == "cle_operation_interdite",
+            "une demande que l'analyse lit « video » sur une cle d'images finit en "
+            "erreur « cle_operation_interdite »",
+            f"{r['etat']} {(r['erreur'] or {}).get('code')}")
+        dit(appels["enrichir"] == 0 and appels["soumettre"] == 0,
+            "et rien n'a travaille : ni enrichissement par le modele de langage, "
+            "ni carte", repr(appels))
+        en = S.rendu_public(tid, conv, t, None, "", "en")
+        dit("video" in (r["erreur"] or {}).get("message", "")
+            and "does not allow" in (en["erreur"] or {}).get("message", ""),
+            "le message dit l'operation, et se traduit",
+            f"{(r['erreur'] or {}).get('message')} / {(en['erreur'] or {}).get('message')}")
+
+        image = {"intention": "image", "modele": "klein4b", "prompt": "a fox",
+                 "raison": "banc", "parametres": {}, "largeur": 1024, "hauteur": 1024}
+        _tid, _conv, _t, r2 = await executer_pour(f_img, image)
+        dit(appels["enrichir"] == 1 and (r2["erreur"] or {}).get("code") != "cle_operation_interdite",
+            "temoin : une image sur la meme cle passe la garde et va jusqu'a l'enrichissement",
+            repr(appels))
+        _tid, _conv, _t, r3 = await executer_pour(F_N8N, video)
+        dit(appels["enrichir"] == 1,
+            "temoin : la video sur une cle sans liste passe la garde", repr(appels))
+        lecture = {"intention": "lecture", "modele": None, "prompt": "",
+                   "raison": "banc", "parametres": {}}
+        dit(S.operation_refusee(_tid, lecture) is None
+            and S.operation_refusee(uuid.uuid4().hex, video) is None,
+            "operation_refusee() ne refuse rien a une cle sans liste ni a la page")
+
+        # LES DEUX ECARTS que la relecture du 4 novembre 2026 a trouves entre
+        # le moteur du plan et ce que executer() fait vraiment.
+        def tache_de(ops):
+            tid_, _c = poser_rendu(F_N8N, "en cours")
+            S.TACHES[tid_]["api"]["operations"] = list(ops)
+            return tid_
+        lecture_imagee = {"intention": "lecture", "modele": "klein4b"}
+        dit(S.operation_refusee(tache_de(["lecture"]), lecture_imagee) is None
+            and S.operation_refusee(tache_de(["image"]), lecture_imagee) is not None,
+            "une lecture qui garde un moteur d'image est une lecture : la cle "
+            "« lecture » passe, la cle « image » non")
+        perso = "le meme personnage, mais a la plage"
+        edition = {"intention": "edition", "modele": "edition"}
+        dit(S.veut_meme_personnage(perso)
+            and S.operation_refusee(tache_de(["retouche"]), edition, perso) is not None
+            and S.operation_refusee(tache_de(["image"]), edition, perso) is None
+            and S.operation_refusee(tache_de(["retouche"]), edition, "plus de bleu") is None,
+            "une retouche du « meme personnage » est jugee image neuve, comme "
+            "executer() la rendra ; une vraie retouche reste une retouche")
+        _tid, _conv, _t, r4 = await executer_pour(
+            dict(F_N8N, operations=["retouche"]),
+            dict(edition, prompt="the same character at the beach", raison="banc",
+                 parametres={}), texte=perso)
+        dit((r4["erreur"] or {}).get("code") == "cle_operation_interdite"
+            and appels["enrichir"] == 0,
+            "executer() arrete la retouche qui deviendrait une image neuve, avant "
+            "l'enrichissement", f"{(r4['erreur'] or {}).get('code')} {appels}")
+    finally:
+        S.aiguiller, S.enrichir, S.soumettre_robuste = garde
+
+    # ── LE CODE D'UNE PANNE est sa raison, pas son enveloppe ─────────────
+    cas = [
+        (S.panne_de("panne.echec", quoi=S.panne_de("panne.refus_mineurs")), "refus_mineurs"),
+        (S.panne_de("panne.echec", quoi="KeyError('sdxl')"), "echec"),
+        # Le meme code qu'a l'entree : la phrase seule dit le genre.
+        (S.panne_de("panne.echec", quoi=S.panne_de("panne.refus_mineurs_genre")),
+         "refus_mineurs"),
+        (S.panne_de("panne.interrompue"), "interrompue"),
+        (None, "inconnue"),
+        ({"cle": ""}, "inconnue"),
+    ]
+    faux = [f"{m!r} -> {S._code_de_panne(m)!r}" for m, attendu in cas
+            if S._code_de_panne(m) != attendu]
+    dit(not faux,
+        "« erreur.code » d'un rendu dit la raison imbriquee (refus_mineurs), "
+        "« echec » pour une exception nue", "; ".join(faux) or f"{len(cas)} cas")
+
+
 async def principal():
     S.FILE_ATTENTE = asyncio.Queue()
     for titre, corps in (
@@ -2301,7 +2497,8 @@ async def principal():
             ("13. ce que la revue de securite a trouve", s_revue),
             ("14. retrouver ses rendus, et essayer son rappel", s_liste),
             ("15. les humains d'abord dans la file", s_humains_dabord),
-            ("16. un rappel en cours survit a un redemarrage", s_rappels_persistants)):
+            ("16. un rappel en cours survit a un redemarrage", s_rappels_persistants),
+            ("17. ce que la cle peut faire", s_operations)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

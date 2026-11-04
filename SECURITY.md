@@ -411,6 +411,13 @@ qu'elle n'ouvre pas.
   empreinte d'avance est gardée, effacée du fichier une fois sa grace passée ;
   une clé expirée ou éteinte ne se renouvelle pas. Pour une fuite avérée, la
   révocation reste le geste le plus sûr : elle ne demande que la session.
+- **Bornée à ce qu'elle sert, si l'on veut** (`operations`) : une clé de
+  détourage volée ne lance pas de vidéo. Refus en 403 dès l'entrée quand le
+  moteur est imposé ; sinon juste après l'analyse, avant l'enrichissement par
+  le modèle de langage et toute minute de carte. Un type de moteur sans famille connue
+  est **fermé** à une clé restreinte, et une liste abîmée sur le disque rend
+  le fichier des clés illisible plutôt que de se lire comme « tout ». Vide, la
+  liste veut dire tout : c'est le défaut.
 - **Vérifiée avant d'être freinée** : une bonne clé passe toujours. Après trois
   secrets faux pour une même clé depuis une adresse, l'attente double (1 s, 2,
   4… plafonnée à 30), dans une **table à part** de celle des mots de passe — des

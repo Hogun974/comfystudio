@@ -35,8 +35,9 @@ Dans la page, le bouton **« clés d'accès »** de la zone de compte, à côté
   la même porte, et le même compteur d'essais, que pour changer de mot de passe ;
 - facultatif : les **hôtes de rappel** (voir [plus bas](#pourquoi-les-hôtes-sont-déclarés)),
   le **droit au nuage** (non par défaut), les **plafonds** `en_file` (de 1 à 20,
-  4 par défaut) et `par_jour` (de 0 à 10 000, 0 pour « sans plafond »), et la
-  **durée de vie** (voir [plus bas](#une-date-de-fin)).
+  4 par défaut) et `par_jour` (de 0 à 10 000, 0 pour « sans plafond »), la
+  **durée de vie** (voir [plus bas](#une-date-de-fin)), et **ce que la clé
+  peut faire** (voir [plus bas](#ce-que-la-clé-peut-faire)).
 
 **La clé et le secret de rappel ne s'affichent qu'une fois.** Le studio ne
 garde de la clé qu'une empreinte sha256 : perdue, elle se révoque et se refait,
@@ -62,7 +63,8 @@ curl -s "$STUDIO/api/compte/acces" -b "studio_compte=…" \
  "fiche": {"id": "92d11256", "compte": "jordan", "nom": "n8n maison",
            "apercu": "cs_92d11256_…", "cree": 1793757278.8, "vu": null,
            "nuage": false, "hotes": ["n8n.maison:5678"], "en_file": 4,
-           "par_jour": 0, "generation": 0, "expire": null}}
+           "par_jour": 0, "generation": 0, "expire": null,
+           "ancienne_jusqu": null, "operations": []}}
 ```
 
 `GET /api/compte/acces` liste les clés du compte, chacune avec `active` ;
@@ -116,6 +118,47 @@ curl -s -X POST "$STUDIO/api/compte/acces/92d11256/renouveler" \
 La liste du propriétaire dit aussi, pour chaque clé, ce qu'elle a **lancé
 aujourd'hui** (`aujourdhui`) et ce qu'elle a **en cours** (`en_cours`) : où
 elle en est de ses plafonds avant le 429.
+
+### Ce que la clé peut faire
+
+Une clé branchée sur un workflow de détourage n'a aucune raison de pouvoir
+lancer une vidéo de huit minutes. **Volée, elle ne doit ouvrir que ce qu'elle
+servait.** À la création, coche ce qu'elle peut faire — ou, sans la page,
+`"operations"` : une liste parmi
+
+| Famille | Ce qu'elle couvre |
+|---|---|
+| `image` | créer une image, une planche |
+| `retouche` | modifier l'image fournie, retoucher le fond, le sujet ou une zone |
+| `video` | créer une vidéo, animer une image, fluidifier une vidéo |
+| `audio` | la musique |
+| `agrandir` | agrandir une image |
+| `detourer` | détourer |
+| `objet3d` | un objet 3D |
+| `lecture` | décrire une image |
+
+**Rien de coché, liste vide : tout**, y compris ce que le studio saura faire
+demain. C'est le défaut, et une clé d'avant ce réglage peut donc tout. Huit
+familles et non les treize types du catalogue : « retoucher le fond » sans
+« retoucher le sujet » n'est une frontière pour personne. La liste se lit dans
+`operations` de la fiche et de `GET /api/v1/moi` ; elle survit à un
+renouvellement, et ne se change pas : une autre liste, c'est une autre clé.
+
+La garde tient à **deux endroits**, parce que le studio ne sait pas toujours
+d'avance ce qu'il va faire :
+
+- **Avec un `moteur` imposé**, son type dit l'opération : refusé tout de suite
+  en **403 `cle_operation_interdite`**, sans place dans la file ni unité du
+  plafond du jour. Pas de `reessayer_dans` : attendre n'y changera rien.
+- **Sans moteur**, c'est l'analyse de la demande qui décide. Si elle conclut à
+  une famille que la clé ne permet pas, le rendu finit en **`erreur`** avec
+  `erreur.code` = `cle_operation_interdite` — **avant** l'enrichissement par le
+  modèle de langage et avant toute minute de carte. Il a compté dans le
+  plafond du jour : la demande était entrée. Une question du studio, elle,
+  passe toujours.
+
+`GET /api/v1/moteurs` ne montre à la clé que les moteurs qu'elle peut lancer :
+un assistant qui choisit dans cette liste n'y trouve pas un refus.
 
 ## Révoquer, et ce qui éteint une clé
 
@@ -302,7 +345,20 @@ requête, pas une place dans la file ni une unité du plafond du jour.
 | `attente_machine` | non | La machine demandée est en pause : la demande repartira seule à son retour ([Attendre une machine](attendre-une-machine.md)). Attendre, ou annuler si c'est trop long pour toi. |
 | `question` | **oui** | Le studio demande une précision avant de rien produire. Lire `questions`, répondre par [`.../reponse`](#répondre-à-une-question--post-apiv1rendusidreponse). |
 | `fini` | **oui** | Télécharger `fichiers`. `description` porte le texte d'une lecture d'image. |
-| `erreur` | **oui** | Lire `erreur.code` et `erreur.message`. Ne pas relancer en boucle : la même demande échouera de la même façon. |
+| `erreur` | **oui** | Lire `erreur.code` et `erreur.message`. `code` dit la **raison**, voir dessous. Ne pas relancer en boucle. |
+
+**`erreur.code` dit pourquoi**, et deux familles ne se traitent pas pareil :
+
+- **un refus** — `refus_mineurs`, `cle_operation_interdite`,
+  `moteur_nulle_part` (aucune machine n'a ce moteur), `echec` (une panne sans
+  phrase) : la même demande échouera de la même façon, **ne la relance pas** ;
+- **une machine qui manquait** — `comfy_muet`, `machine_pas_revenue`,
+  `vram_trop_petite`, `attente_expiree`… : la même demande peut passer **plus
+  tard**, une fois la machine revenue. Une relance, pas une boucle.
+
+Avant le 4 novembre 2026, presque tout se lisait `echec` : le code de
+l'enveloppe, pas celui de la raison. Un workflow qui testait `echec` doit
+maintenant tester les codes qui l'intéressent.
 | `annule` | **oui** | Annulé, par toi ou depuis la page. |
 
 Un rendu resté `en cours` quand le studio a redémarré, et qu'il n'a pas repris,
@@ -434,7 +490,8 @@ curl -s "$STUDIO/api/v1/moi" -H "Authorization: Bearer $CLE"
  "cle": {"id": "92d11256", "compte": "jordan", "nom": "n8n maison",
          "apercu": "cs_92d11256_…", "cree": 1793757278.8, "vu": 1793757278.8,
          "nuage": false, "hotes": ["n8n.maison:5678"], "en_file": 4,
-         "par_jour": 0, "generation": 0, "expire": null},
+         "par_jour": 0, "generation": 0, "expire": null,
+         "ancienne_jusqu": null, "operations": []},
  "en_cours": 0, "aujourdhui": 0, "attendre_max": 600}
 ```
 
@@ -528,6 +585,7 @@ traduite ; le code continue de marcher.
 | `attendre_bornes` | 400 | `attendre` hors de 0 à 600 |
 | `idempotence_illisible` | 400 | `Idempotency-Key` de plus de 200 caractères |
 | `cle_file_pleine` | 429 | plafond `en_file` atteint |
+| `cle_file_variantes` | 429 | les `variantes` dépasseraient `en_file` ; sans `reessayer_dans` quand elles dépassent le plafond lui-même |
 | `cle_plafond_jour` | 429 | plafond `par_jour` atteint |
 | `champ_illisible` | 400 | un champ n'a pas la forme attendue (la phrase le nomme) |
 | `rappel_refuse` | 400 | adresse de rappel refusée ; la phrase dit pourquoi : `hote`, `schema`, `identifiants`, `illisible` |
@@ -536,6 +594,7 @@ traduite ; le code continue de marcher.
 | `fichier_trop_lourd` | 413 | image au-delà de 32 Mo |
 | `conversation_inconnue` | 404 | aucune conversation ouverte **de cette clé** ne porte cet identifiant |
 | `cle_sans_nuage` | 400 | moteur distant demandé, et la clé n'a pas droit au nuage |
+| `cle_operation_interdite` | 403 | le moteur imposé fait une opération que [la clé ne permet pas](#ce-que-la-clé-peut-faire) |
 | `refus_mineurs` | 422 | contenu sexuel impliquant des mineurs |
 | `rendu_inconnu` | 404 | aucun rendu de cette clé ne porte cet identifiant, ou ce fichier n'existe pas |
 | `rendu_termine` | 409 | annulation d'un rendu déjà terminé |
@@ -769,37 +828,86 @@ D'abord, dans n8n : **Credentials → New → Header Auth**, nom « ComfyStudio 
 *Name* `Authorization`, *Value* `Bearer cs_…` (ta clé entière). Le credential
 reste dans n8n ; le workflow exporté n'en porte que le nom.
 
-### Recette simple : demander, attendre, télécharger
+### Recette prête à importer : demander, attendre, télécharger
 
 Un workflow prêt à importer est dans le dépôt :
 [`exemples/n8n-rendu-comfystudio.json`](../exemples/n8n-rendu-comfystudio.json)
 (*Workflows → Import from File*). Remplace `http://STUDIO:8199` par l'adresse de
-ton studio, et choisis ton credential dans les deux nœuds HTTP.
+ton studio dans ses trois nœuds HTTP, et choisis-y le credential « ComfyStudio »
+— le fichier n'en porte que le nom, jamais la clé.
 
-1. **Manual Trigger** (ou n'importe quel déclencheur).
-2. **HTTP Request** — *Method* `POST`, *URL* `http://STUDIO:8199/api/v1/rendus`,
-   *Authentication* « Generic Credential Type » → « Header Auth », *Send Body*
-   en JSON :
+Il est plus long que les trois nœuds qu'il faudrait pour un essai, parce qu'un
+workflow qui tourne seul la nuit rencontre tout ce que cette page décrit. Chaque
+nœud de plus répond à un cas réel :
 
-   ```json
-   {"demande": "un renard roux dans la neige au crépuscule", "attendre": 300}
-   ```
+1. **Demander le rendu** — `POST /api/v1/rendus` avec
+   `{"demande": "…", "attendre": 300}`, et trois réglages :
+   - l'en-tête **`Idempotency-Key: {{ $execution.id }}`**. Le nœud a *Retry On
+     Fail* : sans l'en-tête, chaque essai lancerait un rendu de plus ; avec lui,
+     les essais d'une même exécution désignent le même rendu, même après un
+     redémarrage du studio ([plus haut](#ne-pas-lancer-deux-fois-le-même-rendu--idempotency-key)) ;
+   - un **timeout de 330 000 ms**, au-dessus d'`attendre` : à 300 s, n8n
+     couperait la connexion à la seconde où le studio répond. Si tu montes
+     `attendre`, monte le timeout avec — dix secondes de marge au moins ;
+   - dans *Options → Response*, **« Include Response Headers and Status »** et
+     **« Never Error »**. Sans « Never Error », n8n lève sur un 429 avant
+     qu'aucun nœud n'ait pu lire `reessayer_dans`, et la branche qui devait le
+     traiter n'est jamais prise. Conséquence à ne pas oublier : le rendu est
+     alors dans **`$json.body`**, et `$json.etat` ne vaut rien — c'est
+     `$json.body.etat`.
+2. **Statut de la réponse** — un Switch sur `{{ $json.statusCode }}` :
+   - **200 ou 202** : le rendu, final ou pas encore ;
+   - **429** : un If vérifie que **`reessayer_dans` existe** (et qu'il ne dépasse
+     pas un quart d'heure), puis un Wait de `reessayer_dans` secondes ramène au
+     POST, cinq fois au plus. **Sans `reessayer_dans`, on ne réessaie pas** : le
+     studio l'omet exprès quand attendre n'y changerait rien (plus de variantes
+     que le plafond `en_file` lui-même), et un réessai bouclerait jusqu'à sa
+     borne. Le quart d'heure écarte `cle_plafond_jour`, dont le délai court
+     jusqu'à minuit : une exécution qui dort dix heures n'aide personne ;
+   - **tout le reste** s'arrête sur un nœud *Stop and Error* qui nomme le
+     `code` : la même requête aurait la même réponse.
+3. **Aiguiller sur l'état** — un Switch sur `{{ $json.body.etat }}`, une branche
+   par état final :
+   - `fini` → un If sur `fichiers.length` (une lecture d'image rend une
+     `description` et aucun fichier), puis **Télécharger le premier fichier** :
+     `GET /api/v1/rendus/{{ $json.body.id }}/fichiers/0`, *Response Format*
+     « File », binaire dans `data` ;
+   - `question` → un nœud à brancher sur ta réponse
+     ([`.../reponse`](#répondre-à-une-question--post-apiv1rendusidreponse)) ;
+   - `erreur` → *Stop and Error* avec `erreur.code` et `erreur.message`, sans
+     relancer : la même demande échouerait de la même façon ;
+   - `annule` → rien à faire.
+4. **Pas encore final** (`en_file`, `en_cours`, `attente_machine`, la branche de
+   repli du Switch) → **Relire le rendu**, `GET /api/v1/rendus/{id}?attendre=300`,
+   et retour à l'aiguillage. **Six fois au plus**, par un If sur
+   `{{ $runIndex }}` : un rendu en `attente_machine` peut attendre sa machine
+   des heures, et une boucle sans borne relirait le studio jusqu'au lendemain.
+   Au-delà, l'exécution s'arrête en le disant ; le rendu, lui, n'est pas perdu
+   et se relit plus tard par son `id`.
 
-   Dans *Options*, monte *Timeout* au-dessus d'`attendre` — 330 000 ms pour
-   300 s —, sinon n8n coupe avant que le studio ait répondu.
-3. **HTTP Request** — *Method* `GET`, *URL* `{{ $json.fichiers[0].url }}`, même
-   credential, et dans *Options* → *Response* : *Response Format* « File ». Le
-   fichier arrive en binaire dans `data`, prêt pour un nœud qui l'enregistre ou
-   l'envoie.
+L'adresse du téléchargement est **écrite**, l'`id` seul vient de la réponse :
+le credential pose la clé sur toute requête du nœud, et une adresse lue dans un
+corps la ferait partir là où ce corps le dit. C'est sans conséquence ici — la
+réponse vient du studio —, mais c'est la règle qui protège la variante par
+rappel, dont le corps n'est pas vérifié.
 
-Si le rendu n'est pas fini dans le délai, la réponse arrive quand même, en 202,
-avec `fichiers` vide : place un nœud **If** sur `{{ $json.etat }}` égal à
-`fini` avant le téléchargement, et traite `question` et `erreur` à part.
+`banc_exemples.py` relit ce fichier et son voisin à chaque poussée et les
+confronte au [contrat OpenAPI](#le-contrat-openapi) : une route renommée, un
+champ que le studio ne lit pas, un état final ajouté au contrat sans branche
+dans l'exemple, un 429 réessayé sans délai, un timeout sous `attendre` ou une
+clé collée dans une note le font rougir.
 
 ### Sans attendre : le rappel
 
 Pour un rendu long, ne garde pas une connexion ouverte : laisse le studio
 prévenir le workflow.
+
+La même chose prête à importer :
+[`exemples/n8n-rappel-comfystudio.json`](../exemples/n8n-rappel-comfystudio.json)
+— un Switch sur les quatre événements de fin plus `rappel.essai`, ignoré, une
+relecture par `GET /api/v1/rendus/{id}` quand c'est le délai qui réveille
+l'exécution, et un téléchargement construit sur l'`id` du POST plutôt que sur
+l'adresse lue dans le rappel.
 
 1. **HTTP Request** `POST /api/v1/rendus`, **sans** `attendre`, avec :
 
@@ -815,7 +923,11 @@ prévenir le workflow.
    pas fait](#ce-qui-nest-pas-fait)), et une exécution ne doit pas dormir pour
    toujours. Au réveil par le délai, lis le rendu par `GET /api/v1/rendus/{id}`.
 3. Un **Switch** sur `{{ $json.body.evenement }}`, puis le téléchargement de
-   `{{ $json.body.rendu.fichiers[0].url }}` comme dans la recette simple.
+   `http://STUDIO:8199/api/v1/rendus/{{ $('Demander le rendu').first().json.id }}/fichiers/0`
+   — l'adresse du studio écrite, l'`id` du POST. **Ne fais pas suivre au
+   credential une adresse lue dans le rappel** (`body.rendu.fichiers[0].url`)
+   tant que la signature n'est pas vérifiée : le corps vient de qui connaît
+   l'URL de reprise, et le credential y poserait ta clé.
 
 Avec un nœud **Webhook** séparé plutôt que Wait, mets son *Production URL* dans
 `rappel` et laisse *Respond* sur « Immediately ».
@@ -842,7 +954,7 @@ se reprend plus tard ; `cle_refusee` jamais.
 ## Assistants IA par MCP
 
 Un assistant IA — Claude Code, Claude Desktop, un agent n8n — sait appeler des
-**outils**. Le studio en sert cinq, par le protocole MCP, à l'adresse
+**outils**. Le studio en sert six, par le protocole MCP, à l'adresse
 **`/mcp`**, avec la même clé dans le même en-tête.
 
 | Outil | Rôle |

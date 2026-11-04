@@ -158,7 +158,7 @@ try:
     dit(f is not None and f["id"] == ident and f["compte"] == "jordan",
         "la vraie cle rend sa fiche", str(f and f["nom"]))
     # « generation » n'est plus interdite ici : elle est publique depuis que
-    # la page doit dire quelles cles se sont eteintes (voir les treize champs).
+    # la page doit dire quelles cles se sont eteintes (voir les quatorze champs).
     dit(f is not None and "empreinte" not in f and "secret_rappel" not in f,
         "reconnaitre rend une fiche publique sans empreinte ni secret",
         ", ".join(sorted(f or {})))
@@ -264,8 +264,9 @@ try:
     # de mot de passe au lieu de la montrer vivante.
     dit(set(r["fiche"]) == {"id", "compte", "nom", "apercu", "cree", "vu",
                             "nuage", "hotes", "en_file", "par_jour",
-                            "generation", "expire", "ancienne_jusqu"},
-        "la fiche publique porte exactement les treize champs du contrat",
+                            "generation", "expire", "ancienne_jusqu",
+                            "operations"},
+        "la fiche publique porte exactement les quatorze champs du contrat",
         ", ".join(sorted(r["fiche"])))
     dit(r["fiche"]["apercu"] == f"cs_{ident}_…",
         "l'apercu ne montre rien du secret", r["fiche"]["apercu"])
@@ -736,6 +737,104 @@ try:
         and not gp2.illisible,
         "la grace passee, ancienne_jusqu redevient null, et le chargement "
         "oublie l'empreinte de l'ancien secret")
+
+    # ══════════════════════════════════════════════════════════════════
+    #  CE QUE LA CLE PEUT FAIRE. Une liste de familles ; vide : tout. Une cle
+    #  de detourage volee ne doit pas lancer de video.
+    # ══════════════════════════════════════════════════════════════════
+    print("\n  ── operations ──")
+    po = os.path.join(dossier, "operations.json")
+    op = acces.Acces(po)
+    o_tout = op.creer("jordan", "tout", 0)
+    dit(o_tout["fiche"]["operations"] == [] and op.fiches[o_tout["fiche"]["id"]]["operations"] == [],
+        "sans « operations », la cle peut tout : liste vide, sur la fiche et au fichier",
+        repr(o_tout["fiche"]["operations"]))
+    o_det = op.creer("jordan", "detourage", 0,
+                     operations=["detourer", "agrandir", "detourer"])
+    dit(o_det["fiche"]["operations"] == ["agrandir", "detourer"],
+        "les familles sont rangees dans l'ordre d'OPERATIONS, sans doublon",
+        repr(o_det["fiche"]["operations"]))
+    mauvaises = {"une chaine seule": "video", "une famille inconnue": ["peindre"],
+                 "un nombre": [3], "un dictionnaire": {"video": True},
+                 "un type du catalogue au lieu d'une famille": ["video_image"]}
+    passees = [quoi for quoi, v in mauvaises.items()
+               if leve(op.creer, "jordan", "x", 0, operations=v) is None]
+    dit(not passees, "« operations » refuse ce qui n'est pas une liste de familles",
+        ", ".join(passees) or f"{len(mauvaises)} formes refusees")
+    try:
+        op.creer("jordan", "x", 0, operations="video")
+        cle_refus = None
+    except acces.ErreurAcces as e:
+        cle_refus = e.cle
+    dit(cle_refus == "erreur.acces_operations",
+        "le refus nomme sa phrase, pour la page et pour l'API", str(cle_refus))
+    dit(len([f for f in op.fiches.values() if f["nom"] == "x"]) == 0,
+        "une liste refusee n'ecrit aucune cle")
+
+    permis = acces.operation_permise
+    cas = [
+        ([], "video", True, "une cle sans liste peut tout"),
+        ([], "type_que_personne_ne_connait", True, "meme un type a venir"),
+        (["detourer"], "detourer", True, "sa famille passe"),
+        (["detourer"], "video", False, "une autre famille ne passe pas"),
+        (["detourer"], "video_image", False, "animer une image est une video"),
+        (["video"], "video_image", True, "et la cle video l'accepte"),
+        (["video"], "fluidifier", True, "fluidifier est une video"),
+        (["retouche"], "retoucher_zone", True, "les trois retouches sont une famille"),
+        (["retouche"], "edition", True, "l'edition aussi"),
+        (["image"], "planche", True, "une planche est une image"),
+        (["image"], "edition", False, "une edition n'est pas une image neuve"),
+        (["detourer"], "question", True, "une question n'est jamais refusee"),
+        (["detourer"], "refus", True, "un refus non plus : il n'a rien rendu"),
+        (["detourer"], "type_que_personne_ne_connait", False,
+         "un type sans famille est FERME a une cle restreinte"),
+        (["detourer"], None, False, "pas de type : ferme"),
+    ]
+    faux = [f"{quoi} ({ops}, {t!r})" for ops, t, attendu, quoi in cas
+            if permis(ops, t) is not attendu]
+    dit(not faux, "operation_permise : familles, questions, et types inconnus fermes",
+        "; ".join(faux) or f"{len(cas)} cas")
+    dit(set(acces.FAMILLES.values()) == set(acces.OPERATIONS),
+        "chaque famille est atteinte par un type, et aucun type ne mene hors d'OPERATIONS",
+        repr(sorted(set(acces.FAMILLES.values()) ^ set(acces.OPERATIONS))))
+
+    # La fiche publique est une COPIE : la page ou le serveur qui la modifie
+    # ne doit pas ouvrir la cle.
+    pub = op.fiche(o_det["fiche"]["id"])
+    pub["operations"].append("video")
+    dit(op.fiches[o_det["fiche"]["id"]]["operations"] == ["agrandir", "detourer"],
+        "modifier la fiche publique ne touche pas la cle")
+    # Le renouvellement garde ce que la cle peut faire : seul le secret change.
+    rn = op.renouveler(o_det["fiche"]["id"], compte="jordan", maintenant=T0 + 5)
+    dit(rn["fiche"]["operations"] == ["agrandir", "detourer"],
+        "renouvelee, la cle peut toujours la meme chose", repr(rn["fiche"]["operations"]))
+
+    # Le disque : la liste survit ; une fiche d'avant (sans le champ) peut tout ;
+    # une liste abimee rend le fichier ILLISIBLE, et non la cle ouverte.
+    op2 = acces.Acces(po)
+    op2.charger()
+    dit(not op2.illisible
+        and op2.fiche(o_det["fiche"]["id"])["operations"] == ["agrandir", "detourer"],
+        "relue du disque, la liste tient")
+    brut_o = json.loads(brut_du_disque(po))
+    for x in brut_o:
+        x.pop("operations", None)
+    with open(po, "w", encoding="utf-8") as fh:
+        json.dump(brut_o, fh)
+    op3 = acces.Acces(po)
+    op3.charger()
+    dit(not op3.illisible and op3.fiche(o_det["fiche"]["id"])["operations"] == [],
+        "une fiche ecrite avant ce champ se relit, et peut tout")
+    for abimee in ("detourer", ["detourer", "peindre"], [None], {"a": 1}):
+        for x in brut_o:
+            x["operations"] = abimee
+        with open(po, "w", encoding="utf-8") as fh:
+            json.dump(brut_o, fh)
+        op4 = acces.Acces(po)
+        op4.charger()
+        dit(op4.illisible and not op4.fiches,
+            f"une liste abimee ({abimee!r}) rend le fichier illisible : une "
+            f"restriction cassee ne se lit pas comme « tout »")
 finally:
     shutil.rmtree(dossier, ignore_errors=True)
 

@@ -34,9 +34,10 @@ et d'avoir autorise le module (NODE_FUNCTION_ALLOW_BUILTIN=crypto) : un
 JSON.stringify du corps deja decode ne redonne pas les memes octets.
 
 CE QU'IL NE FAIT PAS.
-  - Il ne garde rien sur disque : un studio qui redemarre au milieu des essais
-    perd ce rappel. Le programme peut toujours interroger le rendu par son
-    identifiant ; le rappel est une commodite, pas la seule voie.
+  - Il ne garde rien sur disque lui-meme : c'est serveur.py qui inscrit
+    chaque livraison en cours (_rappels.json) et la reprend au demarrage.
+    Le programme peut toujours interroger le rendu par son identifiant ; le
+    rappel est une commodite, pas la seule voie.
   - livrer() ne connait pas la liste des hotes : c'est a l'appelant d'avoir
     passe l'URL par url_autorisee() AVANT, a l'enregistrement de la demande.
   - Il ne resout pas les noms : un hote de la liste qui pointe ailleurs est le

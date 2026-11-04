@@ -1,25 +1,31 @@
 {
-  "name": "ComfyStudio — demander un rendu et le télécharger",
+  "name": "ComfyStudio — demander un rendu, attendre, télécharger",
   "nodes": [
     {
       "parameters": {
-        "content": "## ComfyStudio — recette simple\n\n1. Remplace `http://STUDIO:8199` par l'adresse de ton studio, dans les deux nœuds HTTP.\n2. Crée un credential **Header Auth** : *Name* `Authorization`, *Value* `Bearer cs_REMPLACER_PAR_TA_CLE_D_ACCES` — ta clé d'accès entière, créée dans la page du studio (bouton « clés d'accès »).\n3. Choisis ce credential dans les deux nœuds HTTP.\n\nAucun secret n'est dans ce fichier. Détail : docs/piloter-par-programme.md",
-        "height": 300,
-        "width": 420
+        "content": "## ComfyStudio — demander un rendu, sans le lancer deux fois\n\n1. Remplace `http://STUDIO:8199` par l'adresse de ton studio, dans les trois nœuds HTTP.\n2. Crée un credential **Header Auth** nommé « ComfyStudio » : *Name* `Authorization`, *Value* `Bearer ` suivi de ta clé d'accès entière. Le fichier n'en porte que le nom : aucun secret ici.\n\n**Ce qu'il fait.** Le POST porte `Idempotency-Key` = l'identifiant de l'exécution : un réessai rend le même rendu au lieu d'en lancer un second. Il attend 300 s (timeout n8n : 330 s, sinon n8n coupe avant la réponse). Pas encore final : il relit le rendu en attendant 300 s de plus, six fois au plus. Puis il aiguille sur `etat` : `fini` télécharge le premier fichier ; `question`, `erreur` et `annule` ont chacun leur branche.\n\n**Un 429** attend `reessayer_dans` secondes (un quart d'heure au plus) et réessaie, cinq fois au plus. **Sans `reessayer_dans`, il ne réessaie pas** : le studio l'omet exprès quand attendre n'y changerait rien. Tout autre refus s'arrête et nomme son `code`.\n\nDétail : docs/piloter-par-programme.md",
+        "height": 560,
+        "width": 520
       },
-      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0001",
+      "id": "3b4be8f6-9403-577e-bc2f-4f7bdc93d6af",
       "name": "À lire d'abord",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-60, -360]
+      "position": [
+        -80,
+        -620
+      ]
     },
     {
       "parameters": {},
-      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0002",
+      "id": "efd23f48-af52-511c-b6d3-2d85ca305a9a",
       "name": "Lancer à la main",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -40,27 +46,332 @@
         "specifyBody": "json",
         "jsonBody": "{\n  \"demande\": \"un renard roux dans la neige au crépuscule\",\n  \"attendre\": 300\n}",
         "options": {
-          "timeout": 330000
+          "timeout": 330000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
         }
       },
-      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0003",
+      "id": "89805b18-246a-5a42-8db1-bb845e41e9a7",
       "name": "Demander le rendu",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [240, 0],
+      "position": [
+        220,
+        0
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000,
       "credentials": {
         "httpHeaderAuth": {
-          "id": "A-CREER-DANS-N8N",
-          "name": "ComfyStudio (clé d'accès)"
+          "name": "ComfyStudio"
         }
       }
     },
     {
       "parameters": {
-        "url": "={{ $json.fichiers[0].url }}",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "0ef2c385-5169-5b8a-a52a-1529a8f38986",
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 200,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "767e6424-ea3b-5bb8-a36b-b75eb714ef9b",
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 202,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              },
+              "renameOutput": true,
+              "outputKey": "accepte"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "183f1fb9-0d65-54f2-b9e0-21c5b27d7b31",
+                    "leftValue": "={{ $json.statusCode }}",
+                    "rightValue": 429,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "freine"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "refus"
+        }
+      },
+      "id": "85a7f109-868d-5e86-84bf-b59eaa5483e8",
+      "name": "Statut de la réponse",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "dbb9c54c-a7fa-5fdd-b976-595b8d7090be",
+              "leftValue": "={{ $json.body.reessayer_dans }}",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "caeb71b7-8e19-55bf-9694-2321e783a1ba",
+              "leftValue": "={{ $json.body.reessayer_dans }}",
+              "rightValue": 900,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            },
+            {
+              "id": "d6bd3df4-9482-5d68-a699-ba7138fff71f",
+              "leftValue": "={{ $runIndex }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4845d58c-0846-5219-99eb-64e9e17ac6c8",
+      "name": "Réessayer plus tard ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.body.reessayer_dans }}",
+        "unit": "seconds"
+      },
+      "id": "21667faf-7391-5336-8013-67b50143741e",
+      "name": "Attendre reessayer_dans",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        160
+      ],
+      "webhookId": "10fd99ae-a46f-5bae-b0a4-ed51b3748c9d"
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Refus {{ $json.statusCode }} « {{ $json.body.code }} » : {{ $json.body.erreur }} — la même requête aurait la même réponse."
+      },
+      "id": "e309b7da-c64d-5df7-bedc-5ffba4f16ae0",
+      "name": "Refus : ne pas réessayer",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        920,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "48648f8e-cea5-5e01-b732-7e63368223f1",
+                    "leftValue": "={{ $json.body.etat }}",
+                    "rightValue": "fini",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "fini"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "1db91e97-e85c-5a71-808b-4a9395069834",
+                    "leftValue": "={{ $json.body.etat }}",
+                    "rightValue": "question",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "question"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "aaac17f7-f910-5218-9331-304653093e06",
+                    "leftValue": "={{ $json.body.etat }}",
+                    "rightValue": "erreur",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "erreur"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "665aace9-cadc-5bbd-82f1-b2f0ed3a269e",
+                    "leftValue": "={{ $json.body.etat }}",
+                    "rightValue": "annule",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "annule"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "pas encore final"
+        }
+      },
+      "id": "4015bcad-2a06-5f4e-ac93-3bcae6edc7d6",
+      "name": "Aiguiller sur l'état",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        680,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "4e64b6f1-5aa8-5646-ac33-9fb930daaeb0",
+              "leftValue": "={{ $json.body.fichiers.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "18bcfcf4-0a97-58be-b3ab-408e524585df",
+      "name": "Un fichier ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://STUDIO:8199/api/v1/rendus/{{ $json.body.id }}/fichiers/0",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
@@ -72,17 +383,153 @@
           }
         }
       },
-      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0004",
+      "id": "5a0cb07a-8542-57c6-9351-1be76dcc9067",
       "name": "Télécharger le premier fichier",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 0],
+      "position": [
+        1160,
+        -440
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
       "credentials": {
         "httpHeaderAuth": {
-          "id": "A-CREER-DANS-N8N",
-          "name": "ComfyStudio (clé d'accès)"
+          "name": "ComfyStudio"
         }
       }
+    },
+    {
+      "parameters": {},
+      "id": "29d77db2-c31c-576a-bbbf-24a667f65730",
+      "name": "Fini sans fichier",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        -280
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "80780a7c-16a0-5578-8a43-c22e38d22ed2",
+      "name": "Le studio pose une question",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Rendu en erreur « {{ $json.body.erreur.code }} » : {{ $json.body.erreur.message }} — ne pas relancer en boucle, la même demande échouera de la même façon."
+      },
+      "id": "b15076e9-8e41-518e-bca5-94583e479834",
+      "name": "Le rendu a échoué",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        920,
+        -60
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "04b16698-eed6-5265-a4e4-eb27661ab1c2",
+      "name": "Annulé",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "bfb7ea21-a985-507e-9972-8266a8493f8b",
+              "leftValue": "={{ $runIndex }}",
+              "rightValue": 6,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bdd1a705-0e88-5d61-8fc6-90207004c948",
+      "name": "Encore du temps ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://STUDIO:8199/api/v1/rendus/{{ $json.body.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "attendre",
+              "value": "300"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 330000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "93896aa3-ff73-5cf2-b899-65582c0d59b8",
+      "name": "Relire le rendu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        140
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "ComfyStudio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Rendu {{ $json.body.id }} toujours « {{ $json.body.etat }} » après une demi-heure de relectures : relis-le plus tard, il n'est pas perdu."
+      },
+      "id": "ea776ce7-58b7-5e1a-8e39-b65c6c40cca9",
+      "name": "Toujours pas fini",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        320
+      ]
     }
   ],
   "connections": {
@@ -101,7 +548,147 @@
       "main": [
         [
           {
+            "node": "Statut de la réponse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Statut de la réponse": {
+      "main": [
+        [
+          {
+            "node": "Aiguiller sur l'état",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Réessayer plus tard ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Refus : ne pas réessayer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réessayer plus tard ?": {
+      "main": [
+        [
+          {
+            "node": "Attendre reessayer_dans",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Refus : ne pas réessayer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attendre reessayer_dans": {
+      "main": [
+        [
+          {
+            "node": "Demander le rendu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aiguiller sur l'état": {
+      "main": [
+        [
+          {
+            "node": "Un fichier ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Le studio pose une question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Le rendu a échoué",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Annulé",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Encore du temps ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Un fichier ?": {
+      "main": [
+        [
+          {
             "node": "Télécharger le premier fichier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fini sans fichier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encore du temps ?": {
+      "main": [
+        [
+          {
+            "node": "Relire le rendu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Toujours pas fini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relire le rendu": {
+      "main": [
+        [
+          {
+            "node": "Aiguiller sur l'état",
             "type": "main",
             "index": 0
           }

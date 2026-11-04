@@ -2740,6 +2740,12 @@ function formulaireAcces() {
         // Ou l'on en est, a cote des plafonds qui suivent.
         T("page.acces.usage", { aujourdhui: c.aujourdhui || 0,
                                 en_cours: c.en_cours || 0 }),
+        // Rien quand elle peut tout : c'est le cas courant, et une ligne de
+        // plus sur chaque cle ne dirait rien.
+        (c.operations || []).length
+          ? T("page.acces.operations.seulement",
+              { liste: c.operations.map(o => T("operation." + o)).join(", ") })
+          : null,
         T(c.nuage ? "page.acces.nuage.oui" : "page.acces.nuage.non"),
         T("page.acces.en_file", { n: c.en_file }),
         c.par_jour ? T("page.acces.par_jour", { n: c.par_jour })
@@ -2789,6 +2795,18 @@ function formulaireAcces() {
                         : T("page.acces.expire.jamais");
       expire.append(o);
     }
+    // CE QUE LA CLE PEUT FAIRE. Rien de coche par defaut, et rien de coche
+    // veut dire tout : une cle d'avant ne s'est pas fermee, et celui qui ne
+    // lit pas la case n'a pas une cle qui refuse tout en silence.
+    const ops = document.createElement("div");
+    ops.className = "operations";
+    for (const o of (b.operations || [])) {
+      const caseOp = document.createElement("input");
+      caseOp.type = "checkbox"; caseOp.name = "operation"; caseOp.value = o;
+      const lOp = document.createElement("label");
+      lOp.append(caseOp, document.createTextNode(T("operation." + o)));
+      ops.append(lOp);
+    }
     const hotes = document.createElement("textarea");
     hotes.name = "hotes"; hotes.rows = 2;
     hotes.placeholder = T("page.acces.hotes.invite");
@@ -2810,7 +2828,9 @@ function formulaireAcces() {
     const titre = document.createElement("h4");
     titre.textContent = T("page.acces.creer.titre");
     corps.append(titre, nomCle, lNuage,
-                 dire("page.acces.nuage.pourquoi", "avertit"), hotes,
+                 dire("page.acces.nuage.pourquoi", "avertit"),
+                 champ("page.acces.operations.champ", ops),
+                 dire("page.acces.operations.aide"), hotes,
                  dire("page.acces.hotes.aide", "dit", { max: b.hotes }),
                  champ("page.acces.en_file.champ",
                        nombreBorne("en_file", 1, b.en_file, b.en_file_defaut)),
@@ -2833,7 +2853,10 @@ function formulaireAcces() {
                                hotes: liste,
                                en_file: Number(f.en_file.value),
                                par_jour: Number(f.par_jour.value),
-                               expire_jours: Number(f.expire_jours.value) }) });
+                               expire_jours: Number(f.expire_jours.value),
+                               operations: Array.from(
+                                 corps.querySelectorAll('input[name="operation"]:checked'),
+                                 x => x.value) }) });
       const x = await r.json().catch(() => ({}));
       // La MEME marque qu'a la porte d'entree : le champ, jamais le message
       // ni le code de retour.

@@ -344,6 +344,27 @@ TEXTES = {
     "erreur.acces_renouveler_eteinte": {
         "fr": "une clé éteinte par un changement de mot de passe ne se renouvelle pas : crées-en une autre",
         "en": "a key switched off by a password change cannot be renewed: create another one"},
+    "erreur.acces_operations": {
+        "fr": "« operations » : une liste parmi {familles} (vide : tout)",
+        "en": "“operations”: a list among {familles} (empty: everything)"},
+    # « {operation} » et « {permises} » sont les MOTS DE L'API — ceux du champ
+    # « operations » de la cle —, entre guillemets parce que ce sont des
+    # valeurs et non des mots de la phrase : le programmeur les retrouve tels
+    # qu'il les a ecrits. Traduits, ils ne se reconnaitraient plus ; et la
+    # marque de panne ne se rend qu'a une profondeur (traductions.rendre).
+    "erreur.cle_operation_interdite": {
+        "fr": "cette clé ne permet pas « {operation} » : seulement {permises}",
+        "en": "this key does not allow “{operation}”: only {permises}"},
+    # Les huit familles d'acces.OPERATIONS, traduites POUR LA PAGE : les cases
+    # a cocher et la fiche de la cle, que lit un humain.
+    "operation.image": {"fr": "créer une image", "en": "create an image"},
+    "operation.retouche": {"fr": "retoucher une image", "en": "edit an image"},
+    "operation.video": {"fr": "vidéo", "en": "video"},
+    "operation.audio": {"fr": "musique", "en": "music"},
+    "operation.agrandir": {"fr": "agrandir", "en": "upscale"},
+    "operation.detourer": {"fr": "détourer", "en": "remove the background"},
+    "operation.objet3d": {"fr": "objet 3D", "en": "3D object"},
+    "operation.lecture": {"fr": "décrire une image", "en": "describe an image"},
     "erreur.acces_expire": {
         "fr": "durée de vie : un nombre entier de jours, de {bas} à {haut} (0 = sans fin)",
         "en": "lifetime: a whole number of days, from {bas} to {haut} (0 = no end date)"},
@@ -639,6 +660,11 @@ TEXTES = {
         "en": "ERROR: {quoi}"},
     # Le refus du garde-fou, qui partait en francais dans toutes les langues :
     # c'est pourtant celui que l'utilisateur a le plus besoin de comprendre.
+    # Une cle restreinte dont la demande, une fois analysee, vise une autre
+    # famille : rien n'a ete rendu. La meme phrase que le refus d'entree.
+    "panne.cle_operation_interdite": {
+        "fr": "cette clé ne permet pas « {operation} » : seulement {permises}",
+        "en": "this key does not allow “{operation}”: only {permises}"},
     "panne.refus_mineurs": {
         "fr": "demande refusée : contenu sexuel impliquant des mineurs",
         "en": "request refused: sexual content involving minors"},
@@ -1694,6 +1720,19 @@ TEXTES = {
     "page.acces.ancienne_jusqu": {
         "fr": "ancien secret valable jusqu'au {date}",
         "en": "old secret valid until {date}"},
+    "page.acces.operations.champ": {
+        "fr": "ce que la clé peut faire",
+        "en": "what the key can do"},
+    "page.acces.operations.aide": {
+        "fr": "Rien de coché : tout, y compris ce que le studio saura faire "
+              "demain. Une clé branchée sur un seul usage — un détourage, un "
+              "agrandissement — n'ouvre plus que lui si elle fuit.",
+        "en": "Nothing ticked: everything, including what the studio will be "
+              "able to do tomorrow. A key wired to a single use — background "
+              "removal, upscaling — only opens that one if it leaks."},
+    "page.acces.operations.seulement": {
+        "fr": "seulement : {liste}",
+        "en": "only: {liste}"},
     "page.acces.expire.champ": {
         "fr": "durée de vie",
         "en": "lifetime"},

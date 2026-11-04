@@ -10105,6 +10105,15 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             plan = caler_taille(plan, texte, taille)
         # le prompt reecrit passe aussi la garde
         garde_fou(texte, plan.get("prompt"), plan.get("tags_audio"), plan.get("paroles"))
+        # CE QUE LA CLE PEUT FAIRE, des que l'analyse l'a decide et AVANT
+        # l'enrichissement : une cle de detourage dont la demande se lit
+        # « video » est arretee ici, sans appel de modele de langage de plus ni
+        # minute de carte. Les questions sont deja parties plus haut : une cle
+        # restreinte peut toujours recevoir une question.
+        refus_op = operation_refusee(tid, plan, texte)
+        if refus_op:
+            raise RefusMoteur("cette cle d'acces ne permet pas cette operation",
+                              refus_op)
         # apres l'aiguillage ET l'eventuel modele impose : le moteur est arrete,
         # on sait donc si sa langue impose une traduction.
         if plan.pop("prompt_repli", False):
@@ -16283,6 +16292,34 @@ def _sorties_rangees(tid, conv):
     return rangees
 
 
+CODES_DE_PANNE = {"refus_mineurs_genre": "refus_mineurs"}
+
+
+def _code_de_panne(panne):
+    """Le code qu'un programme lit dans « erreur.code ».
+
+    LA RAISON, PAS L'ENVELOPPE. Presque tout ce qui casse dans executer() est
+    journalise par « ERREUR : {quoi} » (panne.echec), la vraie phrase dans
+    « quoi » : le code valait donc « echec » pour un refus du garde-fou, un
+    moteur absent ou une cle qui ne permet pas l'operation — et un workflow
+    n'avait rien sur quoi brancher. Quand « quoi » est une marque, c'est SA
+    cle qui fait le code ; « echec » reste pour une exception sans phrase.
+    """
+    if not isinstance(panne, dict) or not panne.get("cle"):
+        return "inconnue"
+    quoi = (panne.get("valeurs") or {}).get("quoi")
+    if panne["cle"] == "panne.echec" and isinstance(quoi, dict) and quoi.get("cle"):
+        code = str(quoi["cle"]).split(".", 1)[-1]
+    else:
+        code = str(panne["cle"]).split(".", 1)[-1]
+    # LE MEME CODE QU'A L'ENTREE. lancer_pour_programme rend « refus_mineurs »
+    # dans les deux cas, la phrase seule dit le genre ; le garde-fou
+    # d'executer() a deux cles. Sans cette ligne, un workflow branche sur
+    # « refus_mineurs » ratait justement le refus que le prompt reecrit fait
+    # tomber (relecture du 4 novembre 2026).
+    return CODES_DE_PANNE.get(code, code)
+
+
 def rendu_public(tid, conv, t, tour, base, lg):
     """Ce qu'un programme lit d'un rendu. La meme forme partout : la reponse
     de /api/v1/rendus, le corps du rappel, le contenu structure de l'outil MCP.
@@ -16355,8 +16392,7 @@ def rendu_public(tid, conv, t, tour, base, lg):
     if etat in ("erreur", "annule"):
         panne = t.get(MARQUE_PANNE)
         corps["erreur"] = {
-            "code": "annule" if etat == "annule" else
-                    ((panne or {}).get("cle") or "inconnue").split(".", 1)[-1],
+            "code": "annule" if etat == "annule" else _code_de_panne(panne),
             "message": (traductions.rendre(panne, lg) if panne
                         else ((t.get("etapes") or [{}])[-1].get("msg")
                               or (tour or {}).get("erreur") or "")),
@@ -16420,6 +16456,71 @@ def _nuage_du_programme(d, fiche):
     pas — sinon le reglage de la cle ne serait qu'une suggestion."""
     voulu = d.get("nuage", True)
     return bool(fiche.get("nuage")) and voulu is not False
+
+
+def _type_de_moteur(cle):
+    """Le type d'un moteur du catalogue ou distant, ou None."""
+    return (CATALOGUE.get(cle) or MOTEURS_DISTANTS.get(cle) or {}).get("type")
+
+
+def _nom_operation(type_):
+    """La famille d'un type, dans le mot de l'API ; le type brut quand il n'a
+    pas de famille — mieux qu'un mot invente. Le mot de l'API et non sa
+    traduction : c'est la valeur que le programmeur a mise dans
+    « operations », il doit la reconnaitre."""
+    return _acces.famille(type_) or str(type_ or "?")
+
+
+def _noms_operations(ops):
+    # Sans guillemets : ceux de la phrase dependent de la langue.
+    return ", ".join(ops)
+
+
+def type_effectif(plan, texte=""):
+    """Ce que la demande va REELLEMENT faire, vu juste apres l'analyse.
+
+    Deux exceptions a « le type du moteur d'abord », toutes deux trouvees par
+    la relecture du 4 novembre 2026 :
+
+    - UNE LECTURE garde parfois un moteur d'image : le modele de langage
+      repond { "intention": "lecture", "modele": "klein4b" } et normaliser()
+      ne retire le moteur que sur le raccourci ecrit. executer() fait alors
+      une lecture — c'est l'intention qui fait foi, sinon une cle « lecture »
+      etait refusee pour l'usage meme qu'elle sert.
+    - UNE RETOUCHE DU « MEME PERSONNAGE » devient une image neuve plus bas
+      dans executer() (veut_meme_personnage). La regle est reprise ICI, et
+      non apres la bascule : la garde reste avant l'enrichissement, et une
+      cle « retouche » ne se fait pas generer une image neuve.
+    """
+    intention = plan.get("intention")
+    if intention == "lecture":
+        return "lecture"
+    if intention == "edition" and texte and veut_meme_personnage(texte):
+        return "image"
+    return _type_de_moteur(plan.get("modele")) or intention
+
+
+def operation_refusee(tid, plan, texte=""):
+    """La marque du refus quand la cle de cette tache ne permet pas ce que
+    l'analyse a decide, ou None.
+
+    LE TYPE DU MOTEUR D'ABORD, l'intention ensuite : c'est le moteur qui
+    tourne. Une intention « image » rendue par le moteur d'edition est une
+    retouche. Sans moteur (une lecture), l'intention dit tout.
+
+    Une demande de la page n'a pas de marque : jamais refusee ici. Une marque
+    d'avant ce champ non plus — une cle d'avant ne connaissait que « tout ».
+    """
+    marque = (TACHES.get(tid) or {}).get("api") if tid else None
+    ops = (marque or {}).get("operations") or []
+    if not ops:
+        return None
+    type_ = type_effectif(plan, texte)
+    if _acces.operation_permise(ops, type_):
+        return None
+    return panne_de("panne.cle_operation_interdite",
+                    operation=_nom_operation(type_),
+                    permises=_noms_operations(ops))
 
 
 def nuage_permis(tid):
@@ -16591,6 +16692,19 @@ async def lancer_pour_programme(req, fiche, d, lg):
     if v["modele"] in MOTEURS_DISTANTS and not nuage:
         oublier_image()
         return refus("erreur.cle_sans_nuage", 400)
+    # CE QUE LA CLE PEUT FAIRE, DES L'ENTREE quand le moteur est impose : son
+    # type dit deja l'operation, et le programme apprend le refus sur cette
+    # requete, sans place dans la file ni unite du plafond du jour. Sans moteur
+    # impose, seule l'analyse sait ce qui sera fait : executer() verifie
+    # apres elle (operation_refusee).
+    ops = fiche.get("operations") or []
+    if d.get("moteur") is not None and v["modele"]:
+        type_ = _type_de_moteur(v["modele"])
+        if not _acces.operation_permise(ops, type_):
+            oublier_image()
+            return refus("erreur.cle_operation_interdite", 403,
+                         operation=_nom_operation(type_),
+                         permises=_noms_operations(ops))
     # LA GARDE AVANT LA FILE. executer() la passe aussi, mais apres le 202 :
     # un programme apprenait le refus au sondage suivant, sous la forme d'un
     # rendu « erreur » — et l'avait deja compte dans son plafond du jour.
@@ -16619,8 +16733,11 @@ async def lancer_pour_programme(req, fiche, d, lg):
     conv["api"]["lancements"] = ([q for q in conv["api"].get("lancements") or []
                                   if q >= hier]
                                  + [maintenant_] * v["variantes"])
+    # « operations » sur la marque, comme le nuage : executer() la lit apres
+    # l'analyse, et reprendre_file() la restaure avec la tache.
     marque = {"cle": fiche["id"], "nuage": nuage, "rappel": rappel,
-              "base": base_publique(req), "langue": lg}
+              "base": base_publique(req), "langue": lg,
+              "operations": list(ops)}
     tid, _devant = await deposer_demande(conv, pid, page, v, api=marque)
     return 202, {"id": tid}
 
@@ -16967,7 +17084,10 @@ def _moteurs_pour(fiche, lg):
                    "pour": dit_moteur(c, "pour", m.get("pour", ""), lg),
                    "type": m["type"], "distant": True, "present": True}
                   for c, m in MOTEURS_DISTANTS.items() if moteur_distant_pret(c)]
-    return liste
+    # Et seulement ceux que la cle permet, pour la meme raison : un assistant
+    # qui choisit dans cette liste ne doit pas y trouver un refus.
+    ops = fiche.get("operations") or []
+    return [m for m in liste if _acces.operation_permise(ops, m["type"])]
 
 
 async def api_v1_contrat(req):
@@ -17589,7 +17709,10 @@ async def api_mes_acces(req):
                    "en_file_min": 1,
                    "en_file_defaut": _acces.EN_FILE_DEFAUT,
                    "par_jour": _acces.PAR_JOUR_MAX,
-                   "expirations": list(_acces.EXPIRATIONS)}})
+                   "expirations": list(_acces.EXPIRATIONS),
+                   # Les familles qu'on peut cocher, dans l'ordre : la page
+                   # ne les recopie pas, elle les recoit.
+                   "operations": list(_acces.OPERATIONS)}})
 
 
 async def api_creer_acces(req):
@@ -17630,7 +17753,8 @@ async def api_creer_acces(req):
                           nuage=d.get("nuage") is True, hotes=hotes,
                           en_file=d.get("en_file", _acces.EN_FILE_DEFAUT),
                           par_jour=d.get("par_jour", 0),
-                          expire_jours=d.get("expire_jours", 0))
+                          expire_jours=d.get("expire_jours", 0),
+                          operations=d.get("operations"))
     except OSError as e:
         print(f"[studio] cle d'acces non creee pour {nom} : {e}", flush=True)
         return web.json_response({"erreur": T("erreur.acces_ecriture", lg),

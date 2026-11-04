@@ -445,6 +445,20 @@ try:
         f"{sorted(set(C.TAILLES) ^ set(S.TAILLES)) or 'egales'}")
     dit(tuple(C.PRIORITES) == tuple(p for p in S.PRIORITES if p),
         "les priorites sont celles de serveur.py")
+    # Ce que la cle peut faire : les familles que le contrat annonce sont
+    # celles qu'acces.py accepte, et la route qui peut les refuser dit son 403.
+    ops_ = ((DOC["components"]["schemas"]["Cle"]["properties"].get("operations")
+             or {}).get("items") or {}).get("enum")
+    dit(ops_ == list(S._acces.OPERATIONS),
+        "les familles d'« operations » sont celles d'acces.OPERATIONS, dans l'ordre",
+        repr(ops_))
+    types_ = ((DOC["components"]["schemas"]["DemandeRendu"]["properties"]
+               .get("image_type") or {}).get("enum"))
+    dit(types_ and sorted(types_) == sorted(S.TYPES_IMAGE),
+        "« image_type » enumere exactement les types que serveur.py accepte",
+        repr(types_))
+    dit("403" in DOC["paths"]["/api/v1/rendus"]["post"]["responses"],
+        "POST /api/v1/rendus annonce le 403 d'une operation que la cle ne permet pas")
     familles = set(S.FAMILLES) | {"objet3d", "autre"}
     dit(set(C.TYPES_FICHIER) == familles, "les types de fichier sont les familles de sortie",
         f"{sorted(familles)}")

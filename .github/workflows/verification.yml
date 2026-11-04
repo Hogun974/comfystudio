@@ -624,6 +624,18 @@ jobs:
       - name: Le pilotage par programme, cles, rappels et MCP de bout en bout
         run: python banc_pilotage.py
 
+      # Les deux workflows n8n du depot sont ce qu'on importe sans le relire :
+      # une faute y est copiee dans chaque maison qui les branche. Le banc les
+      # confronte au contrat de contrat.py, pas a une liste recopiee — chaque
+      # URL est une route decrite, chaque champ envoye ou lu existe, chaque
+      # etat final et chaque evenement du rappel a sa branche —, et il garde
+      # ce qui coute cher : la cle jamais dans le fichier ni envoyee hors du
+      # studio, l'Idempotency-Key sur le POST, un timeout au-dessus
+      # d'attendre, aucune boucle sans borne, aucun 429 reessaye sans
+      # reessayer_dans. Bibliotheque standard seulement.
+      - name: Les exemples n8n suivent le contrat, sans double rendu ni boucle sans fin
+        run: python banc_exemples.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.
