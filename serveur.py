@@ -16476,6 +16476,54 @@ async def api_v1_rendre(req, fiche):
     return await _repondre_rendu(req, fiche, tid, statut=202)
 
 
+# Cent rendus par page, au plus. Chacun porte ses fichiers et des liens signes :
+# au-dela, une reponse pese plusieurs centaines de kilo-octets et la relire
+# chaque minute, ce que fait un workflow, devient le travail principal du
+# studio.
+LISTE_MAX = 100
+
+
+@pour_programme
+async def api_v1_lister(req, fiche):
+    """Les derniers rendus de CETTE cle, du plus recent au plus ancien.
+
+    Un programme qui a perdu un identifiant n'avait aucun moyen de le
+    retrouver, et un assistant IA ne pouvait pas repondre a « ce que j'ai fait
+    tout a l'heure ». Les variantes viennent avec leur groupe, sous
+    l'identifiant du premier tirage, comme partout ailleurs.
+    """
+    lg = langue_de(req)
+    try:
+        limite = int(req.query.get("limite") or 20)
+    except ValueError:
+        limite = 0
+    if not 1 <= limite <= LISTE_MAX:
+        return refus_programme("erreur.champ_illisible", 400, lg, champ="limite")
+    return web.json_response({"rendus": rendus_de_la_cle(qui(req), fiche, limite,
+                                                         base_publique(req), lg)})
+
+
+def rendus_de_la_cle(pid, fiche, limite, base, lg):
+    siennes = sorted((c for c in CONVERSATIONS.values()
+                      if ouvrable(c, pid) and (c.get("api") or {}).get("cle") == fiche["id"]),
+                     key=lambda c: c.get("modifie", 0), reverse=True)
+    rendus = []
+    for conv in siennes:
+        for tour in reversed(conv.get("tours", [])):
+            groupe = (tour.get("variantes") or {}).get("groupe")
+            tid = tour.get("id")
+            # Une variante n'est pas un rendu a part : elle vient avec le
+            # premier tirage de son groupe.
+            if groupe and groupe != tid:
+                continue
+            if not isinstance(tid, str) or not _TID.fullmatch(tid):
+                continue
+            rendus.append(rendu_public(tid, conv, TACHES.get(tid), tour, base, lg))
+            if len(rendus) >= limite:
+                return rendus
+    return rendus
+
+
 @pour_programme
 async def api_v1_rendu(req, fiche):
     lg = langue_de(req)
@@ -16641,6 +16689,65 @@ async def api_v1_contrat(req):
     return web.json_response(_contrat.document(base_publique(req)))
 
 
+# Un essai de rappel toutes les dix secondes par cle. L'essai envoie une
+# vraie requete : sans plafond, une cle volee en ferait un generateur de
+# requetes vers l'hote declare — borne, mais pas gratuit pour lui.
+ESSAI_INTERVALLE = 10
+DERNIER_ESSAI = {}           # identifiant de cle -> instant du dernier essai
+
+
+@pour_programme
+async def api_v1_essai_rappel(req, fiche):
+    """Envoie un evenement d'ESSAI, signe, a une adresse de rappel, et dit
+    tout de suite ce qu'il en est.
+
+    Pour brancher n8n, il fallait jusqu'ici lancer un vrai rendu et attendre
+    sa fin pour savoir si le noeud Webhook recevait, et si la signature se
+    verifiait. L'essai part en un seul essai, sans les reprises d'un vrai
+    rappel : c'est une question, pas une livraison.
+
+    SON ISSUE REVIENT A LA CLE, et c'est voulu : sans elle l'essai ne sert a
+    rien. Ce n'est pas la sonde de ports que la revue de securite a fermee
+    pour les vrais rappels : l'adresse doit etre un hote DECLARE, et une entree
+    sans port ne vaut que pour 80/443 (rappels.url_autorisee) — on ne sonde que
+    ce que le proprietaire a nomme.
+    """
+    lg = langue_de(req)
+    try:
+        d = await _json_objet(req)
+    except web.HTTPException:
+        raise
+    except Exception:
+        return refus_programme("erreur.corps_illisible", 400, lg)
+    url = d.get("rappel")
+    if not isinstance(url, str) or not url.strip():
+        return refus_programme("erreur.champ_illisible", 400, lg, champ="rappel")
+    url = url.strip()
+    raison = _rappels.url_autorisee(url, fiche.get("hotes") or [])
+    if raison:
+        return refus_programme("erreur.rappel_refuse", 400, lg, raison=raison)
+    maintenant = time.monotonic()
+    reste = DERNIER_ESSAI.get(fiche["id"], -ESSAI_INTERVALLE) + ESSAI_INTERVALLE - maintenant
+    if reste > 0:
+        return refus_programme("erreur.trop_d_essais", 429, lg,
+                               secondes=f"{reste:.0f}")
+    DERNIER_ESSAI[fiche["id"]] = maintenant
+    secret = ACCES.secret_rappel(fiche["id"]) if ACCES else None
+    corps = _rappels.corps_de({
+        "evenement": "rappel.essai", "id": None,
+        "envoye": _horodatage(time.time()),
+        "message": "essai de ComfyStudio : si la signature se verifie, le "
+                   "branchement est bon"})
+    async with aiohttp.ClientSession() as session:
+        res = await _rappels.livrer(session, url, corps, secret or "",
+                                    evenement="rappel.essai",
+                                    livraison=uuid.uuid4().hex, delais=(0,))
+    return web.json_response({"evenement": "rappel.essai",
+                              "livre": bool(res.get("livre")),
+                              "statut": res.get("statut"),
+                              "raison": res.get("raison")})
+
+
 @pour_programme
 async def api_v1_moteurs(req, fiche):
     lg = langue_de(req)
@@ -16780,7 +16887,8 @@ INSTRUCTIONS_MCP = (
     "avec cet identifiant. Si l'etat est « question », pose la question a "
     "l'utilisateur et transmets sa reponse avec repondre_question. "
     "lister_moteurs donne les moteurs disponibles quand l'utilisateur en veut "
-    "un precis (agrandir, detourer, une video…).")
+    "un precis (agrandir, detourer, une video…). lister_rendus retrouve ce qui "
+    "a deja ete fait avec cette cle.")
 
 _SCHEMA_ATTENDRE = {"type": "integer", "minimum": 0, "maximum": ATTENDRE_MAX,
                     "description": "Secondes a attendre la fin avant de rendre "
@@ -16924,6 +17032,17 @@ async def _outil_annuler(arguments, ctx):
     return await _resultat_mcp(req, fiche, arguments["id"])
 
 
+async def _outil_lister(arguments, ctx):
+    req, fiche = ctx["req"], ctx["fiche"]
+    rendus = rendus_de_la_cle(qui(req), fiche, arguments.get("limite", 10),
+                              base_publique(req), langue_de(req))
+    lignes = [f"- {r['id']} : {r['etat']} — {r['demande'][:70]}"
+              f"{' (' + str(len(r['fichiers'])) + ' fichier(s))' if r['fichiers'] else ''}"
+              for r in rendus] or ["aucun rendu pour cette cle"]
+    return {"content": [_mcp.texte("\n".join(lignes))],
+            "structuredContent": {"rendus": rendus}}
+
+
 async def _outil_moteurs(arguments, ctx):
     req, fiche = ctx["req"], ctx["fiche"]
     liste = _moteurs_pour(fiche, langue_de(req))
@@ -16990,6 +17109,15 @@ def outils_mcp():
             {"type": "object", "additionalProperties": False, "required": ["id"],
              "properties": {"id": _id}},
             _outil_annuler),
+        _mcp.outil(
+            "lister_rendus", "Lister les rendus",
+            "Les derniers rendus demandes avec cette cle, du plus recent au "
+            "plus ancien — pour retrouver ce qui a ete fait tout a l'heure.",
+            {"type": "object", "additionalProperties": False,
+             "properties": {"limite": {"type": "integer", "minimum": 1,
+                                       "maximum": LISTE_MAX,
+                                       "description": "Combien (defaut 10)."}}},
+            _outil_lister),
         _mcp.outil(
             "lister_moteurs", "Lister les moteurs",
             "Les moteurs que cette cle peut demander, avec ce qu'ils font.",
@@ -17241,6 +17369,8 @@ def app():
     a.router.add_post("/api/nuage", api_nuage)
     # Le pilotage par programme : voir le bloc du meme nom.
     a.router.add_post("/api/v1/rendus", api_v1_rendre)
+    a.router.add_get("/api/v1/rendus", api_v1_lister)
+    a.router.add_post("/api/v1/rappels/essai", api_v1_essai_rappel)
     a.router.add_get("/api/v1/rendus/{tid}", api_v1_rendu)
     a.router.add_delete("/api/v1/rendus/{tid}", api_v1_annuler)
     a.router.add_post("/api/v1/rendus/{tid}/reponse", api_v1_repondre)

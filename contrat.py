@@ -42,6 +42,9 @@ VERSION_OPENAPI = "3.1.0"
 
 # ── Les bornes recopiees de serveur.py (banc_contrat.py les confronte) ──
 ATTENDRE_MAX = 600
+# Recopie de serveur.LISTE_MAX, comme ATTENDRE_MAX : banc_contrat.py exige
+# l'egalite, parce qu'une borne recopiee a la main derive.
+LISTE_MAX = 100
 ATTENDRE_MCP = 45
 ETATS = ("en_file", "en_cours", "attente_machine", "question",
          "fini", "erreur", "annule")
@@ -60,7 +63,7 @@ TAILLES = ("1024x1024", "1080x1350", "1216x832", "1280x720", "1600x900",
 PRIORITES = ("brouillon", "rapide", "soigne")
 TYPES_FICHIER = ("image", "video", "audio", "objet3d", "autre")
 OUTILS_MCP = ("generer_rendu", "etat_rendu", "repondre_question",
-              "annuler_rendu", "lister_moteurs")
+              "annuler_rendu", "lister_rendus", "lister_moteurs")
 
 # ── Les refus qui portent un code ───────────────────────────────────────
 # Le code est la cle de traductions.py sans sa famille (refus_programme). Il
@@ -316,9 +319,13 @@ def _schemas():
         "description": "Le corps d'un rappel : JSON compact, clés triées, UTF-8.",
         "properties": {
             "evenement": {"type": "string", "enum": list(_rappels.EVENEMENTS)},
-            "id": {"type": "string"},
+            "id": {"type": ["string", "null"],
+                   "description": "null pour « rappel.essai »."},
             "rendu": _ref("schemas", "Rendu"),
             "envoye": {"type": "string"},
+            "message": {"type": "string",
+                        "description": "Seulement sur « rappel.essai » "
+                                       "(POST /api/v1/rappels/essai)."},
         },
     }
     return {
@@ -342,6 +349,24 @@ def _schemas():
                 "aujourdhui": {"type": "integer"},
                 "attendre_max": {"type": "integer"},
             }},
+        "ListeRendus": {
+            "type": "object",
+            "properties": {"rendus": {"type": "array",
+                                      "items": _ref("schemas", "Rendu")}}},
+        "EssaiRappel": {
+            "type": "object", "required": ["rappel"],
+            "properties": {"rappel": {
+                "type": "string",
+                "description": "L'adresse a essayer ; son hôte doit être "
+                               "déclaré dans la clé."}}},
+        "ResultatEssai": {
+            "type": "object",
+            "properties": {
+                "evenement": {"type": "string", "enum": ["rappel.essai"]},
+                "livre": {"type": "boolean"},
+                "statut": {"type": ["integer", "null"],
+                           "description": "Le statut HTTP rendu par le récepteur."},
+                "raison": {"type": "string"}}},
         "Televersement": {
             "type": "object",
             "properties": {
@@ -378,6 +403,11 @@ def _parametres():
                  "schema": {"type": "integer", "minimum": 0}},
         "jeton": {"name": "jeton", "in": "path", "required": True,
                   "schema": {"type": "string"}},
+        "limite": {"name": "limite", "in": "query", "required": False,
+                   "description": "Combien de rendus, du plus récent au plus "
+                                  "ancien (défaut 20).",
+                   "schema": {"type": "integer", "minimum": 1,
+                              "maximum": LISTE_MAX, "default": 20}},
         "attendre": {"name": "attendre", "in": "query", "required": False,
                      "schema": _attendre("Secondes à attendre un état final "
                                          "avant de répondre.")},
@@ -439,7 +469,17 @@ def _chemins():
         "headers": {"Location": {"schema": {"type": "string"}}},
         "content": _json(_ref("schemas", "Rendu"))}
     return {
-        "/api/v1/rendus": {"post": {
+        "/api/v1/rendus": {"get": {
+            "operationId": "listerRendus",
+            "summary": "Les derniers rendus de cette clé",
+            "description": "Du plus récent au plus ancien ; les variantes "
+                           "viennent avec leur groupe, sous l'identifiant du "
+                           "premier tirage. Pour retrouver un identifiant perdu.",
+            "parameters": [_ref("parameters", "limite")],
+            "responses": dict(_communes(400), **{
+                "200": {"description": "Les rendus.",
+                        "content": _json(_ref("schemas", "ListeRendus"))}})},
+        "post": {
             "operationId": "creerRendu",
             "summary": "Demander un rendu",
             "description": (
@@ -542,6 +582,18 @@ def _chemins():
             "responses": {"200": {
                 "description": "OpenAPI 3.1, JSON.",
                 "content": _json({"type": "object"})}}}},
+        "/api/v1/rappels/essai": {"post": {
+            "operationId": "essayerRappel",
+            "summary": "Envoyer un rappel d'essai, signé",
+            "description": f"Un événement « rappel.essai », signé comme un vrai, "
+                           f"en un seul essai ; la réponse dit s'il a été reçu. "
+                           f"Pour vérifier un branchement n8n sans lancer de "
+                           f"rendu. Un essai toutes les {10} s par clé.",
+            "requestBody": {"required": True,
+                            "content": _json(_ref("schemas", "EssaiRappel"))},
+            "responses": dict(_communes(400), **{
+                "200": {"description": "L'issue de l'essai.",
+                        "content": _json(_ref("schemas", "ResultatEssai"))}})}},
         "/mcp": {"post": {
             "operationId": "mcp",
             "summary": "MCP (Model Context Protocol), transport Streamable HTTP",
@@ -552,7 +604,8 @@ def _chemins():
                 "generer_rendu (lance un rendu et attend au plus « attendre » "
                 f"secondes, {ATTENDRE_MCP} par défaut), etat_rendu (suit un "
                 "rendu), repondre_question (répond à l'état « question »), "
-                "annuler_rendu, lister_moteurs. tools/list fait foi."),
+                "annuler_rendu, lister_rendus (retrouve les rendus de la "
+                "clé), lister_moteurs. tools/list fait foi."),
             "parameters": [_ref("parameters", "McpVersion")],
             "requestBody": {"required": True,
                             "content": _json(_ref("schemas", "JsonRpc"))},

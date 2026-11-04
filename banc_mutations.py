@@ -11252,9 +11252,11 @@ CONTRAT = [
         imite="la liste des outils recopiee avant l'ajout d'annuler_rendu : "
               "un assistant qui lit le contrat ne sait pas qu'il peut annuler",
         rougit="chaque outil MCP est nomme dans la description de /mcp",
+        # L'ancre suit la phrase depuis l'ajout de lister_rendus (4 novembre
+        # 2026) ; l'outil oublie reste annuler_rendu.
         editions=[("contrat.py", brut(
-            '"annuler_rendu, lister_moteurs.',
-            '"lister_moteurs.'))]),
+            '"annuler_rendu, lister_rendus (retrouve',
+            '"lister_rendus (retrouve'))]),
 ]
 
 
@@ -11859,6 +11861,81 @@ GARDE_IMAGE = [
 ]
 
 
+# Retrouver ses rendus (GET /api/v1/rendus, l'outil lister_rendus) et essayer
+# son rappel (POST /api/v1/rappels/essai), 4 novembre 2026.
+LISTE_ESSAI = [
+    dict(
+        nom="la liste rend les rendus de toutes les cles du compte",
+        banc="banc_pilotage.py",
+        imite="le filtre par compte au lieu du filtre par cle : une cle fuitee "
+              "d'un workflow lit tout ce que les autres programmes ont fait",
+        rougit="la liste rend les rendus de cette cle, et d'elle seule",
+        editions=[("serveur.py", brut(
+            'if ouvrable(c, pid) and (c.get("api") or {}).get("cle") == fiche["id"]),',
+            'if ouvrable(c, pid) and c.get("api")),'))]),
+    dict(
+        nom="la liste rend chaque variante comme un rendu",
+        banc="banc_pilotage.py",
+        imite="quatre variantes deviennent quatre rendus, dont trois "
+              "identifiants qu'aucune autre route ne connait",
+        rougit="les variantes viennent avec leur groupe",
+        editions=[("serveur.py", brut(
+            "            if groupe and groupe != tid:" + chr(10)
+            + "                continue" + chr(10), ""))]),
+    dict(
+        nom="la limite de la liste n'a plus de plafond",
+        banc="banc_pilotage.py",
+        imite="« limite=100000 » : une reponse de plusieurs megaoctets, relue a "
+              "chaque minute par un workflow",
+        rougit="« limite » borne la liste",
+        editions=[("serveur.py", brut(
+            "    if not 1 <= limite <= LISTE_MAX:", "    if not 1 <= limite:"))]),
+    dict(
+        nom="l'essai de rappel part vers n'importe quel hote",
+        banc="banc_pilotage.py",
+        imite="l'essai sans la liste des hotes : une cle volee fait POSTer le "
+              "studio ou elle veut, ET lit la reponse — la sonde de ports que "
+              "la revue avait fermee",
+        rougit="un essai vers un hote non declare est refuse",
+        editions=[("serveur.py", brut(
+            '    raison = _rappels.url_autorisee(url, fiche.get("hotes") or [])' + chr(10)
+            + "    if raison:" + chr(10)
+            + '        return refus_programme("erreur.rappel_refuse", 400, lg, raison=raison)' + chr(10)
+            + "    maintenant = time.monotonic()",
+            "    maintenant = time.monotonic()"))]),
+    dict(
+        nom="l'essai de rappel n'est plus freine",
+        banc="banc_pilotage.py",
+        imite="un essai par requete, sans plafond : la cle devient un "
+              "generateur de requetes vers l'hote declare",
+        rougit="un second essai dans les dix secondes est freine",
+        editions=[("serveur.py", brut(
+            "    if reste > 0:" + chr(10)
+            + '        return refus_programme("erreur.trop_d_essais", 429, lg,' + chr(10)
+            + '                               secondes=f"{reste:.0f}")' + chr(10)
+            + "    DERNIER_ESSAI",
+            "    DERNIER_ESSAI"))]),
+    dict(
+        nom="l'essai de rappel reessaie comme une vraie livraison",
+        banc="banc_pilotage.py",
+        imite="les reprises d'un vrai rappel (0, 5, 30, 120 s) sur un essai : la "
+              "reponse attend deux minutes et demie un recepteur qui n'existe pas",
+        rougit="l'essai part vers l'hote declare",
+        editions=[("serveur.py", brut(
+            "livraison=uuid.uuid4().hex, delais=(0,))",
+            "livraison=uuid.uuid4().hex)"))]),
+    dict(
+        nom="l'outil lister_rendus disparait",
+        banc="banc_pilotage.py",
+        imite="un assistant ne peut plus repondre a « ce que j'ai fait tout a "
+              "l'heure »",
+        rougit="tools/list rend les six outils",
+        editions=[("serveur.py", brut(
+            '            "lister_rendus", "Lister les rendus",',
+            '            "lister_rendus_cache", "Lister les rendus",'))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -11866,7 +11943,8 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
              + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
              + COMPREHENSION_SEPT + CLES_ACCES + RAPPELS + PROTOCOLE_MCP
-             + CONTRAT + PILOTAGE + REVUE + GARDE_IMAGE)
+             + CONTRAT + PILOTAGE + REVUE + GARDE_IMAGE
+             + LISTE_ESSAI)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

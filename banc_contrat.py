@@ -301,11 +301,19 @@ try:
     dit(champs_moteurs == proprietes(DOC, "Moteurs"),
         "Moteurs : les champs du contrat sont ceux de GET /api/v1/moteurs",
         f"{sorted(champs_moteurs)}")
-    m_ = re.search(r"_rappels\.corps_de\(\{(.*?)\}\)", TEXTE, re.S)
-    champs_rappel = set(re.findall(r'"([a-z_]+)":', m_.group(1))) if m_ else set()
-    dit(len(champs_rappel) >= 3 and champs_rappel == proprietes(DOC, "EvenementRappel"),
+    # TOUS LES CORPS SIGNES, et non le premier trouve : le vrai rappel et
+    # l'essai (rappel.essai) n'ont pas les memes champs, et lire le premier
+    # faisait dependre la verification de l'ORDRE des fonctions dans
+    # serveur.py — l'essai, ecrit plus haut, a pris la place du vrai rappel
+    # (4 novembre 2026). L'union doit etre exactement ce que le contrat decrit.
+    corps_signes = re.findall(r"_rappels\.corps_de\(\{(.*?)\}\)", TEXTE, re.S)
+    champs_rappel = set()
+    for c_ in corps_signes:
+        champs_rappel |= set(re.findall(r'"([a-z_]+)":', c_))
+    dit(len(corps_signes) >= 2 and len(champs_rappel) >= 3
+        and champs_rappel == proprietes(DOC, "EvenementRappel"),
         "EvenementRappel : les champs du contrat sont ceux du corps signe",
-        f"{sorted(champs_rappel)}")
+        f"{len(corps_signes)} corps, {sorted(champs_rappel)}")
 
     print("\n  ── les champs que les routes lisent ──")
     lus_demande = set()
@@ -338,6 +346,8 @@ try:
     dit(set(C.ETATS_FINAUX) == set(S.ETATS_FINAUX), "les etats finaux sont les memes")
     dit(C.ATTENDRE_MAX == S.ATTENDRE_MAX, "ATTENDRE_MAX est celui de serveur.py",
         f"{C.ATTENDRE_MAX} contre {S.ATTENDRE_MAX}")
+    dit(C.LISTE_MAX == S.LISTE_MAX, "LISTE_MAX est celui de serveur.py",
+        f"{C.LISTE_MAX} contre {S.LISTE_MAX}")
     bornes = list(schemas_attendre(DOC))
     fausses = [c for c, s in bornes if s.get("maximum") != S.ATTENDRE_MAX
                or s.get("minimum") != 0]

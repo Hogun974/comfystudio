@@ -37,7 +37,7 @@ CE QU'IL GARDE, DANS L'ORDRE DES DEGATS :
      reprendre_file() et recopiee par lancer_variantes().
   9. Les rappels : livres une fois, signes du secret de la cle, jamais pour
      une cle revoquee ni pour un rendu pas fini.
- 10. MCP : le transport, les cinq outils, les refus sans exception.
+ 10. MCP : le transport, les six outils, les refus sans exception.
  11. La retention : seules les conversations de PROGRAMME vieilles de trente
      jours se ferment.
  12. Deux gardes relues dans le texte : garde_fou apres traduire() dans
@@ -105,8 +105,8 @@ HOTE_N8N = "n8n.maison:5678"
 RAPPEL_OK = "http://n8n.maison:5678/webhook/3f1c-banc"
 REFUS_MINEUR = "a child in a sexual pose"     # un des REFUS de banc_adulte.py
 ILLISIBLE = object()
-CINQ_OUTILS = {"generer_rendu", "etat_rendu", "repondre_question",
-               "annuler_rendu", "lister_moteurs"}
+OUTILS_MCP = {"generer_rendu", "etat_rendu", "repondre_question",
+              "annuler_rendu", "lister_rendus", "lister_moteurs"}
 
 
 class Transport:
@@ -1336,7 +1336,7 @@ async def s_mcp():
         "une notification rend 202 sans corps", f"HTTP {st}")
     st, c, _r = await mcp(K_N8N, rpc("tools/list"))
     noms = {o.get("name") for o in ((c or {}).get("result") or {}).get("tools") or []}
-    dit(noms == CINQ_OUTILS, "tools/list rend les cinq outils", repr(sorted(noms)))
+    dit(noms == OUTILS_MCP, "tools/list rend les six outils", repr(sorted(noms)))
     st, c, _r = await mcp(K_N8N, rpc("tools/call", {"name": "lister_moteurs", "arguments": {}}))
     contenu = ((c or {}).get("result") or {}).get("content") or [{}]
     dit(contenu[0].get("type") == "text" and "klein4b" in contenu[0].get("text", ""),
@@ -1759,6 +1759,85 @@ async def s_revue():
         "conversation de page", f"courante {(c or {}).get('courante')}, {len(liste)} listee(s)")
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  14. Retrouver ses rendus, et essayer son rappel
+# ══════════════════════════════════════════════════════════════════════
+async def s_liste():
+    # ── la liste : les rendus de CETTE cle, et d'elle seule ─────────────
+    remise_a_zero()
+    a, _ = poser_rendu(F_N8N)
+    time.sleep(0.01)
+    b, _ = poser_rendu(F_N8N, etat="en cours")
+    time.sleep(0.01)
+    conv_g = conv_de_programme(F_N8N)
+    g1, _ = poser_rendu(F_N8N, conv=conv_g)
+    groupe = {"groupe": g1, "sur": 2}
+    S.TACHES[g1]["variantes"] = dict(groupe, rang=1)
+    next(x for x in conv_g["tours"] if x["id"] == g1)["variantes"] = dict(groupe, rang=1)
+    g2, _ = poser_rendu(F_N8N, conv=conv_g, variantes=dict(groupe, rang=2))
+    autre, _ = poser_rendu(F_AGENT)          # meme compte, AUTRE cle
+    etranger, _ = poser_rendu(F_AUTRUI)      # autre compte
+    st, c, _r = await appel(Req("/api/v1/rendus", cle=K_N8N), S.api_v1_lister)
+    ids = [x["id"] for x in (c or {}).get("rendus") or []]
+    dit(st == 200 and set(ids) == {a, b, g1} and len(ids) == 3,
+        "la liste rend les rendus de cette cle, et d'elle seule — ni ceux d'une "
+        "autre cle du meme compte, ni ceux d'un autre compte",
+        f"{len(ids)} rendus ; autre cle {autre in ids}, autre compte {etranger in ids}")
+    dit(g2 not in ids and ids and ids[0] == g1,
+        "les variantes viennent avec leur groupe, et le plus recent vient en tete",
+        f"tete {ids[:1]}, variante 2 listee : {g2 in ids}")
+    st2, c2, _r = await appel(Req("/api/v1/rendus", cle=K_N8N, requete={"limite": "2"}),
+                              S.api_v1_lister)
+    st0, c0, _r = await appel(Req("/api/v1/rendus", cle=K_N8N, requete={"limite": "0"}),
+                              S.api_v1_lister)
+    stx, cx, _r = await appel(Req("/api/v1/rendus", cle=K_N8N,
+                                  requete={"limite": str(S.LISTE_MAX + 1)}),
+                              S.api_v1_lister)
+    dit(st2 == 200 and len((c2 or {}).get("rendus") or []) == 2
+        and st0 == 400 and code(c0) == "champ_illisible"
+        and stx == 400 and code(cx) == "champ_illisible",
+        "« limite » borne la liste, et se refuse hors de 1 a LISTE_MAX",
+        f"2 -> {len((c2 or {}).get('rendus') or [])}, 0 -> HTTP {st0}, "
+        f"{S.LISTE_MAX + 1} -> HTTP {stx}")
+
+    # ── l'essai de rappel : signe, vers un hote declare, borne ──────────
+    remise_a_zero()
+    S.DERNIER_ESSAI.clear()
+    recus = []
+
+    async def faux(session, url, corps, secret, **k):
+        recus.append({"url": url, "corps": corps, "secret": secret, **k})
+        return {"livre": True, "essais": 1, "statut": 200, "raison": "livre"}
+    vrai = S._rappels.livrer
+    S._rappels.livrer = faux
+    try:
+        hors, c_h, _r = await appel(Req("/api/v1/rappels/essai", "POST", cle=K_N8N,
+                                        corps={"rappel": "http://ailleurs.maison/x"}),
+                                    S.api_v1_essai_rappel)
+        st, c, _r = await appel(Req("/api/v1/rappels/essai", "POST", cle=K_N8N,
+                                    corps={"rappel": f"http://{HOTE_N8N}/webhook/essai"}),
+                                S.api_v1_essai_rappel)
+        st_2, c_2, _r = await appel(Req("/api/v1/rappels/essai", "POST", cle=K_N8N,
+                                        corps={"rappel": f"http://{HOTE_N8N}/webhook/essai"}),
+                                    S.api_v1_essai_rappel)
+    finally:
+        S._rappels.livrer = vrai
+    r0 = recus[0] if recus else {}
+    dit(hors == 400 and code(c_h) == "rappel_refuse" and len(recus) == 1,
+        "un essai vers un hote non declare est refuse, et rien ne part",
+        f"HTTP {hors} {code(c_h)}, {len(recus)} envoi(s)")
+    dit(st == 200 and (c or {}).get("livre") is True
+        and r0.get("evenement") == "rappel.essai"
+        and r0.get("secret") == S.ACCES.secret_rappel(F_N8N["id"])
+        and r0.get("delais") == (0,),
+        "l'essai part vers l'hote declare, signe du secret de la cle, en un seul "
+        "essai, et dit ce qu'il en est",
+        f"HTTP {st}, evenement {r0.get('evenement')}, delais {r0.get('delais')}")
+    dit(st_2 == 429 and code(c_2) == "trop_d_essais" and len(recus) == 1,
+        "un second essai dans les dix secondes est freine",
+        f"HTTP {st_2} {code(c_2)}")
+
+
 async def principal():
     S.FILE_ATTENTE = asyncio.Queue()
     for titre, corps in (
@@ -1774,7 +1853,8 @@ async def principal():
             ("10. MCP", s_mcp),
             ("11. la retention", s_retention),
             ("12. les gardes, relues dans le texte", s_texte),
-            ("13. ce que la revue de securite a trouve", s_revue)):
+            ("13. ce que la revue de securite a trouve", s_revue),
+            ("14. retrouver ses rendus, et essayer son rappel", s_liste)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

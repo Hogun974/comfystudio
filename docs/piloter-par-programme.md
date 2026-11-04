@@ -326,6 +326,23 @@ en file ; s'il calculait sur une machine à agent, celle-ci apprend l'arrêt à 
 prochain battement, et l'état passe à `annule` quelques secondes plus tard —
 relis-le. Déjà terminé : **409** `rendu_termine`.
 
+### Retrouver ses rendus — `GET /api/v1/rendus`
+
+Les derniers rendus de **cette** clé, du plus récent au plus ancien, chacun
+sous la même forme que `GET /api/v1/rendus/{id}`. Pour un workflow qui a perdu
+un identifiant, ou un assistant à qui l'on demande « ce que j'ai fait tout à
+l'heure ».
+
+```bash
+curl -H "Authorization: Bearer cs_…" "http://STUDIO:8199/api/v1/rendus?limite=5"
+```
+
+`limite` va de 1 à 100 (20 par défaut) ; au-delà, **400** `champ_illisible` —
+chaque rendu porte ses fichiers et des liens signés, et une page de mille
+rendus relue chaque minute deviendrait le travail principal du studio. Les
+variantes viennent avec leur groupe, sous l'identifiant du premier tirage. Ni
+les rendus d'une autre clé du même compte, ni ceux d'un autre compte.
+
 ### Envoyer une image — `POST /api/v1/fichiers`
 
 ```sh
@@ -605,6 +622,30 @@ aurait balayé une machine déclarée et lu les réponses. **L'hôte, jamais
 l'adresse** : une URL de webhook n8n porte un identifiant qui sert de secret. Une clé révoquée pendant
 le rendu ne signe plus rien : le rappel n'est pas envoyé.
 
+### Essayer son branchement — `POST /api/v1/rappels/essai`
+
+Pour vérifier qu'un nœud Webhook de n8n reçoit le studio, et que ta
+vérification de signature est juste, **sans lancer de rendu** :
+
+```bash
+curl -X POST -H "Authorization: Bearer cs_…" -H "Content-Type: application/json"   -d '{"rappel": "http://n8n.maison:5678/webhook-test/comfystudio"}'   http://STUDIO:8199/api/v1/rappels/essai
+```
+
+Le studio envoie un événement `rappel.essai`, signé exactement comme un vrai
+(`id` vaut `null`, un champ `message` remplace `rendu`), en **un seul essai**,
+et répond tout de suite :
+
+```json
+{"evenement": "rappel.essai", "livre": true, "statut": 200, "raison": "livre"}
+```
+
+L'hôte doit être déclaré dans la clé, comme pour un vrai rappel. Ici l'issue
+**revient** au programme — sans elle l'essai ne sert à rien —, et ce n'est pas
+la sonde de ports évoquée plus haut : on ne peut essayer que les hôtes et ports
+que le propriétaire a nommés. Un essai toutes les dix secondes par clé, au-delà
+**429** `trop_d_essais`. Un récepteur doit reconnaître `rappel.essai` et n'en
+rien faire.
+
 ### Pourquoi les hôtes sont déclarés
 
 **C'est la défense contre la requête forgée côté serveur.** Le studio vit sur
@@ -716,6 +757,7 @@ Un assistant IA — Claude Code, Claude Desktop, un agent n8n — sait appeler d
 | `etat_rendu` | Donne l'état d'un rendu et ses fichiers, en attendant sa fin au plus `attendre` secondes. |
 | `repondre_question` | Transmet la réponse de l'utilisateur à un rendu dans l'état `question` ; un nouveau rendu part. |
 | `annuler_rendu` | Retire un rendu de la file, ou l'interrompt. |
+| `lister_rendus` | Les derniers rendus de cette clé — pour retrouver ce qui a été fait tout à l'heure. |
 | `lister_moteurs` | Les moteurs que cette clé peut demander, avec ce qu'ils font. |
 
 **Un outil attend 45 secondes par défaut**, et non dix minutes : le SDK MCP
@@ -753,7 +795,7 @@ projet Claude Code, et la plupart des clients qui acceptent le transport HTTP :
 versions de n8n qui n'offrent que « SSE » ne conviennent pas : le studio n'a
 pas de flux SSE), et
 l'authentification par en-tête — *Header Auth*, le même credential que plus
-haut. L'agent voit les cinq outils et choisit seul.
+haut. L'agent voit les six outils et choisit seul.
 
 Pour vérifier à la main :
 

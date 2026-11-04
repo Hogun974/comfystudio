@@ -56,7 +56,11 @@ import urllib.parse
 # Les quatre fins d'un rendu. Une liste fermee : un nom mal tape
 # (« rendu.termine ») partirait sans erreur et n'aurait aucune branche pour le
 # recevoir dans le workflow — livrer() le refuse avant tout essai.
-EVENEMENTS = ("rendu.fini", "rendu.erreur", "rendu.question", "rendu.annule")
+# « rappel.essai » : l'evenement que le proprietaire d'une cle envoie lui-meme
+# pour verifier son branchement (POST /api/v1/rappels/essai) — un recepteur doit
+# pouvoir le reconnaitre et ne rien en faire.
+EVENEMENTS = ("rendu.fini", "rendu.erreur", "rendu.question", "rendu.annule",
+              "rappel.essai")
 
 ENTETE_SIGNATURE = "X-ComfyStudio-Signature"
 ENTETE_EVENEMENT = "X-ComfyStudio-Evenement"
