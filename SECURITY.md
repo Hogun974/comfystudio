@@ -290,6 +290,7 @@ Dans `conversations/`, en JSON lisible :
 | `_noeuds.json` | les jetons des machines à agent, en clair |
 | `_comptes.json` | les empreintes scrypt et leurs sels — et **les secrets TOTP en clair**, qui ne peuvent pas être empreints (il faut les relire pour calculer le code). Les codes de secours, eux, sont empreints. |
 | `_acces.json` | les clés d'accès des programmes : **leurs empreintes sha256**, jamais les clés — et **les secrets de rappel en clair**, qu'il faut relire pour signer chaque rappel. Qui lit ce fichier peut forger un rappel ; il ne peut pas, avec, se présenter au studio. |
+| `_rappels.json` | les rappels en cours de livraison, le temps de leurs essais : **leurs adresses**, dont celle d'un webhook n8n porte un identifiant qui sert de secret. Vidé à chaque livraison finie ; il ne garde que ce qu'un arrêt a interrompu. `0600`. |
 | `*.json` | les conversations : demandes, prompts, chemins des images |
 
 Il n'y a **aucun chiffrement au repos**, et il n'y a rien pour en faire un :

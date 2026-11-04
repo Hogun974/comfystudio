@@ -656,6 +656,18 @@ que le propriétaire a nommés. Un essai toutes les dix secondes par clé, au-de
 **429** `trop_d_essais`. Un récepteur doit reconnaître `rappel.essai` et n'en
 rien faire.
 
+### Un redémarrage ne perd pas un rappel
+
+Une livraison peut durer deux minutes et demie (quatre essais). Elle est
+inscrite sur le disque (`_rappels.json`) **dès qu'elle commence**, et retirée
+quand elle a fini — livrée, refusée, ou la clé révoquée —, mais **pas** quand le
+studio s'arrête : c'est précisément le cas à rattraper. Au démarrage suivant, le
+studio la reprend **avec le même identifiant de livraison** : si le premier
+essai était arrivé avant l'arrêt, ton workflow reconnaît le doublon sur
+`X-ComfyStudio-Livraison` au lieu de lancer deux fois sa suite. Déduplique donc
+sur cet en-tête. Ce n'était pas le cas au premier jet : un arrêt pendant les
+essais perdait le rappel, et le nœud Wait attendait jusqu'à son délai.
+
 ### Pourquoi les hôtes sont déclarés
 
 **C'est la défense contre la requête forgée côté serveur.** Le studio vit sur
@@ -885,9 +897,6 @@ champ ou un code ajoutés d'un seul côté le font rougir.
   qu'un programme lui donne : ce serait la requête forgée que la liste des
   hôtes de rappel empêche, par une autre porte. Envoie les octets —
   `POST /api/v1/fichiers` ou `image_base64`.
-- **Un rappel n'est pas persisté.** Un studio qui s'arrête pendant ses essais le
-  perd. Le rendu, lui, se relit par son identifiant ; règle un délai au nœud
-  Wait.
 - **Les compteurs vivent en mémoire** : le freinage des clés refusées, le
   registre d'idempotence, le nombre de rendus en cours. Un redémarrage les remet
   à zéro. Le plafond `par_jour`, lui, est compté sur le disque.

@@ -1908,6 +1908,87 @@ async def s_humains_dabord():
         "le studio demarre bien sa file avec les humains d'abord")
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  16. Un rappel en cours survit a un redemarrage
+# ══════════════════════════════════════════════════════════════════════
+def registre_sur_disque():
+    try:
+        with open(S.FICHIER_RAPPELS, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+async def s_rappels_persistants():
+    """Une livraison dure jusqu'a deux minutes et demie. Un studio redemarre
+    pendant ce temps la perdait, et le noeud Wait de n8n attendait pour rien."""
+    remise_a_zero()
+    S.RAPPELS_EN_COURS.clear()
+    S.sauver_rappels()
+    tid, conv = poser_rendu(F_N8N, rappel=f"http://{HOTE_N8N}/webhook/w1")
+    jamais = asyncio.Event()
+    recus = []
+
+    async def bloque(*_a, **k):
+        recus.append(k.get("livraison"))
+        await jamais.wait()          # la livraison est en plein essai
+
+    async def note(*_a, **k):
+        recus.append(k.get("livraison"))
+        return {"livre": True, "essais": 1, "statut": 200, "raison": "livre"}
+
+    vrai = S._rappels.livrer
+    S._rappels.livrer = bloque
+    veilleur = asyncio.create_task(S.veiller_rappels())
+    try:
+        await asyncio.sleep(1.6)
+        avant_arret = registre_sur_disque()
+        # L'ARRET DU STUDIO : le veilleur et la livraison sont annules.
+        veilleur.cancel()
+        for tache_ in list(S.LIVRAISONS):
+            tache_.cancel()
+        await asyncio.gather(veilleur, *list(S.LIVRAISONS), return_exceptions=True)
+        apres_arret = registre_sur_disque()
+        id_livraison = (apres_arret.get(tid) or {}).get("livraison")
+        dit(tid in avant_arret and tid in apres_arret and id_livraison
+            and recus == [id_livraison],
+            "une livraison en cours est sur le disque, et un arret du studio ne "
+            "l'efface pas", f"inscrite {tid in avant_arret}, apres l'arret "
+                            f"{tid in apres_arret}")
+
+        # LE REDEMARRAGE : plus de tache en memoire, le registre relu.
+        S.TACHES.clear()
+        S.RAPPELS_EN_COURS.clear()
+        recus.clear()
+        S._rappels.livrer = note
+        repris = S.reprendre_rappels()
+        await asyncio.gather(*list(S.LIVRAISONS), return_exceptions=True)
+        dit(repris == 1 and recus == [id_livraison] and tid not in registre_sur_disque(),
+            "au demarrage, elle est reprise avec le MEME identifiant de livraison, "
+            "puis quitte le registre", f"{repris} reprise(s), identifiant "
+                                      f"{'identique' if recus == [id_livraison] else recus}")
+
+        # Le temoin : une livraison qui aboutit ne laisse rien derriere elle.
+        remise_a_zero()
+        recus.clear()
+        tid2, _ = poser_rendu(F_N8N, rappel=f"http://{HOTE_N8N}/webhook/w2")
+        veilleur = asyncio.create_task(S.veiller_rappels())
+        await asyncio.sleep(1.6)
+        await asyncio.gather(*list(S.LIVRAISONS), return_exceptions=True)
+        veilleur.cancel()
+        await asyncio.gather(veilleur, return_exceptions=True)
+        dit(len(recus) == 1 and tid2 not in registre_sur_disque() and not S.RAPPELS_EN_COURS,
+            "une livraison qui aboutit quitte le registre", f"{len(recus)} envoi(s)")
+        # Et le demarrage s'en sert : une reprise que demarrer_file() n'appelle
+        # pas serait verte ici et absente en service.
+        import inspect
+        dit("reprendre_rappels()" in inspect.getsource(S.demarrer_file),
+            "le studio reprend ses rappels a son demarrage")
+    finally:
+        S._rappels.livrer = vrai
+        jamais.set()
+
+
 async def principal():
     S.FILE_ATTENTE = asyncio.Queue()
     for titre, corps in (
@@ -1925,7 +2006,8 @@ async def principal():
             ("12. les gardes, relues dans le texte", s_texte),
             ("13. ce que la revue de securite a trouve", s_revue),
             ("14. retrouver ses rendus, et essayer son rappel", s_liste),
-            ("15. les humains d'abord dans la file", s_humains_dabord)):
+            ("15. les humains d'abord dans la file", s_humains_dabord),
+            ("16. un rappel en cours survit a un redemarrage", s_rappels_persistants)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

@@ -15701,6 +15701,7 @@ async def demarrer_file(a):
     a["veilleur"] = asyncio.create_task(veiller_noeuds())
     a["ecoute"] = asyncio.create_task(ecouter_comfy())
     a["rappels"] = asyncio.create_task(veiller_rappels())
+    reprendre_rappels()
 
 async def arreter_file(a):
     """Arrete tout ce que le studio a lance, sans supposer combien il y en a.
@@ -16867,11 +16868,82 @@ async def api_v1_moi(req, fiche):
 # sans trace, puisque rien n'a echoue.
 LIVRAISONS = set()
 
+# LES RAPPELS EN COURS, SUR LE DISQUE. Une livraison peut durer deux minutes et
+# demie (quatre essais : 0, 5, 30, 120 s) : un studio redemarre pendant ce temps
+# la perdait, et le noeud Wait de n8n attendait jusqu'a son delai un evenement
+# qui ne viendrait plus. Inscrite des qu'elle commence, retiree quand elle a
+# FINI — livree, refusee, cle revoquee —, mais PAS quand le studio s'arrete :
+# c'est precisement le cas a rattraper.
+FICHIER_RAPPELS = os.path.join(DOSSIER_CONV, "_rappels.json")
+RAPPELS_EN_COURS = {}        # tid -> {"marque", "conversation", "livraison"}
 
-async def _livrer_rappel(tid, marque, conv, t, tour):
+
+def sauver_rappels():
+    tmp = FICHIER_RAPPELS + ".tmp"
     try:
-        await _livrer_rappel_sans_garde(tid, marque, conv, t, tour)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(RAPPELS_EN_COURS, f, ensure_ascii=False)
+        try:
+            # L'adresse d'un webhook n8n porte un identifiant qui sert de
+            # secret : meme droit que le fichier des cles.
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, FICHIER_RAPPELS)
+    except OSError as e:
+        print(f"  rappels en cours non enregistres : {e}", flush=True)
+
+
+def lancer_livraison(tid, marque, conv, t, tour, livraison):
+    tache_ = asyncio.create_task(_livrer_rappel(tid, marque, conv, t, tour, livraison))
+    LIVRAISONS.add(tache_)
+    tache_.add_done_callback(LIVRAISONS.discard)
+
+
+def reprendre_rappels():
+    """Reprend, au demarrage, les livraisons qu'un arret a interrompues.
+
+    Avec le MEME identifiant de livraison : si le premier essai etait arrive
+    avant l'arret, le recepteur reconnait le doublon sur
+    X-ComfyStudio-Livraison au lieu de lancer deux fois la suite du workflow.
+    Le rendu se relit depuis son tour : la tache, elle, n'a pas survecu.
+    """
+    try:
+        with open(FICHIER_RAPPELS, encoding="utf-8") as f:
+            restes = json.load(f)
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError) as e:
+        print(f"  rappels en cours illisibles ({e}) — aucun n'est repris", flush=True)
+        return 0
+    repris = 0
+    for tid, entree in (restes.items() if isinstance(restes, dict) else ()):
+        if not isinstance(entree, dict) or not isinstance(entree.get("marque"), dict):
+            continue
+        conv = CONVERSATIONS.get(entree.get("conversation"))
+        tour = next((x for x in (conv or {}).get("tours", []) if x.get("id") == tid), None)
+        if tour is None:
+            continue
+        marque = dict(entree["marque"], livraison={"en_cours": True})
+        t_ = TACHES.get(tid)
+        if t_ is not None and t_.get("api"):
+            # Le veilleur ne doit pas la relancer une seconde fois.
+            t_["api"]["livraison"] = {"en_cours": True}
+        RAPPELS_EN_COURS[tid] = entree
+        lancer_livraison(tid, marque, conv, t_, tour, entree.get("livraison"))
+        repris += 1
+    if repris:
+        print(f"  {repris} rappel(s) repris apres l'arret", flush=True)
+    return repris
+
+
+async def _livrer_rappel(tid, marque, conv, t, tour, livraison=None):
+    try:
+        await _livrer_rappel_sans_garde(tid, marque, conv, t, tour,
+                                        livraison or uuid.uuid4().hex)
     except asyncio.CancelledError:
+        # L'arret du studio : la livraison RESTE au registre, et le prochain
+        # demarrage la reprend.
         raise
     except Exception as e:
         # Sans ce filet, la marque restait « en cours » pour toujours : le
@@ -16879,9 +16951,12 @@ async def _livrer_rappel(tid, marque, conv, t, tour):
         # jamais annonce.
         marque["livraison"] = {"livre": False, "raison": "erreur interne"}
         print(f"[{tid[:6]}] rappel non envoye : {type(e).__name__}", flush=True)
+    # Finie, d'une facon ou d'une autre : elle quitte le registre.
+    if RAPPELS_EN_COURS.pop(tid, None) is not None:
+        sauver_rappels()
 
 
-async def _livrer_rappel_sans_garde(tid, marque, conv, t, tour):
+async def _livrer_rappel_sans_garde(tid, marque, conv, t, tour, livraison):
     corps_rendu = rendu_public(tid, conv, t, tour, marque.get("base") or "",
                                marque.get("langue") or "fr")
     secret = ACCES.secret_rappel(marque["cle"]) if ACCES else None
@@ -16904,7 +16979,7 @@ async def _livrer_rappel_sans_garde(tid, marque, conv, t, tour):
     async with aiohttp.ClientSession() as session:
         res = await _rappels.livrer(session, marque["rappel"], corps, secret,
                                     evenement=evenement,
-                                    livraison=uuid.uuid4().hex)
+                                    livraison=livraison)
     marque["livraison"] = dict(res, fin=time.time())
     # DANS LE JOURNAL DU STUDIO, PAS DANS LE FIL DU RENDU. Le fil revient a la
     # cle (« journal » de rendu_public) : y ecrire « injoignable », « delai
@@ -16956,9 +17031,14 @@ async def veiller_rappels():
                 # veilleur, une seconde plus tard, ne doit pas la relancer
                 # pendant que la premiere attend son deuxieme essai.
                 marque["livraison"] = {"en_cours": True}
-                tache_ = asyncio.create_task(_livrer_rappel(tid, marque, conv, t, tour))
-                LIVRAISONS.add(tache_)
-                tache_.add_done_callback(LIVRAISONS.discard)
+                livraison = uuid.uuid4().hex
+                # Au registre AVANT de partir : un arret pendant les essais
+                # doit la retrouver au demarrage suivant.
+                RAPPELS_EN_COURS[tid] = {
+                    "marque": {k: v for k, v in marque.items() if k != "livraison"},
+                    "conversation": t.get("conversation"), "livraison": livraison}
+                sauver_rappels()
+                lancer_livraison(tid, marque, conv, t, tour, livraison)
         except asyncio.CancelledError:
             raise
         except Exception as e:

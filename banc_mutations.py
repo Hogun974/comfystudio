@@ -11998,6 +11998,62 @@ HUMAINS_DABORD = [
 ]
 
 
+# Un rappel en cours survit a un redemarrage (4 novembre 2026) : le noeud Wait
+# de n8n n'attend plus pour rien un evenement perdu a l'arret.
+RAPPELS_PERSISTANTS = [
+    dict(
+        nom="une livraison commencee n'est pas inscrite",
+        banc="banc_pilotage.py",
+        imite="le registre tenu en memoire seulement : un arret pendant les "
+              "essais perd le rappel, comme avant",
+        rougit="une livraison en cours est sur le disque",
+        editions=[("serveur.py", brut(
+            '                    "conversation": t.get("conversation"), "livraison": livraison}' + chr(10)
+            + "                sauver_rappels()" + chr(10),
+            '                    "conversation": t.get("conversation"), "livraison": livraison}' + chr(10)))]),
+    dict(
+        nom="l'arret du studio efface les livraisons en cours",
+        banc="banc_pilotage.py",
+        imite="le menage fait dans un « finally » : l'annulation de l'arret "
+              "retire du registre exactement ce qu'il fallait reprendre",
+        rougit="un arret du studio ne l'efface pas",
+        editions=[("serveur.py", brut(
+            "        # demarrage la reprend." + chr(10) + "        raise" + chr(10),
+            "        # demarrage la reprend." + chr(10)
+            + "        RAPPELS_EN_COURS.pop(tid, None)" + chr(10)
+            + "        sauver_rappels()" + chr(10) + "        raise" + chr(10)))]),
+    dict(
+        nom="une livraison reprise change d'identifiant",
+        banc="banc_pilotage.py",
+        imite="un identifiant tire a neuf a la reprise : si le premier essai "
+              "etait arrive, n8n ne reconnait pas le doublon et lance deux fois "
+              "la suite du workflow",
+        rougit="elle est reprise avec le MEME identifiant de livraison",
+        editions=[("serveur.py", brut(
+            '        lancer_livraison(tid, marque, conv, t_, tour, entree.get("livraison"))',
+            "        lancer_livraison(tid, marque, conv, t_, tour, None)"))]),
+    dict(
+        nom="le demarrage ne reprend pas les rappels",
+        banc="banc_pilotage.py",
+        imite="la reprise ecrite et jamais appelee : verte au banc, absente en "
+              "service",
+        rougit="le studio reprend ses rappels a son demarrage",
+        editions=[("serveur.py", brut(
+            '    a["rappels"] = asyncio.create_task(veiller_rappels())' + chr(10)
+            + "    reprendre_rappels()" + chr(10),
+            '    a["rappels"] = asyncio.create_task(veiller_rappels())' + chr(10)))]),
+    dict(
+        nom="une livraison finie reste au registre",
+        banc="banc_pilotage.py",
+        imite="le registre qui ne se vide jamais : chaque redemarrage relivre "
+              "tous les rappels deja recus",
+        rougit="une livraison qui aboutit quitte le registre",
+        editions=[("serveur.py", brut(
+            "    if RAPPELS_EN_COURS.pop(tid, None) is not None:" + chr(10)
+            + "        sauver_rappels()" + chr(10), ""))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -12006,7 +12062,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
              + COMPREHENSION_SEPT + CLES_ACCES + RAPPELS + PROTOCOLE_MCP
              + CONTRAT + PILOTAGE + REVUE + GARDE_IMAGE
-             + LISTE_ESSAI + HUMAINS_DABORD)
+             + LISTE_ESSAI + HUMAINS_DABORD + RAPPELS_PERSISTANTS)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
