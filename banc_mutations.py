@@ -2826,6 +2826,71 @@ ADULTE = [
         editions=[("serveur.py", brut(
             '_BORD = r"(?<![^\\W_])"' + chr(10) + '_FIN = r"(?![^\\W_])"',
             '_BORD = r"\\b"' + chr(10) + '_FIN = r"\\b"'))]),
+    # ── Les quatre langues des motifs de surete (4 novembre 2026) ─────────
+    # Dans les DEUX sens : un ajout qu'on retire (une demande laissee filer),
+    # et un ajout trop gourmand (une demande innocente refusee, ou une
+    # demande ordinaire prise pour adulte).
+    dict(
+        nom="l'allemand « nackt » n'est plus adulte",
+        banc="banc_adulte.py",
+        imite="la racine retiree : une demande allemande de nu repart chez un "
+              "fournisseur distant, analyse comprise",
+        rougit="adulte NON reconnu : « eine nackte Frau »",
+        editions=[("serveur.py", brut(', r"nackt", r"sessual"]', ', r"sessual"]'))]),
+    dict(
+        nom="l'espagnol « desnud » n'est plus adulte",
+        banc="banc_adulte.py",
+        imite="seize demandes adultes sur vingt et une passaient ainsi avant le "
+              "4 novembre 2026",
+        rougit="adulte NON reconnu : « una mujer desnuda »",
+        editions=[("serveur.py", brut('r"desnud", r"er[oó]tic", ', 'r"er[oó]tic", '))]),
+    dict(
+        nom="les mineurs allemands disparaissent du garde-fou",
+        banc="banc_adulte.py",
+        imite="le garde-fou ne lit plus « minderjährig » : il ne tenait alors que "
+              "par le prompt traduit, et klein ne traduit pas",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « minderjährig, sexuell »",
+        editions=[("serveur.py", brut(
+            '             r"minderj[äa]hrig", r"kleinkind", r"kinderporn", r"schulm[äa]dchen",' + chr(10),
+            ""))]),
+    dict(
+        nom="les formes de « niño » disparaissent du garde-fou",
+        banc="banc_adulte.py",
+        imite="l'espagnol n'a plus d'enfant pour le garde-fou",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « niña, desnuda »",
+        editions=[("serveur.py", brut(
+            'r"kinder", r"niño", r"niña", r"niños", r"niñas", r"ninos",',
+            'r"kinder",'))]),
+    dict(
+        nom="les ages en annees disparaissent du garde-fou",
+        banc="banc_adulte.py",
+        imite="« 12 años », « 12 anni », « 12 anos » ne disent plus un mineur",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « 12 años, desnuda »",
+        editions=[("serveur.py", brut(
+            '          r"(?:\\d|1[0-7])\\s*(?:años?|anos?|anni)",' + chr(10), ""))]),
+    dict(
+        nom="une racine gourmande pour « niño » prend la nourrice",
+        banc="banc_adulte.py",
+        imite="la simplification evidente — « niñ » en racine — mord sur "
+              "« niñera » : une nourrice adulte, et une demande adulte refusee",
+        rougit="REFUSE A TORT : « una niñera adulta, retrato desnudo »",
+        editions=[("serveur.py", brut(
+            'r"niño", r"niña", r"niños", r"niñas", r"ninos",',
+            'r"niñ\\w*",'))]),
+    dict(
+        nom="« nudo » entre dans le motif adulte",
+        banc="banc_adulte.py",
+        imite="l'italien « nudo » paraissait manquer — mais c'est le noeud en "
+              "espagnol, et « un niño hace un nudo » serait refuse",
+        rougit="faux positif : « un nudo marinero en la cuerda » pris pour « nudo »",
+        editions=[("serveur.py", brut('r"nuda", r"nudi",', 'r"nuda", r"nudo", r"nudi",'))]),
+    dict(
+        nom="le bebe portugais redevient adulte pour le garde-fou",
+        banc="banc_adulte.py",
+        imite="« b[ée]b[ée] » sans l'accent circonflexe : « bebê » n'est plus "
+              "un mineur",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « bebê, nu »",
+        editions=[("serveur.py", brut('r"b[ée]b[éeê]"', 'r"b[ée]b[ée]"'))]),
 ]
 
 

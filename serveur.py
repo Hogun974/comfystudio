@@ -7850,29 +7850,64 @@ def _motif(racines, mots):
 
 # Volontairement large, et large dans le bon sens : ce motif ne refuse rien a
 # lui seul, il ne refuse qu'en presence de l'autre.
+#
+# EN ALLEMAND, ESPAGNOL, ITALIEN ET PORTUGAIS aussi, depuis le 4 novembre 2026.
+# Mesure de ce jour-la : sur dix-neuf paires « mineur + sexuel » dans ces
+# langues, le garde-fou en refusait ZERO. Il ne tenait que par le prompt
+# traduit en anglais — et seulement pour les moteurs qui traduisent : klein et
+# Qwen lisent la demande telle quelle. Une demande arrive dans la langue de qui
+# l'ecrit ; le garde-fou doit la lire dans cette langue-la.
+#
+# Les mots du sens commun et seulement eux, avec le meme soin que l'anglais :
+# « Mädchen » et « menina » (fille, a tout age) n'y sont pas, comme « girl »
+# n'y est pas ; « kind » non plus, qui est un mot anglais. « niñera » (la
+# nourrice, une adulte) ne mord pas : les formes de « niño » sont ecrites une a
+# une, au lieu d'une racine qui l'aurait prise.
 _MINEUR = _motif(
     racines=[r"enfant", r"gamin", r"fillette", r"gar[cç]onnet", r"bambin",
-             r"b[ée]b[ée]", r"mineur", r"coll[ée]gien", r"[ée]col[ie]",
+             r"b[ée]b[éeê]", r"mineur", r"coll[ée]gien", r"[ée]col[ie]",
              r"child", r"toddler", r"infant", r"preteen", r"pre-teen",
              r"underage", r"schoolgirl", r"schoolboy", r"adolescent",
-             r"teenager", r"pr[ée]pub", r"prepub", r"loli", r"shota"],
+             r"teenager", r"pr[ée]pub", r"prepub", r"loli", r"shota",
+             # allemand
+             r"minderj[äa]hrig", r"kleinkind", r"kinderporn", r"schulm[äa]dchen",
+             # espagnol et portugais, puis italien
+             r"colegial", r"pr[ée]adolescent", r"crian[çc]a", r"garotinh",
+             r"menininh", r"minorenn", r"ragazzin", r"scolarett"],
     mots=[r"kid", r"kids", r"minor", r"minors", r"teen", r"teens", r"ado",
-          r"ados", r"(?:\d|1[0-7])\s*ans?", r"(?:\d|1[0-7])\s*years?\s*old"])
+          r"ados", r"(?:\d|1[0-7])\s*ans?", r"(?:\d|1[0-7])\s*years?\s*old",
+          r"kinder", r"niño", r"niña", r"niños", r"niñas", r"ninos",
+          r"infantil", r"menor(?:es)?\s+de\s+(?:edad|idade)",
+          r"(?:\d|1[0-7])\s*(?:años?|anos?|anni)",
+          r"(?:\d|1[0-7])\s*jahre\s*alt"])
 
 # Ce qui est adulte ne sort pas de la maison. Le meme motif sert au garde-fou,
 # ou il ne pese qu'avec _MINEUR — d'ou l'importance de ne rien laisser filer
 # cote anglais : le prompt envoye a la carte est TOUJOURS traduit en anglais,
 # et les moteurs a etiquettes reçoivent du danbooru colle par des soulignes.
+#
+# Et dans les quatre memes langues. Mesure du 4 novembre 2026 : cinq demandes
+# adultes sur vingt et une y etaient reconnues — les seize autres pouvaient
+# partir chez un fournisseur distant, analyse comprise, ce que la regle
+# interdit. DEUX MOTS LAISSES DEHORS EXPRES, parce qu'ils feraient refuser une
+# demande innocente des qu'un enfant y figure : « nudo » (le noeud, en
+# espagnol : « un niño hace un nudo ») et « teta » au singulier (l'allaitement :
+# « dar la teta al niño »). « sexo » et « sesso » y sont, avec le defaut que
+# « sexe » porte deja en francais : ils disent aussi le GENRE, et « le sexe du
+# bebe » est refuse. Ce defaut est mesure par banc_adulte.py, pas ignore.
 _SEXUEL = _motif(
     racines=[r"sexuel", r"sexual", r"nudit", r"nudis", r"pornograph", r"porno",
              r"[ée]roti", r"naked", r"nipple", r"breast", r"genital", r"fesse",
-             r"topless", r"lingerie", r"hentai", r"sexting"],
+             r"topless", r"lingerie", r"hentai", r"sexting",
+             r"desnud", r"er[oó]tic", r"nackt", r"sessual"],
     # Ceux-la et pas un caractere de plus : « nu » ne doit pas mordre sur
     # « nuit », ni « sex » sur « sexagenaire », ni « explicit » sur
     # « explicitement ».
     mots=[r"nu", r"nue", r"nus", r"nues", r"nude", r"nudes", r"sex", r"sexe",
           r"sexes", r"sexy", r"porn", r"porns", r"seins", r"penis", r"vagina",
-          r"nsfw", r"explicit", r"explicite", r"explicites"])
+          r"nsfw", r"explicit", r"explicite", r"explicites",
+          r"nuda", r"nudi", r"nua", r"nuas", r"sexo", r"sesso", r"tetas",
+          r"seios", r"titten", r"brüste", r"expl[ií]cit[oa]s?", r"esplicit[oa]"])
 
 # Fichiers d'entree deja pousses sur un noeud distant : (nom, id) -> nom reel
 # la-bas. ComfyUI renomme en « x (1).png » quand le nom existe deja, il faut
