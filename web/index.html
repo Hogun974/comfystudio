@@ -2616,12 +2616,21 @@ function formulaireAcces() {
     const mcp = JSON.stringify({ mcpServers: { comfystudio: {
       type: "http", url: origine + "/mcp",
       headers: { Authorization: "Bearer " + x.cle } } } }, null, 2);
-    corps.append(dire("page.acces.neuve.titre", "dit", { nom: x.fiche.nom }),
-                 dire("page.acces.neuve.unique", "avertit"),
-                 ...copiable("page.acces.neuve.cle", x.cle),
-                 ...copiable("page.acces.neuve.secret", x.secret_rappel),
-                 dire("page.acces.neuve.secret.pourquoi"),
-                 ...copiable("page.acces.n8n", n8n),
+    // RENOUVELEE : le secret de rappel ne change pas — le remontrer serait
+    // le redistribuer pour rien —, et la date de fin de l'ancien secret
+    // est ce qu'il faut savoir pour ne pas casser le workflow.
+    const renouvelee = !x.secret_rappel;
+    corps.append(renouvelee
+                   ? dire("page.acces.renouvelee.titre", "dit", { nom: x.fiche.nom })
+                   : dire("page.acces.neuve.titre", "dit", { nom: x.fiche.nom }),
+                 dire("page.acces.neuve.unique", "avertit"));
+    if (renouvelee && x.fiche.ancienne_jusqu)
+      corps.append(dire("page.acces.renouvelee.ancienne", "avertit",
+                        { date: date(x.fiche.ancienne_jusqu) }));
+    corps.append(...copiable("page.acces.neuve.cle", x.cle));
+    if (x.secret_rappel) corps.append(...copiable("page.acces.neuve.secret", x.secret_rappel),
+                                      dire("page.acces.neuve.secret.pourquoi"));
+    corps.append(...copiable("page.acces.n8n", n8n),
                  ...copiable("page.acces.mcp", mcp));
     rang.append(bouton("page.acces.fini", async () => {
       retenu = false;
@@ -2629,6 +2638,45 @@ function formulaireAcces() {
       rang.append(bouton("page.acces.fermer", async () => fermer()));
       await charger("");
     }));
+  };
+
+  const peindreRenouveler = (c, d) => {
+    corps.innerHTML = ""; rang.innerHTML = ""; mal.textContent = "";
+    const mdp = document.createElement("input");
+    mdp.type = "password"; mdp.name = "mdp";
+    mdp.placeholder = T("page.entree.mdp");
+    mdp.autocomplete = "current-password";
+    const zoneCode = document.createElement("div");
+    zoneCode.className = "code-mfa";
+    zoneCode.hidden = !d.mfa;
+    const code = document.createElement("input");
+    code.name = "code"; code.placeholder = T("page.mfa.code");
+    code.autocomplete = "one-time-code"; code.inputMode = "numeric";
+    zoneCode.append(code);
+    // DECOCHEE : la grace est le cas courant — un secret vu, qu'on change
+    // sans casser le workflow. Cochee, l'ancien meurt a la reponse.
+    const vole = document.createElement("input");
+    vole.type = "checkbox"; vole.name = "tout_de_suite"; vole.checked = false;
+    const lVole = document.createElement("label");
+    lVole.append(vole, document.createTextNode(T("page.acces.renouveler.tout_de_suite")));
+    const titre = document.createElement("h4");
+    titre.textContent = T("page.acces.renouveler.titre", { nom: c.nom });
+    corps.append(titre, dire("page.acces.renouveler.pourquoi"), lVole,
+                 dire("page.acces.mdp.pourquoi"), mdp, zoneCode);
+    rang.append(bouton("page.acces.renouveler.ok", async () => {
+      mal.textContent = "";
+      const r = await fetch("/api/compte/acces/" + encodeURIComponent(c.id)
+                            + "/renouveler", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mdp: f.mdp.value, code: f.code.value,
+                               tout_de_suite: f.tout_de_suite.checked }) });
+      const x = await r.json().catch(() => ({}));
+      if (!r.ok && x[MARQUE_MFA]) { demanderCode(f, mal); return; }
+      if (!r.ok) throw new Error(x.erreur || T("page.acces.refus"));
+      peindreNeuve(x);
+    }), bouton("page.acces.annuler", async () => charger("")));
+    mdp.focus();
   };
 
   const peindreListe = (d, mot) => {
@@ -2662,6 +2710,11 @@ function formulaireAcces() {
       }
       const droite = document.createElement("div");
       droite.className = "rang";
+      // VIVANTE SEULEMENT : expiree ou eteinte, le serveur refuserait — une
+      // date de fin voulue, ou un changement de mot de passe qui devait
+      // fermer la porte. Le bouton n'y proposerait qu'un refus.
+      if (c.active) droite.append(bouton("page.acces.renouveler",
+                                         async () => peindreRenouveler(c, d)));
       droite.append(bouton("page.acces.revoquer", async () => {
         if (!confirm(T("page.acces.revoquer.sur", { nom: c.nom }))) return;
         const r = await fetch("/api/compte/acces/" + encodeURIComponent(c.id),
@@ -2681,7 +2734,12 @@ function formulaireAcces() {
         c.expiree ? null
           : c.expire ? T("page.acces.expire.le", { date: date(c.expire) })
                      : T("page.acces.expire.jamais"),
+        c.ancienne_jusqu && c.ancienne_jusqu * 1000 > Date.now()
+          ? T("page.acces.ancienne_jusqu", { date: date(c.ancienne_jusqu) }) : null,
         c.vu ? T("page.acces.vu", { date: date(c.vu) }) : T("page.acces.jamais"),
+        // Ou l'on en est, a cote des plafonds qui suivent.
+        T("page.acces.usage", { aujourdhui: c.aujourdhui || 0,
+                                en_cours: c.en_cours || 0 }),
         T(c.nuage ? "page.acces.nuage.oui" : "page.acces.nuage.non"),
         T("page.acces.en_file", { n: c.en_file }),
         c.par_jour ? T("page.acces.par_jour", { n: c.par_jour })

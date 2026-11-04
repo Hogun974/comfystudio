@@ -367,12 +367,20 @@ async def s_identite():
     for _ in range(3):
         await appel(Req("/api/v1/moi", cle=cle_fausse(K_N8N)), Temoin())
     t = Temoin()
-    st, c, _r = await appel(Req("/api/v1/moi", cle=cle_fausse(K_N8N)), t)
+    st, c, rep_r = await appel(Req("/api/v1/moi", cle=cle_fausse(K_N8N)), t)
     t_bonne = Temoin()
     st_b, _c, _r = await appel(Req("/api/v1/moi", cle=K_N8N), t_bonne)
     dit(st == 429 and code(c) == "trop_d_essais" and not t.vus,
         "apres trois secrets faux pour une cle, le quatrieme rend 429",
         f"HTTP {st} {code(c)}")
+    # QUAND REESSAYER : le freinage sait la reponse, il la donne — en-tete ET
+    # corps, la meme valeur.
+    st_r, c_r = st, c
+    ra = (rep_r.headers.get("Retry-After") if rep_r is not None else None) or ""
+    dit(st_r == 429 and ra.isdigit() and int(ra) >= 1
+        and (c_r or {}).get("reessayer_dans") == int(ra),
+        "le 429 du freinage porte Retry-After, en secondes entieres, et le meme "
+        "nombre dans « reessayer_dans »", f"Retry-After {ra!r}, corps {(c_r or {}).get('reessayer_dans')}")
     dit(st_b == 200 and bool(t_bonne.vus),
         "et la bonne cle passe quand meme : on verifie avant de freiner",
         f"HTTP {st_b}")
@@ -621,6 +629,26 @@ async def s_gestion():
         "un secret FAUX pour une cle expiree rend « cle_refusee » : la date de "
         "fin ne se lit qu'avec la cle", f"HTTP {st} {code(c)}")
     S.ECHECS_CLES.clear()
+    # LA DATE DE FIN EN EN-TETE, sur chaque reponse : le workflow la voit
+    # venir sans interroger /api/v1/moi. Absente pour une cle sans fin.
+    trente_ = nouvelle_cle("sacha", "trente jours", expire_jours=30)
+    _st, _c, rep_e = await appel(Req("/api/v1/moi", cle=trente_["cle"]), S.api_v1_moi)
+    _st, _c, rep_s = await appel(Req("/api/v1/moi", cle=K_N8N), S.api_v1_moi)
+    vu_e = rep_e.headers.get(S.ENTETE_EXPIRE) if rep_e is not None else None
+    dit(vu_e and vu_e == S._horodatage(trente_["fiche"]["expire"])
+        and rep_s is not None and S.ENTETE_EXPIRE not in rep_s.headers,
+        "une cle qui a une date de fin la rappelle dans X-ComfyStudio-Cle-Expire ; "
+        "une cle sans fin n'a pas cet en-tete", str(vu_e))
+    # Aussi sur une reponse levee — une 404, une 413 : le guide promet
+    # l'en-tete sur chacune (relecture).
+    async def leve_404(_req):
+        raise web.HTTPNotFound()
+    st_l, _c, rep_l = await appel(Req("/api/v1/rendus/inconnu", cle=trente_["cle"]), leve_404)
+    dit(st_l == 404 and rep_l is not None
+        and rep_l.headers.get(S.ENTETE_EXPIRE) == S._horodatage(trente_["fiche"]["expire"]),
+        "la date de fin est aussi sur une reponse levee par la route (404)",
+        f"HTTP {st_l}")
+    S.ACCES.revoquer(trente_["fiche"]["id"])
     dit(not S.cle_vivante(S.ACCES.fiche(vieille_["fiche"]["id"]))
         and S.cle_vivante(S.ACCES.fiche(((nouvelle_cle("sacha", "un jour",
                                                        expire_jours=1))["fiche"])["id"])),
@@ -664,6 +692,59 @@ async def s_gestion():
     for ident_ in [i for i, f in list(S.ACCES.fiches.items())
                    if f["compte"] == "sacha" and f["nom"] in ("essai", "expiree", "un jour")]:
         S.ACCES.revoquer(ident_)
+
+    # RENOUVELER, par la route : la porte de la creation (mot de passe), un
+    # secret neuf sous le meme identifiant, l'ancien encore valable.
+    vieux_ = nouvelle_cle("sacha", "a renouveler")
+    id_v = vieux_["fiche"]["id"]
+
+    def req_renouv(corps, biscuits=None, ident=id_v):
+        return Req(f"/api/compte/acces/{ident}/renouveler", "POST",
+                   cookies=biscuit if biscuits is None else biscuits,
+                   corps=corps, match={"ident": ident})
+    st, c, _r = await appel(req_renouv({"mdp": "pas le bon"}), S.api_renouveler_acces)
+    dit(st in (401, 403) and S.ACCES.reconnaitre(vieux_["cle"], S._generation_du_compte)
+        and not (S.ACCES.fiche(id_v) or {}).get("ancienne_jusqu"),
+        "sans le bon mot de passe, rien n'est renouvele", f"HTTP {st}")
+    st, c, rep_ = await appel(req_renouv({"mdp": MDP}), S.api_renouveler_acces)
+    neuve_ = (c or {}).get("cle") or ""
+    dit(st == 201 and neuve_.startswith(f"cs_{id_v}_") and neuve_ != vieux_["cle"]
+        and "secret_rappel" not in (c or {})
+        and rep_ is not None and rep_.headers.get("Cache-Control") == "no-store",
+        "avec le mot de passe : 201, un secret neuf sous le meme identifiant, "
+        "no-store, et pas de secret de rappel remontre", f"HTTP {st}")
+    st_n, _c, _r = await appel(Req("/api/v1/moi", cle=neuve_), S.api_v1_moi)
+    st_a, _c, _r = await appel(Req("/api/v1/moi", cle=vieux_["cle"]), S.api_v1_moi)
+    dit(st_n == 200 and st_a == 200,
+        "le neuf passe le middleware, et l'ancien aussi pendant sa grace",
+        f"neuf HTTP {st_n}, ancien HTTP {st_a}")
+    st, c, _r = await appel(req_renouv({"mdp": MDP}, ident=cle_camille),
+                            S.api_renouveler_acces)
+    dit(st == 404 and code(c) == "cle_inconnue",
+        "la cle d'un AUTRE compte ne se renouvelle pas : 404", f"HTTP {st} {code(c)}")
+    st, c, _r = await appel(Req(f"/api/compte/acces/{id_v}/renouveler", "POST",
+                                cle=neuve_, corps={"mdp": MDP},
+                                match={"ident": id_v}), S.api_renouveler_acces)
+    dit(st in (401, 403), "une cle ne renouvelle pas les cles : il faut une session",
+        f"HTTP {st}")
+    # VOLEE : « tout_de_suite » coupe l'ancien secret a la reponse.
+    st, c, _r = await appel(req_renouv({"mdp": MDP, "tout_de_suite": True}),
+                            S.api_renouveler_acces)
+    tierce_ = (c or {}).get("cle") or ""
+    st_t, _c, _r = await appel(Req("/api/v1/moi", cle=tierce_), S.api_v1_moi)
+    st_n2, _c, _r = await appel(Req("/api/v1/moi", cle=neuve_), S.api_v1_moi)
+    st_v2, _c, _r = await appel(Req("/api/v1/moi", cle=vieux_["cle"]), S.api_v1_moi)
+    dit(st == 201 and st_t == 200 and st_n2 == 401 and st_v2 == 401
+        and ((c or {}).get("fiche") or {}).get("ancienne_jusqu") is None,
+        "renouvelee « tout de suite » : le secret neuf passe, les deux d'avant "
+        "sont refuses aussitot", f"neuf {st_t}, precedent {st_n2}, origine {st_v2}")
+    S.ECHECS_CLES.clear()
+    S.ACCES.fiches[id_v]["generation"] = -1
+    st, c, _r = await appel(req_renouv({"mdp": MDP}), S.api_renouveler_acces)
+    dit(st == 409 and code(c) == "acces_renouveler_eteinte",
+        "une cle eteinte par un changement de mot de passe ne se rallume pas "
+        "par un renouvellement : 409", f"HTTP {st} {code(c)}")
+    S.ACCES.revoquer(id_v)
 
     # L'administration.
     st, c, _r = await appel(Req("/api/admin/acces", entetes={"X-Admin": JETON_ADMIN}),
@@ -811,9 +892,23 @@ async def s_lancer():
     k1 = nouvelle_cle("jordan", "une a la fois", en_file=1)["cle"]
     st1, _c, _r = await lancer(k1, {"demande": "un chat"})
     avant = etat_des_registres()
-    st2, c2, _r = await lancer(k1, {"demande": "un chien"})
+    st2, c2, rep2_ = await lancer(k1, {"demande": "un chien"})
     dit(st1 == 202 and st2 == 429 and code(c2) == "cle_file_pleine" and rien_de_plus(avant),
         "« en_file » atteint : 429 « cle_file_pleine »", f"HTTP {st1} puis {st2} {code(c2)}")
+    ra2 = (rep2_.headers.get("Retry-After") if rep2_ is not None else None) or ""
+    dit(ra2 == str(S.REESSAI_FILE) and (c2 or {}).get("reessayer_dans") == S.REESSAI_FILE,
+        "et il conseille de reessayer dans REESSAI_FILE secondes, en-tete et "
+        "corps", f"Retry-After {ra2!r}")
+    # MCP ne rend qu'un texte : le delai doit y etre, sinon l'assistant
+    # reessaie aussitot et conclut a une panne.
+    st_m, c_m, _r = await mcp(k1, rpc("tools/call", {"name": "generer_rendu",
+                                                      "arguments": {"demande": "un chien"}}))
+    texte_m = " ".join(x.get("text", "") for x in
+                       (((c_m or {}).get("result") or {}).get("content") or []))
+    dit(((c_m or {}).get("result") or {}).get("isError") is True
+        and S.T("erreur.reessayer_dans", "fr", secondes=S.REESSAI_FILE) in texte_m,
+        "par MCP, le refus dit aussi dans combien de secondes reessayer",
+        texte_m[:120])
     vider_file()
 
     # LES VARIANTES COMPTENT DANS LE PLAFOND. Une cle reglee sur deux rendus a
@@ -829,6 +924,19 @@ async def s_lancer():
         "des variantes qui depasseraient « en_file » sont refusees avant la "
         "file, celles qui tiennent passent",
         f"4 variantes HTTP {st4} {code(c4)}, 2 variantes HTTP {st2v}")
+    # PLUS DE VARIANTES QUE LE PLAFOND LUI-MEME : attendre n'y changera rien.
+    # Un Retry-After ferait boucler n8n pour toujours (relecture).
+    _st, c_j, rep_j = await lancer(k2, {"demande": "un chat", "variantes": 4})
+    dit(code(c_j) == "cle_file_variantes" and "reessayer_dans" not in (c_j or {})
+        and rep_j is not None and "Retry-After" not in rep_j.headers,
+        "quatre variantes pour une cle de deux rendus a la fois : 429 sans "
+        "Retry-After — aucune attente ne la ferait passer", f"{code(c_j)}")
+    k_jour = nouvelle_cle("jordan", "deux par jour, quatre variantes", par_jour=2)["cle"]
+    _st, c_jj, rep_jj = await lancer(k_jour, {"demande": "un chat", "variantes": 4})
+    dit(code(c_jj) == "cle_plafond_jour" and "reessayer_dans" not in (c_jj or {})
+        and rep_jj is not None and "Retry-After" not in rep_jj.headers,
+        "de meme pour quatre variantes sur un plafond de deux par jour : minuit "
+        "n'y changera rien", f"{code(c_jj)}")
     vider_file()
 
     # Le plafond du jour, et sa survie a un rechargement.
@@ -836,9 +944,18 @@ async def s_lancer():
     res = nouvelle_cle("jordan", "deux par jour", par_jour=2)
     k2, ident2 = res["cle"], res["fiche"]["id"]
     st_a = [(await lancer(k2, {"demande": f"un chat {i}"}))[0] for i in range(2)]
-    st3, c3, _r = await lancer(k2, {"demande": "un troisieme chat"})
+    st3, c3, rep3_ = await lancer(k2, {"demande": "un troisieme chat"})
     dit(st_a == [202, 202] and st3 == 429 and code(c3) == "cle_plafond_jour",
         "« par_jour » atteint : 429 « cle_plafond_jour »", f"{st_a} puis {st3} {code(c3)}")
+    ra3 = int((rep3_.headers.get("Retry-After") if rep3_ is not None else None) or 0)
+    dit(abs(ra3 - S.secondes_avant_minuit()) <= 2 and (c3 or {}).get("reessayer_dans") == ra3,
+        "et Retry-After compte jusqu'a minuit, heure du studio : c'est la que "
+        "le plafond se remet a zero", f"{ra3} s, minuit dans {S.secondes_avant_minuit()} s")
+    onze = time.mktime((2026, 11, 4, 23, 59, 30, 0, 0, -1))
+    dit(S.secondes_avant_minuit(onze) == 30
+        and S.secondes_avant_minuit(time.mktime((2026, 11, 4, 0, 0, 0, 0, 0, -1))) == 86400,
+        "secondes_avant_minuit : trente secondes a 23:59:30, un jour entier a "
+        "minuit pile")
     S.CONVERSATIONS.clear()
     S.TACHES.clear()
     S.charger_conversations()
@@ -846,6 +963,20 @@ async def s_lancer():
     dit(S._lances_aujourdhui(ident2) == 2 and st4 == 429 and code(c4) == "cle_plafond_jour",
         "et le plafond SURVIT a un rechargement : il se compte sur les conversations",
         f"relu {S._lances_aujourdhui(ident2)}, HTTP {st4} {code(c4)}")
+    # L'USAGE DANS LA LISTE DU PROPRIETAIRE : ou la cle en est, a cote de ses
+    # plafonds — les memes compteurs que les gardes.
+    _st, c_u, _r = await appel(Req("/api/compte/acces",
+                                   cookies={"studio_compte": S.COMPTES.jeton("jordan")}),
+                               S.api_mes_acces)
+    u_ = {x.get("id"): x for x in (c_u or {}).get("cles") or []}.get(ident2) or {}
+    _st, c_ua, _r = await appel(Req("/api/admin/acces", entetes={"X-Admin": JETON_ADMIN}),
+                                S.api_admin_acces)
+    ua_ = {x.get("id"): x for x in (c_ua or {}).get("cles") or []}.get(ident2) or {}
+    dit(u_.get("aujourdhui") == 2 and u_.get("en_cours") == S._en_cours_de_cle(ident2)
+        and ua_.get("aujourdhui") == 2,
+        "la liste du proprietaire, et celle de l'administration, disent ce que "
+        "la cle a lance aujourd'hui et ce qu'elle a en cours",
+        f"aujourdhui {u_.get('aujourdhui')}, en cours {u_.get('en_cours')}, admin {ua_.get('aujourdhui')}")
 
     # L'idempotence.
     remise_a_zero()
@@ -1996,6 +2127,9 @@ async def s_liste():
     dit(st_2 == 429 and code(c_2) == "trop_d_essais" and len(recus) == 1,
         "un second essai dans les dix secondes est freine",
         f"HTTP {st_2} {code(c_2)}")
+    dit(1 <= int((c_2 or {}).get("reessayer_dans") or 0) <= S.ESSAI_INTERVALLE,
+        "et dit quand reessayer, dans les dix secondes",
+        str((c_2 or {}).get("reessayer_dans")))
 
 
 # ══════════════════════════════════════════════════════════════════════

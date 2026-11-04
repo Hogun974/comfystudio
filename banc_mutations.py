@@ -4256,17 +4256,17 @@ FACTEUR = [
                 "    cle = _cle_freinage(req, nom)\n"
                 "    reste = _freinage(cle)\n"
                 "    if reste > 0:\n"
-                "        return None, web.json_response(\n"
+                "        return None, avec_reessai(web.json_response(\n"
                 '            {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},\n'
-                "            status=429)\n"
+                '            status=429), reessayer_dans("trop_d_essais", reste))\n'
                 "    c = COMPTES.authentifier(nom, mdp, code)\n",
                 "    cle = _cle_freinage(req, nom)\n"
                 "    c = COMPTES.authentifier(nom, mdp, code)\n"
                 "    reste = _freinage(cle)\n"
                 "    if reste > 0:\n"
-                "        return None, web.json_response(\n"
+                "        return None, avec_reessai(web.json_response(\n"
                 '            {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},\n'
-                "            status=429)\n")),
+                '            status=429), reessayer_dans("trop_d_essais", reste))\n')),
         ]),
     dict(
         nom="le compteur est indexe par la seule adresse",
@@ -11357,9 +11357,13 @@ PILOTAGE = [
         imite="la session suffit : un onglet reste ouvert, ou un cookie vole, "
               "fabrique une cle qui contourne le second facteur pour toujours",
         rougit="un mauvais mot de passe refuse la creation",
+        # LA LIGNE SUIVANTE DANS L'ANCRE : depuis le renouvellement, la meme
+        # porte s'ouvre dans deux routes ; celle-ci vise la creation.
         editions=[("serveur.py", brut(
-            "    _c, refus = _ouvrir_porte(req, nom, d.get(\"mdp\"), d.get(\"code\"), lg)",
-            "    _c, refus = None, None"))]),
+            "    _c, refus = _ouvrir_porte(req, nom, d.get(\"mdp\"), d.get(\"code\"), lg)" + chr(10)
+            + "    # « is not None » ET NON « if refus »",
+            "    _c, refus = None, None" + chr(10)
+            + "    # « is not None » ET NON « if refus »"))]),
     dict(
         nom="revoquer la cle d'un autre compte",
         banc="banc_pilotage.py",
@@ -11915,6 +11919,7 @@ LISTE_ESSAI = [
         editions=[("serveur.py", brut(
             "    if reste > 0:" + chr(10)
             + '        return refus_programme("erreur.trop_d_essais", 429, lg,' + chr(10)
+            + '                               apres=reessayer_dans("trop_d_essais", reste),' + chr(10)
             + '                               secondes=f"{reste:.0f}")' + chr(10)
             + "    DERNIER_ESSAI",
             "    DERNIER_ESSAI"))]),
@@ -12235,8 +12240,8 @@ EXPIRATION = [
               "qui apprend quels identifiants designent une cle expiree",
         rougit="un secret faux n'apprend pas que la cle a expire",
         editions=[("acces.py", brut(
-            "        return bool(fiche and juste and expiree(fiche, maintenant))",
-            "        return bool(fiche and expiree(fiche, maintenant))"))]),
+            "        return bool(fiche and juste and expiree(fiche, quand))",
+            "        return bool(fiche and expiree(fiche, quand))"))]),
     dict(
         nom="une date de fin illisible est acceptee",
         banc="banc_acces.py",
@@ -12247,8 +12252,10 @@ EXPIRATION = [
         editions=[("acces.py", brut(
             '                        and (x.get("expire") is None' + chr(10)
             + '                             or (isinstance(x["expire"], (int, float))' + chr(10)
-            + '                                 and not isinstance(x["expire"], bool)))):',
-            "                        ):"))]),
+            + '                                 and not isinstance(x["expire"], bool)))' + chr(10)
+            + "                        # Le secret d'avant",
+            "                        and True" + chr(10)
+            + "                        # Le secret d'avant"))]),
     dict(
         nom="une cle expiree rend « cle_refusee »",
         banc="banc_pilotage.py",
@@ -12348,6 +12355,247 @@ RELECTURE_EXPIRATION = [
 ]
 
 
+# ── Quand reessayer : Retry-After sur chaque 429, la date de fin en en-tete ─
+REESSAI = [
+    dict(
+        nom="refus_programme ne pose pas Retry-After",
+        banc="banc_pilotage.py",
+        imite="le delai mis dans le corps et oublie dans l'en-tete : n8n, qui "
+              "lit l'en-tete, reessaie a l'aveugle",
+        rougit="le 429 du freinage porte Retry-After",
+        editions=[("serveur.py", brut(
+            "    return avec_reessai(rep_, apres) if apres is not None else rep_",
+            "    return rep_"))]),
+    dict(
+        nom="le refus d'un lancement perd son Retry-After",
+        banc="banc_pilotage.py",
+        imite="la route qui reconstruit sa reponse a la main, comme avant : le "
+              "delai calcule par lancer_pour_programme ne sort pas",
+        rougit="et il conseille de reessayer dans REESSAI_FILE secondes",
+        editions=[("serveur.py", brut(
+            "    if statut != 202:" + chr(10)
+            + "        return reponse_de_lancement(statut, corps)" + chr(10)
+            + '    tid = corps["id"]',
+            "    if statut != 202:" + chr(10)
+            + "        return web.json_response(corps, status=statut)" + chr(10)
+            + '    tid = corps["id"]'))]),
+    dict(
+        nom="le plafond du jour conseille trente secondes",
+        banc="banc_pilotage.py",
+        imite="un seul delai pour tous les 429 : le workflow reessaie toutes "
+              "les trente secondes jusqu'a minuit",
+        rougit="et Retry-After compte jusqu'a minuit",
+        editions=[("serveur.py", brut(
+            '    if code == "cle_plafond_jour":' + chr(10)
+            + "        return secondes_avant_minuit()" + chr(10), ""))]),
+    dict(
+        nom="minuit compte a partir d'aujourd'hui",
+        banc="banc_pilotage.py",
+        imite="le jour de demain oublie : « minuit » est celui qui vient de "
+              "passer, et le delai tombe a une seconde",
+        rougit="secondes_avant_minuit : trente secondes a 23:59:30",
+        editions=[("serveur.py", brut(
+            "date() + datetime.timedelta(days=1)",
+            "date() + datetime.timedelta(days=0)"))]),
+    dict(
+        nom="l'outil MCP tait le delai",
+        banc="banc_pilotage.py",
+        imite="la phrase du refus seule : l'assistant reessaie aussitot, "
+              "reprend le meme refus, et conclut a une panne",
+        rougit="par MCP, le refus dit aussi dans combien de secondes reessayer",
+        editions=[("serveur.py", brut(
+            '        phrase += " " + T("erreur.reessayer_dans", lg, secondes=corps["reessayer_dans"])' + chr(10),
+            "        pass" + chr(10)))]),
+    dict(
+        nom="la date de fin ne sort pas en en-tete",
+        banc="banc_pilotage.py",
+        imite="la date gardee dans /api/v1/moi seulement : le workflow ne la "
+              "voit qu'en la cherchant",
+        rougit="X-ComfyStudio-Cle-Expire",
+        editions=[("serveur.py", brut(
+            '            rep_.headers[ENTETE_EXPIRE] = _horodatage(fiche["expire"])',
+            "            pass"))]),
+    dict(
+        nom="le contrat ne decrit pas Retry-After",
+        banc="banc_contrat.py",
+        imite="l'en-tete ajoute au serveur et oublie dans le contrat : un "
+              "client genere ne le lit pas",
+        rougit="les 429 du contrat decrivent Retry-After",
+        editions=[("contrat.py", brut(
+            '                       headers={"Retry-After": {',
+            '                       headers_={"Retry-After": {'))]),
+]
+
+
+# ── Renouveler une cle sans coupure ───────────────────────────────────
+RENOUVELER = [
+    dict(
+        nom="l'ancien secret ne vaut plus des le renouvellement",
+        banc="banc_acces.py",
+        imite="le secret remplace d'un coup : le workflow casse jusqu'a ce "
+              "qu'on ait recopie le neuf — la coupure que la grace evite",
+        rougit="le neuf vaut tout de suite, et l'ancien encore",
+        editions=[("acces.py", brut(
+            "        # comparaison de plus ne coute rien." + chr(10)
+            + "        if _ancienne_valable(fiche, empreinte, quand):" + chr(10)
+            + "            juste = True" + chr(10),
+            "        # comparaison de plus ne coute rien." + chr(10)))]),
+    dict(
+        nom="la grace de l'ancien secret ne finit jamais",
+        banc="banc_acces.py",
+        imite="la date de fin posee et jamais comparee : le secret qu'on "
+              "croyait vu reste une porte ouverte pour toujours",
+        rougit="l'ancien secret meurt a la fin de sa grace",
+        editions=[("acces.py", brut(
+            "    return bool(fiche and fiche.get(\"empreinte_ancienne\") and egale" + chr(10)
+            + "                and quand < (fiche.get(\"ancienne_jusqu\") or 0))",
+            "    return bool(fiche and fiche.get(\"empreinte_ancienne\") and egale)"))]),
+    dict(
+        nom="un second renouvellement garde le plus vieux secret",
+        banc="banc_acces.py",
+        imite="« on garde l'ancien s'il y en a deja un » : renouveler deux "
+              "fois parce qu'on croit le premier neuf vu laisse vivre le "
+              "secret d'origine",
+        rougit="un second renouvellement ferme aussitot le premier secret",
+        editions=[("acces.py", brut(
+            '        f["empreinte_ancienne"] = f["empreinte"]',
+            '        f.setdefault("empreinte_ancienne", f["empreinte"])'))]),
+    dict(
+        nom="un renouvellement non ecrit n'est pas defait",
+        banc="banc_acces.py",
+        imite="l'ecriture ratee laissee en memoire : la cle montree mourrait "
+              "au redemarrage, et l'ancienne reviendrait seule",
+        rougit="un renouvellement qui ne s'ecrit pas est defait",
+        editions=[("acces.py", brut(
+            "            f.update(avant)" + chr(10)
+            + "            for k, v in avant.items():" + chr(10)
+            + "                if v is None:" + chr(10)
+            + "                    f.pop(k, None)" + chr(10), ""))]),
+    dict(
+        nom="on renouvelle la cle d'un autre compte",
+        banc="banc_acces.py",
+        imite="le filtre du compte oublie : l'identifiant PUBLIC d'une cle "
+              "suffit a en changer le secret, et a casser le programme d'un autre",
+        rougit="on ne renouvelle ni la cle d'un autre compte",
+        editions=[("acces.py", brut(
+            "        if f is None or (compte is not None" + chr(10)
+            + "                         and f[\"compte\"] != str(compte).strip().lower()):",
+            "        if f is None:"))]),
+    dict(
+        nom="le renouvellement ne demande pas le mot de passe",
+        banc="banc_pilotage.py",
+        imite="« revoquer ne le demande pas » applique a ce qui OUVRE : un "
+              "onglet reste ouvert suffit a se faire donner un secret neuf",
+        rougit="sans le bon mot de passe, rien n'est renouvele",
+        editions=[("serveur.py", brut(
+            "    if refus is not None:          # « is not None » : voir api_creer_acces" + chr(10)
+            + "        return refus" + chr(10), ""))]),
+    dict(
+        nom="une cle eteinte se rallume par un renouvellement",
+        banc="banc_pilotage.py",
+        imite="la generation oubliee : le changement de mot de passe, fait "
+              "pour chasser un voleur, se defait d'un clic",
+        rougit="une cle eteinte par un changement de mot de passe ne se rallume pas",
+        editions=[("serveur.py", brut(
+            '            and f.get("generation") != COMPTES.generation(nom):',
+            "            and False:"))]),
+    dict(
+        nom="le contrat ne decrit pas la fin de l'ancien secret",
+        banc="banc_contrat.py",
+        imite="un champ de plus dans la fiche publique, et le schema Cle "
+              "d'avant",
+        rougit="Cle : les champs du contrat sont ceux de la fiche publique",
+        editions=[("contrat.py", brut(
+            '            "ancienne_jusqu": {"type": ["number", "null"],',
+            '            "ancienne_jusqu_": {"type": ["number", "null"],'))]),
+]
+
+
+# ── L'usage de chaque cle, dans les deux listes ───────────────────────
+USAGE_CLES = [
+    dict(
+        nom="la liste du proprietaire ne dit pas l'usage",
+        banc="banc_pilotage.py",
+        imite="les plafonds affiches sans le compteur : on ne sait pas ou la "
+              "cle en est avant le 429",
+        rougit="disent ce que la cle a lance aujourd'hui",
+        editions=[("serveur.py", brut(
+            '                 en_cours=_en_cours_de_cle(f["id"]),' + chr(10)
+            + '                 aujourdhui=_lances_aujourdhui(f["id"]))' + chr(10)
+            + "            for f in (ACCES.liste(nom) if ACCES else [])]",
+            "                 )" + chr(10)
+            + "            for f in (ACCES.liste(nom) if ACCES else [])]"))]),
+    dict(
+        nom="l'administration ne dit pas les lancements du jour",
+        banc="banc_pilotage.py",
+        imite="le compteur ajoute a une liste et oublie dans l'autre",
+        rougit="disent ce que la cle a lance aujourd'hui",
+        editions=[("serveur.py", brut(
+            '                         en_cours=_en_cours_de_cle(f["id"]),' + chr(10)
+            + '                         aujourdhui=_lances_aujourdhui(f["id"])))',
+            '                         en_cours=_en_cours_de_cle(f["id"])))'))]),
+]
+
+
+# ── Ce que la relecture independante de la deuxieme serie a releve ────
+RELECTURE_RENOUVELER = [
+    dict(
+        nom="un refus impossible a lever annonce un delai",
+        banc="banc_pilotage.py",
+        imite="Retry-After sur tout 429 : quatre variantes pour une cle d'un "
+              "rendu a la fois, et n8n reessaie toutes les trente secondes "
+              "pour toujours",
+        rougit="aucune attente ne la ferait passer",
+        editions=[("serveur.py", brut(
+            "        if statut == 429 and not jamais:",
+            "        if statut == 429:"))]),
+    dict(
+        nom="renouveler sans grace garde l'ancien secret",
+        banc="banc_acces.py",
+        imite="la grace toujours posee : le secret VOLE vaut encore un jour, "
+              "le temps exact dont le voleur avait besoin",
+        rougit="sans grace, tous les secrets d'avant meurent a la reponse",
+        editions=[("acces.py", brut("        if grace > 0:", "        if True:"))]),
+    dict(
+        nom="la route ignore « tout_de_suite »",
+        banc="banc_pilotage.py",
+        imite="la case de la page envoyee et jamais lue : l'utilisateur croit "
+              "avoir coupe le voleur, qui garde un jour",
+        rougit="renouvelee « tout de suite »",
+        editions=[("serveur.py", brut(
+            '    grace = 0 if d.get("tout_de_suite") is True else _acces.GRACE_RENOUVELLEMENT',
+            "    grace = _acces.GRACE_RENOUVELLEMENT"))]),
+    dict(
+        nom="la fiche garde une date de grace passee",
+        banc="banc_acces.py",
+        imite="« null sinon » promis par le contrat, et la date d'hier rendue "
+              "telle quelle : un client croit l'ancien secret vivant",
+        rougit="ancienne_jusqu redevient null",
+        editions=[("acces.py", brut(
+            '                               and (fiche.get("ancienne_jusqu") or 0) > time.time()' + chr(10),
+            ""))]),
+    dict(
+        nom="le chargement garde l'empreinte d'un secret mort",
+        banc="banc_acces.py",
+        imite="le menage jamais fait : l'empreinte de chaque ancien secret "
+              "reste au fichier pour toujours",
+        rougit="le chargement oublie l'empreinte de l'ancien secret",
+        editions=[("acces.py", brut(
+            '            if f.get("empreinte_ancienne") and (f.get("ancienne_jusqu") or 0) <= maintenant:',
+            "            if False:"))]),
+    dict(
+        nom="une reponse levee perd la date de fin",
+        banc="banc_pilotage.py",
+        imite="l'en-tete pose sur la reponse rendue seulement : une 404 du "
+              "routeur, une 413 du corps sortent sans lui",
+        rougit="la date de fin est aussi sur une reponse levee",
+        editions=[("serveur.py", brut(
+            "            if fiche.get(\"expire\"):" + chr(10)
+            + "                sortie.headers[ENTETE_EXPIRE] = _horodatage(fiche[\"expire\"])" + chr(10),
+            ""))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -12358,7 +12606,8 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + CONTRAT + PILOTAGE + REVUE + GARDE_IMAGE
              + LISTE_ESSAI + HUMAINS_DABORD + RAPPELS_PERSISTANTS
              + CODES_FICHIERS + IDEMPOTENCE_DISQUE + EXPIRATION
-             + RELECTURE_EXPIRATION)
+             + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
+             + RELECTURE_RENOUVELER)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

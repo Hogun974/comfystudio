@@ -84,7 +84,38 @@ essais ne comptent pas comme des secrets faux : un n8n qui insiste avec elle
 ne se fait pas freiner. Comme une clé éteinte, **ses liens signés et ses
 rappels meurent avec elle**, et la liste la montre `expiree: true`. La date se
 lit dans `expire` (secondes depuis 1970, ou `null`) de la fiche, et dans
-`GET /api/v1/moi` : un workflow peut prévenir avant l'échéance.
+`GET /api/v1/moi` : un workflow peut prévenir avant l'échéance. Elle revient
+aussi sur **chaque réponse** à cette clé, dans l'en-tête
+`X-ComfyStudio-Cle-Expire` (RFC 3339) : le workflow, ou le proxy qui
+journalise, la voit venir sans rien demander.
+
+### Renouveler sans coupure
+
+Tu crois le secret vu — collé dans un ticket, affiché sur un écran partagé ?
+Le bouton **« renouveler »** de la liste lui donne un **secret neuf, sous le
+même identifiant** : ses rendus, ses conversations, ses liens signés, ses
+plafonds, sa date de fin et son **secret de rappel ne changent pas**. Seul le
+secret d'accès change, et il ne s'affiche qu'une fois, comme à la création.
+
+**L'ancien secret vaut encore 24 heures** — le temps d'ouvrir n8n et d'y coller
+le neuf —, puis plus rien. La fiche le dit dans `ancienne_jusqu`. Un second
+renouvellement pendant ce délai ferme aussitôt le premier secret : on n'en
+garde qu'un d'avance. **Volé, et pas seulement vu ?** Coche « couper l'ancien
+secret tout de suite » (`"tout_de_suite": true`) : il meurt à la réponse. Pour
+une fuite avérée, révoquer reste le plus sûr — la session suffit. Renouveler demande **ton mot de passe** (et le code du
+second facteur s'il est armé), comme la création : la réponse porte un secret
+en clair. Une clé expirée, ou éteinte par un changement de mot de passe, ne se
+renouvelle pas — sa fermeture était voulue ; crées-en une autre.
+
+```sh
+curl -s -X POST "$STUDIO/api/compte/acces/92d11256/renouveler" \
+  -b "studio_compte=…" -H "Content-Type: application/json" \
+  -d '{"mdp": "…", "code": "123456"}'
+```
+
+La liste du propriétaire dit aussi, pour chaque clé, ce qu'elle a **lancé
+aujourd'hui** (`aujourdhui`) et ce qu'elle a **en cours** (`en_cours`) : où
+elle en est de ses plafonds avant le 429.
 
 ## Révoquer, et ce qui éteint une clé
 
@@ -442,6 +473,17 @@ pendant 24 heures.
   variantes sont quatre rendus, pour `par_jour` comme pour `en_file` (code
   **429** `cle_file_variantes` quand elles dépasseraient `en_file`).
 
+**Chaque 429 dit quand réessayer** : l'en-tête **`Retry-After`** (en secondes)
+et le même nombre dans `reessayer_dans` du corps, pour un client qui ne lit que
+le JSON. Il est **exact** pour le freinage (`trop_d_essais`) et pour le
+plafond du jour (jusqu'à minuit, heure du studio) ; pour une file pleine, le
+studio ne sait pas quand un rendu finira — de deux secondes à huit minutes — et
+conseille **30 s** : le [rappel](#les-rappels) reste le bon outil. **Pas de
+délai du tout** quand attendre ne servirait à rien — plus de variantes que le
+plafond lui-même : la phrase dit quoi changer, et un `Retry-After` ferait
+boucler le workflow pour toujours. Par MCP, la
+phrase du refus le dit aussi : « (réessaie dans 30 s) ».
+
 **Les humains passent d'abord.** La file des rendus est commune, mais une
 demande tapée dans la page passe devant celles des programmes : l'humain attend
 devant l'écran, le programme attend son rappel. Un lot n8n ne met donc plus
@@ -787,7 +829,8 @@ diffèrent.
 ### Les réessais
 
 Sur le nœud qui lance le rendu, *Settings* → **Retry On Fail** (trois essais,
-cinq secondes d'écart, par exemple) rattrape un studio qui redémarre. **Pose
+cinq secondes d'écart, par exemple) rattrape un studio qui redémarre. Pour un
+429, lis plutôt `Retry-After` (ou `reessayer_dans`) : il dit combien attendre. **Pose
 alors un `Idempotency-Key`** — *Send Headers*, nom `Idempotency-Key`, valeur
 `{{ $execution.id }}` : les essais d'une même exécution désignent le même rendu
 au lieu d'en lancer trois — **y compris après un redémarrage du studio** :

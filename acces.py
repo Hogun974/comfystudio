@@ -108,6 +108,15 @@ EXPIRE_JOURS_MAX = 365
 EXPIRATIONS = (0, 7, 30, 90, 365)
 
 
+# RENOUVELER, SANS COUPURE. Un secret qu'on croit vu — colle dans un ticket,
+# affiche sur un ecran partage — se change ; mais le changer d'un coup casse le
+# workflow tant qu'on n'a pas recopie le neuf. L'ancien secret vaut donc encore
+# un jour : le temps d'ouvrir n8n, pas celui d'oublier. Le MEME identifiant :
+# les rendus, les conversations, les liens signes, les plafonds et le secret de
+# rappel suivent la cle — seul le secret d'acces change.
+GRACE_RENOUVELLEMENT = 24 * 3600
+
+
 def expiree(fiche, maintenant=None):
     """Vrai si la fiche porte une date de fin, et qu'elle est passee."""
     fin = (fiche or {}).get("expire")
@@ -237,6 +246,15 @@ def _entier(valeur, bas, haut, quoi, cle=""):
     return valeur
 
 
+def _ancienne_valable(fiche, empreinte, quand):
+    """L'empreinte presentee est celle d'avant un renouvellement, encore dans
+    sa grace. Compare toujours, meme sans fiche ni ancien secret."""
+    ancienne = (fiche or {}).get("empreinte_ancienne") or _EMPREINTE_FACTICE
+    egale = hmac.compare_digest(empreinte, ancienne)
+    return bool(fiche and fiche.get("empreinte_ancienne") and egale
+                and quand < (fiche.get("ancienne_jusqu") or 0))
+
+
 class Acces:
     """Le magasin des cles d'acces, sur disque (_acces.json)."""
 
@@ -271,7 +289,12 @@ class Acces:
                         # Absente des fiches d'avant : « sans fin ».
                         and (x.get("expire") is None
                              or (isinstance(x["expire"], (int, float))
-                                 and not isinstance(x["expire"], bool)))):
+                                 and not isinstance(x["expire"], bool)))
+                        # Le secret d'avant un renouvellement, et sa fin.
+                        and (x.get("empreinte_ancienne") is None
+                             or (isinstance(x["empreinte_ancienne"], str)
+                                 and isinstance(x.get("ancienne_jusqu"), (int, float))
+                                 and not isinstance(x["ancienne_jusqu"], bool)))):
                     raise ValueError(f"fiche mal formee : {x.get('id')!r}")
                 fiches[x["id"]] = x
         except FileNotFoundError:
@@ -288,6 +311,14 @@ class Acces:
                   f"aucune ne peut etre creee", flush=True)
             self.illisible = True
             return
+        # Les secrets d'avant un renouvellement dont la grace est passee : rien
+        # ne les accepte plus, leur empreinte n'a pas a rester au fichier. Le
+        # menage se fait ici, au chargement ; la prochaine ecriture l'enregistre.
+        maintenant = time.time()
+        for f in fiches.values():
+            if f.get("empreinte_ancienne") and (f.get("ancienne_jusqu") or 0) <= maintenant:
+                f.pop("empreinte_ancienne", None)
+                f.pop("ancienne_jusqu", None)
         self.fiches = fiches
         for ident, f in fiches.items():
             if f.get("vu") is not None:
@@ -449,7 +480,14 @@ class Acces:
         # identifiants existent, et l'on n'aurait plus a deviner que la moitie
         # de la cle. Un sha256 et une comparaison dans les deux cas.
         attendu = fiche["empreinte"] if fiche else _EMPREINTE_FACTICE
-        juste = hmac.compare_digest(empreinte_de(cle), attendu)
+        empreinte = empreinte_de(cle)
+        juste = hmac.compare_digest(empreinte, attendu)
+        quand = time.time() if maintenant is None else maintenant
+        # LES DEUX COMPARAISONS, TOUJOURS : savoir au chronometre qu'une cle
+        # vient d'etre renouvelee n'apprendrait pas grand-chose, mais une
+        # comparaison de plus ne coute rien.
+        if _ancienne_valable(fiche, empreinte, quand):
+            juste = True
         if fiche is None or not juste:
             return None
         # LA GENERATION DU COMPTE. Changer son mot de passe, armer ou desarmer
@@ -465,7 +503,6 @@ class Acces:
             return None
         if not isinstance(gen, int) or gen != fiche["generation"]:
             return None
-        quand = time.time() if maintenant is None else maintenant
         if expiree(fiche, quand):
             return None
         fiche["vu"] = quand
@@ -496,8 +533,58 @@ class Acces:
             return False
         fiche = self.fiches.get(ident)
         attendu = fiche["empreinte"] if fiche else _EMPREINTE_FACTICE
-        juste = hmac.compare_digest(empreinte_de(cle), attendu)
-        return bool(fiche and juste and expiree(fiche, maintenant))
+        empreinte = empreinte_de(cle)
+        juste = hmac.compare_digest(empreinte, attendu)
+        quand = time.time() if maintenant is None else maintenant
+        if _ancienne_valable(fiche, empreinte, quand):
+            juste = True
+        return bool(fiche and juste and expiree(fiche, quand))
+
+    def renouveler(self, ident, compte=None, grace=GRACE_RENOUVELLEMENT,
+                   maintenant=None):
+        """Un secret neuf pour la cle « ident ». Rend {"cle", "fiche"}.
+
+        L'ancien secret vaut encore GRACE_RENOUVELLEMENT secondes, puis plus
+        rien ; un second renouvellement pendant la grace ferme aussitot le
+        premier secret — on ne garde qu'un secret d'avance.
+
+        Avec « compte », seulement une cle A LUI (comme revoquer). Une cle
+        expiree ne se renouvelle pas : sa date de fin etait voulue, et un
+        secret neuf la rouvrirait. Le secret de rappel, lui, ne change pas :
+        le recepteur n8n qui verifie les signatures continue de marcher.
+        """
+        f = self.fiches.get(ident) if isinstance(ident, str) else None
+        if f is None or (compte is not None
+                         and f["compte"] != str(compte).strip().lower()):
+            raise ErreurAcces("cle inconnue", cle="erreur.cle_inconnue")
+        quand = time.time() if maintenant is None else maintenant
+        if expiree(f, quand):
+            raise ErreurAcces("une cle expiree ne se renouvelle pas : creez-en "
+                              "une autre", cle="erreur.acces_renouveler_expiree")
+        cle = f"{PREFIXE}{ident}_{secrets.token_urlsafe(32)}"
+        avant = {k: f.get(k) for k in ("empreinte", "empreinte_ancienne",
+                                       "ancienne_jusqu")}
+        if grace > 0:
+            f["empreinte_ancienne"] = f["empreinte"]
+            f["ancienne_jusqu"] = quand + grace
+        else:
+            # SANS GRACE : le secret est vole, il meurt a la reponse. Aucune
+            # trace de lui ne reste, pas meme son empreinte.
+            f.pop("empreinte_ancienne", None)
+            f.pop("ancienne_jusqu", None)
+        f["empreinte"] = empreinte_de(cle)
+        try:
+            self.sauver()
+        except BaseException:
+            # Une cle montree mais pas ecrite : au redemarrage, l'ancienne
+            # reviendrait seule, et le programme recevrait des 401 avec la
+            # neuve. Mieux vaut ne rien changer.
+            f.update(avant)
+            for k, v in avant.items():
+                if v is None:
+                    f.pop(k, None)
+            raise
+        return {"cle": cle, "fiche": self.publique(f)}
 
     def publique(self, fiche):
         """Ce qui peut sortir d'ici : ni l'empreinte, ni le secret de rappel.
@@ -523,6 +610,14 @@ class Acces:
             "generation": fiche["generation"],
             # La date de fin, ou null : sans fin.
             "expire": fiche.get("expire"),
+            # Jusqu'a quand le secret d'avant un renouvellement vaut encore,
+            # ou null. L'empreinte, elle, ne sort jamais.
+            # Passee, la date redevient null : un client qui teste
+            # « if ancienne_jusqu » croirait sinon l'ancien secret vivant.
+            "ancienne_jusqu": (fiche.get("ancienne_jusqu")
+                               if fiche.get("empreinte_ancienne")
+                               and (fiche.get("ancienne_jusqu") or 0) > time.time()
+                               else None),
         }
 
     def liste(self, compte=None):

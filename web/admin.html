@@ -809,8 +809,10 @@ async function rafraichirAcces() {
       <td class="detail">${ech(delai(vue))}</td>
       <td class="detail">${c.nuage ? "autorisé" : "non"}</td>
       <td class="detail">${(c.hotes || []).map(ech).join("<br>") || "—"}</td>
-      <td class="detail">${ech(c.en_cours)} / ${ech(c.en_file)}</td>
+      <td class="detail">${ech(c.en_cours)} / ${ech(c.en_file)}<br><span title="lancés aujourd’hui / plafond du jour">${ech(c.aujourdhui || 0)} / ${c.par_jour ? ech(c.par_jour) : "∞"} auj.</span></td>
       <td class="detail">${c.active ? (c.expire ? "active, jusqu’au " + ech(dateCourte(c.expire)) : "active")
+          + (c.ancienne_jusqu && c.ancienne_jusqu * 1000 > Date.now()
+             ? "<br>renouvelée — l’ancien secret vaut jusqu’au " + ech(dateCourte(c.ancienne_jusqu)) : "")
         : c.expiree ? '<span title="sa date de fin est passée">expirée</span>'
         : '<span title="le mot de passe ou le second facteur du compte a changé depuis sa création">éteinte</span>'}</td>
       <td><button data-revoquer>révoquer</button></td>`;

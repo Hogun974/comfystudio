@@ -158,7 +158,7 @@ try:
     dit(f is not None and f["id"] == ident and f["compte"] == "jordan",
         "la vraie cle rend sa fiche", str(f and f["nom"]))
     # « generation » n'est plus interdite ici : elle est publique depuis que
-    # la page doit dire quelles cles se sont eteintes (voir les douze champs).
+    # la page doit dire quelles cles se sont eteintes (voir les treize champs).
     dit(f is not None and "empreinte" not in f and "secret_rappel" not in f,
         "reconnaitre rend une fiche publique sans empreinte ni secret",
         ", ".join(sorted(f or {})))
@@ -264,8 +264,8 @@ try:
     # de mot de passe au lieu de la montrer vivante.
     dit(set(r["fiche"]) == {"id", "compte", "nom", "apercu", "cree", "vu",
                             "nuage", "hotes", "en_file", "par_jour",
-                            "generation", "expire"},
-        "la fiche publique porte exactement les douze champs du contrat",
+                            "generation", "expire", "ancienne_jusqu"},
+        "la fiche publique porte exactement les treize champs du contrat",
         ", ".join(sorted(r["fiche"])))
     dit(r["fiche"]["apercu"] == f"cs_{ident}_…",
         "l'apercu ne montre rien du secret", r["fiche"]["apercu"])
@@ -621,6 +621,121 @@ try:
     dit(m4.illisible and not m4.fiches,
         "une date de fin illisible rend le fichier illisible, comme tout champ "
         "mal forme : on ne devine pas une date")
+
+    # ══════════════════════════════════════════════════════════════════
+    #  RENOUVELER. Un secret neuf, le meme identifiant ; l'ancien secret vaut
+    #  encore GRACE_RENOUVELLEMENT, le temps de recopier le neuf.
+    # ══════════════════════════════════════════════════════════════════
+    print("\n  ── renouveler ──")
+    GRACE = acces.GRACE_RENOUVELLEMENT
+    ren_chemin = os.path.join(dossier, "renouveler.json")
+    rv = acces.Acces(ren_chemin)
+    r0 = rv.creer("jordan", "n8n", 0, hotes=["n8n.maison"], maintenant=T0)
+    k0, id0, sec0 = r0["cle"], r0["fiche"]["id"], r0["secret_rappel"]
+    r1 = rv.renouveler(id0, compte="jordan", maintenant=T0 + 10)
+    k1 = r1["cle"]
+    dit(k1 != k0 and acces.identifiant_de(k1) == id0 and r1["fiche"]["id"] == id0,
+        "le renouvellement rend un secret neuf sous le MEME identifiant")
+    dit(rv.reconnaitre(k1, generation_de, maintenant=T0 + 20) is not None
+        and rv.reconnaitre(k0, generation_de, maintenant=T0 + 20) is not None,
+        "le neuf vaut tout de suite, et l'ancien encore")
+    dit(rv.reconnaitre(k0, generation_de, maintenant=T0 + 10 + GRACE - 1) is not None
+        and rv.reconnaitre(k0, generation_de, maintenant=T0 + 10 + GRACE) is None
+        and rv.reconnaitre(k1, generation_de, maintenant=T0 + 10 + GRACE) is not None,
+        "l'ancien secret meurt a la fin de sa grace, pas avant ; le neuf continue")
+    dit(r1["fiche"]["ancienne_jusqu"] == T0 + 10 + GRACE
+        and "secret_rappel" not in r1 and rv.secret_rappel(id0) == sec0
+        and r1["fiche"]["hotes"] == ["n8n.maison"],
+        "la fiche dit jusqu'a quand l'ancien vaut ; le secret de rappel et les "
+        "reglages ne changent pas, et le secret de rappel n'est pas remontre")
+    dit(not any("empreinte" in k for k in r1["fiche"]),
+        "aucune empreinte, neuve ou ancienne, ne sort dans la fiche publique")
+    r2 = rv.renouveler(id0, maintenant=T0 + 100)
+    dit(rv.reconnaitre(k0, generation_de, maintenant=T0 + 110) is None
+        and rv.reconnaitre(k1, generation_de, maintenant=T0 + 110) is not None
+        and rv.reconnaitre(r2["cle"], generation_de, maintenant=T0 + 110) is not None,
+        "un second renouvellement ferme aussitot le premier secret : un seul "
+        "secret d'avance")
+    rv2 = acces.Acces(ren_chemin)
+    rv2.charger()
+    dit(not rv2.illisible
+        and rv2.reconnaitre(k1, generation_de, maintenant=T0 + 120) is not None
+        and rv2.reconnaitre(r2["cle"], generation_de, maintenant=T0 + 120) is not None,
+        "relu du disque, l'ancien secret et sa grace tiennent toujours")
+    refus_r = []
+    try:
+        rv.renouveler(id0, compte="camille", maintenant=T0 + 200)
+        refus_r.append("celle d'un autre compte renouvelee")
+    except acces.ErreurAcces as e:
+        if e.cle != "erreur.cle_inconnue":
+            refus_r.append(f"autre compte : {e.cle}")
+    try:
+        rv.renouveler("zzzzzzzz", maintenant=T0 + 200)
+        refus_r.append("une cle inconnue renouvelee")
+    except acces.ErreurAcces as e:
+        if e.cle != "erreur.cle_inconnue":
+            refus_r.append(f"inconnue : {e.cle}")
+    rx = rv.creer("jordan", "courte", 0, expire_jours=1, maintenant=T0)
+    try:
+        rv.renouveler(rx["fiche"]["id"], maintenant=T0 + 2 * 86400)
+        refus_r.append("une cle expiree renouvelee")
+    except acces.ErreurAcces as e:
+        if e.cle != "erreur.acces_renouveler_expiree":
+            refus_r.append(f"expiree : {e.cle}")
+    dit(not refus_r, "on ne renouvelle ni la cle d'un autre compte, ni une cle "
+        "inconnue, ni une cle expiree — chacune avec sa raison",
+        ", ".join(refus_r) or "3 refus")
+    # Un renouvellement qui ne s'ecrit pas ne change rien : la cle montree
+    # mourrait au redemarrage, et l'ancienne reviendrait seule.
+    rv.illisible = True
+    try:
+        rv.renouveler(id0, maintenant=T0 + 300)
+        ecrit = "le renouvellement est passe sans s'ecrire"
+    except acces.ErreurAcces:
+        ecrit = ""
+    rv.illisible = False
+    dit(not ecrit and rv.reconnaitre(r2["cle"], generation_de, maintenant=T0 + 310) is not None
+        and rv.fiche(id0)["ancienne_jusqu"] == T0 + 100 + GRACE,
+        "un renouvellement qui ne s'ecrit pas est defait : la cle d'avant vaut "
+        "toujours, rien n'a bouge", ecrit)
+    brut_r = json.loads(brut_du_disque(ren_chemin))
+    for x in brut_r:
+        if x["id"] == id0:
+            x["ancienne_jusqu"] = "demain"
+    with open(ren_chemin, "w", encoding="utf-8") as fh:
+        json.dump(brut_r, fh)
+    rv3 = acces.Acces(ren_chemin)
+    rv3.charger()
+    dit(rv3.illisible, "une fin de grace illisible rend le fichier illisible")
+
+    # VOLE, ET NON SEULEMENT VU : sans grace, l'ancien secret meurt a la
+    # reponse — et celui d'un renouvellement precedent aussi.
+    sg = acces.Acces(os.path.join(dossier, "sans_grace.json"))
+    a0 = sg.creer("jordan", "volee", 0, maintenant=T0)
+    a1 = sg.renouveler(a0["fiche"]["id"], maintenant=T0 + 10)
+    a2 = sg.renouveler(a0["fiche"]["id"], grace=0, maintenant=T0 + 20)
+    dit(sg.reconnaitre(a0["cle"], generation_de, maintenant=T0 + 21) is None
+        and sg.reconnaitre(a1["cle"], generation_de, maintenant=T0 + 21) is None
+        and sg.reconnaitre(a2["cle"], generation_de, maintenant=T0 + 21) is not None
+        and a2["fiche"]["ancienne_jusqu"] is None
+        and "empreinte_ancienne" not in sg.fiches[a0["fiche"]["id"]],
+        "sans grace, tous les secrets d'avant meurent a la reponse, et leur "
+        "empreinte ne reste pas au fichier")
+    # LA GRACE PASSEE, la fiche ne dit plus de date (un client qui teste
+    # « if ancienne_jusqu » croirait l'ancien vivant), et la relecture du
+    # fichier en efface l'empreinte.
+    pg = os.path.join(dossier, "grace_passee.json")
+    gp = acces.Acces(pg)
+    b0 = gp.creer("jordan", "vieille grace", 0)
+    passe = time.time() - acces.GRACE_RENOUVELLEMENT - 60
+    gp.renouveler(b0["fiche"]["id"], maintenant=passe)
+    gp2 = acces.Acces(pg)
+    gp2.charger()
+    dit(gp.fiche(b0["fiche"]["id"])["ancienne_jusqu"] is None
+        and "empreinte_ancienne" not in gp2.fiches[b0["fiche"]["id"]]
+        and not gp2.illisible,
+        "la grace passee, ancienne_jusqu redevient null, et le chargement "
+        "oublie l'empreinte de l'ancien secret")
 finally:
     shutil.rmtree(dossier, ignore_errors=True)
 

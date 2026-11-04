@@ -15,6 +15,7 @@ import asyncio, base64, json, os, re, secrets, shlex, subprocess, sys, time, uui
 import collections
 import datetime
 import functools
+import math
 import hashlib
 import hmac
 # Uniquement pour nommer le site d'appel quand un garde-fou tire (VerrouCarte) :
@@ -8630,9 +8631,9 @@ def _ouvrir_porte(req, nom, mdp, code, lg):
     cle = _cle_freinage(req, nom)
     reste = _freinage(cle)
     if reste > 0:
-        return None, web.json_response(
+        return None, avec_reessai(web.json_response(
             {"erreur": T("erreur.trop_d_essais", lg, secondes=f"{reste:.0f}")},
-            status=429)
+            status=429), reessayer_dans("trop_d_essais", reste))
     c = COMPTES.authentifier(nom, mdp, code)
     if c is _comptes.BESOIN_MFA:
         return None, web.json_response(
@@ -15955,6 +15956,9 @@ def _frein_des_cles(frein):
     return max(0.0, quand + min(2.0 ** (combien - 3), ATTENTE_MAX) - time.time())
 
 
+ENTETE_EXPIRE = "X-ComfyStudio-Cle-Expire"
+
+
 def cle_vivante(fiche):
     """La cle existe ET son compte n'a pas change de generation depuis.
 
@@ -15974,15 +15978,63 @@ def cle_vivante(fiche):
     return gen is not None and gen == fiche.get("generation")
 
 
-def refus_programme(cle, statut, lg, **valeurs):
+# QUAND REESSAYER, pour chaque 429. Un 429 sans Retry-After laisse le
+# programme deviner : n8n reessaie alors a son propre rythme — trop tot, il
+# reprend un 429 ; trop tard, il perd du temps. Le studio sait souvent la
+# reponse : la fin du freinage, minuit pour le plafond du jour. Pour une file
+# pleine il ne la sait pas — un rendu dure de deux secondes a huit minutes —
+# et donne un pas raisonnable, un CONSEIL : le rappel reste le bon outil.
+REESSAI_FILE = 30
+
+
+def secondes_avant_minuit(maintenant=None):
+    """Jusqu'a minuit, heure du studio : le plafond par_jour s'y remet a zero."""
+    maintenant = time.time() if maintenant is None else maintenant
+    demain = datetime.datetime.fromtimestamp(maintenant).date() + datetime.timedelta(days=1)
+    minuit = time.mktime(demain.timetuple())
+    return max(1, int(math.ceil(minuit - maintenant)))
+
+
+def reessayer_dans(code, reste=None):
+    """Les secondes a annoncer dans Retry-After pour ce code de 429."""
+    if code == "trop_d_essais":
+        return max(1, int(math.ceil(reste or 1)))
+    if code == "cle_plafond_jour":
+        return secondes_avant_minuit()
+    return REESSAI_FILE
+
+
+def avec_reessai(rep_, secondes):
+    """Pose Retry-After (RFC 9110, 10.2.3) : des secondes, un entier."""
+    rep_.headers["Retry-After"] = str(int(secondes))
+    return rep_
+
+
+def refus_programme(cle, statut, lg, *, apres=None, **valeurs):
     """Un refus pour un programme : la phrase, et un CODE stable.
 
     Le code est la cle du dictionnaire sans sa famille. Un workflow branche
     sur « cle_file_pleine » continue de marcher le jour ou la phrase change,
     ce qu'un test sur le texte ne ferait pas.
+
+    « apres » : les secondes avant de reessayer, pour un 429. Elles vont dans
+    l'en-tete Retry-After ET dans le corps (« reessayer_dans »), pour un
+    client qui ne lit que le JSON — un assistant par MCP, un noeud n8n
+    regle sur « JSON seulement ».
     """
-    return web.json_response({"erreur": T(cle, lg, **valeurs),
-                              "code": cle.split(".", 1)[1]}, status=statut)
+    corps = {"erreur": T(cle, lg, **valeurs), "code": cle.split(".", 1)[1]}
+    if apres is not None:
+        corps["reessayer_dans"] = int(apres)
+    rep_ = web.json_response(corps, status=statut)
+    return avec_reessai(rep_, apres) if apres is not None else rep_
+
+
+def reponse_de_lancement(statut, corps):
+    """La reponse HTTP d'un (statut, corps) rendu par lancer_pour_programme."""
+    rep_ = web.json_response(corps, status=statut)
+    if corps.get("reessayer_dans") is not None:
+        avec_reessai(rep_, corps["reessayer_dans"])
+    return rep_
 
 
 def _sans_cle(lg, cle="erreur.cle_requise"):
@@ -16015,7 +16067,23 @@ async def _identite_par_cle(req, handler, cle):
         # Aucun cookie pose : un programme n'en relit pas, et un cookie
         # « studio » pose sur une reponse a un programme n'aurait aucun
         # destinataire.
-        return await handler(req)
+        try:
+            rep_ = await handler(req)
+        except web.HTTPException as sortie:
+            # Une 404 du routeur, une 413 du corps : des reponses aussi, et
+            # le guide promet l'en-tete sur chacune (relecture).
+            if fiche.get("expire"):
+                sortie.headers[ENTETE_EXPIRE] = _horodatage(fiche["expire"])
+            raise
+        # LA DATE DE FIN, SUR CHAQUE REPONSE. Une cle qui expire casse le
+        # workflow qu'elle sert ; l'en-tete laisse ce workflow — ou le
+        # proxy qui journalise — le voir venir sans interroger /api/v1/moi.
+        # Seulement si la reponse n'est pas deja partie : un fichier servi en
+        # flux a envoye ses en-tetes.
+        if fiche.get("expire") and isinstance(rep_, web.StreamResponse) \
+                and not rep_.prepared:
+            rep_.headers[ENTETE_EXPIRE] = _horodatage(fiche["expire"])
+        return rep_
     # UN COMPTEUR A PART, par adresse ET par cle presentee. Partager celui des
     # connexions laisserait un workflow mal regle freiner les humains de la
     # maison qui tapent leur mot de passe derriere le meme proxy. Le premier
@@ -16046,6 +16114,7 @@ async def _identite_par_cle(req, handler, cle):
     reste = _frein_des_cles(frein)
     if reste > 0:
         return refus_programme("erreur.trop_d_essais", 429, lg,
+                               apres=reessayer_dans("trop_d_essais", reste),
                                secondes=f"{reste:.0f}")
     if ident and ACCES and ACCES.fiche(ident) is not None:
         combien = ECHECS_CLES.get(frein, (0, 0.0))[0] + 1
@@ -16412,8 +16481,16 @@ async def lancer_pour_programme(req, fiche, d, lg):
     if not isinstance(d, dict):
         return 400, {"erreur": T("erreur.corps_illisible", lg), "code": "corps_illisible"}
 
-    def refus(cle, statut, **valeurs):
-        return statut, {"erreur": T(cle, lg, **valeurs), "code": cle.split(".", 1)[1]}
+    def refus(cle, statut, jamais=False, **valeurs):
+        code = cle.split(".", 1)[1]
+        corps = {"erreur": T(cle, lg, **valeurs), "code": code}
+        # « jamais » : la demande depasse le plafond lui-meme — quatre
+        # variantes pour une cle d'un rendu a la fois. Attendre n'y changera
+        # rien, et un Retry-After ferait boucler n8n pour toujours (relecture
+        # du 4 novembre 2026) : pas de delai, la phrase dit quoi changer.
+        if statut == 429 and not jamais:
+            corps["reessayer_dans"] = reessayer_dans(code)
+        return statut, corps
 
     # Les bornes de la cle d'abord : un workflow emballe doit etre arrete
     # avant qu'on lise son image, pas apres.
@@ -16500,13 +16577,16 @@ async def lancer_pour_programme(req, fiche, d, lg):
     if _en_cours_de_cle(fiche["id"]) + v["variantes"] > fiche["en_file"]:
         oublier_image()
         return refus("erreur.cle_file_variantes", 429,
+                     jamais=v["variantes"] > fiche["en_file"],
                      variantes=v["variantes"], en_file=fiche["en_file"])
     # LE PLAFOND DU JOUR COMPTE DES RENDUS, pas des demandes : quatre
     # variantes en sont quatre (revue du 4 novembre 2026).
     if (fiche.get("par_jour")
             and _lances_aujourdhui(fiche["id"]) + v["variantes"] > fiche["par_jour"]):
         oublier_image()
-        return refus("erreur.cle_plafond_jour", 429, par_jour=fiche["par_jour"])
+        return refus("erreur.cle_plafond_jour", 429,
+                     jamais=v["variantes"] > fiche["par_jour"],
+                     par_jour=fiche["par_jour"])
     nuage = _nuage_du_programme(d, fiche)
     if v["modele"] in MOTEURS_DISTANTS and not nuage:
         oublier_image()
@@ -16674,7 +16754,7 @@ async def api_v1_rendre(req, fiche):
         return rep_
     statut, corps = await lancer_pour_programme(req, fiche, d, lg)
     if statut != 202:
-        return web.json_response(corps, status=statut)
+        return reponse_de_lancement(statut, corps)
     tid = corps["id"]
     if idem:
         IDEMPOTENCE[(fiche["id"], idem)] = (tid, maintenant)
@@ -16799,7 +16879,7 @@ async def api_v1_repondre(req, fiche):
         suite["rappel"] = rappel
     statut, corps = await lancer_pour_programme(req, fiche, suite, lg)
     if statut != 202:
-        return web.json_response(corps, status=statut)
+        return reponse_de_lancement(statut, corps)
     if secondes:
         await attendre_rendu(corps["id"], qui(req), fiche, secondes)
     return await _repondre_rendu(req, fiche, corps["id"], statut=202)
@@ -16939,6 +17019,7 @@ async def api_v1_essai_rappel(req, fiche):
     reste = DERNIER_ESSAI.get(fiche["id"], -ESSAI_INTERVALLE) + ESSAI_INTERVALLE - maintenant
     if reste > 0:
         return refus_programme("erreur.trop_d_essais", 429, lg,
+                               apres=reessayer_dans("trop_d_essais", reste),
                                secondes=f"{reste:.0f}")
     DERNIER_ESSAI[fiche["id"]] = maintenant
     secret = ACCES.secret_rappel(fiche["id"]) if ACCES else None
@@ -17270,13 +17351,25 @@ async def _resultat_mcp(req, fiche, tid):
             "isError": corps["etat"] == "erreur"}
 
 
+def _refus_pour_outil(corps, lg):
+    """La phrase d'un refus de lancement, pour un assistant : avec le delai.
+
+    Un outil MCP ne rend qu'un texte ; sans le delai dedans, l'assistant
+    reessaie aussitot, reprend le meme refus, et conclut que le studio est en
+    panne."""
+    phrase = corps.get("erreur") or "refus"
+    if corps.get("reessayer_dans") is not None:
+        phrase += " " + T("erreur.reessayer_dans", lg, secondes=corps["reessayer_dans"])
+    return phrase
+
+
 async def _outil_generer(arguments, ctx):
     req, fiche = ctx["req"], ctx["fiche"]
     lg = langue_de(req)
     d = {k: v for k, v in arguments.items() if k != "attendre"}
     statut, corps = await lancer_pour_programme(req, fiche, d, lg)
     if statut != 202:
-        raise _mcp.ErreurOutil(corps.get("erreur") or "refus")
+        raise _mcp.ErreurOutil(_refus_pour_outil(corps, lg))
     await attendre_rendu(corps["id"], qui(req), fiche,
                          arguments.get("attendre", ATTENDRE_MCP))
     return await _resultat_mcp(req, fiche, corps["id"])
@@ -17309,7 +17402,7 @@ async def _outil_repondre(arguments, ctx):
         req, fiche, {"demande": f"{demande}\n\nPrécisions : {arguments['reponse'].strip()}",
                      "conversation": conv["id"]}, lg)
     if statut != 202:
-        raise _mcp.ErreurOutil(corps.get("erreur") or "refus")
+        raise _mcp.ErreurOutil(_refus_pour_outil(corps, lg))
     await attendre_rendu(corps["id"], qui(req), fiche,
                          arguments.get("attendre", ATTENDRE_MCP))
     return await _resultat_mcp(req, fiche, corps["id"])
@@ -17478,8 +17571,14 @@ async def api_mes_acces(req):
         return web.json_response({"erreur": T("erreur.connexion_requise", lg),
                                   "connexion": True}, status=401)
     gen = COMPTES.generation(nom)
+    # L'USAGE, PAR CLE : ce qu'elle a lance aujourd'hui, ce qu'elle a en cours.
+    # Sans lui, la liste disait les plafonds sans dire ou l'on en est — et
+    # « cette cle sert-elle encore ? » ne se lisait qu'a sa date de dernier
+    # usage. Les memes compteurs que les gardes de lancer_pour_programme.
     cles = [dict(f, active=f.get("generation") == gen and not _acces.expiree(f),
-                 expiree=_acces.expiree(f))
+                 expiree=_acces.expiree(f),
+                 en_cours=_en_cours_de_cle(f["id"]),
+                 aujourdhui=_lances_aujourdhui(f["id"]))
             for f in (ACCES.liste(nom) if ACCES else [])]
     return web.json_response({
         "cles": cles, "mfa": bool(COMPTES.mfa_arme(nom)),
@@ -17532,6 +17631,10 @@ async def api_creer_acces(req):
                           en_file=d.get("en_file", _acces.EN_FILE_DEFAUT),
                           par_jour=d.get("par_jour", 0),
                           expire_jours=d.get("expire_jours", 0))
+    except OSError as e:
+        print(f"[studio] cle d'acces non creee pour {nom} : {e}", flush=True)
+        return web.json_response({"erreur": T("erreur.acces_ecriture", lg),
+                                  "code": "acces_ecriture"}, status=503)
     except _acces.ErreurAcces as e:
         # La phrase du dictionnaire quand acces.py en nomme une ; sa phrase
         # francaise sinon (un refus qui ne vient pas d'une saisie).
@@ -17544,6 +17647,64 @@ async def api_creer_acces(req):
     print(f"[studio] cle d'acces {res['fiche']['id']} creee pour {nom}", flush=True)
     # no-store : la reponse porte la cle en clair, une seule fois. Elle ne
     # doit rester dans aucun cache.
+    return web.json_response(res, status=201,
+                             headers={"Cache-Control": "no-store"})
+
+
+async def api_renouveler_acces(req):
+    """Un secret neuf pour une cle de ce compte ; l'ancien vaut encore un jour.
+
+    LA MEME PORTE QUE LA CREATION — mot de passe, et code si le second facteur
+    est arme : la reponse porte un secret d'acces en clair, exactement ce que
+    la creation protege. Revoquer, qui ferme, se contente de la session ;
+    renouveler, qui ouvre, non.
+    """
+    lg = langue_de(req)
+    nom = req.get("compte")
+    if not nom or req.get("par_cle"):
+        return web.json_response({"erreur": T("erreur.connexion_requise", lg),
+                                  "connexion": True}, status=401)
+    try:
+        d = await _json_objet(req)
+    except web.HTTPException:
+        raise
+    except Exception:
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
+    _c, refus = _ouvrir_porte(req, nom, d.get("mdp"), d.get("code"), lg)
+    if refus is not None:          # « is not None » : voir api_creer_acces
+        return refus
+    if not ACCES:
+        return web.json_response({"erreur": T("erreur.acces_illisible", lg),
+                                  "code": "acces_illisible"}, status=503)
+    ident = req.match_info["ident"]
+    # ETEINTE : un changement de mot de passe l'a fermee, et la rouvrir par un
+    # secret neuf defairait ce que ce changement devait faire — chasser qui
+    # aurait vole l'ancien mot de passe. On en cree une autre.
+    f = ACCES.fiche(ident)
+    if f is not None and f["compte"] == nom.strip().lower() \
+            and f.get("generation") != COMPTES.generation(nom):
+        return web.json_response({"erreur": T("erreur.acces_renouveler_eteinte", lg),
+                                  "code": "acces_renouveler_eteinte"}, status=409)
+    # « tout_de_suite » : le secret est VOLE, pas seulement vu. La grace d'un
+    # jour, faite pour ne pas casser le workflow, laisserait au voleur un jour
+    # entier ; ici l'ancien secret meurt a la reponse (relecture).
+    grace = 0 if d.get("tout_de_suite") is True else _acces.GRACE_RENOUVELLEMENT
+    try:
+        res = ACCES.renouveler(ident, compte=nom, grace=grace)
+    except OSError as e:
+        print(f"[studio] cle d'acces {ident} non renouvelee : {e}", flush=True)
+        return web.json_response({"erreur": T("erreur.acces_ecriture", lg),
+                                  "code": "acces_ecriture"}, status=503)
+    except _acces.ErreurAcces as e:
+        statut = 404 if e.cle == "erreur.cle_inconnue" else 409
+        message = (T(e.cle, lg, **e.valeurs) if e.cle in traductions.TEXTES
+                   else str(e))
+        return web.json_response(
+            {"erreur": message,
+             "code": e.cle.split(".", 1)[1] if e.cle else "acces_refuse"},
+            status=statut)
+    print(f"[studio] cle d'acces {ident} renouvelee par {nom}", flush=True)
     return web.json_response(res, status=201,
                              headers={"Cache-Control": "no-store"})
 
@@ -17576,7 +17737,8 @@ async def api_admin_acces(req):
         cles.append(dict(f, active=f.get("generation") == gens[f["compte"]]
                          and not _acces.expiree(f),
                          expiree=_acces.expiree(f),
-                         en_cours=_en_cours_de_cle(f["id"])))
+                         en_cours=_en_cours_de_cle(f["id"]),
+                         aujourdhui=_lances_aujourdhui(f["id"])))
     return web.json_response({"cles": cles})
 
 
@@ -17688,6 +17850,7 @@ def app():
     a.router.add_get("/api/compte/acces", api_mes_acces)
     a.router.add_post("/api/compte/acces", api_creer_acces)
     a.router.add_delete("/api/compte/acces/{ident}", api_revoquer_acces)
+    a.router.add_post("/api/compte/acces/{ident}/renouveler", api_renouveler_acces)
     a.router.add_get("/api/admin/acces", api_admin_acces)
     a.router.add_delete("/api/admin/acces/{ident}", api_admin_acces_revoquer)
     a.on_startup.append(demarrer_file)

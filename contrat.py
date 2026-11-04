@@ -252,6 +252,15 @@ def _schemas():
             "erreur": {"type": "string"},
             "code": {"type": "string",
                      "enum": list(REFUS) + list(REFUS_COMMUNS)},
+            "reessayer_dans": {
+                "type": "integer", "minimum": 1,
+                "description": "Sur un 429 seulement : les secondes avant de "
+                               "réessayer, comme l'en-tête Retry-After. "
+                               "Exactes pour trop_d_essais et "
+                               "cle_plafond_jour (minuit) ; un conseil pour "
+                               "une file pleine. ABSENT quand attendre ne "
+                               "servirait à rien : plus de variantes que le "
+                               "plafond lui-même."},
         },
     }
     demande = {
@@ -344,6 +353,11 @@ def _schemas():
                        "description": "Date de fin (secondes depuis 1970), "
                                       "ou null : sans fin. Passée, la clé "
                                       "rend 401 « cle_expiree »."},
+            "ancienne_jusqu": {"type": ["number", "null"],
+                               "description": "Après un renouvellement, la "
+                                              "date jusqu'à laquelle l'ancien "
+                                              "secret vaut encore ; null "
+                                              "sinon."},
         },
     }
     evenement = {
@@ -469,7 +483,12 @@ def _reponses():
                 "description": "Bearer realm=\"comfystudio\""}},
             "content": _json(_ref("schemas", "Refus"))},
         "Freine": dict(refus, description="trop_d_essais, cle_file_pleine, "
-                                          "cle_file_variantes, cle_plafond_jour."),
+                                          "cle_file_variantes, cle_plafond_jour.",
+                       headers={"Retry-After": {
+                           "schema": {"type": "integer", "minimum": 1},
+                           "description": "Secondes avant de réessayer "
+                                          "(RFC 9110) ; aussi dans "
+                                          "« reessayer_dans »."}}),
         "Inconnu": dict(refus, description="rendu_inconnu."),
         "UnRendu": {
             "description": "Le rendu.",
@@ -715,7 +734,10 @@ def document(base: str = "") -> dict:
                 "type": "http", "scheme": "bearer",
                 "bearerFormat": "cs_<8 hex>_<43 caractères>",
                 "description": "Une clé d'accès, dans « Authorization: Bearer "
-                               "cs_… ». Jamais dans l'adresse ni un cookie."}},
+                               "cs_… ». Jamais dans l'adresse ni un cookie. "
+                               "Une clé qui a une date de fin la rappelle "
+                               "sur chaque réponse, dans l'en-tête "
+                               "X-ComfyStudio-Cle-Expire (RFC 3339)."}},
             "schemas": _schemas(),
             "parameters": _parametres(),
             "responses": _reponses(),

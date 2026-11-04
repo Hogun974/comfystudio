@@ -398,6 +398,19 @@ qu'elle n'ouvre pas.
 - **Éteinte par la génération du compte** : changer de mot de passe, armer ou
   désarmer le second facteur éteint toutes les clés du compte, comme ses
   sessions. Supprimer le compte les efface.
+- **Une date de fin, si l'on veut** (`expire_jours`, un an au plus) : passée,
+  la clé est refusée en `cle_expiree` — le secret vérifié d'abord, pour ne rien
+  apprendre à qui ne l'a pas — et ses liens signés, ses rappels et ses outils
+  MCP meurent avec elle, même pendant une attente en cours.
+- **Renouvelée sans coupure, ou coupée net.** Renouveler change le secret sous
+  le même identifiant, par la porte de la création (mot de passe et code). Par
+  défaut, l'**ancien secret vaut encore 24 heures** : c'est une fenêtre
+  assumée, pour qu'un secret simplement *vu* se change sans casser le workflow.
+  Pour un secret **volé**, la case « tout de suite » (`tout_de_suite: true`)
+  le tue à la réponse, avec celui d'un renouvellement précédent. Une seule
+  empreinte d'avance est gardée, effacée du fichier une fois sa grace passée ;
+  une clé expirée ou éteinte ne se renouvelle pas. Pour une fuite avérée, la
+  révocation reste le geste le plus sûr : elle ne demande que la session.
 - **Vérifiée avant d'être freinée** : une bonne clé passe toujours. Après trois
   secrets faux pour une même clé depuis une adresse, l'attente double (1 s, 2,
   4… plafonnée à 30), dans une **table à part** de celle des mots de passe — des

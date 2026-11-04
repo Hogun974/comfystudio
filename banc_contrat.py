@@ -254,6 +254,18 @@ try:
     dit(not sans_phrase, "chaque code a sa phrase dans traductions.py",
         ", ".join(sans_phrase) or "tous")
 
+    # QUAND REESSAYER. Chaque 429 du studio porte Retry-After et
+    # « reessayer_dans » (serveur.reessayer_dans) : le contrat doit le dire,
+    # sinon un client genere ne le lit pas et reessaie a l'aveugle.
+    freine = DOC["components"]["responses"]["Freine"]
+    dit("Retry-After" in (freine.get("headers") or {})
+        and "reessayer_dans" in DOC["components"]["schemas"]["Refus"]["properties"],
+        "les 429 du contrat decrivent Retry-After, et Refus son « reessayer_dans »")
+    codes_429 = sorted(c for c, (s, _q) in C.REFUS.items() if s == 429)
+    dit(all(c in freine.get("description", "") for c in codes_429),
+        "la reponse « Freine » nomme chaque code rendu en 429",
+        ", ".join(codes_429))
+
     # ── LES REFUS COMMUNS AVEC LA PAGE ──
     # valider_demande et api_televerser vivent HORS du bloc des programmes :
     # la page les appelle aussi. Le contrat disait qu'ils n'avaient « pas

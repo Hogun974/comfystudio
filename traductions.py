@@ -264,6 +264,9 @@ TEXTES = {
     "erreur.cle_file_variantes": {
         "fr": "ces {variantes} variantes dépasseraient les {en_file} rendus en même temps de cette clé",
         "en": "these {variantes} variants would exceed this key's {en_file} renders at the same time"},
+    "erreur.reessayer_dans": {
+        "fr": "(réessaie dans {secondes} s)",
+        "en": "(try again in {secondes} s)"},
     "erreur.cle_plafond_jour": {
         "fr": "cette clé a atteint son plafond de {par_jour} rendus pour aujourd'hui",
         "en": "this key has reached its limit of {par_jour} renders for today"},
@@ -332,6 +335,15 @@ TEXTES = {
     "erreur.acces_par_jour": {
         "fr": "plafond par jour : un nombre entier de {bas} à {haut} (0 = sans plafond)",
         "en": "daily limit: a whole number from {bas} to {haut} (0 = no limit)"},
+    "erreur.acces_ecriture": {
+        "fr": "le fichier des clés d'accès n'a pas pu être écrit : rien n'a changé, réessaie plus tard",
+        "en": "the access key file could not be written: nothing changed, try again later"},
+    "erreur.acces_renouveler_expiree": {
+        "fr": "une clé expirée ne se renouvelle pas : crées-en une autre",
+        "en": "an expired key cannot be renewed: create another one"},
+    "erreur.acces_renouveler_eteinte": {
+        "fr": "une clé éteinte par un changement de mot de passe ne se renouvelle pas : crées-en une autre",
+        "en": "a key switched off by a password change cannot be renewed: create another one"},
     "erreur.acces_expire": {
         "fr": "durée de vie : un nombre entier de jours, de {bas} à {haut} (0 = sans fin)",
         "en": "lifetime: a whole number of days, from {bas} to {haut} (0 = no end date)"},
@@ -1642,6 +1654,46 @@ TEXTES = {
     "page.acces.en_file.champ": {
         "fr": "rendus en même temps",
         "en": "renders at the same time"},
+    "page.acces.usage": {
+        "fr": "aujourd'hui : {aujourdhui} lancé(s), {en_cours} en cours",
+        "en": "today: {aujourdhui} launched, {en_cours} in progress"},
+    "page.acces.renouveler": {
+        "fr": "renouveler",
+        "en": "renew"},
+    "page.acces.renouveler.titre": {
+        "fr": "Renouveler « {nom} »",
+        "en": "Renew “{nom}”"},
+    "page.acces.renouveler.pourquoi": {
+        "fr": "Un secret neuf, pour la même clé : ses rendus, ses liens, ses "
+              "plafonds et son secret de rappel ne changent pas. L'ancien "
+              "secret vaut encore 24 heures — le temps de recopier le neuf "
+              "dans ton workflow —, puis plus rien. Si tu le crois volé et "
+              "pas seulement vu, coche la case : il meurt tout de suite.",
+        "en": "A new secret for the same key: its renders, links, limits and "
+              "callback secret stay as they are. The old secret keeps working "
+              "for 24 hours — time to paste the new one into your workflow — "
+              "then stops. If you think it was stolen, not just seen, tick "
+              "the box: it dies at once."},
+    "page.acces.renouveler.tout_de_suite": {
+        "fr": "couper l'ancien secret tout de suite (il a été volé)",
+        "en": "cut the old secret off at once (it was stolen)"},
+    "page.acces.renouveler.ok": {
+        "fr": "renouveler",
+        "en": "renew"},
+    "page.acces.annuler": {
+        "fr": "annuler",
+        "en": "cancel"},
+    "page.acces.renouvelee.titre": {
+        "fr": "Clé « {nom} » renouvelée.",
+        "en": "Key “{nom}” renewed."},
+    "page.acces.renouvelee.ancienne": {
+        "fr": "L'ancien secret vaut encore jusqu'au {date}. Remplace-le avant "
+              "dans tes programmes.",
+        "en": "The old secret keeps working until {date}. Replace it in your "
+              "programs before then."},
+    "page.acces.ancienne_jusqu": {
+        "fr": "ancien secret valable jusqu'au {date}",
+        "en": "old secret valid until {date}"},
     "page.acces.expire.champ": {
         "fr": "durée de vie",
         "en": "lifetime"},
