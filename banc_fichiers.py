@@ -704,6 +704,66 @@ try:
         "un fichier vide est refuse, et ne laisse pas un fichier vide derriere "
         "lui", f"HTTP {st}, {d.get('erreur')}")
 
+    # ══════════════════════════════════════════════════════════════════
+    #  LES CODES. /api/v1/fichiers reprend cette route telle quelle : sans
+    #  code, un workflow n8n ne pouvait se brancher que sur le statut, et 400
+    #  disait aussi bien « pas de fichier » que « format refuse ».
+    # ══════════════════════════════════════════════════════════════════
+    print("\n  ── chaque refus porte son code ──")
+    cas_codes = (
+        ("aucun_fichier", 400, televerser("", b"du texte", avec_fichier=False)),
+        ("format_refuse", 400, televerser("note.txt", b"charge utile")),
+        ("fichier_vide", 400, televerser("rien.png", b"")),
+        ("fichier_trop_lourd", 413, televerser("lourd.png", b"x" * (PILE + 1))),
+    )
+    faux_codes = []
+    for code, statut, appel in cas_codes:
+        st, d = lancer(appel)
+        if st != statut or d.get("code") != code or not d.get("erreur"):
+            faux_codes.append(f"{code}: HTTP {st}, code {d.get('code')!r}")
+    dit(not faux_codes,
+        "les quatre refus du televersement portent leur code stable, en plus "
+        "de la phrase", ", ".join(faux_codes) or "4 codes")
+
+    # UN CORPS QUI N'EST PAS UN FORMULAIRE. Le vrai MultipartReader d'aiohttp,
+    # sur les vrais en-tetes : il refuse par une ASSERTION un Content-Type
+    # JSON, par un ValueError un multipart sans « boundary ». La route
+    # laissait passer les deux, et le studio repondait 500.
+    async def televerser_sans_formulaire(type_contenu):
+        route = du_studio("api_televerser", None)
+        req = Req(methode="POST", chemin="/api/v1/fichiers")
+        flux = streams.StreamReader(BaseProtocol(asyncio.get_running_loop()),
+                                    limit=2 ** 16, loop=asyncio.get_running_loop())
+        flux.feed_data(b'{"image": "photo.png"}')
+        flux.feed_eof()
+
+        async def multipart():
+            return aiohttp.MultipartReader({"Content-Type": type_contenu}, flux)
+        req.multipart = multipart
+        try:
+            rep = await route(req)
+            return rep.status, json.loads(rep.text)
+        except Exception as souci:      # noqa: BLE001 — voir Panne
+            return 500, {"erreur": f"la route a leve : {type(souci).__name__}"}
+
+    mauvais_corps = []
+    # Le quatrieme est le plus sournois : un en-tete multipart JUSTE, sur un
+    # corps qui ne l'est pas. Le constructeur l'accepte, et c'est la lecture
+    # du premier champ qui leve — hors du filet, c'etait encore un 500
+    # (relecture du 4 novembre 2026).
+    for type_contenu in ("application/json", "multipart/form-data",
+                         "text/plain; charset=utf-8",
+                         "multipart/form-data; boundary=----pas-celle-du-corps"):
+        st, d = lancer(televerser_sans_formulaire(type_contenu))
+        if st != 400 or d.get("code") != "formulaire_attendu" \
+                or d.get("erreur") != traduire("erreur.formulaire_attendu"):
+            mauvais_corps.append(f"{type_contenu}: HTTP {st}, {d.get('code') or d.get('erreur')}")
+    dit(not mauvais_corps,
+        "un corps JSON, texte, multipart sans « boundary » ou qui ne suit pas "
+        "le sien est un 400 "
+        "« formulaire_attendu », pas un 500 : la requete est mal formee, le "
+        "studio n'est pas en panne", ", ".join(mauvais_corps) or "4 corps")
+
     print("\n  ── a qui appartient ce qui vient d'entrer ──")
     st, d = lancer(televerser("a-moi.png", b"les octets de MOI", pid=MOI))
     mien = d.get("image")

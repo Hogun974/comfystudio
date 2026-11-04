@@ -810,7 +810,8 @@ async function rafraichirAcces() {
       <td class="detail">${c.nuage ? "autorisé" : "non"}</td>
       <td class="detail">${(c.hotes || []).map(ech).join("<br>") || "—"}</td>
       <td class="detail">${ech(c.en_cours)} / ${ech(c.en_file)}</td>
-      <td class="detail">${c.active ? "active"
+      <td class="detail">${c.active ? (c.expire ? "active, jusqu’au " + ech(dateCourte(c.expire)) : "active")
+        : c.expiree ? '<span title="sa date de fin est passée">expirée</span>'
         : '<span title="le mot de passe ou le second facteur du compte a changé depuis sa création">éteinte</span>'}</td>
       <td><button data-revoquer>révoquer</button></td>`;
     corps.appendChild(tr);

@@ -76,6 +76,8 @@ REFUS = {
     "cle_refusee": (401, "Clé inconnue, révoquée, ou éteinte par un changement "
                          "de mot de passe ou de second facteur. Ne pas "
                          "réessayer : demander une clé neuve."),
+    "cle_expiree": (401, "La clé a passé sa date de fin. Ne pas réessayer : "
+                         "en créer une autre depuis la page."),
     "cle_hors_perimetre": (403, "Une clé d'accès présentée hors de /api/v1 et "
                                 "/mcp. Elle n'y vaut rien, jamais."),
     "trop_d_essais": (429, "Trop de clés refusées depuis cette adresse : "
@@ -113,6 +115,32 @@ REFUS = {
     "reponse_vide": (400, "La réponse à la question est vide."),
 }
 
+# LES REFUS PARTAGES AVEC LA PAGE : la validation d'une demande
+# (valider_demande) et le televersement (api_televerser). Une table A PART,
+# parce qu'ils ne vivent pas dans le bloc des programmes : la page les rend
+# aussi, avec le meme code. Le contrat disait qu'ils n'en avaient « pas encore »
+# alors qu'ils en portaient un — un client genere sur ce document se privait
+# du branchement que le guide recommande. Releve le 4 novembre 2026.
+# fichier_vide et fichier_trop_lourd sont dans REFUS : meme code, meme statut,
+# qu'ils viennent d'image_base64 ou d'un formulaire.
+REFUS_COMMUNS = {
+    "demande_vide": (400, "Ni « demande » ni image."),
+    "demande_trop_longue": (400, "« demande » au-delà de sa longueur maximale."),
+    "taille_non_prise": (400, "« taille » hors de la liste de /api/v1/moteurs."),
+    "moteur_inconnu": (400, "« moteur » qui n'existe pas."),
+    "moteur_sans_cle": (400, "Moteur distant sans sa clé de fournisseur."),
+    "priorite_inconnue": (400, "« priorite » hors de la liste."),
+    "variantes_illisible": (400, "« variantes » n'est pas un nombre."),
+    "variantes_bornes": (400, "« variantes » hors de ses bornes."),
+    "machine_inconnue": (400, "« machine » qui n'existe pas."),
+    "image_inconnue": (404, "« image » qui n'a pas été envoyée par ce compte."),
+    "formulaire_attendu": (400, "POST /api/v1/fichiers sans corps "
+                                "multipart/form-data."),
+    "aucun_fichier": (400, "Formulaire sans champ qui porte un nom de fichier."),
+    "format_refuse": (400, "Extension hors des familles acceptées ; la phrase "
+                           "les liste."),
+}
+
 _REF = "#/components/"
 
 
@@ -124,10 +152,10 @@ def _json(schema):
     return {"application/json": {"schema": schema}}
 
 
-def _table_des_refus():
+def _table_des_refus(table=None):
     lignes = ["| code | statut | ce que le programme en fait |",
               "|---|---|---|"]
-    for code, (statut, quoi) in REFUS.items():
+    for code, (statut, quoi) in (REFUS if table is None else table).items():
         lignes.append(f"| `{code}` | {statut} | {quoi} |")
     return "\n".join(lignes)
 
@@ -214,16 +242,16 @@ def _schemas():
             "Un refus. « erreur » est une phrase, en français ou en anglais "
             "selon Accept-Language ; « code » est stable et c'est sur lui "
             "qu'un programme se branche.\n\n" + _table_des_refus() + "\n\n"
-            "Les refus de la validation commune avec la page (demande vide ou "
-            "trop longue, taille, moteur, priorité, variantes, machine ou "
-            "image inconnues) et ceux de POST /api/v1/fichiers n'ont pas "
-            "encore de « code » : seulement « erreur », en 400 (404 pour une "
-            "image inconnue, 413 pour un fichier trop lourd). Un corps JSON "
-            f"de plus de {CORPS_MAX // 1024 ** 2} Mio est refusé en 413 par "
-            "le serveur HTTP, avec un corps texte."),
+            "La validation commune avec la page, et POST /api/v1/fichiers, "
+            "rendent ceux-ci — les mêmes codes que la page reçoit :\n\n"
+            + _table_des_refus(REFUS_COMMUNS) + "\n\n"
+            f"Un corps JSON de plus de {CORPS_MAX // 1024 ** 2} Mio est "
+            "refusé en 413 par le serveur HTTP lui-même, avec un corps texte "
+            "et sans code."),
         "properties": {
             "erreur": {"type": "string"},
-            "code": {"type": "string", "enum": list(REFUS)},
+            "code": {"type": "string",
+                     "enum": list(REFUS) + list(REFUS_COMMUNS)},
         },
     }
     demande = {
@@ -312,6 +340,10 @@ def _schemas():
                          "maximum": _acces.PAR_JOUR_MAX,
                          "description": "0 : sans plafond."},
             "generation": {"type": "integer"},
+            "expire": {"type": ["number", "null"],
+                       "description": "Date de fin (secondes depuis 1970), "
+                                      "ou null : sans fin. Passée, la clé "
+                                      "rend 401 « cle_expiree »."},
         },
     }
     evenement = {
@@ -430,7 +462,8 @@ def _reponses():
     return {
         "Refus": dict(refus, description="Refusé : lire « code »."),
         "SansCle": {
-            "description": "Clé absente ou refusée (cle_requise, cle_refusee).",
+            "description": "Clé absente, refusée ou expirée (cle_requise, "
+                           "cle_refusee, cle_expiree).",
             "headers": {"WWW-Authenticate": {
                 "schema": {"type": "string"},
                 "description": "Bearer realm=\"comfystudio\""}},

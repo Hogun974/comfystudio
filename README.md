@@ -86,7 +86,8 @@ travail](docs/qui-prend-le-travail.md).
 workflow n8n, un assistant IA par MCP (Claude Code, l'agent de n8n) ou un
 script `curl` présentent une **clé d'accès** propre à eux, créée par chacun pour
 son compte : elle ne vaut que pour demander des rendus et les relire, jamais
-pour administrer, et ne voit que les rendus qu'elle a demandés. Le studio
+pour administrer, et ne voit que les rendus qu'elle a demandés — avec, si l'on
+veut, une date de fin, pour la clé d'un essai ou d'un invite. Le studio
 prévient la fin d'un rendu par un rappel signé, et sert sa propre description
 OpenAPI. Voir [Piloter le studio par programme](docs/piloter-par-programme.md).
 

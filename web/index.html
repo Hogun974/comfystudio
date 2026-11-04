@@ -2655,7 +2655,9 @@ function formulaireAcces() {
       if (!c.active) {
         const e = document.createElement("span");
         e.className = "acces-eteinte";
-        e.textContent = T("page.acces.eteinte");
+        // EXPIREE AVANT ETEINTE : les deux ferment la cle, mais pas pour la
+        // meme raison, et la phrase dessous dit quoi faire de chacune.
+        e.textContent = T(c.expiree ? "page.acces.expiree" : "page.acces.eteinte");
         tete.append(e);
       }
       const droite = document.createElement("div");
@@ -2674,6 +2676,11 @@ function formulaireAcces() {
       faits.className = "dit";
       faits.textContent = [
         T("page.acces.cree", { date: date(c.cree) }),
+        // Passee, la date est dans l'avertissement dessous : « expire le »
+        // au present, sur une cle deja fermee, se lirait comme un sursis.
+        c.expiree ? null
+          : c.expire ? T("page.acces.expire.le", { date: date(c.expire) })
+                     : T("page.acces.expire.jamais"),
         c.vu ? T("page.acces.vu", { date: date(c.vu) }) : T("page.acces.jamais"),
         T(c.nuage ? "page.acces.nuage.oui" : "page.acces.nuage.non"),
         T("page.acces.en_file", { n: c.en_file }),
@@ -2681,14 +2688,16 @@ function formulaireAcces() {
                    : T("page.acces.sans_plafond"),
         hotes.length ? T("page.acces.hotes", { hotes: hotes.join(", ") })
                      : T("page.acces.sans_rappel"),
-      ].join(" · ");
+      ].filter(Boolean).join(" · ");
       li.append(tete, faits);
       // LA RAISON, ET PAS SEULEMENT LE MOT. « eteinte » seul laisse croire a
       // une panne du studio ; la cause est un geste du proprietaire — il a
       // change son mot de passe ou son second facteur, et cela a ferme toutes
       // ses portes, celle-ci comprise. Et rien ne la rallume : il faut en
       // creer une autre.
-      if (!c.active) li.append(dire("page.acces.eteinte.pourquoi", "avertit"));
+      if (c.expiree) li.append(dire("page.acces.expiree.pourquoi", "avertit",
+                                    { date: date(c.expire) }));
+      else if (!c.active) li.append(dire("page.acces.eteinte.pourquoi", "avertit"));
       ul.appendChild(li);
     }
     if (cles.length) corps.append(ul);
@@ -2710,6 +2719,18 @@ function formulaireAcces() {
     nuage.type = "checkbox"; nuage.name = "nuage"; nuage.checked = false;
     const lNuage = document.createElement("label");
     lNuage.append(nuage, document.createTextNode(T("page.acces.nuage")));
+    // LA DUREE DE VIE, « sans fin » d'abord : c'est le defaut, parce qu'une
+    // cle qui meurt en silence casse le workflow qu'elle servait. Les autres
+    // durees servent a la cle d'un essai, d'une demonstration, d'un invite.
+    const expire = document.createElement("select");
+    expire.name = "expire_jours";
+    for (const j of (b.expirations || [0])) {
+      const o = document.createElement("option");
+      o.value = String(j);
+      o.textContent = j ? T("page.acces.expire.jours", { n: j })
+                        : T("page.acces.expire.jamais");
+      expire.append(o);
+    }
     const hotes = document.createElement("textarea");
     hotes.name = "hotes"; hotes.rows = 2;
     hotes.placeholder = T("page.acces.hotes.invite");
@@ -2737,6 +2758,7 @@ function formulaireAcces() {
                        nombreBorne("en_file", 1, b.en_file, b.en_file_defaut)),
                  champ("page.acces.par_jour.champ",
                        nombreBorne("par_jour", 0, b.par_jour, 0)),
+                 champ("page.acces.expire.champ", expire),
                  dire("page.acces.mdp.pourquoi"), mdp, zoneCode);
 
     rang.append(bouton("page.acces.creer", async () => {
@@ -2752,7 +2774,8 @@ function formulaireAcces() {
                                nom: f.nom.value, nuage: f.nuage.checked,
                                hotes: liste,
                                en_file: Number(f.en_file.value),
-                               par_jour: Number(f.par_jour.value) }) });
+                               par_jour: Number(f.par_jour.value),
+                               expire_jours: Number(f.expire_jours.value) }) });
       const x = await r.json().catch(() => ({}));
       // La MEME marque qu'a la porte d'entree : le champ, jamais le message
       // ni le code de retour.

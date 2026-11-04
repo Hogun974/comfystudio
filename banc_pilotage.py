@@ -589,6 +589,82 @@ async def s_gestion():
         "DELETE de la cle d'un AUTRE compte rend 404, et elle vit encore",
         f"HTTP {st}")
 
+    # LA DATE DE FIN, de bout en bout : choisie a la creation, refusee en 401
+    # « cle_expiree » une fois passee — son propre code, sans compter d'echec —,
+    # et la cle n'est plus « vivante » pour ses liens et ses rappels.
+    st, c, _r = await appel(Req("/api/compte/acces", "POST", cookies=biscuit,
+                                corps={"mdp": MDP, "nom": "essai",
+                                       "expire_jours": 30}), S.api_creer_acces)
+    fin_ = ((c or {}).get("fiche") or {}).get("expire") or 0
+    dit(st == 201 and abs(fin_ - (time.time() + 30 * 86400)) < 60,
+        "une cle creee pour 30 jours porte sa date de fin", f"HTTP {st}")
+    st, c, _r = await appel(Req("/api/compte/acces", "POST", cookies=biscuit,
+                                corps={"mdp": MDP, "nom": "trop longue",
+                                       "expire_jours": 400}), S.api_creer_acces)
+    dit(st == 400 and code(c) == "acces_expire",
+        "une duree de plus d'un an est refusee, avec son code", f"HTTP {st} {code(c)}")
+    vieille_ = S.ACCES.creer("sacha", "expiree", S.COMPTES.generation("sacha"),
+                             expire_jours=1, maintenant=time.time() - 2 * 86400)
+    S.ECHECS_CLES.clear()
+    for _ in range(5):
+        await appel(Req("/api/v1/moi", cle=vieille_["cle"]), Temoin())
+    t_exp = Temoin()
+    st, c, _r = await appel(Req("/api/v1/moi", cle=vieille_["cle"]), t_exp)
+    dit(st == 401 and code(c) == "cle_expiree" and not t_exp.vus,
+        "une cle passee sa date de fin rend 401 « cle_expiree », meme apres "
+        "cinq essais", f"HTTP {st} {code(c)}")
+    dit(not S.ECHECS_CLES,
+        "et ses essais ne comptent pas comme des secrets faux : le secret est "
+        "juste, c'est la date qui est passee", repr(list(S.ECHECS_CLES)))
+    st, c, _r = await appel(Req("/api/v1/moi", cle=cle_fausse(vieille_["cle"])), Temoin())
+    dit(st == 401 and code(c) == "cle_refusee",
+        "un secret FAUX pour une cle expiree rend « cle_refusee » : la date de "
+        "fin ne se lit qu'avec la cle", f"HTTP {st} {code(c)}")
+    S.ECHECS_CLES.clear()
+    dit(not S.cle_vivante(S.ACCES.fiche(vieille_["fiche"]["id"]))
+        and S.cle_vivante(S.ACCES.fiche(((nouvelle_cle("sacha", "un jour",
+                                                       expire_jours=1))["fiche"])["id"])),
+        "une cle expiree n'est plus vivante pour ses liens et ses rappels ; une "
+        "cle d'un jour, neuve, l'est")
+    st, c, _r = await appel(Req("/api/compte/acces", cookies=biscuit), S.api_mes_acces)
+    par_id = {x.get("id"): x for x in (c or {}).get("cles") or []}
+    v_ = par_id.get(vieille_["fiche"]["id"]) or {}
+    dit(v_.get("expiree") is True and v_.get("active") is False,
+        "la liste du proprietaire la montre expiree, et inactive", repr(v_.get("expiree")))
+    dit(((c or {}).get("bornes") or {}).get("expirations") == list(S._acces.EXPIRATIONS),
+        "et propose a la page les durees que le magasin connait")
+    # MORTE PENDANT L'ATTENTE. Une attente dure jusqu'a dix minutes : la cle
+    # peut arriver a sa date de fin, ou etre revoquee, entre la question et la
+    # reponse. La route REST rend alors le bon code ; MCP, qui insere l'image
+    # en base64, ne doit pas la donner non plus (relecture du 4 novembre 2026).
+    pendant = nouvelle_cle("sacha", "pendant l'attente", expire_jours=1)
+    f_pendant = pendant["fiche"]
+    tid_p, _conv_p = poser_rendu(f_pendant, "fini")
+    req_p = Req(f"/api/v1/rendus/{tid_p}", cle=pendant["cle"], match={"tid": tid_p})
+    req_p["pid"], req_p["compte"] = pid_de("sacha"), "sacha"
+    rep_ = await S._repondre_rendu(req_p, f_pendant, tid_p)
+    dit(rep_.status == 200, "temoin : vivante, la cle lit son rendu fini", f"HTTP {rep_.status}")
+    S.ACCES.fiches[f_pendant["id"]]["expire"] = time.time() - 1
+    rep_ = await S._repondre_rendu(req_p, f_pendant, tid_p)
+    dit(rep_.status == 401 and json.loads(rep_.text).get("code") == "cle_expiree",
+        "une cle arrivee a sa date de fin PENDANT l'attente rend « cle_expiree », "
+        "pas « cle_refusee »", f"HTTP {rep_.status} {rep_.text[:80]}")
+    try:
+        await S._resultat_mcp(req_p, f_pendant, tid_p)
+        donne = "l'outil MCP a rendu le resultat"
+    except S._mcp.ErreurOutil as e:
+        donne = "" if str(e) == S.T("erreur.cle_expiree", "fr") else f"refus : {e}"
+    dit(not donne, "et l'outil MCP refuse lui aussi de rendre l'image, avec la "
+        "meme raison", donne)
+    S.ACCES.fiches[f_pendant["id"]]["expire"] = None
+    S.ACCES.revoquer(f_pendant["id"])
+    rep_ = await S._repondre_rendu(req_p, f_pendant, tid_p)
+    dit(rep_.status == 401 and json.loads(rep_.text).get("code") == "cle_refusee",
+        "revoquee pendant l'attente, elle rend « cle_refusee »", f"HTTP {rep_.status}")
+    for ident_ in [i for i, f in list(S.ACCES.fiches.items())
+                   if f["compte"] == "sacha" and f["nom"] in ("essai", "expiree", "un jour")]:
+        S.ACCES.revoquer(ident_)
+
     # L'administration.
     st, c, _r = await appel(Req("/api/admin/acces", entetes={"X-Admin": JETON_ADMIN}),
                             S.api_admin_acces)
@@ -785,6 +861,90 @@ async def s_lancer():
     st3, c3, _r = await lancer(K_AGENT, {"demande": "un chat"}, entetes)
     dit(st3 == 202 and (c3 or {}).get("id") != (c1 or {}).get("id"),
         "la meme Idempotency-Key sur une AUTRE cle est un autre rendu", f"HTTP {st3}")
+
+    # LE REGISTRE SURVIT A UN REDEMARRAGE. Le guide conseille « Retry On Fail »
+    # pour rattraper un studio qui redemarre : c'est au reessai d'APRES le
+    # redemarrage que la cle doit encore designer le meme rendu. On simule
+    # l'arret en vidant la memoire, et le demarrage en relisant le disque.
+    try:
+        with open(S.FICHIER_IDEMPOTENCE, encoding="utf-8") as f:
+            sur_disque = json.load(f)
+    except (OSError, ValueError):
+        sur_disque = []
+    dit([F_N8N["id"], "lot-du-matin-42", (c1 or {}).get("id")] in [l[:3] for l in sur_disque],
+        "une Idempotency-Key est ecrite sur le disque des que son rendu part",
+        f"{len(sur_disque)} ligne(s)")
+    S.IDEMPOTENCE.clear()
+    relues = S.charger_idempotence()
+    st5, c5, rep5 = await lancer(K_N8N, {"demande": "un chat"}, entetes)
+    miennes = [x for x, t in S.TACHES.items() if (t.get("api") or {}).get("cle") == F_N8N["id"]]
+    dit(relues >= 2 and (c5 or {}).get("id") == (c1 or {}).get("id") and len(miennes) == 1
+        and rep5 is not None and rep5.headers.get("Idempotent-Replayed") == "true",
+        "apres un redemarrage, la meme Idempotency-Key rend ENCORE le meme rendu, "
+        "sans en lancer un second", f"{relues} relue(s), {len(miennes)} tache(s)")
+    # Une ligne perimee, une mal formee, un identifiant de rendu qui n'en est
+    # pas un : ecartees a la lecture, sans faire tomber les autres.
+    vieille = time.time() - S.IDEMPOTENCE_DUREE - 60
+    with open(S.FICHIER_IDEMPOTENCE, "w", encoding="utf-8") as f:
+        json.dump(sur_disque + [[F_N8N["id"], "hier", "a" * 32, vieille],
+                                [F_N8N["id"], "bancal"],
+                                [F_N8N["id"], "pas-un-tid", "../../x", time.time()],
+                                [F_N8N["id"], "", "b" * 32, time.time()],
+                                [F_N8N["id"], "drapeau", "c" * 32, True]], f)
+    relues2 = S.charger_idempotence()
+    cles_relues = {k for _c, k in S.IDEMPOTENCE}
+    dit(relues2 == relues and not cles_relues & {"hier", "bancal", "pas-un-tid", "", "drapeau"},
+        "a la lecture, les cles perimees, mal formees, vides ou au rendu illisible "
+        "sont ecartees, et les bonnes restent", f"{relues2} relue(s)")
+    with open(S.FICHIER_IDEMPOTENCE, "w", encoding="utf-8") as f:
+        f.write("{ceci n'est pas du json")
+    dit(S.charger_idempotence() == 0 and not S.IDEMPOTENCE,
+        "un registre illisible repart vide au lieu d'empecher le demarrage")
+    # LA BORNE : un programme qui pose une cle neuve a chaque appel ne fait
+    # pas grossir le fichier sans fin ; les plus anciennes partent.
+    S.IDEMPOTENCE.clear()
+    base = time.time()
+    for i in range(S.IDEMPOTENCE_MAX + 3):
+        S.IDEMPOTENCE[(F_N8N["id"], f"k{i}")] = ("d" * 32, base + i)
+    S._borner_idempotence()
+    dit(len(S.IDEMPOTENCE) == S.IDEMPOTENCE_MAX
+        and (F_N8N["id"], "k0") not in S.IDEMPOTENCE
+        and (F_N8N["id"], f"k{S.IDEMPOTENCE_MAX + 2}") in S.IDEMPOTENCE,
+        "le registre est borne, et ce sont les plus anciennes cles qui partent",
+        f"{len(S.IDEMPOTENCE)} sur {S.IDEMPOTENCE_MAX}")
+    S.IDEMPOTENCE.clear()
+    # DEUX ENVOIS SIMULTANES, une seule cle d'idempotence : un seul rendu. Le
+    # registre se lit avant le depot et s'ecrit apres, sans attente entre les
+    # deux — la file n'a pas de plafond, son put() ne rend pas la main. Un
+    # await glisse un jour dans ce chemin ouvrirait la course : ce cas la voit.
+    remise_a_zero()
+    jumeaux = {"Idempotency-Key": "deux-a-la-fois"}
+    (sa, ca, _ra), (sb, cb, _rb) = await asyncio.gather(
+        lancer(K_N8N, {"demande": "un chat"}, jumeaux),
+        lancer(K_N8N, {"demande": "un chat"}, jumeaux))
+    miennes = [x for x, t in S.TACHES.items() if (t.get("api") or {}).get("cle") == F_N8N["id"]]
+    dit((ca or {}).get("id") == (cb or {}).get("id") and len(miennes) == 1,
+        "deux envois simultanes de la meme Idempotency-Key font un seul rendu",
+        f"{len(miennes)} tache(s), HTTP {sa}/{sb}")
+    # UN REJEU DONT LE RENDU N'EXISTE PLUS lance un rendu neuf. Sinon chaque
+    # essai rendait 404 pendant vingt-quatre heures : le workflow n'aurait
+    # jamais eu son image.
+    S.IDEMPOTENCE[(F_N8N["id"], "rendu-efface")] = ("e" * 32, time.time())
+    sv, cv, repv = await lancer(K_N8N, {"demande": "un chat"}, {"Idempotency-Key": "rendu-efface"})
+    dit(sv == 202 and (cv or {}).get("id") not in (None, "e" * 32)
+        and (repv is None or repv.headers.get("Idempotent-Replayed") != "true")
+        and S.IDEMPOTENCE.get((F_N8N["id"], "rendu-efface"), ("",))[0] == (cv or {}).get("id"),
+        "une Idempotency-Key dont le rendu a disparu lance un rendu neuf, et "
+        "designe desormais celui-la", f"HTTP {sv}")
+    vider_file()
+    S.IDEMPOTENCE.clear()
+    # Et le demarrage le relit : une lecture que le lancement du studio
+    # n'appelle pas serait verte ici et absente en service. Le bloc
+    # « __main__ » ne s'importe pas : on le lit dans le texte.
+    with open(S.__file__, encoding="utf-8") as f:
+        principal_ = f.read().split('if __name__ == "__main__":', 1)[-1]
+    dit("    charger_idempotence()" in principal_.split("web.run_app", 1)[0],
+        "le studio relit son registre d'idempotence a son demarrage")
     vider_file()
 
     # La conversation : la sienne, pas celle d'une autre cle.

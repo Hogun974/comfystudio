@@ -35,7 +35,8 @@ Dans la page, le bouton **« clés d'accès »** de la zone de compte, à côté
   la même porte, et le même compteur d'essais, que pour changer de mot de passe ;
 - facultatif : les **hôtes de rappel** (voir [plus bas](#pourquoi-les-hôtes-sont-déclarés)),
   le **droit au nuage** (non par défaut), les **plafonds** `en_file` (de 1 à 20,
-  4 par défaut) et `par_jour` (de 0 à 10 000, 0 pour « sans plafond »).
+  4 par défaut) et `par_jour` (de 0 à 10 000, 0 pour « sans plafond »), et la
+  **durée de vie** (voir [plus bas](#une-date-de-fin)).
 
 **La clé et le secret de rappel ne s'affichent qu'une fois.** Le studio ne
 garde de la clé qu'une empreinte sha256 : perdue, elle se révoque et se refait,
@@ -61,13 +62,29 @@ curl -s "$STUDIO/api/compte/acces" -b "studio_compte=…" \
  "fiche": {"id": "92d11256", "compte": "jordan", "nom": "n8n maison",
            "apercu": "cs_92d11256_…", "cree": 1793757278.8, "vu": null,
            "nuage": false, "hotes": ["n8n.maison:5678"], "en_file": 4,
-           "par_jour": 0, "generation": 0}}
+           "par_jour": 0, "generation": 0, "expire": null}}
 ```
 
 `GET /api/compte/acces` liste les clés du compte, chacune avec `active` ;
 `DELETE /api/compte/acces/{id}` en révoque une. Ces trois routes veulent une
 **session**, jamais une clé : une clé qui listerait les clés en ferait
 connaître l'existence à qui l'a volée.
+
+### Une date de fin
+
+Une clé vit **sans fin** par défaut : une clé qui meurt en silence au bout de
+trois mois casse le workflow qu'elle servait, sans que personne ne regarde.
+Mais la clé d'un essai, d'une démonstration, de l'assistant d'un invite n'a pas
+à rester ouverte après. Le menu **durée de vie** propose 7, 30, 90 ou 365
+jours ; sans la page, `"expire_jours"` prend tout entier de 0 (sans fin) à 365.
+
+Passée sa date, la clé est refusée en **401 `cle_expiree`** — son propre code,
+pour que tu en crées une autre au lieu de chercher une faute de frappe. Ses
+essais ne comptent pas comme des secrets faux : un n8n qui insiste avec elle
+ne se fait pas freiner. Comme une clé éteinte, **ses liens signés et ses
+rappels meurent avec elle**, et la liste la montre `expiree: true`. La date se
+lit dans `expire` (secondes depuis 1970, ou `null`) de la fiche, et dans
+`GET /api/v1/moi` : un workflow peut prévenir avant l'échéance.
 
 ## Révoquer, et ce qui éteint une clé
 
@@ -386,7 +403,7 @@ curl -s "$STUDIO/api/v1/moi" -H "Authorization: Bearer $CLE"
  "cle": {"id": "92d11256", "compte": "jordan", "nom": "n8n maison",
          "apercu": "cs_92d11256_…", "cree": 1793757278.8, "vu": 1793757278.8,
          "nuage": false, "hotes": ["n8n.maison:5678"], "en_file": 4,
-         "par_jour": 0, "generation": 0},
+         "par_jour": 0, "generation": 0, "expire": null},
  "en_cours": 0, "aujourdhui": 0, "attendre_max": 600}
 ```
 
@@ -404,8 +421,13 @@ rend le rendu existant, avec `Idempotent-Replayed: true`.
 
 Le rejeu **attend comme la première fois** quand il porte `attendre` : n8n
 réessaie justement parce que la première réponse a tardé, et un rejeu qui
-rendrait `en_cours` sur-le-champ casserait le workflow qu'il devait sauver. Le
-registre vit en mémoire : un redémarrage du studio l'oublie.
+rendrait `en_cours` sur-le-champ casserait le workflow qu'il devait sauver.
+
+**Le registre survit à un redémarrage** du studio (`_idempotence.json`) :
+c'est justement le moment que « Retry On Fail » doit rattraper. Si le rendu
+qu'une clé désignait **n'existe plus** — conversation effacée, ou fermée parce
+que la clé en avait trop —, la requête part comme neuve au lieu de rendre 404
+pendant 24 heures.
 
 ### Les plafonds de la clé
 
@@ -457,6 +479,7 @@ traduite ; le code continue de marcher.
 |---|---|---|
 | `cle_requise` | 401 | aucune clé sur une route qui en exige une |
 | `cle_refusee` | 401 | clé inconnue, révoquée, ou éteinte (mot de passe, second facteur) — ne pas réessayer, en refaire une |
+| `cle_expiree` | 401 | clé passée sa [date de fin](#une-date-de-fin) — ne pas réessayer, en refaire une |
 | `cle_hors_perimetre` | 403 | une clé présentée hors de `/api/v1` et `/mcp` |
 | `trop_d_essais` | 429 | trop de clés refusées depuis cette adresse ; attendre |
 | `corps_illisible` | 400 | le corps n'est pas un objet JSON |
@@ -493,14 +516,18 @@ gardes, pour qu'aucune borne ne vive d'un seul côté :
 | `variantes_bornes` | 400 | `variantes` hors de 1 à 4 |
 | `machine_inconnue` | 400 | `machine` qui n'existe pas |
 | `image_inconnue` | 404 | `image` qui n'a pas été envoyée par ce compte |
+| `formulaire_attendu` | 400 | `POST /api/v1/fichiers` sans corps `multipart/form-data` |
+| `aucun_fichier` | 400 | formulaire sans champ qui porte un nom de fichier |
+| `format_refuse` | 400 | extension hors des familles acceptées (la phrase les liste) |
 
-Le contrat OpenAPI ne décrit que les codes propres aux programmes (la première
-table) ; ceux-ci sont les mêmes que ceux de la page.
+Les trois derniers viennent de `POST /api/v1/fichiers`, qui rend aussi
+`fichier_vide` et `fichier_trop_lourd` (413) avec le même sens que pour
+`image_base64`. Le contrat OpenAPI décrit les deux tables, et l'énumération de
+`code` les contient toutes.
 
-**Seuls les refus de `POST /api/v1/fichiers` n'ont pas de code** (aucun
-fichier, format refusé, fichier vide : 400 ; trop lourd : 413) : cette route
-est celle de la page, reprise telle quelle. Un corps JSON de plus de 4 Mio est
-refusé en **413** par le serveur HTTP lui-même, avec un corps texte.
+**Un seul refus n'a pas de code** : un corps JSON de plus de 4 Mio est refusé
+en **413** par le serveur HTTP lui-même, avec un corps texte, avant que le
+studio ne le lise.
 
 ## Les rappels
 
@@ -763,8 +790,10 @@ Sur le nœud qui lance le rendu, *Settings* → **Retry On Fail** (trois essais,
 cinq secondes d'écart, par exemple) rattrape un studio qui redémarre. **Pose
 alors un `Idempotency-Key`** — *Send Headers*, nom `Idempotency-Key`, valeur
 `{{ $execution.id }}` : les essais d'une même exécution désignent le même rendu
-au lieu d'en lancer trois. Ne reprends pas un 4xx en boucle : `code` dit
-pourquoi, et la même requête aura la même réponse. Un 429 `cle_file_pleine`
+au lieu d'en lancer trois — **y compris après un redémarrage du studio** :
+le registre des clés est sur le disque, et garde chacune 24 heures. Ne
+reprends pas un 4xx en boucle : `code` dit pourquoi, et la même requête aura
+la même réponse. Un 429 `cle_file_pleine`
 se reprend plus tard ; `cle_refusee` jamais.
 
 ## Assistants IA par MCP
@@ -897,8 +926,8 @@ champ ou un code ajoutés d'un seul côté le font rougir.
   qu'un programme lui donne : ce serait la requête forgée que la liste des
   hôtes de rappel empêche, par une autre porte. Envoie les octets —
   `POST /api/v1/fichiers` ou `image_base64`.
-- **Les compteurs vivent en mémoire** : le freinage des clés refusées, le
-  registre d'idempotence, le nombre de rendus en cours. Un redémarrage les remet
-  à zéro. Le plafond `par_jour`, lui, est compté sur le disque.
-- **Les refus de `POST /api/v1/fichiers` n'ont pas de code** (voir [Les
-  refus](#les-refus)) : un programme ne peut s'y brancher que sur le statut.
+- **Le freinage des clés refusées vit en mémoire** : un redémarrage le remet
+  à zéro. Le reste survit — le plafond `par_jour` est compté sur les
+  conversations, le registre d'idempotence est sur le disque
+  (`_idempotence.json`), les rendus en attente et les rappels en cours de
+  livraison sont repris au démarrage.

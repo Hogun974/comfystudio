@@ -322,6 +322,24 @@ nus = [f"{sel} {o}" for sel, _reste in entrees
 # et /api/machines — posent la valeur, le libelle et l'attribut, puis
 # « sel.appendChild(o) ».
 faits = PAGE.split('document.createElement("option")')[1:]
+# LES MENUS QUI NE SONT PAS DES REGLAGES. La duree de vie d'une cle d'acces
+# est un champ de formulaire du panneau des cles : elle ne pose aucune pastille,
+# et lui reclamer un libelle court n'aurait pas de sens. Nommee ici, une par
+# une, et reconnue a son ajout « <menu>.append(o) » : un nouveau menu de
+# reglage construit ainsi reste sous la garde tant qu'on ne l'ajoute pas.
+HORS_REGLAGES = ("expire",)
+
+
+def _cible(bloc):
+    m = re.search(r'\b(\w+)\.(?:appendChild|append)\(o\)', bloc)
+    return m.group(1) if m else None
+
+
+hors = [i + 1 for i, bloc in enumerate(faits) if _cible(bloc) in HORS_REGLAGES]
+dit(len(hors) == len(HORS_REGLAGES),
+    "temoin : chaque menu hors reglages est trouve, et lui seul est ecarte",
+    f"{len(hors)} ecarte(s)")
+faits = [b for b in faits if _cible(b) not in HORS_REGLAGES]
 sans = [i + 1 for i, bloc in enumerate(faits)
         if "dataset.court" not in bloc.split("appendChild", 1)[0]
         and 'setAttribute("data-court"' not in bloc.split("appendChild", 1)[0]]

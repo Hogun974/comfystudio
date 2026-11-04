@@ -158,7 +158,7 @@ try:
     dit(f is not None and f["id"] == ident and f["compte"] == "jordan",
         "la vraie cle rend sa fiche", str(f and f["nom"]))
     # « generation » n'est plus interdite ici : elle est publique depuis que
-    # la page doit dire quelles cles se sont eteintes (voir les onze champs).
+    # la page doit dire quelles cles se sont eteintes (voir les douze champs).
     dit(f is not None and "empreinte" not in f and "secret_rappel" not in f,
         "reconnaitre rend une fiche publique sans empreinte ni secret",
         ", ".join(sorted(f or {})))
@@ -264,8 +264,8 @@ try:
     # de mot de passe au lieu de la montrer vivante.
     dit(set(r["fiche"]) == {"id", "compte", "nom", "apercu", "cree", "vu",
                             "nuage", "hotes", "en_file", "par_jour",
-                            "generation"},
-        "la fiche publique porte exactement les onze champs du contrat",
+                            "generation", "expire"},
+        "la fiche publique porte exactement les douze champs du contrat",
         ", ".join(sorted(r["fiche"])))
     dit(r["fiche"]["apercu"] == f"cs_{ident}_…",
         "l'apercu ne montre rien du secret", r["fiche"]["apercu"])
@@ -531,6 +531,96 @@ try:
         and leve(acces.signer_lien, secret, "xyz", tid, 1, fin) is not None
         and leve(acces.signer_lien, "", ident, tid, 1, fin) is not None,
         "signer_lien refuse ce que lien_valide refuserait")
+
+    # ══════════════════════════════════════════════════════════════════
+    #  LA DATE DE FIN. Une cle donnee a un essai, une demonstration,
+    #  l'assistant d'un invite se ferme seule. Sans fin par defaut : une cle
+    #  qui meurt en silence casse le workflow qu'elle servait.
+    # ══════════════════════════════════════════════════════════════════
+    print("\n  ── la date de fin ──")
+    fin_chemin = os.path.join(dossier, "fin.json")
+    m = acces.Acces(fin_chemin)
+    JOUR = 86400
+    rf = m.creer("jordan", "essai d'une semaine", 0, expire_jours=7, maintenant=T0)
+    cle_f, id_f = rf["cle"], rf["fiche"]["id"]
+    dit(rf["fiche"]["expire"] == T0 + 7 * JOUR,
+        "une cle de sept jours porte sa date de fin, sept jours apres sa creation",
+        str(rf["fiche"]["expire"]))
+    rs = m.creer("jordan", "sans fin", 0, maintenant=T0)
+    dit(rs["fiche"]["expire"] is None
+        and m.reconnaitre(rs["cle"], generation_de, maintenant=T0 + 3650 * JOUR) is not None,
+        "sans duree de vie, la cle n'a pas de date de fin, et vaut encore dix ans "
+        "plus tard", str(rs["fiche"]["expire"]))
+    dit(m.reconnaitre(cle_f, generation_de, maintenant=T0 + 7 * JOUR - 1) is not None,
+        "une seconde avant sa date de fin, la cle est reconnue")
+    dit(m.reconnaitre(cle_f, generation_de, maintenant=T0 + 7 * JOUR) is None,
+        "a sa date de fin, la cle n'est plus reconnue")
+    dit(m.expiree_pour(cle_f, maintenant=T0 + 7 * JOUR)
+        and not m.expiree_pour(cle_f, maintenant=T0 + 7 * JOUR - 1),
+        "expiree_pour() dit « expiree » a partir de la date de fin, pas avant")
+    faux_f = cle_f[:-1] + ("A" if cle_f[-1] != "A" else "B")
+    dit(not m.expiree_pour(faux_f, maintenant=T0 + 30 * JOUR),
+        "un secret faux n'apprend pas que la cle a expire : la reponse ne doit "
+        "rien dire a qui n'a pas la cle")
+    dit(not m.expiree_pour(rs["cle"], maintenant=T0 + 30 * JOUR)
+        and not m.expiree_pour("cs_00000000_" + "x" * 43, maintenant=T0 + 30 * JOUR),
+        "une cle sans fin, ou inconnue, n'est jamais « expiree »")
+    mal_f = []
+    for forme in (None, 12, "", "n'importe quoi", b"cs_", ["cs_"]):
+        try:
+            if m.expiree_pour(forme, maintenant=T0 + 30 * JOUR):
+                mal_f.append(repr(forme))
+        except Exception as e:
+            mal_f.append(f"{forme!r} LEVE {type(e).__name__}")
+    dit(not mal_f, "expiree_pour() ne leve pas sur une forme quelconque",
+        ", ".join(mal_f) or "6 formes")
+    dit(not acces.expiree(None) and not acces.expiree({})
+        and acces.expiree({"expire": T0}, maintenant=T0)
+        and not acces.expiree({"expire": T0}, maintenant=T0 - 1),
+        "expiree() : rien n'expire sans date ; la date elle-meme est la fin")
+    bornes_f = []
+    for v in (-1, acces.EXPIRE_JOURS_MAX + 1, True, "7", 1.5, None):
+        try:
+            m.creer("jordan", "borne", 0, expire_jours=v, maintenant=T0)
+            bornes_f.append(f"{v!r} accepte")
+        except acces.ErreurAcces as e:
+            if e.cle != "erreur.acces_expire":
+                bornes_f.append(f"{v!r} : {e.cle}")
+    dit(not bornes_f, "une duree hors de 0 a 365 jours, ou qui n'est pas un "
+        "entier, est refusee avec sa propre phrase", ", ".join(bornes_f) or "6 refus")
+    dit(m.creer("jordan", "un an", 0, expire_jours=acces.EXPIRE_JOURS_MAX,
+                maintenant=T0)["fiche"]["expire"] == T0 + 365 * JOUR,
+        "un an pile est accepte")
+    dit(all(isinstance(j, int) and 0 <= j <= acces.EXPIRE_JOURS_MAX
+            for j in acces.EXPIRATIONS) and acces.EXPIRATIONS[0] == 0,
+        "les durees proposees sont dans les bornes, « sans fin » en tete",
+        str(acces.EXPIRATIONS))
+    # Le disque : la date survit, et une fiche d'avant (sans le champ) reste
+    # une cle sans fin.
+    m2 = acces.Acces(fin_chemin)
+    m2.charger()
+    dit(not m2.illisible and m2.fiche(id_f)["expire"] == T0 + 7 * JOUR
+        and m2.reconnaitre(cle_f, generation_de, maintenant=T0 + 8 * JOUR) is None,
+        "relue du disque, la date de fin tient toujours")
+    brut_f = json.loads(brut_du_disque(fin_chemin))
+    for x in brut_f:
+        x.pop("expire", None)
+    with open(fin_chemin, "w", encoding="utf-8") as fh:
+        json.dump(brut_f, fh)
+    m3 = acces.Acces(fin_chemin)
+    m3.charger()
+    dit(not m3.illisible and m3.fiche(id_f)["expire"] is None
+        if m3.fiche(id_f) else False,
+        "une fiche ecrite avant la date de fin se relit, et vaut « sans fin »")
+    for x in brut_f:
+        x["expire"] = "dans une semaine"
+    with open(fin_chemin, "w", encoding="utf-8") as fh:
+        json.dump(brut_f, fh)
+    m4 = acces.Acces(fin_chemin)
+    m4.charger()
+    dit(m4.illisible and not m4.fiches,
+        "une date de fin illisible rend le fichier illisible, comme tout champ "
+        "mal forme : on ne devine pas une date")
 finally:
     shutil.rmtree(dossier, ignore_errors=True)
 

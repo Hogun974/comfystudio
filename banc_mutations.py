@@ -7088,8 +7088,8 @@ FICHIERS = [
                "en charge () », ce que le commentaire du code refuse",
          rougit="un fichier sans extension le dit en toutes lettres",
          editions=[("serveur.py",
-                    brut('extension=ext or T("erreur.sans_extension", lg))},',
-                    "extension=ext)},"))]),
+                    brut('extension=ext or T("erreur.sans_extension", lg))',
+                    "extension=ext)"))]),
 
     dict(nom=".gif entre dans les images acceptees a l'entree",
          banc="banc_fichiers.py",
@@ -10479,8 +10479,8 @@ CLES_ACCES = [
               "rappel.",
         rougit="reconnaitre rend une fiche publique sans empreinte ni secret",
         editions=[("acces.py", brut(
-            "        return self.publique(fiche)\n\n    def publique(",
-            "        return fiche\n\n    def publique("))]),
+            "        return self.publique(fiche)\n\n    def expiree_pour(",
+            "        return fiche\n\n    def expiree_pour("))]),
     dict(
         nom="la fiche publique retire l'empreinte et garde le reste",
         banc="banc_acces.py",
@@ -11188,13 +11188,16 @@ CONTRAT = [
     dict(
         nom="un code de refus que serveur.py ne rend jamais",
         banc="banc_contrat.py",
-        imite="un code prevu (« la cle a expire ») ecrit dans le contrat avant "
-              "le code qui le rendrait : un workflow attend une branche qui ne "
-              "s'allumera jamais",
+        # « cle_suspendue » ET NON PLUS « cle_expiree » : ce code-la existe
+        # depuis le 4 novembre 2026 — la mutation reposait alors une cle deja
+        # dans la table, et ne faisait plus rien rougir.
+        imite="un code prevu (« la cle est suspendue ») ecrit dans le contrat "
+              "avant le code qui le rendrait : un workflow attend une branche "
+              "qui ne s'allumera jamais",
         rougit="chaque code du contrat est rendu par serveur.py",
         editions=[("contrat.py", brut(
             '    "reponse_vide": (400, ',
-            '    "cle_expiree": (401, "La cle a expire."),\n'
+            '    "cle_suspendue": (401, "La cle est suspendue."),\n'
             '    "reponse_vide": (400, '))]),
     dict(
         nom="un champ du rendu oublie dans le contrat",
@@ -12054,6 +12057,297 @@ RAPPELS_PERSISTANTS = [
 ]
 
 
+# ── Les refus du televersement ont un code, et le contrat les decrit ───
+# /api/v1/fichiers reprend la route de la page : ses refus n'avaient que la
+# phrase, et un corps JSON y faisait un 500. Le contrat, lui, disait que les
+# refus de la validation commune n'avaient « pas encore » de code alors qu'ils
+# en portaient un (4 novembre 2026).
+CODES_FICHIERS = [
+    dict(
+        nom="un refus du televersement reecrit sans code",
+        banc="banc_fichiers.py",
+        imite="la route d'avant, recopiee de la page : un workflow ne peut se "
+              "brancher que sur le statut, et 400 dit tout et son contraire",
+        rougit="les quatre refus du televersement portent leur code",
+        editions=[("serveur.py", brut(
+            '        return _refus_televersement("erreur.aucun_fichier", 400, lg)',
+            '        return web.json_response({"erreur": T("erreur.aucun_fichier", lg)},'
+            + chr(10) + "                                 status=400)"))]),
+    dict(
+        nom="_refus_televersement perd le code",
+        banc="banc_fichiers.py",
+        imite="« la page lit erreur, le reste ne sert a rien » : le champ "
+              "retire en rangeant, et tous les refus se taisent d'un coup",
+        rougit="les quatre refus du televersement portent leur code",
+        editions=[("serveur.py", brut(
+            "    # ignore le reste : le champ de plus ne lui coute rien." + chr(10)
+            + '    return web.json_response({"erreur": T(cle, lg, **valeurs),' + chr(10)
+            + '                              "code": cle.split(".", 1)[1]}, status=statut)',
+            "    # ignore le reste : le champ de plus ne lui coute rien." + chr(10)
+            + '    return web.json_response({"erreur": T(cle, lg, **valeurs)},' + chr(10)
+            + "                             status=statut)"))]),
+    dict(
+        nom="un corps JSON sur le televersement redevient un 500",
+        banc="banc_fichiers.py",
+        imite="la lecture du formulaire sans filet : l'assertion d'aiohttp "
+              "traverse la route, et « le studio est en panne » repond a une "
+              "requete mal formee",
+        rougit="formulaire_attendu",
+        editions=[("serveur.py", brut(
+            "    try:" + chr(10) + "        lecteur = await req.multipart()" + chr(10),
+            "    if True:" + chr(10) + "        lecteur = await req.multipart()" + chr(10))),
+                  ("serveur.py", brut(
+            "    except (AssertionError, ValueError, KeyError):" + chr(10)
+            + "        # Un corps JSON",
+            "    if False:" + chr(10) + "        # Un corps JSON"))]),
+    dict(
+        nom="le filet du televersement n'attrape que ValueError",
+        banc="banc_fichiers.py",
+        imite="« une erreur de valeur, c'est un corps illisible » : juste pour "
+              "le multipart sans boundary, faux pour un Content-Type JSON, que "
+              "aiohttp refuse par une ASSERTION",
+        rougit="formulaire_attendu",
+        editions=[("serveur.py", brut(
+            "    except (AssertionError, ValueError, KeyError):" + chr(10)
+            + "        # Un corps JSON",
+            "    except (ValueError, KeyError):" + chr(10)
+            + "        # Un corps JSON"))]),
+    dict(
+        nom="un fichier trop lourd rendu en 400",
+        banc="banc_fichiers.py",
+        imite="tous les refus du formulaire en 400 « pour simplifier » : un "
+              "programme ne distingue plus un fichier a reduire d'un format a "
+              "changer",
+        rougit="les quatre refus du televersement portent leur code",
+        editions=[("serveur.py", brut(
+            '                    "erreur.fichier_trop_lourd", 413, lg,',
+            '                    "erreur.fichier_trop_lourd", 400, lg,'))]),
+    dict(
+        nom="le contrat oublie un refus commun",
+        banc="banc_contrat.py",
+        imite="la table des refus communs tenue a la main, et un code ajoute "
+              "au serveur sans elle : un client genere ne le connait pas",
+        rougit="chaque code commun rendu est dans le contrat",
+        editions=[("contrat.py", brut(
+            '    "format_refuse": (400, "Extension hors des familles acceptées ; la phrase "'
+            + chr(10) + '                           "les liste."),' + chr(10), ""))]),
+    dict(
+        nom="le contrat donne un statut faux a un refus commun",
+        banc="banc_contrat.py",
+        imite="« image inconnue » rangee avec les autres 400 alors que le "
+              "serveur la rend en 404",
+        rougit="chaque code commun a le meme statut des deux cotes",
+        editions=[("contrat.py", brut(
+            '    "image_inconnue": (404,', '    "image_inconnue": (400,'))]),
+    dict(
+        nom="l'enum du code ignore les refus communs",
+        banc="banc_contrat.py",
+        imite="la table ajoutee a la prose et oubliee dans l'enum : un client "
+              "genere rejette comme invalide un code que le serveur rend",
+        rougit="l'enum du code de Refus est la table des refus",
+        editions=[("contrat.py", brut(
+            '                     "enum": list(REFUS) + list(REFUS_COMMUNS)},',
+            '                     "enum": list(REFUS)},'))]),
+]
+
+
+# ── Le registre d'idempotence survit a un redemarrage ─────────────────
+# Tenu en memoire, il repartait vide au redemarrage — le moment exact que
+# « Retry On Fail » doit rattraper : le reessai lancait un second rendu.
+IDEMPOTENCE_DISQUE = [
+    dict(
+        nom="une Idempotency-Key n'est pas ecrite",
+        banc="banc_pilotage.py",
+        imite="le registre en memoire seulement, comme avant : le reessai "
+              "d'apres un redemarrage lance un second rendu",
+        rougit="une Idempotency-Key est ecrite sur le disque",
+        editions=[("serveur.py", brut(
+            "        _borner_idempotence()" + chr(10)
+            + "        sauver_idempotence()" + chr(10),
+            "        _borner_idempotence()" + chr(10)))]),
+    dict(
+        nom="le demarrage ne relit pas le registre d'idempotence",
+        banc="banc_pilotage.py",
+        imite="la lecture ecrite et jamais appelee : verte au banc, absente "
+              "en service",
+        rougit="le studio relit son registre d'idempotence a son demarrage",
+        editions=[("serveur.py", brut(
+            "    charger_idempotence()" + chr(10) + "    charger_cles()",
+            "    charger_cles()"))]),
+    dict(
+        nom="les cles perimees sont relues",
+        banc="banc_pilotage.py",
+        imite="la peremption appliquee au depot et oubliee a la lecture : une "
+              "cle d'il y a une semaine designe encore un vieux rendu",
+        rougit="sont ecartees, et les bonnes restent",
+        editions=[("serveur.py", brut(
+            "        if maintenant - quand > IDEMPOTENCE_DUREE:" + chr(10)
+            + "            continue" + chr(10)
+            + "        IDEMPOTENCE[(cle, idem)] = (tid, quand)",
+            "        IDEMPOTENCE[(cle, idem)] = (tid, quand)"))]),
+    dict(
+        nom="un identifiant de rendu illisible est relu",
+        banc="banc_pilotage.py",
+        imite="« c'est notre fichier, il est juste » : une ligne bricolee fait "
+              "rendre un chemin au lieu d'un identifiant",
+        rougit="sont ecartees, et les bonnes restent",
+        editions=[("serveur.py", brut(
+            "                and isinstance(tid, str) and _TID.fullmatch(tid)",
+            "                and isinstance(tid, str)"))]),
+    dict(
+        nom="la borne garde les plus anciennes cles",
+        banc="banc_pilotage.py",
+        imite="le tri a l'envers : le registre plein jette les cles fraiches, "
+              "celles qu'un reessai vient justement chercher",
+        rougit="ce sont les plus anciennes cles qui partent",
+        editions=[("serveur.py", brut(
+            "        for k in sorted(IDEMPOTENCE, key=lambda k: IDEMPOTENCE[k][1])[",
+            "        for k in sorted(IDEMPOTENCE, key=lambda k: -IDEMPOTENCE[k][1])["))]),
+]
+
+
+# ── Une cle d'acces peut avoir une date de fin ────────────────────────
+# Une cle donnee a un essai, une demonstration, l'assistant d'un invite se
+# ferme seule — avec ses liens signes et ses rappels.
+EXPIRATION = [
+    dict(
+        nom="reconnaitre() ignore la date de fin",
+        banc="banc_acces.py",
+        imite="le champ pose a la creation et jamais relu : la cle d'une "
+              "semaine vaut pour toujours",
+        rougit="a sa date de fin, la cle n'est plus reconnue",
+        editions=[("acces.py", brut(
+            "        if expiree(fiche, quand):" + chr(10)
+            + "            return None" + chr(10), ""))]),
+    dict(
+        nom="la date de fin vaut encore a son instant",
+        banc="banc_acces.py",
+        imite="« > » pour « >= » : la cle vit encore la seconde ou elle "
+              "devait mourir, et le banc d'une borne ne le voit qu'a la borne",
+        rougit="a sa date de fin, la cle n'est plus reconnue",
+        editions=[("acces.py", brut(
+            "    return (time.time() if maintenant is None else maintenant) >= fin",
+            "    return (time.time() if maintenant is None else maintenant) > fin"))]),
+    dict(
+        nom="expiree_pour() ne verifie pas le secret",
+        banc="banc_acces.py",
+        imite="« l'identifiant suffit, c'est une date publique » : n'importe "
+              "qui apprend quels identifiants designent une cle expiree",
+        rougit="un secret faux n'apprend pas que la cle a expire",
+        editions=[("acces.py", brut(
+            "        return bool(fiche and juste and expiree(fiche, maintenant))",
+            "        return bool(fiche and expiree(fiche, maintenant))"))]),
+    dict(
+        nom="une date de fin illisible est acceptee",
+        banc="banc_acces.py",
+        imite="le champ optionnel lu sans controle : « dans une semaine » "
+              "entre au magasin, et la comparaison leve plus tard sur chaque "
+              "requete",
+        rougit="une date de fin illisible rend le fichier illisible",
+        editions=[("acces.py", brut(
+            '                        and (x.get("expire") is None' + chr(10)
+            + '                             or (isinstance(x["expire"], (int, float))' + chr(10)
+            + '                                 and not isinstance(x["expire"], bool)))):',
+            "                        ):"))]),
+    dict(
+        nom="une cle expiree rend « cle_refusee »",
+        banc="banc_pilotage.py",
+        imite="la date de fin traitee comme une revocation : le proprietaire "
+              "du workflow cherche une faute de frappe, et chaque essai compte "
+              "comme un secret faux",
+        rougit="rend 401 « cle_expiree »",
+        editions=[("serveur.py", brut(
+            "    if ACCES and ACCES.expiree_pour(cle):" + chr(10)
+            + '        return _sans_cle(lg, "erreur.cle_expiree")' + chr(10), ""))]),
+    dict(
+        nom="cle_vivante() ignore la date de fin",
+        banc="banc_pilotage.py",
+        imite="les deux chemins sans cle en clair — lien signe, rappel — "
+              "oublies : la cle est morte, son lien de la veille sert encore",
+        rougit="une cle expiree n'est plus vivante",
+        editions=[("serveur.py", brut(
+            "    if not fiche or _acces.expiree(fiche):",
+            "    if not fiche:"))]),
+    dict(
+        nom="la liste du proprietaire montre active une cle expiree",
+        banc="banc_pilotage.py",
+        imite="« active » calcule sur la generation seule, comme avant : la "
+              "page montre vivante une cle que le studio refuse",
+        rougit="la liste du proprietaire la montre expiree, et inactive",
+        editions=[("serveur.py", brut(
+            '    cles = [dict(f, active=f.get("generation") == gen and not _acces.expiree(f),',
+            '    cles = [dict(f, active=f.get("generation") == gen,'))]),
+    dict(
+        nom="la creation ne transmet pas la duree de vie",
+        banc="banc_pilotage.py",
+        imite="le champ ajoute a la page et oublie dans la route : chaque cle "
+              "nait sans fin, quoi qu'on ait choisi",
+        rougit="une cle creee pour 30 jours porte sa date de fin",
+        editions=[("serveur.py", brut(
+            '                          par_jour=d.get("par_jour", 0),' + chr(10)
+            + '                          expire_jours=d.get("expire_jours", 0))',
+            '                          par_jour=d.get("par_jour", 0))'))]),
+    dict(
+        nom="le contrat ne decrit pas la date de fin",
+        banc="banc_contrat.py",
+        imite="un champ de plus dans la fiche publique, et le schema Cle "
+              "d'avant : un client genere le jette",
+        rougit="Cle : les champs du contrat sont ceux de la fiche publique",
+        editions=[("contrat.py", brut(
+            '            "expire": {"type": ["number", "null"],',
+            '            "expire_": {"type": ["number", "null"],'))]),
+]
+
+
+# ── Ce que la relecture independante a releve, le 4 novembre 2026 ──────
+RELECTURE_EXPIRATION = [
+    dict(
+        nom="le premier champ du formulaire se lit hors du filet",
+        banc="banc_fichiers.py",
+        imite="le filet pose autour du seul constructeur : un en-tete "
+              "multipart juste sur un corps qui ne l'est pas leve a la lecture "
+              "du premier champ, et c'est encore un 500",
+        rougit="formulaire_attendu",
+        editions=[("serveur.py", brut(
+            "        champ = await lecteur.next()" + chr(10)
+            + "    except (AssertionError, ValueError, KeyError):",
+            "        pass" + chr(10)
+            + "    except (AssertionError, ValueError, KeyError):")),
+                  ("serveur.py", brut(
+            '        return _refus_televersement("erreur.formulaire_attendu", 400, lg)' + chr(10)
+            + "    if champ",
+            '        return _refus_televersement("erreur.formulaire_attendu", 400, lg)' + chr(10)
+            + "    champ = await lecteur.next()" + chr(10) + "    if champ"))]),
+    dict(
+        nom="MCP rend l'image d'une cle morte pendant l'attente",
+        banc="banc_pilotage.py",
+        imite="la relecture de la cle faite par la route REST et oubliee par "
+              "les outils : l'image part en base64 a une cle expiree",
+        rougit="et l'outil MCP refuse lui aussi de rendre l'image",
+        editions=[("serveur.py", brut(
+            "    morte = _morte_pendant_l_attente(fiche)" + chr(10)
+            + "    if morte:" + chr(10)
+            + "        raise _mcp.ErreurOutil(T(morte, lg))" + chr(10), ""))]),
+    dict(
+        nom="une cle expiree pendant l'attente rend « cle_refusee »",
+        banc="banc_pilotage.py",
+        imite="un seul code pour toute cle morte, comme avant la date de fin : "
+              "le workflow cherche une faute de frappe",
+        rougit="PENDANT l'attente rend « cle_expiree »",
+        editions=[("serveur.py", brut(
+            '    return "erreur.cle_expiree" if _acces.expiree(f) else "erreur.cle_refusee"',
+            '    return "erreur.cle_refusee"'))]),
+    dict(
+        nom="un rejeu dont le rendu a disparu rend 404 pour toujours",
+        banc="banc_pilotage.py",
+        imite="le registre cru sur parole : la cle designe un rendu efface, et "
+              "chaque essai du workflow rend 404 pendant vingt-quatre heures",
+        rougit="dont le rendu a disparu lance un rendu neuf",
+        editions=[("serveur.py", brut(
+            '        IDEMPOTENCE.pop((fiche["id"], idem), None)' + chr(10), "        pass" + chr(10)))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -12062,7 +12356,9 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
              + COMPREHENSION_SEPT + CLES_ACCES + RAPPELS + PROTOCOLE_MCP
              + CONTRAT + PILOTAGE + REVUE + GARDE_IMAGE
-             + LISTE_ESSAI + HUMAINS_DABORD + RAPPELS_PERSISTANTS)
+             + LISTE_ESSAI + HUMAINS_DABORD + RAPPELS_PERSISTANTS
+             + CODES_FICHIERS + IDEMPOTENCE_DISQUE + EXPIRATION
+             + RELECTURE_EXPIRATION)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

@@ -11242,13 +11242,33 @@ def famille_du_fichier(nom):
             return famille
     return ""
 
+def _refus_televersement(cle, statut, lg, **valeurs):
+    # UN CODE, COMME LES AUTRES REFUS DE /api/v1. Cette route est celle de la
+    # page, reprise telle quelle par les programmes : sans code, un workflow
+    # n8n ne pouvait se brancher que sur le statut, et 400 disait aussi bien
+    # « pas de fichier » que « format refuse ». La page lit « erreur » et
+    # ignore le reste : le champ de plus ne lui coute rien.
+    return web.json_response({"erreur": T(cle, lg, **valeurs),
+                              "code": cle.split(".", 1)[1]}, status=statut)
+
+
 async def api_televerser(req):
     lg = langue_de(req)
-    lecteur = await req.multipart()
-    champ = await lecteur.next()
+    try:
+        lecteur = await req.multipart()
+        # LE PREMIER CHAMP AUSSI, dans le meme filet. Un en-tete multipart
+        # juste sur un corps qui ne l'est pas — du JSON, rien, une autre
+        # frontiere — ne leve qu'ici (« Could not find starting boundary ») :
+        # hors du filet, c'etait encore un 500. Releve par la relecture.
+        champ = await lecteur.next()
+    except (AssertionError, ValueError, KeyError):
+        # Un corps JSON, ou un multipart sans « boundary » : aiohttp le refuse
+        # par une assertion, et la route repondait 500 — « le studio est en
+        # panne » pour ce qui n'est qu'une requete mal formee. Le cas typique
+        # est un programme qui poste {"image": ...} ici au lieu de /api/v1/rendus.
+        return _refus_televersement("erreur.formulaire_attendu", 400, lg)
     if champ is None or not getattr(champ, "filename", None):
-        return web.json_response({"erreur": T("erreur.aucun_fichier", lg)},
-                                 status=400)
+        return _refus_televersement("erreur.aucun_fichier", 400, lg)
     ext = os.path.splitext(champ.filename)[1].lower()
     famille = famille_du_fichier(champ.filename)
     if not famille:
@@ -11259,10 +11279,9 @@ async def api_televerser(req):
         # au milieu d'une phrase anglaise, ce qui a l'air d'une faute de
         # frappe et non d'une traduction oubliee. Meme raison que famille.*
         # deux lignes plus bas.
-        return web.json_response(
-            {"erreur": T("erreur.format_refuse", lg, acceptes=acceptes,
-                         extension=ext or T("erreur.sans_extension", lg))},
-            status=400)
+        return _refus_televersement(
+            "erreur.format_refuse", 400, lg, acceptes=acceptes,
+            extension=ext or T("erreur.sans_extension", lg))
     plafond = FAMILLES[famille][1]
     os.makedirs(DOSSIER_ENTREE, exist_ok=True)
     nom = f"studio_{uuid.uuid4().hex[:10]}{ext}"
@@ -11283,15 +11302,14 @@ async def api_televerser(req):
                 # famille.*, sinon l'anglais lisait « file too heavy: video
                 # limited to 512 MB » avec un mot francais au hasard le jour
                 # ou l'un d'eux changera de nom.
-                return web.json_response(
-                    {"erreur": T("erreur.fichier_trop_lourd", lg,
-                                 famille=T("famille." + famille, lg),
-                                 mega=plafond // 1024 ** 2)}, status=413)
+                return _refus_televersement(
+                    "erreur.fichier_trop_lourd", 413, lg,
+                    famille=T("famille." + famille, lg),
+                    mega=plafond // 1024 ** 2)
             f.write(bloc)
     if taille == 0:
         os.remove(chemin)
-        return web.json_response({"erreur": T("erreur.fichier_vide", lg)},
-                                 status=400)
+        return _refus_televersement("erreur.fichier_vide", 400, lg)
     ENTREES[nom] = qui(req)
     purger_entrees(pid=qui(req))
     sauver_entrees()
@@ -15800,8 +15818,75 @@ GARDE_PROGRAMME = 30 * 24 * 3600
 SECRET_LIENS = ""            # pose par charger_acces : derive du secret de session
 IDEMPOTENCE = {}             # (cle, Idempotency-Key) -> (tid, quand)
 _TID = re.compile(r"[0-9a-f]{32}")
+# LE REGISTRE D'IDEMPOTENCE, SUR LE DISQUE. Le guide conseille « Retry On
+# Fail » a n8n precisement pour rattraper un studio qui redemarre — et le
+# registre, tenu en memoire, repartait vide a ce moment-la : le reessai d'apres
+# le redemarrage lancait un second rendu, celui que la cle devait empecher.
+# Ecrit a chaque cle nouvelle, relu au demarrage, perimes ecartes a la lecture.
+FICHIER_IDEMPOTENCE = os.path.join(DOSSIER_CONV, "_idempotence.json")
+# Cinq mille cles : bien plus que ce qu'une journee de workflows en pose (le
+# plafond par_jour de chaque cle borne deja les rendus), assez peu pour que le
+# fichier reste sous le mega-octet et se reecrive en un instant.
+IDEMPOTENCE_MAX = 5000
 
 
+def sauver_idempotence():
+    lignes = [[cle, idem, tid, quand]
+              for (cle, idem), (tid, quand) in IDEMPOTENCE.items()]
+    tmp = FICHIER_IDEMPOTENCE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(lignes, f, ensure_ascii=False)
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, FICHIER_IDEMPOTENCE)
+    except OSError as e:
+        # Une commodite de reprise, pas une garde : ne pas savoir l'ecrire ne
+        # doit pas refuser le rendu qu'on vient de lancer.
+        print(f"  registre d'idempotence non enregistre : {e}", flush=True)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+def charger_idempotence(maintenant=None):
+    """Relit le registre ; ecarte les lignes perimees ou mal formees."""
+    maintenant = time.time() if maintenant is None else maintenant
+    IDEMPOTENCE.clear()
+    try:
+        with open(FICHIER_IDEMPOTENCE, encoding="utf-8") as f:
+            lignes = json.load(f)
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError) as e:
+        print(f"  registre d'idempotence illisible ({e}) — repart vide", flush=True)
+        return 0
+    for ligne in (lignes if isinstance(lignes, list) else ()):
+        if not (isinstance(ligne, list) and len(ligne) == 4):
+            continue
+        cle, idem, tid, quand = ligne
+        if not (isinstance(cle, str) and isinstance(idem, str) and idem
+                and len(idem) <= IDEMPOTENCE_LONGUEUR
+                and isinstance(tid, str) and _TID.fullmatch(tid)
+                and isinstance(quand, (int, float)) and not isinstance(quand, bool)):
+            continue
+        if maintenant - quand > IDEMPOTENCE_DUREE:
+            continue
+        IDEMPOTENCE[(cle, idem)] = (tid, quand)
+    _borner_idempotence()
+    return len(IDEMPOTENCE)
+
+
+def _borner_idempotence():
+    if len(IDEMPOTENCE) > IDEMPOTENCE_MAX:
+        # Les plus anciennes partent : ce sont celles qu'aucun reessai ne
+        # viendra plus chercher.
+        for k in sorted(IDEMPOTENCE, key=lambda k: IDEMPOTENCE[k][1])[
+                :len(IDEMPOTENCE) - IDEMPOTENCE_MAX]:
+            IDEMPOTENCE.pop(k, None)
 def charger_acces():
     """Le magasin des cles, et le secret des liens signes.
 
@@ -15881,7 +15966,9 @@ def cle_vivante(fiche):
     porte ouverte vingt-quatre heures de plus. Releve par la relecture de la
     documentation, le 4 novembre 2026.
     """
-    if not fiche:
+    if not fiche or _acces.expiree(fiche):
+        # EXPIREE : meme regle. Un lien signe donne la veille de la date de fin
+        # ne survit pas a la cle qui l'a produit.
         return False
     gen = _generation_du_compte(fiche.get("compte"))
     return gen is not None and gen == fiche.get("generation")
@@ -15949,6 +16036,12 @@ async def _identite_par_cle(req, handler, cle):
     # seconde et demie, et son eviction chassait les compteurs des mots de
     # passe et des codes TOTP. Une cle inconnue ou revoquee n'a rien a deviner :
     # elle coute une empreinte et n'inscrit rien.
+    # EXPIREE N'EST PAS UN ECHEC. Le secret est juste ; c'est la date qui est
+    # passee. Le dire par son propre code fait creer une cle neuve au lieu de
+    # chercher une faute de frappe, et ne pas le compter evite qu'un n8n qui
+    # interroge encore avec elle se fasse freiner pour « secrets faux ».
+    if ACCES and ACCES.expiree_pour(cle):
+        return _sans_cle(lg, "erreur.cle_expiree")
     frein = (hote, ident)
     reste = _frein_des_cles(frein)
     if reste > 0:
@@ -16506,11 +16599,26 @@ async def attendre_rendu(tid, pid, fiche, secondes):
             ATTENTES.pop(ident, None)
 
 
+def _morte_pendant_l_attente(fiche):
+    """La cle de la requete, relue : None si elle vit encore, sinon la cle du
+    dictionnaire qui dit pourquoi elle est morte.
+
+    Une attente dure jusqu'a dix minutes ; la cle peut etre revoquee, eteinte
+    ou arriver a sa date de fin entre-temps. EXPIREE A SON PROPRE CODE, comme
+    a la porte : le guide dit de traiter les deux autrement.
+    """
+    f = ACCES.fiche(fiche["id"]) if ACCES else None
+    if cle_vivante(f):
+        return None
+    return "erreur.cle_expiree" if _acces.expiree(f) else "erreur.cle_refusee"
+
+
 async def _repondre_rendu(req, fiche, tid, statut=200):
     pid, lg = qui(req), langue_de(req)
-    # Revoquee (ou eteinte) pendant une attente : on ne rend pas le rendu.
-    if not cle_vivante(ACCES.fiche(fiche["id"]) if ACCES else None):
-        return _sans_cle(lg, "erreur.cle_refusee")
+    # Revoquee, eteinte ou expiree pendant une attente : on ne rend pas le rendu.
+    morte = _morte_pendant_l_attente(fiche)
+    if morte:
+        return _sans_cle(lg, morte)
     trouve = _rendu_de(tid, pid, fiche)
     if trouve is None:
         return refus_programme("erreur.rendu_inconnu", 404, lg)
@@ -16546,6 +16654,14 @@ async def api_v1_rendre(req, fiche):
     maintenant = time.time()
     for k in [k for k, (_, q) in IDEMPOTENCE.items() if maintenant - q > IDEMPOTENCE_DUREE]:
         IDEMPOTENCE.pop(k, None)
+    if idem and (fiche["id"], idem) in IDEMPOTENCE \
+            and _rendu_de(IDEMPOTENCE[(fiche["id"], idem)][0], qui(req), fiche) is None:
+        # LE RENDU N'EXISTE PLUS — sa conversation effacee par son
+        # proprietaire, ou fermee par borner_conversations_de. Rejouer
+        # repondrait 404 a chaque essai pendant vingt-quatre heures, et le
+        # workflow n'obtiendrait jamais son image : la cle ne designe plus
+        # rien, elle est oubliee, et la demande part comme neuve.
+        IDEMPOTENCE.pop((fiche["id"], idem), None)
     if idem and (fiche["id"], idem) in IDEMPOTENCE:
         deja = IDEMPOTENCE[(fiche["id"], idem)][0]
         # Le rejeu ATTEND comme la premiere fois : n8n reessaie precisement
@@ -16562,6 +16678,8 @@ async def api_v1_rendre(req, fiche):
     tid = corps["id"]
     if idem:
         IDEMPOTENCE[(fiche["id"], idem)] = (tid, maintenant)
+        _borner_idempotence()
+        sauver_idempotence()
     if secondes:
         await attendre_rendu(tid, qui(req), fiche, secondes)
     return await _repondre_rendu(req, fiche, tid, statut=202)
@@ -16892,6 +17010,10 @@ def sauver_rappels():
         os.replace(tmp, FICHIER_RAPPELS)
     except OSError as e:
         print(f"  rappels en cours non enregistres : {e}", flush=True)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def lancer_livraison(tid, marque, conv, t, tour, livraison):
@@ -17103,6 +17225,13 @@ async def _resultat_mcp(req, fiche, tid):
     inserees quand elles tiennent, un lien pour tout le reste, et le rendu
     entier en contenu structure pour un client qui sait le lire."""
     pid, lg = qui(req), langue_de(req)
+    # LA MEME RELECTURE QUE _repondre_rendu. Les outils attendent jusqu'a
+    # ATTENDRE_MCP secondes avant d'arriver ici : une cle revoquee ou expiree
+    # pendant ce temps recevait encore l'image, inseree en base64. La route
+    # REST le refusait deja ; MCP non (relecture du 4 novembre 2026).
+    morte = _morte_pendant_l_attente(fiche)
+    if morte:
+        raise _mcp.ErreurOutil(T(morte, lg))
     trouve = _rendu_de(tid, pid, fiche)
     if trouve is None:
         raise _mcp.ErreurOutil(T("erreur.rendu_inconnu", lg))
@@ -17349,7 +17478,8 @@ async def api_mes_acces(req):
         return web.json_response({"erreur": T("erreur.connexion_requise", lg),
                                   "connexion": True}, status=401)
     gen = COMPTES.generation(nom)
-    cles = [dict(f, active=f.get("generation") == gen)
+    cles = [dict(f, active=f.get("generation") == gen and not _acces.expiree(f),
+                 expiree=_acces.expiree(f))
             for f in (ACCES.liste(nom) if ACCES else [])]
     return web.json_response({
         "cles": cles, "mfa": bool(COMPTES.mfa_arme(nom)),
@@ -17359,7 +17489,8 @@ async def api_mes_acces(req):
                    # recopiee a la main derive le jour ou elle change ici.
                    "en_file_min": 1,
                    "en_file_defaut": _acces.EN_FILE_DEFAUT,
-                   "par_jour": _acces.PAR_JOUR_MAX}})
+                   "par_jour": _acces.PAR_JOUR_MAX,
+                   "expirations": list(_acces.EXPIRATIONS)}})
 
 
 async def api_creer_acces(req):
@@ -17399,7 +17530,8 @@ async def api_creer_acces(req):
         res = ACCES.creer(nom, d.get("nom"), COMPTES.generation(nom),
                           nuage=d.get("nuage") is True, hotes=hotes,
                           en_file=d.get("en_file", _acces.EN_FILE_DEFAUT),
-                          par_jour=d.get("par_jour", 0))
+                          par_jour=d.get("par_jour", 0),
+                          expire_jours=d.get("expire_jours", 0))
     except _acces.ErreurAcces as e:
         # La phrase du dictionnaire quand acces.py en nomme une ; sa phrase
         # francaise sinon (un refus qui ne vient pas d'une saisie).
@@ -17441,7 +17573,9 @@ async def api_admin_acces(req):
     for f in (ACCES.liste() if ACCES else []):
         if f["compte"] not in gens:
             gens[f["compte"]] = COMPTES.generation(f["compte"]) if COMPTES else None
-        cles.append(dict(f, active=f.get("generation") == gens[f["compte"]],
+        cles.append(dict(f, active=f.get("generation") == gens[f["compte"]]
+                         and not _acces.expiree(f),
+                         expiree=_acces.expiree(f),
                          en_cours=_en_cours_de_cle(f["id"])))
     return web.json_response({"cles": cles})
 
@@ -17568,6 +17702,7 @@ if __name__ == "__main__":
     charger_reglages()
     charger_comptes()
     charger_acces()
+    charger_idempotence()
     charger_cles()
     charger_nuage()
     charger_compteur()

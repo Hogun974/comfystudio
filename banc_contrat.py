@@ -44,8 +44,8 @@ CE QU'IL NE VOIT PAS :
     (refs, operationId, securite), pas chaque mot-clef.
   - Les reponses REELLES d'une requete HTTP : les formes sont mesurees en
     appelant les fonctions qui les produisent, pas le routeur sur un socket.
-  - Les refus qui n'ont pas de code (valider_demande, api_televerser) : le
-    contrat les decrit en prose, le banc ne les releve pas.
+  - Le 413 du serveur HTTP lui-meme (corps JSON au-dela de la borne) : il
+    n'a ni corps JSON ni code, le contrat le dit en prose.
   - Les descriptions : qu'une phrase dise vrai ne se mesure pas.
 """
 import inspect
@@ -239,7 +239,10 @@ try:
     dit(not non_decrits, "et chacun apparait dans la description des refus",
         ", ".join(non_decrits) or "tous")
     enum_ = DOC["components"]["schemas"]["Refus"]["properties"]["code"].get("enum")
-    dit(set(enum_ or ()) == set(C.REFUS), "l'enum du code de Refus est la table des refus")
+    dit(set(enum_ or ()) == set(C.REFUS) | set(C.REFUS_COMMUNS)
+        and len(enum_ or ()) == len(set(enum_ or ())),
+        "l'enum du code de Refus est la table des refus, plus celle des refus "
+        "communs, sans doublon", f"{len(enum_ or ())} codes")
     mauvais = sorted(f"{c} : {s} dans serveur.py, {C.REFUS[c][0]} dans le contrat"
                      for c, s in RELEVES if c in C.REFUS and C.REFUS[c][0] != s)
     dit(not mauvais, "chaque code a le meme statut HTTP des deux cotes",
@@ -250,6 +253,66 @@ try:
     sans_phrase = sorted(c for c in C.REFUS if "erreur." + c not in traductions.TEXTES)
     dit(not sans_phrase, "chaque code a sa phrase dans traductions.py",
         ", ".join(sans_phrase) or "tous")
+
+    # ── LES REFUS COMMUNS AVEC LA PAGE ──
+    # valider_demande et api_televerser vivent HORS du bloc des programmes :
+    # la page les appelle aussi. Le contrat disait qu'ils n'avaient « pas
+    # encore » de code alors qu'ils en portaient un (4 novembre 2026) ; on les
+    # releve donc dans le source de ces deux fonctions, avec la meme rigueur.
+    print("\n  ── les refus communs avec la page ──")
+    SOURCE_VALIDER = inspect.getsource(S.valider_demande)
+    SOURCE_TELEVERSER = inspect.getsource(S.api_televerser)
+    COMMUNS = set()
+    for cle, code, statut in re.findall(
+            r'T\("erreur\.([a-z_]+)"[^}]*?"code": "([a-z_]+)"\},\s*status=(\d{3})',
+            SOURCE_VALIDER):
+        COMMUNS.add((code, int(statut)))
+    ecrits_v = SOURCE_VALIDER.count('"code": "')
+    dit(ecrits_v == len(COMMUNS) and ecrits_v >= 10,
+        "temoin : chaque code de valider_demande est lu avec son statut",
+        f"{len(COMMUNS)} lus sur {ecrits_v}")
+    lus_t = re.findall(r'_refus_televersement\(\s*"erreur\.([a-z_]+)",\s*(\d{3})',
+                       SOURCE_TELEVERSER)
+    appels_t = len(re.findall(r'_refus_televersement\(', SOURCE_TELEVERSER))
+    dit(appels_t == len(lus_t) and appels_t >= 5,
+        "temoin : chaque refus du televersement passe par _refus_televersement, "
+        "et chacun est lu avec son statut", f"{len(lus_t)} lus sur {appels_t}")
+    COMMUNS |= {(c, int(s)) for c, s in lus_t}
+    # Aucun refus du televersement ecrit a la main, sans code : c'est
+    # precisement ce qui manquait.
+    a_la_main = re.findall(r'json_response\(\s*\{"erreur"', SOURCE_TELEVERSER)
+    dit(not a_la_main, "aucun refus du televersement n'est ecrit sans code",
+        f"{len(a_la_main)} ecrits a la main")
+    rep = S._refus_televersement("erreur.aucun_fichier", 400, "en")
+    corps_t = json.loads(rep.text)
+    dit(rep.status == 400 and corps_t.get("code") == "aucun_fichier"
+        and corps_t.get("erreur") == traductions.T("erreur.aucun_fichier", "en"),
+        "_refus_televersement rend la phrase dans la langue ET le code tire de la cle",
+        str(corps_t))
+    TOUS = dict(C.REFUS, **C.REFUS_COMMUNS)
+    absents_c = sorted(c for c, _ in COMMUNS if c not in TOUS)
+    dit(not absents_c, "chaque code commun rendu est dans le contrat",
+        ", ".join(absents_c) or f"{len(COMMUNS)} codes")
+    mauvais_c = sorted(f"{c} : {s} dans serveur.py, {TOUS[c][0]} dans le contrat"
+                       for c, s in COMMUNS if c in TOUS and TOUS[c][0] != s)
+    dit(not mauvais_c, "chaque code commun a le meme statut des deux cotes",
+        " ; ".join(mauvais_c) or "tous")
+    morts_c = sorted(set(C.REFUS_COMMUNS) - {c for c, _ in COMMUNS})
+    dit(not morts_c, "chaque code commun du contrat est rendu par l'une des "
+        "deux fonctions", ", ".join(morts_c) or "tous")
+    doubles = sorted(set(C.REFUS) & set(C.REFUS_COMMUNS))
+    dit(not doubles, "aucun code n'est dans les deux tables du contrat",
+        ", ".join(doubles) or "aucun")
+    non_decrits_c = sorted(c for c in C.REFUS_COMMUNS if f"`{c}`" not in texte_refus)
+    dit(not non_decrits_c, "et chaque code commun apparait dans la description "
+        "des refus", ", ".join(non_decrits_c) or "tous")
+    dit("pas encore" not in texte_refus,
+        "la description ne dit plus que ces refus n'ont « pas encore » de code",
+        "")
+    sans_phrase_c = sorted(c for c in C.REFUS_COMMUNS
+                           if "erreur." + c not in traductions.TEXTES)
+    dit(not sans_phrase_c, "chaque code commun a sa phrase dans traductions.py",
+        ", ".join(sans_phrase_c) or "tous")
 
     # ══════════════════════════════════════════════════════════════════
     print("\n  ── la forme de ce que le studio rend ──")

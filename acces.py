@@ -97,6 +97,25 @@ EN_FILE_MAX = 20
 # deja ce qu'une carte produit ; un chiffre plus grand n'est pas un plafond.
 PAR_JOUR_MAX = 10000
 
+# UNE DATE DE FIN, SI L'ON VEUT. Zero jour veut dire « sans fin » — le defaut,
+# parce qu'une cle qui meurt en silence au bout de trois mois casse le
+# workflow qu'elle servait sans que personne ne regarde. Mais une cle donnee a
+# un essai, a une demonstration, a l'assistant d'un invite n'a pas a rester
+# ouverte apres : elle se ferme seule, avec ses liens signes et ses rappels.
+# Un an au plus : au-dela, ce n'est plus une date de fin, c'est un oubli.
+# Les durees proposees par la page ; le serveur accepte tout entier borne.
+EXPIRE_JOURS_MAX = 365
+EXPIRATIONS = (0, 7, 30, 90, 365)
+
+
+def expiree(fiche, maintenant=None):
+    """Vrai si la fiche porte une date de fin, et qu'elle est passee."""
+    fin = (fiche or {}).get("expire")
+    if fin is None:
+        return False
+    return (time.time() if maintenant is None else maintenant) >= fin
+
+
 # « vu » N'EST ECRIT SUR DISQUE QU'UNE FOIS PAR DIX MINUTES ET PAR CLE. Un n8n
 # qui interroge l'etat d'un rendu chaque seconde reecrirait sinon le fichier
 # chaque seconde — sur la carte SD ou le disque d'un NAS, et pour une
@@ -248,7 +267,11 @@ class Acces:
                         and isinstance(x["empreinte"], str)
                         and isinstance(x["secret_rappel"], str)
                         and isinstance(x["generation"], int)
-                        and isinstance(x["hotes"], list)):
+                        and isinstance(x["hotes"], list)
+                        # Absente des fiches d'avant : « sans fin ».
+                        and (x.get("expire") is None
+                             or (isinstance(x["expire"], (int, float))
+                                 and not isinstance(x["expire"], bool)))):
                     raise ValueError(f"fiche mal formee : {x.get('id')!r}")
                 fiches[x["id"]] = x
         except FileNotFoundError:
@@ -303,7 +326,8 @@ class Acces:
 
     # ── cles ─────────────────────────────────────────────────────────────
     def creer(self, compte, nom, generation, *, nuage=False, hotes=(),
-              en_file=EN_FILE_DEFAUT, par_jour=0, maintenant=None):
+              en_file=EN_FILE_DEFAUT, par_jour=0, expire_jours=0,
+              maintenant=None):
         """Une cle neuve. Rend {"cle", "secret_rappel", "fiche"}.
 
         LA CLE ET LE SECRET DE RAPPEL SONT MONTRES UNE FOIS, ICI. Le studio ne
@@ -364,6 +388,9 @@ class Acces:
         par_jour = _entier(par_jour, 0, PAR_JOUR_MAX,
                            "rendus par jour (0 = sans plafond)",
                            cle="erreur.acces_par_jour")
+        expire_jours = _entier(expire_jours, 0, EXPIRE_JOURS_MAX,
+                               "duree de vie en jours (0 = sans fin)",
+                               cle="erreur.acces_expire")
         if sum(1 for f in self.fiches.values()
                if f["compte"] == compte) >= CLES_PAR_COMPTE:
             raise ErreurAcces(f"{CLES_PAR_COMPTE} cles au plus par compte : "
@@ -388,6 +415,7 @@ class Acces:
             "generation": generation, "cree": quand, "vu": None,
             "nuage": bool(nuage), "hotes": propres, "en_file": en_file,
             "par_jour": par_jour,
+            "expire": quand + expire_jours * 86400 if expire_jours else None,
         }
         try:
             self.sauver()
@@ -438,6 +466,8 @@ class Acces:
         if not isinstance(gen, int) or gen != fiche["generation"]:
             return None
         quand = time.time() if maintenant is None else maintenant
+        if expiree(fiche, quand):
+            return None
         fiche["vu"] = quand
         if quand - self._vu_ecrit.get(ident, float("-inf")) >= VU_ECRIT_TOUTES:
             self._vu_ecrit[ident] = quand
@@ -449,6 +479,25 @@ class Acces:
                 print(f"cles d'acces : date d'usage non ecrite ({e})",
                       flush=True)
         return self.publique(fiche)
+
+    def expiree_pour(self, cle, maintenant=None):
+        """Vrai si CETTE cle, secret juste, est connue et a passe sa date de fin.
+
+        Pour dire au programme « cle expiree » plutot que « cle refusee » : le
+        geste a faire n'est pas le meme (en creer une autre, et non chercher la
+        faute de frappe). Le secret est verifie d'abord, comme dans
+        reconnaitre() : sans lui, la reponse dirait a n'importe qui quels
+        identifiants designent une cle expiree.
+        """
+        ident = identifiant_de(cle)
+        if ident is None:
+            # Hors forme : rien a comparer, et rien a cacher — la forme d'une
+            # cle est publique, reconnaitre() repond aussi vite dans ce cas.
+            return False
+        fiche = self.fiches.get(ident)
+        attendu = fiche["empreinte"] if fiche else _EMPREINTE_FACTICE
+        juste = hmac.compare_digest(empreinte_de(cle), attendu)
+        return bool(fiche and juste and expiree(fiche, maintenant))
 
     def publique(self, fiche):
         """Ce qui peut sortir d'ici : ni l'empreinte, ni le secret de rappel.
@@ -472,6 +521,8 @@ class Acces:
             # passe » au lieu de la montrer vivante : reconnaitre() la refuse
             # deja, mais une liste qui l'affiche comme valide ment.
             "generation": fiche["generation"],
+            # La date de fin, ou null : sans fin.
+            "expire": fiche.get("expire"),
         }
 
     def liste(self, compte=None):

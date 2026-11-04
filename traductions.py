@@ -249,6 +249,9 @@ TEXTES = {
     "erreur.cle_refusee": {
         "fr": "clé d'accès refusée : inconnue, révoquée, ou éteinte par un changement de mot de passe",
         "en": "access key refused: unknown, revoked, or switched off by a password change"},
+    "erreur.cle_expiree": {
+        "fr": "clé d'accès expirée : elle a passé sa date de fin. Crées-en une autre depuis la page",
+        "en": "access key expired: it is past its end date. Create another one from the page"},
     "erreur.cle_hors_perimetre": {
         "fr": "une clé d'accès ne vaut que pour /api/v1 et /mcp",
         "en": "an access key is only valid for /api/v1 and /mcp"},
@@ -329,6 +332,9 @@ TEXTES = {
     "erreur.acces_par_jour": {
         "fr": "plafond par jour : un nombre entier de {bas} à {haut} (0 = sans plafond)",
         "en": "daily limit: a whole number from {bas} to {haut} (0 = no limit)"},
+    "erreur.acces_expire": {
+        "fr": "durée de vie : un nombre entier de jours, de {bas} à {haut} (0 = sans fin)",
+        "en": "lifetime: a whole number of days, from {bas} to {haut} (0 = no end date)"},
     "erreur.acces_trop_de_cles": {
         "fr": "{maxi} clés au plus par compte : révoque celles qui ne servent plus",
         "en": "{maxi} keys at most per account: revoke the ones you no longer use"},
@@ -343,6 +349,11 @@ TEXTES = {
     "erreur.aucun_fichier": {
         "fr": "aucun fichier recu",
         "en": "no file received"},
+    "erreur.formulaire_attendu": {
+        "fr": "envoie le fichier en multipart/form-data, dans un champ de "
+              "formulaire qui porte un nom de fichier",
+        "en": "send the file as multipart/form-data, in a form field that "
+              "carries a file name"},
     "erreur.fichier_vide": {
         "fr": "fichier vide",
         "en": "empty file"},
@@ -1631,6 +1642,27 @@ TEXTES = {
     "page.acces.en_file.champ": {
         "fr": "rendus en même temps",
         "en": "renders at the same time"},
+    "page.acces.expire.champ": {
+        "fr": "durée de vie",
+        "en": "lifetime"},
+    "page.acces.expire.jamais": {
+        "fr": "sans fin",
+        "en": "no end date"},
+    "page.acces.expire.jours": {
+        "fr": "{n} jours",
+        "en": "{n} days"},
+    "page.acces.expire.le": {
+        "fr": "expire le {date}",
+        "en": "expires {date}"},
+    "page.acces.expiree": {
+        "fr": "expirée",
+        "en": "expired"},
+    "page.acces.expiree.pourquoi": {
+        "fr": "Elle a atteint sa date de fin le {date} : plus aucun programme "
+              "ne peut s'en servir, ni ses liens. Révoque-la et crées-en une "
+              "autre.",
+        "en": "It reached its end date on {date}: no program can use it any "
+              "more, nor its links. Revoke it and create another one."},
     "page.acces.par_jour.champ": {
         "fr": "plafond par jour (0 = aucun)",
         "en": "daily cap (0 = none)"},
