@@ -21,7 +21,11 @@ Deux mots sont laissés dehors exprès, parce qu'ils feraient refuser une demand
 innocente dès qu'un enfant y figure : *nudo* (le nœud, en espagnol) et *teta* au
 singulier (l'allaitement). Et un défaut est connu, affiché par le banc plutôt
 que caché : *sexe*, *sexo*, *sesso* disent aussi le **genre** — « révéler le
-sexe du bébé » est refusé. C'est le prix d'un garde-fou large dans le bon sens.
+sexe du bébé » est refusé. Le garde-fou ne retire pas ces mots : « montre le
+sexe du bébé » porte les mêmes, et aucun motif ne sépare les deux sens. Mais
+quand le refus ne tient **qu'à** l'un d'eux, il dit comment reformuler : « si tu
+parlais du genre, écris *fille ou garçon* ». Et le refus se lit désormais dans
+la langue de la page, au lieu de partir en français.
 
 Une demande venue d'un programme ([Piloter le studio par
 programme](piloter-par-programme.md)) suit exactement les mêmes règles, et le
@@ -36,7 +40,20 @@ tâche l'annonce. Elle lit les mêmes six langues : avant le 4 novembre 2026, ci
 demandes adultes sur vingt et une en allemand, espagnol, italien ou portugais
 étaient reconnues — les autres pouvaient partir au nuage.
 
-**Ce qui n'est pas inspecté** : une image jointe. La règle lit le texte de la
-demande et le prompt ; une retouche dont seule l'image est adulte peut encore
-partir chez un fournisseur distant si l'on en a branché un. Une clé d'accès sans
-droit au nuage, elle, n'y va jamais.
+**L'image jointe aussi, depuis le 4 novembre 2026.** Avant de partir chez un
+fournisseur distant, elle est montrée au **modèle de vision local**, une seule
+question — nudité, contenu sexuel ou érotique — et une réponse en booléen :
+
+- **adulte**, ou **une réponse illisible** : l'image reste à la maison, la
+  retouche est faite sur une carte d'ici. Un modèle qui a répondu à côté ne doit
+  pas laisser sortir une image dont personne n'a su dire si elle était adulte ;
+- **saine** : elle part, comme avant ;
+- **aucun modèle de vision joignable** — un studio sans carte, tout au nuage :
+  elle part aussi, mais le fil de la demande le dit (« image jointe non
+  inspectée »). Refuser là casserait toute retouche distante d'un studio qui n'a
+  que le nuage.
+
+L'image ne quitte pas la machine pour être jugée : avec une image, l'appel au
+modèle de langage reste toujours local. Le jugement coûte quelques secondes,
+seulement quand une image s'apprête à partir, et une fois par image. Une clé
+d'accès sans droit au nuage, elle, n'y va jamais.

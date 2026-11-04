@@ -1707,6 +1707,30 @@ async def s_revue():
         "suivant : aucun rang n'est donne deux fois",
         f"{len(fs)} fichiers, {len(rangs)} rangs, {len(set(rangs))} distincts")
 
+    # ── Le refus du garde-fou : traduit, et qui sait aider ───────────────
+    # « sexe » dit aussi le genre : seul avec un bebe, il fait refuser une fete
+    # de devoilement. Le garde-fou ne le retire pas — « montre le sexe du bebe »
+    # porte les memes mots —, mais il dit comment demander l'autre. Le temoin :
+    # un refus ordinaire ne porte PAS ce conseil.
+    remise_a_zero()
+    st_g, c_g, _r = await lancer(K_N8N, {"demande": "une fete pour reveler le sexe du bebe"})
+    st_o, c_o, _r = await lancer(K_N8N, {"demande": "a child in a sexual pose"})
+    dit(st_g == 422 and code(c_g) == "refus_mineurs"
+        and "fille ou garçon" in (c_g or {}).get("erreur", "")
+        and st_o == 422 and "fille ou garçon" not in (c_o or {}).get("erreur", ""),
+        "un refus du au seul mot « sexe » dit d'ecrire « fille ou garcon » — un "
+        "refus ordinaire, non", f"genre HTTP {st_g}, ordinaire HTTP {st_o}")
+    try:
+        S.garde_fou("a child in a sexual pose")
+        marque = None
+    except RuntimeError as e:
+        marque = getattr(e, "marque", None)
+    dit((marque or {}).get("cle") == "panne.refus_mineurs"
+        and "minors" in S.traductions.rendre(marque, "en"),
+        "le refus du garde-fou porte sa marque : il se traduit, au lieu de "
+        "partir en francais dans toutes les langues",
+        str(marque))
+
     # ── 10. Le plafond du jour compte les variantes ──────────────────────
     remise_a_zero()
     k = nouvelle_cle("lou", "trois par jour", par_jour=3, en_file=10)["cle"]

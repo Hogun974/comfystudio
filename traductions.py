@@ -273,6 +273,9 @@ TEXTES = {
     "erreur.refus_mineurs": {
         "fr": "demande refusée : contenu sexuel impliquant des mineurs",
         "en": "request refused: sexual content involving minors"},
+    "erreur.refus_mineurs_genre": {
+        "fr": "demande refusée : contenu sexuel impliquant des mineurs. Si tu parlais du genre — une fête de dévoilement —, écris « fille ou garçon » plutôt que « sexe »",
+        "en": "request refused: sexual content involving minors. If you meant the gender — a reveal party —, write “girl or boy” instead of “sex”"},
     "erreur.rendu_inconnu": {
         "fr": "aucun rendu de cette clé ne porte cet identifiant",
         "en": "no render of this key has that identifier"},
@@ -611,6 +614,14 @@ TEXTES = {
     "panne.echec": {
         "fr": "ERREUR : {quoi}",
         "en": "ERROR: {quoi}"},
+    # Le refus du garde-fou, qui partait en francais dans toutes les langues :
+    # c'est pourtant celui que l'utilisateur a le plus besoin de comprendre.
+    "panne.refus_mineurs": {
+        "fr": "demande refusée : contenu sexuel impliquant des mineurs",
+        "en": "request refused: sexual content involving minors"},
+    "panne.refus_mineurs_genre": {
+        "fr": "demande refusée : contenu sexuel impliquant des mineurs. Si tu parlais du genre — une fête de dévoilement —, écris « fille ou garçon » plutôt que « sexe »",
+        "en": "request refused: sexual content involving minors. If you meant the gender — a reveal party —, write “girl or boy” instead of “sex”"},
     # LES REFUS D'executer(), QUI PARTAIENT EN FRANCAIS DANS TOUTES LES
     # LANGUES. Ce sont des « raise » rattrapes par le filet, dont le texte
     # passait tel quel dans le {quoi} de panne.echec — et une valeur qui n'est

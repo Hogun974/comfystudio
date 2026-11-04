@@ -11793,6 +11793,72 @@ REVUE = [
 ]
 
 
+# Le garde-fou qui se traduit et sait aider, et l'image jugee avant le nuage
+# (4 novembre 2026). La regle « ce qui est adulte ne sort pas » ne lisait que
+# du texte ; une image adulte partait avec sa retouche.
+GARDE_IMAGE = [
+    dict(
+        nom="le verdict adulte d'une image ne retient plus rien",
+        banc="banc_refaire.py",
+        imite="la vision juge, et personne n'ecoute : l'image adulte part quand "
+              "meme chez le fournisseur",
+        rougit="une image jugee adulte ne part pas au nuage",
+        editions=[("serveur.py", brut(
+            '            if verdict != "saine" and verdict != "non jugee":',
+            '            if False:'))]),
+    dict(
+        nom="un jugement illisible laisse sortir l'image",
+        banc="banc_refaire.py",
+        imite="« tout ce qui n'est pas oui est non » : un modele qui repond a "
+              "cote laisse partir une image dont personne n'a su dire si elle "
+              "etait adulte",
+        rougit="un jugement illisible garde l'image a la maison",
+        editions=[("serveur.py", brut(
+            '    verdict = "saine" if adulte_ is False else "adulte"',
+            '    verdict = "adulte" if adulte_ is True else "saine"'))]),
+    dict(
+        nom="une vision absente bloque tout le nuage",
+        banc="banc_refaire.py",
+        imite="le reflexe « dans le doute, refuser » applique a l'ABSENCE de "
+              "modele : un studio sans carte, tout au nuage, ne peut plus "
+              "retoucher une seule image",
+        rougit="sans aucun modele de vision joignable, l'image part",
+        editions=[("serveur.py", brut(
+            "    except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError):" + chr(10)
+            + '        return "non jugee"' + chr(10) + "    try:" + chr(10)
+            + "        adulte_",
+            "    except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError):" + chr(10)
+            + '        return "adulte"' + chr(10) + "    try:" + chr(10)
+            + "        adulte_"))]),
+    dict(
+        nom="le garde-fou ne dit plus comment demander le genre",
+        banc="banc_pilotage.py",
+        imite="le refus muet : « reveler le sexe du bebe » est refuse sans un "
+              "mot sur « fille ou garcon »",
+        rougit="un refus du au seul mot « sexe » dit d'ecrire « fille ou garcon »",
+        editions=[("serveur.py", brut(
+            "        if lus <= _SEXE_OU_GENRE:", "        if False:"))]),
+    dict(
+        nom="le conseil du genre accompagne tout refus",
+        banc="banc_pilotage.py",
+        imite="le conseil sans sa condition : « ecris fille ou garcon » sous le "
+              "refus d'une demande qui n'a rien d'une fete de devoilement",
+        rougit="un refus du au seul mot « sexe » dit d'ecrire « fille ou garcon »",
+        editions=[("serveur.py", brut(
+            "        if lus <= _SEXE_OU_GENRE:", "        if True:"))]),
+    dict(
+        nom="le refus du garde-fou repart en francais",
+        banc="banc_pilotage.py",
+        imite="une RuntimeError nue : le filet d'executer la journalise par "
+              "str(e), et l'anglophone lit le refus en francais",
+        rougit="le refus du garde-fou porte sa marque",
+        editions=[("serveur.py", brut(
+            '        raise RefusGardeFou("demande refusee : contenu sexuel impliquant des mineurs.",' + chr(10)
+            + '                            panne_de("panne.refus_mineurs"))',
+            '        raise RuntimeError("demande refusee : contenu sexuel impliquant des mineurs.")'))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -11800,7 +11866,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
              + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
              + COMPREHENSION_SEPT + CLES_ACCES + RAPPELS + PROTOCOLE_MCP
-             + CONTRAT + PILOTAGE + REVUE)
+             + CONTRAT + PILOTAGE + REVUE + GARDE_IMAGE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

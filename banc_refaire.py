@@ -613,6 +613,69 @@ async def main():
         corps.get("erreur", ""))
     nuage(False)
 
+    # ══ 1 bis. L'IMAGE JOINTE, jugee avant de partir au nuage ══════════
+    # La regle « ce qui est adulte ne sort pas » ne lisait que du texte : une
+    # retouche dont seule l'image est adulte partait avec elle (4 novembre
+    # 2026). La vision locale la juge. Le faux modele ne repond QU'A la question
+    # de l'image et laisse tout le reste au comportement ordinaire du banc.
+    print("\n  ── l'image jointe, jugee par la vision locale avant le nuage ──")
+    ancien_dossier = S.DOSSIER_ENTREE
+    S.DOSSIER_ENTREE = os.path.join(S.DOSSIER_DONNEES, "entrees_jugees")
+    os.makedirs(S.DOSSIER_ENTREE, exist_ok=True)
+    vraie_vision = S.appeler_ollama
+
+    async def jugee(reponse, rang):
+        """Une demande avec image, la vision repondant « reponse » (une chaine
+        ou une exception a lever). Rend (DISTANTS, GRAPHES, fil)."""
+        async def vision(texte, *a, **k):
+            if texte == S.QUESTION_IMAGE:
+                if isinstance(reponse, BaseException):
+                    raise reponse
+                return reponse
+            return await vraie_vision(texte, *a, **k)
+        S.appeler_ollama = vision
+        S.JUGEMENTS_IMAGE.clear()
+        nom = f"studio_juge{rang:05d}.png"
+        with open(os.path.join(S.DOSSIER_ENTREE, nom), "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+        poser()
+        nuage(True)
+        # APRES poser(), qui vide ENTREES : enregistree avant, l'image n'etait
+        # plus a ce compte, et la demande repartait en 404 sans rien juger.
+        S.ENTREES[nom] = PID
+        DISTANTS.clear()
+        GRAPHES.clear()
+        try:
+            st, corps = lire(await S.api_generer(Req(corps={
+                "texte": "une illustration de banc", "image": nom,
+                "conversation": "c1"})))
+            await tourner()
+        finally:
+            S.appeler_ollama = vraie_vision
+        return list(DISTANTS), list(GRAPHES), mots((corps or {}).get("id"))
+
+    try:
+        d1, g1, f1 = await jugee('{"adulte": true}', 1)
+        dit(not d1 and g1 and "jugee adulte" in f1,
+            "une image jugee adulte ne part pas au nuage : rendue a la maison",
+            f"au loin {len(d1)}, a la maison {len(g1)}")
+        d2, g2, f2 = await jugee('{"adulte": false}', 2)
+        dit(len(d2) == 1 and d2[0][0] == "nanobanana" and "jugee adulte" not in f2,
+            "temoin : une image jugee saine part au fournisseur",
+            f"au loin {[c for c, _ in d2]}")
+        d3, g3, f3 = await jugee("je ne sais pas, peut-etre", 3)
+        dit(not d3 and g3,
+            "un jugement illisible garde l'image a la maison : le doute ne sort pas",
+            f"au loin {len(d3)}, a la maison {len(g3)}")
+        d4, g4, f4 = await jugee(RuntimeError("aucun modele de langage joignable"), 4)
+        dit(len(d4) == 1 and "non inspectee" in f4,
+            "sans aucun modele de vision joignable, l'image part — et le fil le dit",
+            f"au loin {len(d4)}, fil : {f4[-90:]}")
+    finally:
+        S.appeler_ollama = vraie_vision
+        S.DOSSIER_ENTREE = ancien_dossier
+        S.JUGEMENTS_IMAGE.clear()
+
     # ══ 2. un moteur qui a quitte le catalogue ══════════════════════════
     print("\n  ── le catalogue bouge, le tour non ──")
     conv = poser()

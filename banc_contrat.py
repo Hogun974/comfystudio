@@ -203,9 +203,15 @@ try:
     for cle in re.findall(r'_sans_cle\([^)]*"erreur\.([a-z_]+)"', BLOC):
         RELEVES.add((cle, 401))
     # Les refus ecrits a la main, « return 400, {"erreur": T("erreur.x"… ».
-    for statut, cle in re.findall(
-            r'return (\d{3}), \{"erreur": T\("erreur\.([a-z_]+)"', BLOC):
-        RELEVES.add((cle, int(statut)))
+    # LE CODE EXPLICITE PRIME, quand le corps en porte un : le conseil du
+    # garde-fou (« ecris fille ou garcon ») a sa PROPRE phrase, mais garde le
+    # code « refus_mineurs » — un workflow n'a pas a en connaitre deux. Deduire
+    # le code de la cle aurait invente un « refus_mineurs_genre » que le
+    # serveur ne rend jamais (4 novembre 2026).
+    for statut, cle, explicite in re.findall(
+            r'return (\d{3}), \{"erreur": T\("erreur\.([a-z_]+)"'
+            r'(?:[^}]*?"code": "([a-z_]+)")?', BLOC):
+        RELEVES.add((explicite or cle, int(statut)))
     CODES_LUS = {c for c, _ in RELEVES}
     dit(len(CODES_LUS) >= 15, "le releve du texte trouve les codes de refus",
         f"{len(CODES_LUS)} codes")

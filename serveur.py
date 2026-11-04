@@ -8083,12 +8083,91 @@ def purger_entrees(garder=40, pid=None):
         except OSError:
             pass
 
+class RefusGardeFou(RefusMoteur):
+    """Le refus du garde-fou : la phrase francaise en str(), sa marque pour la
+    page — le meme mecanisme que les refus de moteur (voir RefusMoteur), donc
+    une RuntimeError, et rien ne change pour ceux qui la rattrapent.
+
+    « genre » : le refus ne tient QU'A un mot qui dit aussi le genre (voir
+    garde_fou). Le programme qui le recoit peut alors dire comment reformuler.
+    """
+
+    def __init__(self, refus, marque, genre=False):
+        super().__init__(refus, marque)
+        self.genre = genre
+
+
+# « sexe », « sexo », « sesso », « sex » : le sexe ET le genre. Seuls avec un
+# terme de mineur, ils font refuser « reveler le sexe du bebe » — une fete de
+# devoilement. Le garde-fou NE LES RETIRE PAS : « montre le sexe du bebe » porte
+# les memes mots et demande tout autre chose, et aucun motif ne separe les deux
+# sens. Il fait mieux que se taire : il dit comment demander l'autre.
+_SEXE_OU_GENRE = frozenset(("sex", "sexe", "sexo", "sesso"))
+
+
+# Le verdict de la vision sur une image deja jugee : une retouche relancee ne
+# repaie pas le jugement. Par nom de fichier d'entree, tire au hasard et jamais
+# reecrit (televerser) : le meme nom est le meme fichier.
+JUGEMENTS_IMAGE = {}
+QUESTION_IMAGE = ("Regarde cette image. Montre-t-elle de la nudite, un contenu "
+                  "sexuel ou erotique ? Reponds seulement en JSON.")
+SCHEMA_IMAGE = {"type": "object", "properties": {"adulte": {"type": "boolean"}},
+                "required": ["adulte"]}
+
+
+async def image_adulte(entree, tid=None):
+    """« adulte », « saine » ou « non jugee » — l'image qui partirait au nuage.
+
+    UNE TACHE PAR APPEL, et la decision en Python (voir CONTRIBUTING : un
+    appel, une question, la verification en code). Le modele rend un booleen ;
+    tout ce qui n'en est pas un compte pour « adulte » : un modele qui a REPONDU
+    mais pas clairement ne doit pas laisser sortir l'image — le doute reste a la
+    maison. Seule l'absence de tout modele joignable rend « non jugee » : la
+    il n'y a personne pour douter, et refuser casserait un studio qui n'a que
+    le nuage. L'image ne quitte pas la machine pour etre jugee : avec une image,
+    l'appel au modele de langage reste local (llm_distant_possible n'est pas
+    meme consulte).
+    """
+    if entree in JUGEMENTS_IMAGE:
+        return JUGEMENTS_IMAGE[entree]
+    try:
+        with open(os.path.join(DOSSIER_ENTREE, entree), "rb") as f:
+            image_b64 = base64.b64encode(f.read()).decode("ascii")
+    except OSError:
+        return "non jugee"
+    try:
+        brut_ = await appeler_ollama(QUESTION_IMAGE, image_b64=image_b64,
+                                     json_mode=SCHEMA_IMAGE, modele=MODELE_VISION,
+                                     temperature=0, tid=tid)
+    except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError):
+        return "non jugee"
+    try:
+        adulte_ = json.loads(brut_).get("adulte")
+    except (ValueError, AttributeError, TypeError):
+        adulte_ = None
+    verdict = "saine" if adulte_ is False else "adulte"
+    JUGEMENTS_IMAGE[entree] = verdict
+    return verdict
+
+
 def garde_fou(*textes):
     """Seule limite codee en dur : pas de contenu sexuel impliquant des mineurs.
-    Tout le reste, y compris le contenu adulte, passe sans filtre."""
+    Tout le reste, y compris le contenu adulte, passe sans filtre.
+
+    UN REFUS QUI SE TRADUIT, depuis le 4 novembre 2026 : il partait en francais
+    dans toutes les langues (quoi=str(e) dans le filet d'executer), et c'est le
+    refus que l'utilisateur a le plus besoin de comprendre."""
     joint = " ".join(t for t in textes if t)
     if _MINEUR.search(joint) and _SEXUEL.search(joint):
-        raise RuntimeError("demande refusee : contenu sexuel impliquant des mineurs.")
+        lus = {m.group(0).lower() for m in _SEXUEL.finditer(joint)}
+        if lus <= _SEXE_OU_GENRE:
+            raise RefusGardeFou(
+                "demande refusee : contenu sexuel impliquant des mineurs. Si tu "
+                "parlais du genre — une fete de devoilement —, ecris « fille ou "
+                "garcon » plutot que « sexe ».",
+                panne_de("panne.refus_mineurs_genre"), genre=True)
+        raise RefusGardeFou("demande refusee : contenu sexuel impliquant des mineurs.",
+                            panne_de("panne.refus_mineurs"))
 
 FICHIER_AVIS = os.path.join(DOSSIER_DONNEES, "avis.jsonl")
 
@@ -10201,6 +10280,22 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # fois plus vite, pour un geste dont l'utilisateur ne voit pas le prix.
         # Les cartes de la maison, elles, ne coutent que du temps — c'est la que
         # les variantes ont leur place.
+        # L'IMAGE JOINTE AUSSI. La regle « ce qui est adulte ne sort pas de la
+        # maison » ne lisait que du TEXTE : une retouche dont seule l'image est
+        # adulte partait chez le fournisseur avec elle. La vision locale la
+        # juge d'abord (voir image_adulte) ; adulte, ou jugement illisible, elle
+        # reste ici. Sans aucun modele de vision joignable — un studio sans
+        # carte, tout au nuage —, elle part comme avant, mais le fil le dit.
+        if loin and image:
+            verdict = await image_adulte(image, tid)
+            if verdict != "saine" and verdict != "non jugee":
+                journal(tid, "image jointe jugee adulte par la vision locale : "
+                             "elle ne sort pas de la maison")
+                plan["raison"] = "image adulte : repli sur le moteur local"
+                loin = ""
+            elif verdict == "non jugee":
+                journal(tid, "image jointe non inspectee — aucun modele de vision "
+                             "local joignable — elle part chez le fournisseur")
         if loin and variantes > 1:
             journal(tid, f"{MOTEURS_DISTANTS[loin]['titre']} facture chaque "
                          f"image : les variantes restent pour les cartes de la "
@@ -16237,8 +16332,14 @@ async def lancer_pour_programme(req, fiche, d, lg):
     # rendu « erreur » — et l'avait deja compte dans son plafond du jour.
     try:
         garde_fou(v["texte"])
-    except RuntimeError:
+    except RuntimeError as e:
         oublier_image()
+        # Le MEME code dans les deux cas — un workflow branche sur
+        # « refus_mineurs » n'a pas a en connaitre un second —, la phrase
+        # seulement dit comment reformuler quand seul le genre a fait refuser.
+        if getattr(e, "genre", False):
+            return 422, {"erreur": T("erreur.refus_mineurs_genre", lg),
+                         "code": "refus_mineurs"}
         return refus("erreur.refus_mineurs", 422)
 
     # Tout est valide : maintenant seulement, on ecrit.
