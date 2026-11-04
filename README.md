@@ -82,6 +82,14 @@ studio lui-même n'a aucune préférence — c'est un nœud comme les autres, et
 carte il ne rend rien. Voir [Qui prend le
 travail](docs/qui-prend-le-travail.md).
 
+**Un programme peut le piloter, sans navigateur et sans le mot de passe.** Un
+workflow n8n, un assistant IA par MCP (Claude Code, l'agent de n8n) ou un
+script `curl` présentent une **clé d'accès** propre à eux, créée par chacun pour
+son compte : elle ne vaut que pour demander des rendus et les relire, jamais
+pour administrer, et ne voit que les rendus qu'elle a demandés. Le studio
+prévient la fin d'un rendu par un rappel signé, et sert sa propre description
+OpenAPI. Voir [Piloter le studio par programme](docs/piloter-par-programme.md).
+
 **Le nœud n'ouvre aucun port**, et le studio écoute sur `127.0.0.1` par défaut.
 La connexion est obligatoire, y compris en local. Tout fonctionne sans aucune
 clé d'API, et quand une clé est posée, une demande adulte ne sort jamais de la
@@ -352,7 +360,10 @@ Une fois connecté, le lien **`admin`** apparaît dans l'en-tête si ton compte 
 administrateur. C'est là que se règle tout ce qui ne tient pas dans une variable
 d'environnement : les **machines à carte**, les **clés d'API** et le choix
 local/distant par modalité, les **comptes**, le plafond du nuage, et le
-réentraînement de l'aiguilleur.
+réentraînement de l'aiguilleur. L'onglet **« clés d'accès »** liste les clés
+des programmes de tous les comptes et permet d'en **révoquer** une ; il ne
+permet pas d'en créer — chacun crée les siennes, avec son mot de passe et son
+second facteur.
 
 **Tu n'as pas besoin du jeton d'administration si tu es connecté comme
 administrateur** — la page l'accepte, mais elle ne le demande que si la première

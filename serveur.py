@@ -12,6 +12,8 @@ Portable : rien n'est installe, tout tient sous D:\\ComfyStudio et s'appuie sur
 le Python embarque de ComfyUI.
 """
 import asyncio, base64, json, os, re, secrets, shlex, subprocess, sys, time, uuid
+import datetime
+import functools
 import hashlib
 import hmac
 # Uniquement pour nommer le site d'appel quand un garde-fou tire (VerrouCarte) :
@@ -272,6 +274,17 @@ import mfa as _mfa
 # interet. Il n'est appele QUE par la route d'enrolement : six millisecondes une
 # fois par compte, sur une route qui fait deja un scrypt de 2**14 tours.
 import qr as _qr
+# LE PILOTAGE PAR PROGRAMME, en trois modules sans dependance de plus : les
+# cles d'acces (un programme agit au nom d'un compte, sur un perimetre etroit),
+# les rappels signes (le studio previent quand c'est fini), et le protocole MCP
+# (un assistant IA appelle des outils). Chacun a son banc ; serveur.py ne fait
+# que les brancher — voir « pilotage par programme » plus bas.
+import acces as _acces
+import rappels as _rappels
+import mcp as _mcp
+# Le contrat OpenAPI des routes de programme : ecrit a la main, comme le
+# reste, et tenu en accord avec le routeur par banc_contrat.py.
+import contrat as _contrat
 import aiguilleur as _aiguilleur
 import traductions
 # T() est appele a soixante endroits dans ce fichier : le nom court est ici
@@ -655,6 +668,12 @@ async def reprendre_file():
         TACHES[tid] = {"etapes": [], "etat": "en cours", "debut": time.time(), "demande": r.get("texte", ""),
                        "conversation": conv["id"], "proprietaire": r.get("proprietaire"),
                        "image": r.get("image")}
+        # LA MARQUE D'UN PROGRAMME REVIENT AVEC LA TACHE. Elle porte la regle
+        # « pas de nuage » d'une cle et l'adresse de son rappel : sans elle, un
+        # rendu repris apres un redemarrage partait chez un fournisseur payant
+        # que la cle n'autorisait pas, et personne n'etait jamais prevenu.
+        if isinstance(r.get("api"), dict):
+            TACHES[tid]["api"] = dict(r["api"])
         # Le tour existe deja dans la conversation, mais il a ete marque
         # « interrompu » au demarrage : on le remet en cours, sinon la demande
         # s'afficherait en echec pendant qu'elle calcule.
@@ -1518,9 +1537,12 @@ def conv_de(cid, pid):
     if ouvrable(conv, pid):
         return conv
     conv = CONVERSATIONS.get(COURANTE.get(pid))
-    if ouvrable(conv, pid):
+    if ouvrable(conv, pid) and not est_conversation_de_programme(conv):
         return conv
-    miennes = mes_conversations(pid)
+    # PAS DANS UNE CONVERSATION DE PROGRAMME. Un workflow qui tourne toutes les
+    # heures fait de la sienne la plus recente : sans ce filtre, la demande
+    # suivante tapee dans la page y atterrissait, avec son contexte.
+    miennes = [c for c in mes_conversations(pid) if not est_conversation_de_programme(c)]
     if miennes:
         conv = max(miennes, key=lambda c: c.get("modifie", 0))
     else:
@@ -3189,7 +3211,8 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # Un appel distant ne touche pas la carte : ni attente, ni chargement de
     # 18 Go. C'est aussi pour cela qu'il est tente AVANT la mise en file.
     loin = ("" if image_b64
-            else llm_distant_possible(texte, (TACHES.get(tid) or {}).get("proprietaire")))
+            else llm_distant_possible(texte, (TACHES.get(tid) or {}).get("proprietaire"),
+                                      tid))
     # La place se prend AVANT le depart, pas au retour. llm_distant_possible a
     # beau dire oui, le compteur qu'il interroge ne bougera qu'une fois la
     # reponse revenue : sans cette reservation, trois travailleurs partis
@@ -4859,7 +4882,7 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                 "questions_forcees": True, "parametres": {}, "parametres_bruts": {},
                 "raison": "la demande ne contient aucun mot lisible"}
 
-    loin = "" if image_b64 else llm_distant_possible(texte, pid)
+    loin = "" if image_b64 else llm_distant_possible(texte, pid, tid)
     # La raison du local n'est plus dite ici : appeler_ollama la dit pour TOUS
     # les appels de la chaine, celui-ci compris. La repeter ferait deux lignes
     # identiques a la suite.
@@ -5177,8 +5200,17 @@ def adulte(texte, plan=None):
     return False
 
 
-def llm_distant_possible(texte, pid=None):
-    """Le fournisseur de texte a utiliser, ou "" pour rester en local."""
+def llm_distant_possible(texte, pid=None, tid=None):
+    """Le fournisseur de texte a utiliser, ou "" pour rester en local.
+
+    « tid » : une demande venue d'un programme dont la cle n'a pas droit au
+    nuage reste locale JUSQU'A SON ANALYSE. Garder seulement le rendu local
+    aurait tenu la promesse a moitie : pas d'image facturee, mais un appel de
+    modele de langage facture a chaque demande — et c'est le seul des deux que
+    l'on ne voit pas.
+    """
+    if not nuage_permis(tid):
+        return ""
     if pid is not None and not nuage_actif(pid):
         return ""
     choix = fournisseur_dispo("llm") if pid is not None else CHOIX.get("llm", "local")
@@ -8466,8 +8498,10 @@ def _ouvrir_porte(req, nom, mdp, code, lg):
     ailleurs : ecrite route par route, la garde s'oublie a la prochaine route
     ajoutee. Une seule fonction, un seul site d'appel de authentifier(), et
     banc_comptes.py releve les deux dans le TEXTE de ce fichier.
-    Cinq portes l'empruntent : entrer, changer son mot de passe, preparer un
-    enrolement, desarmer, regenerer les codes de secours.
+    Six portes l'empruntent : entrer, changer son mot de passe, preparer un
+    enrolement, desarmer, regenerer les codes de secours — et, depuis le
+    4 novembre 2026, creer une cle d'acces (une cle contourne le second
+    facteur pour toujours : elle doit naitre de la meme preuve).
 
     LE SENTINELLE NE COMPTE PAS COMME UN ECHEC, ET NE REMET RIEN A ZERO. Les
     deux moities importent :
@@ -8963,6 +8997,12 @@ async def api_admin_compte_supprimer(req):
         COMPTES.supprimer(nom)
     except _comptes.ErreurCompte as e:
         return web.json_response({"erreur": str(e)}, status=400)
+    # Ses cles d'acces meurent avec lui, et EXPLICITEMENT : la generation les
+    # tuait deja (reconnaitre refuse un compte disparu), mais un compte recree
+    # sous le meme nom repart a la generation 0 — et les anciennes cles,
+    # creees a 0, se seraient remises a marcher.
+    if ACCES:
+        ACCES.revoquer_compte(nom)
     # Les conversations du compte ne sont pas effacees : supprimer un acces
     # n'est pas supprimer un travail. Elles deviennent orphelines et restent
     # sur le disque, recuperables.
@@ -9673,6 +9713,14 @@ async def lancer_variantes(tid, texte, conv, plan, combien, taille=None,
                           "proprietaire": pid, "image": image, "modele": None,
                           "taille": taille, "priorite": priorite,
                           "noeud": noeud_force, "plan": modele, "variantes": 1}
+        # LA MARQUE DU PROGRAMME SUIT CHAQUE TIRAGE. Sans elle, la variante 2
+        # d'une demande « sans nuage » etait une tache ordinaire : rien ne
+        # l'empechait de partir chez un fournisseur payant, ni d'echapper au
+        # compte des rendus en file de sa cle.
+        marque = (TACHES.get(tid) or {}).get("api")
+        if marque:
+            TACHES[autre]["api"] = dict(marque, rappel=None)
+            EN_FILE[autre]["api"] = TACHES[autre]["api"]
         lances.append(autre)
     # LE PREMIER TIRAGE NE REPART PAS EN ESSAIM AU REVEIL : sa part est faite.
     # Ecrit avant la mise en file — c'est le fichier qui fait foi apres un arret,
@@ -9957,6 +10005,17 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # se mettre sous la dent.
             plan = await enrichir(plan, texte, tid)
             plan = await traduire(plan, tid)
+            # LE PROMPT QUI PART VRAIMENT PASSE LA GARDE A SON TOUR. Elle
+            # tournait juste au-dessus, AVANT l'enrichissement et la
+            # traduction : le texte reellement envoye au moteur — reecrit,
+            # allonge, traduit — n'etait jamais relu. Or c'est un modele de
+            # langage qui l'ecrit, et rien ne l'empeche d'y ajouter un mot que
+            # la demande ne portait pas. La garde ne mord qu'avec un terme de
+            # mineur ET un terme sexuel dans le meme texte (voir _MINEUR,
+            # _SEXUEL) : « une jeune femme » ne la declenche pas, « teen » ou
+            # « schoolgirl » si — et c'est precisement l'image a ne pas faire.
+            garde_fou(texte, plan.get("prompt"), plan.get("tags_audio"),
+                      plan.get("paroles"))
         cle = plan["modele"]
 
         # Le studio n'a pas su preparer la demande : plutot que de l'envoyer
@@ -10078,6 +10137,14 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # un fournisseur distant, il doit savoir pourquoi il n'est pas suivi.
             journal(tid, "contenu adulte : la generation reste sur cette machine")
             plan["raison"] = "contenu adulte : repli sur le moteur local"
+            loin = ""
+        # UNE CLE D'ACCES SANS DROIT AU NUAGE garde le rendu ici, meme si le
+        # moteur demande est distant. Meme forme que le contenu adulte juste
+        # au-dessus : on le dit, on ne bascule pas en silence.
+        if loin and not nuage_permis(tid):
+            journal(tid, "cette cle d'acces n'a pas droit au nuage — "
+                         "la generation reste sur cette machine")
+            plan["raison"] = "cle d'acces sans nuage : repli sur le moteur local"
             loin = ""
         if loin and not moteur_distant_pret(loin):
             journal(tid, f"aucune cle pour {loin} — calcul en local")
@@ -10476,6 +10543,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                     "zone et ce qu'elle doit devenir — par exemple « remplace le "
                     "ciel par un ciel d'orage ».")
             plan["prompt"] = zone
+            # Ecrit par le modele de langage (preparer_cible), envoye tel
+            # quel au moteur de retouche : il passe la garde comme le prompt
+            # enrichi, pour la meme raison.
+            garde_fou(texte, zone)
             journal(tid, f"zone visee : « {cible} » "
                          f"({'etendue' if region else 'objet'}) — a la place : {zone[:60]}")
             aire, etapes = await mesurer_puis_choisir(image, tid, cle,
@@ -10532,6 +10603,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                     "au crepuscule » plutot que « change le fond ».")
             sur_le_sujet = intention == "retoucher_sujet"
             plan["prompt"] = zone
+            # Ecrit par le modele de langage (preparer_cible), envoye tel
+            # quel au moteur de retouche : il passe la garde comme le prompt
+            # enrichi, pour la meme raison.
+            garde_fou(texte, zone)
             journal(tid, f"zone a redessiner : {zone[:80]}")
             aire, etapes = await mesurer_puis_choisir(image, tid, cle,
                                                       sur_le_sujet=sur_le_sujet,
@@ -10789,7 +10864,14 @@ async def identite(req, handler):   # aiohttp passe le second argument NOMME `ha
     Un cookie plutot qu'un en-tete : les images sont chargees par <img src>,
     qui n'envoie pas d'en-tete personnalise. Le cookie, lui, part tout seul —
     c'est la seule solution qui couvre aussi le proxy de fichiers.
+
+    UNE CLE D'ACCES PRIME SUR TOUT, cookies compris (voir « pilotage par
+    programme ») : un client qui la presente parle au nom de son compte, et
+    d'aucun autre, quel que soit le cookie qu'il traine.
     """
+    cle = porteur_de_cle(req)
+    if cle is not None:
+        return await _identite_par_cle(req, handler, cle)
     pid = req.cookies.get("studio") or ""
     neuf = not _PID.fullmatch(pid)
     # Un compte connecte prime sur le cookie du navigateur : c'est ce qui fait
@@ -11102,7 +11184,11 @@ def purger_taches(garder=200):
     """TACHES ne se vidait jamais. Seul, l'utilisateur ne s'en apercevait pas ;
     a plusieurs le dict grossit d'autant plus vite. Les taches terminees ne
     servent qu'a l'affichage immediat : la conversation garde l'historique."""
-    finies = [t for t, v in TACHES.items() if v.get("etat") in ("fini", "erreur")]
+    # « question » EST UN ETAT FINAL : la reponse part dans une demande neuve.
+    # Oubliee ici, une cle qui envoie « ??? » en boucle — question rendue en
+    # quelques millisecondes, sans modele de langage — faisait grossir TACHES
+    # sans fin (revue du 4 novembre 2026 : trois cents survivaient a la purge).
+    finies = [t for t, v in TACHES.items() if v.get("etat") in ("fini", "erreur", "question")]
     # « finies[:-garder] » : avec garder=0, c'est finies[:0], donc rien — la
     # forme qui se lit « tout sauf les garder derniers » ne purgeait RIEN
     # quand on lui demandait de tout purger.
@@ -11827,15 +11913,17 @@ async def api_variante_choisir(req):
     return web.json_response({"ok": True, "tour": tour["id"]})
 
 
-async def api_generer(req):
-    lg = langue_de(req)
-    try:
-        d = await _json_objet(req)
-    except web.HTTPException:
-        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
-    except Exception:
-        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
-                                 status=400)
+def valider_demande(d, conv, pid, lg):
+    """Tout ce qu'une demande doit etre pour entrer en file — et rien d'ecrit.
+
+    Rend (None, demande) quand elle passe, (reponse_de_refus, None) sinon.
+
+    UNE SEULE VALIDATION POUR LES DEUX ENTREES. La page et les programmes
+    (/api/v1/rendus, l'outil MCP) passent par ici : une copie de ces quinze
+    lignes dans le chemin des programmes deriverait a la premiere borne
+    ajoutee d'un seul cote — exactement comme les cinq refus d'executer()
+    partaient en francais la ou la page les traduisait deja.
+    """
     # UNE CHAINE, OU RIEN. « (d.get("texte") or "").strip() » sur un nombre,
     # une liste ou un dictionnaire levait AttributeError, donc 500 « Server
     # got itself in trouble » — mesure du 7 septembre 2026 sur le studio
@@ -11845,8 +11933,8 @@ async def api_generer(req):
     texte = texte.strip()
     image = d.get("image") if isinstance(d.get("image"), str) else None
     if not texte and not image:
-        return web.json_response({"erreur": T("erreur.demande_vide", lg)},
-                                 status=400)
+        return web.json_response({"erreur": T("erreur.demande_vide", lg), "code": "demande_vide"},
+                                 status=400), None
     # UNE DEMANDE A UNE LONGUEUR. Neuf mille caracteres — mesure du
     # 7 septembre 2026 — ont tenu le modele trente-trois secondes sur la
     # 2080 Ti, deux fois, avant de finir en « precision demandee » au bout de
@@ -11854,16 +11942,10 @@ async def api_generer(req):
     # au-dela, on le dit, on ne fait pas attendre.
     if len(texte) > DEMANDE_MAX:
         return web.json_response(
-            {"erreur": T("erreur.demande_trop_longue", lg, maxi=DEMANDE_MAX)},
-            status=400)
-    pid = qui(req)
-    # La conversation d'abord : c'est elle qui porte les reglages, et une
-    # demande qui n'en parle pas herite des siens. Mais on FUSIONNE sans ecrire
-    # tant que la demande n'est pas validee : un « priorite: urgent » refuse en
-    # 400 laissait sinon son reglage sur la conversation, et sauvait au passage
-    # une conversation que conv_de() garde volontairement en memoire — sans quoi
-    # chaque requete sans cookie deposait un fichier de plus.
-    conv = conv_de(d.get("conversation"), pid)
+            {"erreur": T("erreur.demande_trop_longue", lg, maxi=DEMANDE_MAX), "code": "demande_trop_longue"},
+            status=400), None
+    # Le corps a ete lu par l'appelant ; la conversation aussi, et elle porte
+    # les reglages dont la demande herite.
     # CHOISI MAINTENANT, ou seulement herite ? Deux versions se sont trompees
     # avant celle-ci, et toutes deux DEDUISAIENT.
     #
@@ -11885,19 +11967,19 @@ async def api_generer(req):
     reglages = poser_reglages(conv, d, ecrire=False)
     taille = reglages.get("taille") or None
     if taille and taille not in TAILLES:
-        return web.json_response({"erreur": T("erreur.taille_non_prise", lg)},
-                                 status=400)
+        return web.json_response({"erreur": T("erreur.taille_non_prise", lg), "code": "taille_non_prise"},
+                                 status=400), None
     modele = reglages.get("modele") or None
     if modele and modele not in CATALOGUE and modele not in MOTEURS_DISTANTS:
-        return web.json_response({"erreur": T("erreur.moteur_inconnu", lg)},
-                                 status=400)
+        return web.json_response({"erreur": T("erreur.moteur_inconnu", lg), "code": "moteur_inconnu"},
+                                 status=400), None
     if modele in MOTEURS_DISTANTS and not moteur_distant_pret(modele):
         return web.json_response(
-            {"erreur": T("erreur.moteur_sans_cle", lg)}, status=400)
+            {"erreur": T("erreur.moteur_sans_cle", lg), "code": "moteur_sans_cle"}, status=400), None
     priorite = reglages.get("priorite") or ""
     if priorite not in PRIORITES:
-        return web.json_response({"erreur": T("erreur.priorite_inconnue", lg)},
-                                 status=400)
+        return web.json_response({"erreur": T("erreur.priorite_inconnue", lg), "code": "priorite_inconnue"},
+                                 status=400), None
     # « variantes » NE PASSE PAS PAR poser_reglages, et c'est delibere : comme le
     # brouillon, c'est un geste et non un reglage. Le retenir sur la conversation
     # ferait partir en quatre exemplaires les cinq demandes suivantes — quatre
@@ -11907,29 +11989,49 @@ async def api_generer(req):
     try:
         variantes = int(d.get("variantes") or 1)
     except (TypeError, ValueError):
-        return web.json_response({"erreur": T("erreur.variantes_illisible", lg)},
-                                 status=400)
+        return web.json_response({"erreur": T("erreur.variantes_illisible", lg), "code": "variantes_illisible"},
+                                 status=400), None
     if not 1 <= variantes <= VARIANTES_MAX:
         return web.json_response(
-            {"erreur": T("erreur.variantes_bornes", lg, plafond=VARIANTES_MAX)},
-            status=400)
+            {"erreur": T("erreur.variantes_bornes", lg, plafond=VARIANTES_MAX), "code": "variantes_bornes"},
+            status=400), None
     machine = reglages.get("noeud") or None
     if machine and noeud(machine) is None:
-        return web.json_response({"erreur": T("erreur.machine_inconnue", lg)},
-                                 status=400)
+        return web.json_response({"erreur": T("erreur.machine_inconnue", lg), "code": "machine_inconnue"},
+                                 status=400), None
     # Une image appartient a celui qui l'a televersee. Deux pieges ici :
     # « != pid » et non « not in (None, pid) » — un nom absent du registre valait
     # laissez-passer ; et le nom doit rester un NOM, pas un chemin : « ../output/
     # studio/…png » sortait de ComfyUI/input et faisait decrire l'image d'un autre.
     if image and (os.path.basename(image) != image or ENTREES.get(image) != pid):
-        return web.json_response({"erreur": T("erreur.image_inconnue", lg)},
-                                 status=404)
+        return web.json_response({"erreur": T("erreur.image_inconnue", lg), "code": "image_inconnue"},
+                                 status=404), None
+    return None, {"texte": texte, "image": image, "modele": modele,
+                  "taille": taille, "priorite": priorite,
+                  "variantes": variantes, "noeud": machine,
+                  "choisi": choisi}
+
+
+async def deposer_demande(conv, pid, d, v, api=None):
+    """Met en file une demande deja validee par valider_demande().
+
+    « api » est la marque d'une demande venue d'un programme (cle d'acces,
+    rappel, droit au nuage). Elle va sur la tache ET dans le fichier de la
+    file : reprendre_file() reconstruit la tache depuis ce fichier, et une
+    marque oubliee la ferait repartir sans sa regle « pas de nuage » apres un
+    redemarrage — un rendu facture que personne n'avait autorise.
+    """
+    texte, image, modele = v["texte"], v["image"], v["modele"]
+    taille, priorite, machine = v["taille"], v["priorite"], v["noeud"]
+    choisi, variantes = v["choisi"], v["variantes"]
     # Tout est valide : maintenant seulement, la conversation retient.
     poser_reglages(conv, d)
     tid = uuid.uuid4().hex
     devant = len(ATTENTE) + len(EN_VOL)
     TACHES[tid] = {"etapes": [], "etat": "en cours", "debut": time.time(), "demande": texte,
                    "conversation": conv["id"], "proprietaire": pid, "image": image}
+    if api:
+        TACHES[tid]["api"] = api
     # Le tour est pose des maintenant : la conversation remonte dans la liste,
     # la demande s'affiche, et rien ne laisse croire qu'elle s'est perdue
     # pendant que la carte finit autre chose.
@@ -11941,17 +12043,48 @@ async def api_generer(req):
                     "proprietaire": pid, "image": image, "modele": modele,
                     "taille": taille, "priorite": priorite, "noeud": machine,
                     "modele_choisi": choisi, "variantes": variantes}
+    if api:
+        EN_FILE[tid]["api"] = api
     sauver_file()
     await FILE_ATTENTE.put({"tid": tid, "texte": texte, "conv": conv, "taille": taille,
                             "image": image, "modele": modele, "priorite": priorite,
                             "noeud": machine, "modele_choisi": choisi,
                             "variantes": variantes})
+    return tid, devant
+
+
+async def api_generer(req):
+    lg = langue_de(req)
+    try:
+        d = await _json_objet(req)
+    except web.HTTPException:
+        raise      # 413 « trop gros » : aiohttp l'a dit, on le laisse passer
+    except Exception:
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
+    pid = qui(req)
+    # La conversation d'abord : c'est elle qui porte les reglages, et une
+    # demande qui n'en parle pas herite des siens. Mais on FUSIONNE sans ecrire
+    # tant que la demande n'est pas validee : un « priorite: urgent » refuse en
+    # 400 laissait sinon son reglage sur la conversation, et sauvait au passage
+    # une conversation que conv_de() garde volontairement en memoire — sans quoi
+    # chaque requete sans cookie deposait un fichier de plus.
+    conv = conv_de(d.get("conversation"), pid)
+    refus, v = valider_demande(d, conv, pid, lg)
+    # « is not None » ET NON « if refus » : une web.Response est un
+    # MutableMapping, et avant aiohttp 3.12 sa longueur vaut 0 — un refus y
+    # est donc FAUX. Sur ces versions, que requirements.txt admet, un
+    # mot de passe faux laissait passer. Les cinq autres appelants de
+    # _ouvrir_porte l'ecrivaient deja ainsi. (Revue du 4 novembre 2026.)
+    if refus is not None:
+        return refus
+    tid, devant = await deposer_demande(conv, pid, d, v)
     # Le nombre DEMANDE, pas le nombre qui partira : l'aiguillage n'a pas encore
     # tourne, et une demande qui se revele etre une retouche n'en rendra qu'une.
     # La page peut reserver la place ; c'est api_etat, une fois le groupe pose,
     # qui dira ce qu'il en est reellement.
     return web.json_response({"id": tid, "conversation": conv["id"],
-                              "position": devant, "variantes": variantes})
+                              "position": devant, "variantes": v["variantes"]})
 
 async def api_etat(req):
     tid = req.match_info["tid"]
@@ -12216,9 +12349,15 @@ async def interrompre_comfy(ident=None):
 
 async def api_conversations(req):
     pid = qui(req)
-    if not mes_conversations(pid):
+    # Les conversations de programme ne comptent pas : un compte qui n'a servi
+    # qu'a des programmes n'avait sinon jamais de conversation de page.
+    if not [c for c in mes_conversations(pid) if not est_conversation_de_programme(c)]:
         conv_de(None, pid)          # tout arrivant repart avec une conversation
-    liste = sorted(mes_conversations(pid), key=lambda c: c.get("modifie", 0), reverse=True)
+    # Les conversations de programme ne sont pas dans la liste : une par rendu,
+    # elles la noieraient. Leurs images restent dans la mediatheque.
+    liste = sorted((c for c in mes_conversations(pid)
+                    if not est_conversation_de_programme(c)),
+                   key=lambda c: c.get("modifie", 0), reverse=True)
     return web.json_response({
         "courante": COURANTE.get(pid) or (liste[0]["id"] if liste else None),
         # Les reglages voyagent avec la liste : la page les remet dans ses menus
@@ -12341,6 +12480,7 @@ def _fichiers_de(conv):
 
 def purger_fermees():
     """Efface pour de bon les conversations fermees depuis plus d'un jour."""
+    fermer_vieux_programmes()
     limite = time.time() - GARDE_FERMEES
     partis = 0
     for cid, conv in list(CONVERSATIONS.items()):
@@ -12502,6 +12642,10 @@ def est_admin(req):
     aujourd'hui, et une regle de visibilite ne doit pas dependre d'une recopie
     fidele.
     """
+    # Une cle d'acces sur le compte « admin » n'en herite pas : est_admin()
+    # ouvre la mediatheque et les fichiers de TOUS les comptes.
+    if req.get("par_cle"):
+        return False
     return bool(req.get("compte")) and COMPTES.est_admin(req["compte"])
 
 
@@ -12722,6 +12866,19 @@ async def api_fichier(req):
     permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(qui(req))
     if noeud(ident) is None or (ident, sous, nom) not in permis:
         return web.json_response({"erreur": "inconnu"}, status=404)
+    return await servir_sortie(req, ident, sous, nom, genre)
+
+
+async def servir_sortie(req, ident, sous, nom, genre="output"):
+    """Sert un fichier dont le droit de lecture est DEJA etabli par l'appelant.
+
+    Separe d'api_fichier pour une seule raison : les programmes (cle d'acces,
+    lien signe) ont leur propre regle de permission — un rendu de LEUR cle, et
+    jamais la mediatheque entiere d'un administrateur — mais doivent servir le
+    fichier exactement comme la page : disque, machine a agent, relais ComfyUI
+    avec Range, nosniff. Deux copies de ce relais deriveraient, et c'est la
+    copie la moins regardee qui perdrait son nosniff.
+    """
     # Depose ici — par un agent, ou par un fournisseur distant quand cette
     # machine n'a pas de ComfyUI : on sert du disque, sans relais.
     chemin = chemin_agent(ident, nom)
@@ -12995,6 +13152,11 @@ async def veiller_noeuds():
 FICHIER_REGISTRE = os.path.join(DOSSIER_CONV, "_noeuds.json")
 FICHIER_ADMIN = os.path.join(DOSSIER_CONV, "_admin.json")
 FICHIER_COMPTES = os.path.join(DOSSIER_CONV, "_comptes.json")
+# Les cles d'acces des programmes. Un fichier a part et non une rubrique de
+# _comptes.json : il change a chaque usage (la date « vu »), et comptes.py
+# reecrit son fichier entier a chaque changement — melanger les deux ferait
+# reecrire les empreintes de mots de passe toutes les dix minutes.
+FICHIER_ACCES = os.path.join(DOSSIER_CONV, "_acces.json")
 
 # « obligatoire » : il faut un compte pour faire quoi que ce soit. C'est le
 # defaut, parce qu'une installation neuve resterait sinon ouverte tant que
@@ -13006,6 +13168,7 @@ AUTH = (os.environ.get("STUDIO_AUTH") or "obligatoire").strip().lower()
 # est tire au sort et affiche une fois.
 ADMIN_MDP = os.environ.get("STUDIO_ADMIN_MDP") or ""
 COMPTES = None              # rempli par charger_registre, une fois le secret connu
+ACCES = None                # rempli par charger_acces, apres les comptes
 REGISTRE = {}               # id -> {id, titre, jeton, cree}
 SILENCE_MAX = 45            # secondes sans nouvelle avant de declarer perdu
 TRAVAUX = {}                # id de noeud -> liste de travaux en attente
@@ -13235,7 +13398,12 @@ async def exiger_compte(req, handler):
              or chemin == "/api/textes"
              or chemin == "/admin" or chemin.startswith("/api/admin/")
              or chemin == "/demarrage" or chemin == "/api/demarrage"
-             or chemin.startswith("/api/noeud/"))
+             or chemin.startswith("/api/noeud/")
+             # Les routes de programme exigent leur cle elles-memes
+             # (pour_programme) et repondent un 401 qu'un programme sait lire,
+             # avec WWW-Authenticate — et non le « connexion requise » de la
+             # page, fait pour afficher un formulaire.
+             or chemin.startswith(PREFIXE_PROGRAMME) or chemin == CHEMIN_MCP)
     if libre or req.get("compte"):
         return await handler(req)
     # LE SEUL REFUS DE MIDDLEWARE TRADUIT, et le plus lu de tous : c'est ce
@@ -13385,7 +13553,14 @@ def admin_ok(req):
 
     Le jeton reste : c'est lui qui permet d'entrer la toute premiere fois,
     quand aucun compte n'existe encore.
+
+    JAMAIS PAR UNE CLE D'ACCES, meme posee sur un compte administrateur — ni
+    par le jeton qu'un client a cle presenterait en plus. Une cle est faite
+    pour etre collee dans un workflow ; l'administration ne doit pas pouvoir
+    s'y coller avec elle.
     """
+    if req.get("par_cle"):
+        return False
     nom = req.get("compte") or ""
     if nom and COMPTES and COMPTES.est_admin(nom):
         return True
@@ -15305,6 +15480,7 @@ async def demarrer_file(a):
     await reprendre_file()
     a["veilleur"] = asyncio.create_task(veiller_noeuds())
     a["ecoute"] = asyncio.create_task(ecouter_comfy())
+    a["rappels"] = asyncio.create_task(veiller_rappels())
 
 async def arreter_file(a):
     """Arrete tout ce que le studio a lance, sans supposer combien il y en a.
@@ -15341,6 +15517,1510 @@ async def arreter_file(a):
                     else f"le disque n'a pas suivi en {ATTENTE_JOURNAL:.0f} s")
         print(f"  journal des couts : {reste} ligne(s) perdue(s) — {pourquoi}",
               flush=True)
+
+# ══════════════════════ pilotage par programme ══════════════════════════
+# Un programme — un workflow n8n, un assistant IA par MCP, un script — demande
+# un rendu au nom d'un compte, avec une CLE D'ACCES (acces.py). Quatre regles,
+# et chacune ferme une faute precise :
+#
+#   1. LA CLE NE VAUT QUE SUR /api/v1/ ET /mcp. Presentee ailleurs, elle est
+#      refusee en 403 plutot qu'ignoree : ignoree, elle laisserait croire a
+#      celui qui l'essaie sur /api/generer qu'elle marche, jusqu'au jour ou un
+#      cookie oublie dans le meme client la ferait passer pour lui.
+#   2. ELLE NE VAUT JAMAIS ADMINISTRATION, meme posee sur le compte « admin ».
+#      admin_ok() et est_admin() la refusent ; sans cela, est_admin() ouvrait a
+#      une cle n8n la mediatheque de TOUS les comptes.
+#   3. UN PROGRAMME NE VOIT QUE LES RENDUS DE SA CLE. Une cle fuitee depuis un
+#      workflow ne doit pas lire les images que son proprietaire fait a la main.
+#   4. CHAQUE DEMANDE A SA PROPRE CONVERSATION, sauf si le programme en nomme
+#      une des siennes. La conversation porte le contexte : derniere image,
+#      cinq derniers tours, reglages. Un programme qui ecrivait dans la
+#      conversation courante du navigateur voyait « la meme en bleu » devenir
+#      une retouche de ce que l'humain venait de faire.
+
+CHEMIN_MCP = "/mcp"
+PREFIXE_PROGRAMME = "/api/v1/"
+# Les etats qu'un programme lit. Les etats de la tache sont faits pour la page
+# (« en cours » des la mise en file, l'annulation rangee dans « erreur ») ; un
+# workflow a besoin de savoir s'il doit encore attendre, et pourquoi.
+ETATS_PROGRAMME = ("en_file", "en_cours", "attente_machine", "question",
+                   "fini", "erreur", "annule")
+ETATS_FINAUX = frozenset(("question", "fini", "erreur", "annule"))
+# Dix minutes. Le noeud HTTP Request de n8n coupe a 300 s par defaut, et l'on
+# peut le monter ; un rendu video sur la 2080 Ti dure trois a huit minutes
+# (docs/mesures.md). Au-dela, un programme doit sonder ou attendre le rappel :
+# garder une connexion ouverte une heure n'est un service pour personne.
+ATTENDRE_MAX = 600
+# Quarante-cinq secondes pour l'outil MCP, et non dix minutes : le SDK MCP
+# TypeScript — celui de Claude Desktop et de la plupart des clients — annule
+# une requete au bout de 60 s par defaut. Un outil qui attend plus longtemps
+# ne rend jamais rien a l'assistant ; mieux vaut rendre l'identifiant et
+# laisser l'assistant rappeler etat_rendu.
+ATTENDRE_MCP = 45
+# Un lien signe vaut un jour : assez pour qu'un workflow telecharge, ou qu'un
+# humain clique le soir sur le lien que son assistant lui a donne le matin ;
+# pas assez pour qu'un lien colle dans un ticket reste une porte ouverte.
+LIEN_DUREE = 24 * 3600
+# Une image s'insere dans la reponse d'un outil MCP jusqu'a 3 Mio. L'API de
+# Claude refuse une image de plus de 5 Mo une fois encodee, et le base64
+# grossit d'un tiers : 3 Mio bruts font 4 Mo encodes. Au-dela, un lien.
+IMAGE_MCP_MAX = 3 * 1024 ** 2
+# Un jour pour la cle d'idempotence : un workflow qui reessaie le fait dans
+# la minute ; garder plus longtemps n'apprendrait rien et ferait grossir le
+# registre.
+IDEMPOTENCE_DUREE = 24 * 3600
+IDEMPOTENCE_LONGUEUR = 200
+# Trente jours sans un tour, et une conversation de programme est fermee —
+# puis effacee le lendemain par purger_fermees(), images comprises. Sans
+# cette regle, un workflow qui tourne toutes les heures laisse 720
+# conversations par mois, que personne ne rouvrira jamais.
+GARDE_PROGRAMME = 30 * 24 * 3600
+
+SECRET_LIENS = ""            # pose par charger_acces : derive du secret de session
+IDEMPOTENCE = {}             # (cle, Idempotency-Key) -> (tid, quand)
+_TID = re.compile(r"[0-9a-f]{32}")
+
+
+def charger_acces():
+    """Le magasin des cles, et le secret des liens signes.
+
+    Le secret des liens est DERIVE du secret de session et non tire a part :
+    un fichier de secret de plus, c'est une permission de plus a regler et une
+    sauvegarde de plus a ne pas oublier. Derive par HMAC sous un libelle
+    propre, il ne peut pas servir a forger une session — ni l'inverse.
+    """
+    global ACCES, SECRET_LIENS
+    ACCES = _acces.Acces(FICHIER_ACCES)
+    ACCES.charger()
+    SECRET_LIENS = hmac.new(secret_de_session().encode("utf-8"),
+                            b"liens signes de ComfyStudio",
+                            hashlib.sha256).hexdigest()
+
+
+def chemin_de_programme(chemin):
+    return chemin.startswith(PREFIXE_PROGRAMME) or chemin == CHEMIN_MCP
+
+
+def porteur_de_cle(req):
+    """La cle d'acces presentee, ou None.
+
+    SEULEMENT « Bearer cs_… ». Un reverse proxy d'authentification (Authelia,
+    oauth2-proxy) peut poser son PROPRE « Authorization: Bearer » sur toutes
+    les requetes, page comprise : traiter n'importe quel Bearer comme une cle
+    d'ici aurait refuse en 403 la page entiere derriere ce proxy. Le prefixe
+    « cs_ » dit que c'est la notre.
+
+    JAMAIS dans un cookie ni dans l'adresse. Un cookie part tout seul vers
+    l'origine, depuis n'importe quel site : la cle deviendrait forgeable en
+    CSRF. Dans l'adresse, elle finit dans les journaux du proxy et dans
+    l'historique. L'en-tete, lui, ne se pose pas depuis un autre site sans une
+    requete preliminaire CORS que le studio n'approuve jamais.
+    """
+    entete = req.headers.get("Authorization") or ""
+    schema, _, valeur = entete.partition(" ")
+    valeur = valeur.strip()
+    if schema.lower() != "bearer" or not valeur.startswith(_acces.PREFIXE):
+        return None
+    return valeur
+
+
+def _generation_du_compte(nom):
+    return COMPTES.generation(nom) if COMPTES else None
+
+
+ECHECS_CLES = {}             # (adresse, identifiant de cle) -> (echecs, quand)
+# Deux mille couples : une table par cle EXISTANTE et par adresse, donc bornee
+# par le nombre de cles (vingt par compte) fois les adresses qui se trompent.
+ECHECS_CLES_MAX = 2000
+
+
+def _frein_des_cles(frein):
+    """La meme loi que _freinage() — trois essais libres, puis 1, 2, 4… s,
+    plafonnes a ATTENTE_MAX — sur la table des cles d'acces."""
+    limite = time.time() - OUBLI_ECHECS
+    for k in [k for k, (_, q) in ECHECS_CLES.items() if q < limite]:
+        del ECHECS_CLES[k]
+    if len(ECHECS_CLES) > ECHECS_CLES_MAX:
+        for k in sorted(ECHECS_CLES, key=lambda k: ECHECS_CLES[k][1])[:len(ECHECS_CLES) - ECHECS_CLES_MAX]:
+            del ECHECS_CLES[k]
+    combien, quand = ECHECS_CLES.get(frein, (0, 0.0))
+    if combien < 3:
+        return 0.0
+    return max(0.0, quand + min(2.0 ** (combien - 3), ATTENTE_MAX) - time.time())
+
+
+def cle_vivante(fiche):
+    """La cle existe ET son compte n'a pas change de generation depuis.
+
+    « existe » ne suffit pas : un changement de mot de passe ETEINT la cle sans
+    la retirer du magasin (elle reste listee, marquee eteinte). Les deux
+    chemins qui n'ont pas la cle en clair — le lien signe, le rappel — ne
+    peuvent pas passer par reconnaitre() : ils doivent faire ce test eux-memes,
+    sinon un lien distribue avant le changement de mot de passe restait une
+    porte ouverte vingt-quatre heures de plus. Releve par la relecture de la
+    documentation, le 4 novembre 2026.
+    """
+    if not fiche:
+        return False
+    gen = _generation_du_compte(fiche.get("compte"))
+    return gen is not None and gen == fiche.get("generation")
+
+
+def refus_programme(cle, statut, lg, **valeurs):
+    """Un refus pour un programme : la phrase, et un CODE stable.
+
+    Le code est la cle du dictionnaire sans sa famille. Un workflow branche
+    sur « cle_file_pleine » continue de marcher le jour ou la phrase change,
+    ce qu'un test sur le texte ne ferait pas.
+    """
+    return web.json_response({"erreur": T(cle, lg, **valeurs),
+                              "code": cle.split(".", 1)[1]}, status=statut)
+
+
+def _sans_cle(lg, cle="erreur.cle_requise"):
+    rep_ = refus_programme(cle, 401, lg)
+    # RFC 6750 : un 401 sur une ressource protegee par jeton dit le schema
+    # attendu. Les clients HTTP (et n8n) s'en servent pour leur message.
+    rep_.headers["WWW-Authenticate"] = 'Bearer realm="comfystudio"'
+    return rep_
+
+
+async def _identite_par_cle(req, handler, cle):
+    """Le middleware « identite », quand la requete presente une cle."""
+    lg = langue_de(req)
+    if not chemin_de_programme(req.path):
+        return refus_programme("erreur.cle_hors_perimetre", 403, lg)
+    hote = (req.transport.get_extra_info("peername") or ("",))[0] if req.transport else ""
+    ident = _acces.identifiant_de(cle)
+    fiche = ACCES.reconnaitre(cle, _generation_du_compte) if ACCES else None
+    # UNE BONNE CLE N'EST JAMAIS FREINEE. Le frein se lisait AVANT la
+    # verification : quiconque connaissait l'identifiant public d'une cle — il
+    # est imprime dans chaque lien signe, donne aux humains et aux assistants —
+    # la tenait en 429 avec un secret faux toutes les trente secondes (revue du
+    # 4 novembre 2026). On verifie d'abord ; le frein ne vaut que pour l'echec.
+    if fiche:
+        ECHECS_CLES.pop((hote, ident), None)
+        nom = (COMPTES.nom_exact(fiche["compte"]) if COMPTES else None) or fiche["compte"]
+        req["compte"] = nom
+        req["pid"] = _comptes.identifiant(nom)
+        req["par_cle"] = fiche
+        # Aucun cookie pose : un programme n'en relit pas, et un cookie
+        # « studio » pose sur une reponse a un programme n'aurait aucun
+        # destinataire.
+        return await handler(req)
+    # UN COMPTEUR A PART, par adresse ET par cle presentee. Partager celui des
+    # connexions laisserait un workflow mal regle freiner les humains de la
+    # maison qui tapent leur mot de passe derriere le meme proxy. Le premier
+    # membre ne peut pas etre un nom de compte : NOM_VALIDE refuse l'espace et
+    # l'apostrophe.
+    #
+    # L'identifiant public de la cle fait partie du couple, et c'est la ligne a
+    # ne pas simplifier. Par adresse seule, un n8n qui continue d'interroger
+    # avec une cle REVOQUEE freinait toutes les cles valides des autres
+    # workflows du meme hote : jusqu'a trente secondes de 429, renouvelees a
+    # chaque echec (releve par banc_pilotage.py). Le frein n'est pas ce qui
+    # empeche de deviner — 256 bits de secret s'en chargent — mais ce qui
+    # empeche une cle morte de couter quelque chose aux vivantes. Les cles
+    # hors forme partagent un seul compteur : elles ne nomment rien.
+    #
+    # UNE TABLE A PART, et seulement pour un identifiant QUI EXISTE. Des cles
+    # au hasard remplissaient la table commune (_ECHECS, 10 000 places) en une
+    # seconde et demie, et son eviction chassait les compteurs des mots de
+    # passe et des codes TOTP. Une cle inconnue ou revoquee n'a rien a deviner :
+    # elle coute une empreinte et n'inscrit rien.
+    frein = (hote, ident)
+    reste = _frein_des_cles(frein)
+    if reste > 0:
+        return refus_programme("erreur.trop_d_essais", 429, lg,
+                               secondes=f"{reste:.0f}")
+    if ident and ACCES and ACCES.fiche(ident) is not None:
+        combien = ECHECS_CLES.get(frein, (0, 0.0))[0] + 1
+        ECHECS_CLES[frein] = (combien, time.time())
+        if combien in (3, 10, 50):
+            # L'adresse, l'identifiant public et le nombre — jamais la cle : un
+            # journal de studio se lit, se recopie dans un rapport de bogue.
+            print(f"[studio] {combien} secrets faux pour la cle {ident} depuis "
+                  f"{hote or 'une adresse inconnue'}", flush=True)
+    return _sans_cle(lg, "erreur.cle_refusee")
+
+
+def pour_programme(gestionnaire):
+    """Une route de programme : la cle est obligatoire, la session ne suffit pas.
+
+    Un navigateur connecte n'a rien a faire ici. Sans ce refus, une page
+    piegee pourrait viser /api/v1/rendus avec le cookie de session de son
+    visiteur — l'en-tete Origin la bloquerait, mais une seule garde pour une
+    porte qui depense du temps de carte, c'est une de moins que d'habitude.
+    """
+    @functools.wraps(gestionnaire)
+    async def garde(req):
+        fiche = req.get("par_cle")
+        if not fiche:
+            return _sans_cle(langue_de(req))
+        return await gestionnaire(req, fiche)
+    return garde
+
+
+def base_publique(req):
+    """L'adresse du studio telle que le programme l'a jointe.
+
+    X-Forwarded-* d'abord : derriere un reverse proxy TLS, le studio se voit
+    en http://127.0.0.1:8199, et un lien construit la-dessus ne marcherait
+    pour personne. L'en-tete vient du client, mais les liens ne repartent que
+    vers lui-meme ou vers le rappel qu'il a declare : il ne peut tromper que
+    lui.
+    """
+    proto = (req.headers.get("X-Forwarded-Proto") or req.scheme or "http")
+    hote = (req.headers.get("X-Forwarded-Host") or req.headers.get("Host") or "")
+    proto, hote = proto.split(",")[0].strip(), hote.split(",")[0].strip()
+    return f"{proto}://{hote}" if hote else ""
+
+
+def _horodatage(quand):
+    """RFC 3339, avec le deux-points du decalage : « +01:00 » et non « +0100 ».
+    strftime(%z) donnait la seconde forme, que JavaScript lit mais que JSON
+    Schema « date-time » refuse — et le contrat OpenAPI la declare telle."""
+    if not quand:
+        return None
+    return datetime.datetime.fromtimestamp(quand).astimezone().isoformat(
+        timespec="seconds")
+
+
+def est_conversation_de_programme(conv):
+    return bool((conv or {}).get("api"))
+
+
+def _conv_de_programme(cid, pid, fiche):
+    """Une conversation OUVERTE de ce compte ET de cette cle, ou None.
+
+    Pas de repli sur une autre, a la difference de conv_de() : un programme
+    qui se trompe d'identifiant doit l'apprendre (404), pas voir sa demande
+    atterrir ailleurs avec un autre contexte.
+    """
+    c = CONVERSATIONS.get(cid) if isinstance(cid, str) else None
+    if not ouvrable(c, pid) or (c.get("api") or {}).get("cle") != fiche["id"]:
+        return None
+    return c
+
+
+def _rendu_de(tid, pid, fiche):
+    """(conversation, tache, tour) d'un rendu de CETTE cle, ou None.
+
+    La tache vit en memoire et disparait apres un redemarrage ou au-dela des
+    deux cents dernieres (purger_taches) ; le tour, lui, est sur le disque. Un
+    rendu fini hier doit encore se lire aujourd'hui : on retombe sur le tour.
+    """
+    if not isinstance(tid, str) or not _TID.fullmatch(tid):
+        return None
+    t = TACHES.get(tid)
+    if t is not None:
+        if t.get("proprietaire") != pid or (t.get("api") or {}).get("cle") != fiche["id"]:
+            return None
+        conv = CONVERSATIONS.get(t.get("conversation"))
+    else:
+        conv = next((c for c in CONVERSATIONS.values()
+                     if a_moi(c, pid) and (c.get("api") or {}).get("cle") == fiche["id"]
+                     and any(x.get("id") == tid for x in c.get("tours", []))), None)
+        if conv is None:
+            return None
+    tour = next((x for x in (conv or {}).get("tours", []) if x.get("id") == tid), None)
+    return conv, t, tour
+
+
+def _etat_d_un_tirage(tid, t, tour):
+    if t is not None:
+        e = t.get("etat")
+        if e == "fini":
+            return "fini"
+        if e == "question":
+            return "question"
+        if e == "erreur":
+            return "annule" if t.get("annulee") else "erreur"
+        if tid in ARMEES or t.get("attend_carte"):
+            return "attente_machine"
+        if tid in ATTENTE and tid not in EN_VOL:
+            return "en_file"
+        return "en_cours"
+    e = (tour or {}).get("etat")
+    if e in ("fini", "question"):
+        return e
+    # Un tour « en cours » sans tache en memoire : le studio a redemarre et ne
+    # l'a pas repris. C'est un echec, et le dire evite qu'un workflow attende
+    # pour toujours un rendu que plus personne ne fait.
+    return "erreur"
+
+
+def _tirages(tid, conv):
+    """Le rendu et ses variantes, dans l'ordre des rangs.
+
+    Les variantes sont des taches a part (lancer_variantes), regroupees sous
+    l'identifiant du premier tirage : un programme ne connait que celui-la.
+    """
+    membres = []
+    for x in (conv or {}).get("tours", []):
+        g = (x.get("variantes") or {})
+        if x.get("id") == tid or g.get("groupe") == tid:
+            membres.append((int(g.get("rang") or 1), x.get("id"), x))
+    for autre, t in TACHES.items():
+        g = t.get("variantes") or {}
+        if g.get("groupe") == tid and not any(m[1] == autre for m in membres):
+            membres.append((int(g.get("rang") or 1), autre, None))
+    if not any(m[1] == tid for m in membres):
+        membres.append((1, tid, None))
+    return sorted(membres, key=lambda m: m[0])
+
+
+# VINGT-CINQ FICHIERS PAR TIRAGE dans la numerotation, et quatre tirages au
+# plus : les rangs tiennent dans les deux chiffres d'un lien signe (0 a 99).
+# Le rang d'un fichier ne dependait que de l'ordre d'ARRIVEE : la variante 2
+# finie avant la 1 prenait le rang 0, puis le cedait — un lien deja donne
+# servait alors un AUTRE fichier (revue du 4 novembre 2026). Le rang est
+# desormais (variante - 1) x 25 + position, fixe des sa naissance.
+FICHIERS_PAR_TIRAGE = 25
+
+
+def _sorties_rangees(tid, conv):
+    """(rang ou None, variante, fichier) de tous les tirages, dans l'ordre.
+
+    Rang None au-dela du vingt-cinquieme fichier d'un tirage : il est montre,
+    mais ne s'adresse pas — un rang qui deborderait sur le tirage suivant
+    serait exactement la faute que cette numerotation corrige.
+    """
+    rangees = []
+    for variante, autre, tour_ in _tirages(tid, conv):
+        t_ = TACHES.get(autre)
+        sorties = [f for f in ((tour_ or {}).get("fichiers")
+                               or (t_ or {}).get("fichiers") or [])
+                   if f.get("filename")]
+        for i, f in enumerate(sorties):
+            rang = ((variante - 1) * FICHIERS_PAR_TIRAGE + i
+                    if 1 <= variante <= VARIANTES_MAX and i < FICHIERS_PAR_TIRAGE
+                    else None)
+            rangees.append((rang, variante, f))
+    return rangees
+
+
+def rendu_public(tid, conv, t, tour, base, lg):
+    """Ce qu'un programme lit d'un rendu. La meme forme partout : la reponse
+    de /api/v1/rendus, le corps du rappel, le contenu structure de l'outil MCP.
+    Une seule fonction, pour qu'un champ ajoute ici le soit pour les trois."""
+    membres = _tirages(tid, conv)
+    etats, fichiers = [], []
+    ident_cle = ((t or {}).get("api") or {}).get("cle") or ((conv or {}).get("api") or {}).get("cle")
+    for _rang, autre, tour_ in membres:
+        etats.append(_etat_d_un_tirage(autre, TACHES.get(autre), tour_))
+    for i, variante, f in _sorties_rangees(tid, conv):
+        fichiers.append({
+            "rang": i, "variante": variante, "nom": f["filename"],
+            "type": famille_sortie(f["filename"]),
+            "url": (f"{base}{PREFIXE_PROGRAMME}rendus/{tid}/fichiers/{i}"
+                    if i is not None else None),
+            "lien": None,
+        })
+        if i is not None:
+            # Un lien ne se signe qu'avec le secret des liens ET la cle du
+            # rendu : signer_lien refuse (et leve) le reste, et un rendu ne
+            # doit pas devenir illisible parce qu'un de ses liens ne se fait pas.
+            #
+            # ET signer_lien leve au-dela du rang 99 (le jeton ne porte que deux
+            # chiffres). Depuis les rangs fixes (FICHIERS_PAR_TIRAGE), aucun rang
+            # ne depasse 99 : ce filet n'a plus de chemin pour s'ouvrir, et
+            # aucune mutation ne peut le montrer rouge. Il reste parce que
+            # lever est le CONTRAT de signer_lien — et qu'une exception ici
+            # faisait tomber la route ET le veilleur des rappels entier
+            # (banc_pilotage.py, 4 novembre 2026). C'est la borne des rangs, et
+            # non ce filet, que le banc et sa mutation gardent.
+            if SECRET_LIENS and ident_cle:
+                try:
+                    jeton = _acces.signer_lien(SECRET_LIENS, ident_cle, tid, i,
+                                               int(time.time() + LIEN_DUREE))
+                except _acces.ErreurAcces:
+                    jeton = None
+                if jeton:
+                    fichiers[-1]["lien"] = f"{base}{PREFIXE_PROGRAMME}lien/{jeton}"
+    principal = _etat_d_un_tirage(tid, t, tour)
+    if all(e in ETATS_FINAUX for e in etats):
+        # Un groupe est fini des qu'un tirage a abouti : trois images sur
+        # quatre restent trois images. Il n'echoue que si TOUS ont echoue.
+        etat = "fini" if "fini" in etats else principal
+    else:
+        etat = principal if principal not in ETATS_FINAUX else "en_cours"
+    t = t or {}
+    plan = t.get("plan") or {}
+    corps = {
+        "id": tid, "etat": etat,
+        "demande": t.get("demande") or (tour or {}).get("demande") or "",
+        "conversation": (conv or {}).get("id"),
+        "cree": _horodatage(t.get("debut")),
+        "intention": plan.get("intention") or (tour or {}).get("type"),
+        "moteur": plan.get("modele") or (tour or {}).get("modele"),
+        "machine": t.get("noeud"),
+        "position": (ATTENTE.index(tid) + len(EN_VOL)) if tid in ATTENTE else None,
+        "avance": None, "secondes": t.get("secondes"),
+        "fichiers": fichiers,
+        "questions": list(t.get("questions") or (tour or {}).get("questions") or []),
+        "description": t.get("description") or (tour or {}).get("description"),
+        "erreur": None,
+        # Les cinq dernieres lignes du fil, en francais : c'est ce que la page
+        # montre aussi. Un humain qui lit l'execution n8n comprend ainsi
+        # POURQUOI un rendu a pris trois minutes, sans ouvrir le studio.
+        "journal": [e.get("msg") for e in (t.get("etapes") or [])[-5:]],
+    }
+    a_ = AVANCES.get(tid) or {}
+    if a_.get("total"):
+        corps["avance"] = round(min(1.0, a_.get("fait", 0) / a_["total"]), 3)
+    if etat in ("erreur", "annule"):
+        panne = t.get(MARQUE_PANNE)
+        corps["erreur"] = {
+            "code": "annule" if etat == "annule" else
+                    ((panne or {}).get("cle") or "inconnue").split(".", 1)[-1],
+            "message": (traductions.rendre(panne, lg) if panne
+                        else ((t.get("etapes") or [{}])[-1].get("msg")
+                              or (tour or {}).get("erreur") or "")),
+        }
+    return corps
+
+
+def _en_cours_de_cle(ident):
+    return sum(1 for t in TACHES.values()
+               if (t.get("api") or {}).get("cle") == ident
+               and t.get("etat") not in ("fini", "erreur", "question"))
+
+
+def _lances_aujourdhui(ident):
+    """Compte sur le disque, et non en memoire : un plafond par jour qui
+    repartirait a zero a chaque redemarrage du studio n'en serait pas un."""
+    minuit = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+    return sum(1 for c in CONVERSATIONS.values()
+               if (c.get("api") or {}).get("cle") == ident
+               for q in (c["api"].get("lancements") or []) if q >= minuit)
+
+
+# Cinq cents conversations ouvertes par cle, au plus. Une par demande, gardees
+# trente jours : un workflow a la minute en laisserait 43 200, toutes chargees
+# en memoire au demarrage et relues a chaque sondage (revue du 4 novembre
+# 2026). Au-dela, la plus ancienne est FERMEE — la purge commune l'efface le
+# lendemain, images comprises, comme toute conversation fermee.
+CONVERSATIONS_PAR_CLE = 500
+
+
+def borner_conversations_de(ident):
+    ouvertes = sorted((c for c in CONVERSATIONS.values()
+                       if (c.get("api") or {}).get("cle") == ident and not c.get("ferme")),
+                      key=lambda c: c.get("modifie", 0))
+    for c in ouvertes[:max(0, len(ouvertes) - CONVERSATIONS_PAR_CLE + 1)]:
+        c["ferme"] = time.time()
+        sauver(c)
+
+
+def fermer_vieux_programmes(maintenant=None):
+    """Ferme les conversations de programme restees trente jours sans un tour.
+
+    Fermer et non effacer : la regle commune s'applique ensuite — un jour de
+    grace, puis purger_fermees(). Une seule facon d'effacer des images dans
+    ce depot, c'est une de moins a se tromper.
+    """
+    limite = (maintenant or time.time()) - GARDE_PROGRAMME
+    fermees = 0
+    for conv in list(CONVERSATIONS.values()):
+        if (est_conversation_de_programme(conv) and not conv.get("ferme")
+                and (conv.get("modifie") or 0) < limite):
+            conv["ferme"] = time.time()
+            sauver(conv)
+            fermees += 1
+    return fermees
+
+
+def _nuage_du_programme(d, fiche):
+    """Le droit au nuage d'une demande : celui de la cle, que la demande peut
+    seulement RESTREINDRE. « nuage: true » sur une cle sans nuage ne l'ouvre
+    pas — sinon le reglage de la cle ne serait qu'une suggestion."""
+    voulu = d.get("nuage", True)
+    return bool(fiche.get("nuage")) and voulu is not False
+
+
+def nuage_permis(tid):
+    """Une tache peut-elle sortir chez un fournisseur facture ?
+
+    Vrai pour toute demande de la page : sa regle est ailleurs (nuage_actif,
+    plafond). Faux pour une demande de programme dont la cle ne l'autorise
+    pas. La marque est lue sur la tache, ou elle a ete posee au depot ET
+    restauree par reprendre_file().
+    """
+    marque = (TACHES.get(tid) or {}).get("api") if tid else None
+    return True if not marque else bool(marque.get("nuage"))
+
+
+# LES TYPES D'IMAGE ACCEPTES EN BASE64, et rien d'autre. Le type devient
+# l'extension du fichier ecrit : le prendre tel quel, c'etait laisser le client
+# ecrire « png\\..\\..\\cible.png » — famille_du_fichier() ne regarde que la
+# derniere extension, Windows normalise le chemin, et un refus plus loin
+# EFFACAIT le fichier vise (revue du 4 novembre 2026). Une table, pas un
+# nettoyage : on ne corrige pas un chemin, on choisit dans une liste.
+TYPES_IMAGE = {"png": ".png", "jpg": ".jpg", "jpeg": ".jpg", "webp": ".webp"}
+
+
+def _deposer_octets(pid, extension, octets, lg):
+    """Une image envoyee en base64 dans le corps JSON, posee comme un envoi.
+
+    Meme registre (ENTREES), meme purge, memes familles que /api/televerser :
+    une image arrivee par un assistant IA doit se trouver exactement la ou
+    une image glissee dans la page se trouve, sinon la retouche ne la voit pas.
+    """
+    ext = TYPES_IMAGE.get(extension.strip().lower()) if isinstance(extension, str) else None
+    if ext is None or ext not in EXT_IMAGE:
+        return None, refus_programme("erreur.champ_illisible", 400, lg,
+                                     champ="image_type")
+    if not octets:
+        return None, refus_programme("erreur.fichier_vide", 400, lg)
+    if len(octets) > FAMILLES["image"][1]:
+        return None, refus_programme("erreur.fichier_trop_lourd", 413, lg,
+                                     famille=T("famille.image", lg),
+                                     mega=FAMILLES["image"][1] // 1024 ** 2)
+    os.makedirs(DOSSIER_ENTREE, exist_ok=True)
+    # Le meme gabarit que /api/televerser — un nom TIRE, jamais celui du client.
+    nom = "studio_" + uuid.uuid4().hex[:10] + ext
+    with open(os.path.join(DOSSIER_ENTREE, nom), "wb") as f:
+        f.write(octets)
+    ENTREES[nom] = pid
+    purger_entrees(pid=pid)
+    sauver_entrees()
+    return nom, None
+
+
+async def lancer_pour_programme(req, fiche, d, lg):
+    """Valide et met en file la demande d'un programme. Rend (statut, corps).
+
+    Partagee par POST /api/v1/rendus, la reponse a une question et l'outil
+    MCP : trois entrees, une seule suite de gardes.
+    """
+    pid = qui(req)
+    if not isinstance(d, dict):
+        return 400, {"erreur": T("erreur.corps_illisible", lg), "code": "corps_illisible"}
+
+    def refus(cle, statut, **valeurs):
+        return statut, {"erreur": T(cle, lg, **valeurs), "code": cle.split(".", 1)[1]}
+
+    # Les bornes de la cle d'abord : un workflow emballe doit etre arrete
+    # avant qu'on lise son image, pas apres.
+    if _en_cours_de_cle(fiche["id"]) >= fiche["en_file"]:
+        return refus("erreur.cle_file_pleine", 429, en_file=fiche["en_file"])
+    if fiche.get("par_jour") and _lances_aujourdhui(fiche["id"]) >= fiche["par_jour"]:
+        return refus("erreur.cle_plafond_jour", 429, par_jour=fiche["par_jour"])
+
+    rappel = d.get("rappel")
+    if rappel is not None:
+        if not isinstance(rappel, str) or not rappel.strip():
+            return refus("erreur.champ_illisible", 400, champ="rappel")
+        raison = _rappels.url_autorisee(rappel.strip(), fiche.get("hotes") or [])
+        if raison:
+            return refus("erreur.rappel_refuse", 400, raison=raison)
+        rappel = rappel.strip()
+
+    # La conversation AVANT l'image : un identifiant faux doit etre refuse
+    # avant qu'une image en base64 soit posee sur le disque pour rien.
+    cid = d.get("conversation")
+    if cid is not None:
+        conv = _conv_de_programme(cid, pid, fiche)
+        if conv is None:
+            return refus("erreur.conversation_inconnue", 404)
+        neuve = False
+    else:
+        conv = _vide(titre="", proprietaire=pid)
+        neuve = True
+
+    image = d.get("image")
+    if image is not None and not isinstance(image, str):
+        return refus("erreur.champ_illisible", 400, champ="image")
+    if d.get("image_base64") is not None:
+        brut_ = d.get("image_base64")
+        type_ = d.get("image_type") or "png"
+        if not isinstance(brut_, str) or not isinstance(type_, str):
+            return refus("erreur.champ_illisible", 400, champ="image_base64")
+        # Une URL de donnees « data:image/png;base64,… » est ce que la plupart
+        # des outils produisent : on en retire l'en-tete au lieu de la refuser.
+        if brut_.startswith("data:") and "," in brut_:
+            entete_, brut_ = brut_.split(",", 1)
+            # Le sous-type seul, et _deposer_octets ne l'admet que s'il est
+            # dans TYPES_IMAGE : « image/png\\..\\x.png » n'y est pas.
+            type_ = entete_[5:].split(";")[0].split("/")[-1] or type_
+        try:
+            octets = base64.b64decode(brut_, validate=True)
+        except (ValueError, TypeError):
+            return refus("erreur.image_illisible", 400)
+        image, refus_ = _deposer_octets(pid, type_, octets, lg)
+        if refus_ is not None:
+            return refus_.status, json.loads(refus_.text)
+
+    # Les noms du programme vers ceux de la page. « moteur » et non « modele » :
+    # c'est le mot de /api/v1/moteurs, et forcer un moteur fixe aussi
+    # l'intention (agrandir, detourer…) — CATALOGUE[cle]["type"].
+    page = {"texte": d.get("demande"), "image": image,
+            "modele_choisi": bool(d.get("moteur"))}
+    if d.get("moteur") is not None:
+        page["modele"] = d.get("moteur")
+    for nom_prog, nom_page in (("taille", "taille"), ("priorite", "priorite"),
+                               ("machine", "noeud"), ("variantes", "variantes")):
+        if nom_prog in d:
+            page[nom_page] = d[nom_prog]
+    def oublier_image():
+        # L'image venue en base64 a ete deposee AVANT la validation (celle-ci
+        # exige qu'elle soit deja au registre). Une demande refusee ne doit pas
+        # laisser derriere elle un fichier que personne ne reutilisera.
+        if image and d.get("image_base64") is not None and ENTREES.get(image) == pid:
+            ENTREES.pop(image, None)
+            try:
+                os.remove(os.path.join(DOSSIER_ENTREE, image))
+            except OSError:
+                pass
+            sauver_entrees()
+
+    statut_refus, v = valider_demande(page, conv, pid, lg)
+    if statut_refus is not None:
+        oublier_image()
+        return statut_refus.status, json.loads(statut_refus.text)
+    # LES VARIANTES COMPTENT. Le plafond se lisait avant l'eventail : une cle
+    # reglee sur un rendu a la fois en lancait quatre d'un coup avec
+    # « variantes: 4 », chacune une tache sur une carte. Le test du haut reste —
+    # il arrete un workflow emballe avant qu'on lise son image.
+    if _en_cours_de_cle(fiche["id"]) + v["variantes"] > fiche["en_file"]:
+        oublier_image()
+        return refus("erreur.cle_file_variantes", 429,
+                     variantes=v["variantes"], en_file=fiche["en_file"])
+    # LE PLAFOND DU JOUR COMPTE DES RENDUS, pas des demandes : quatre
+    # variantes en sont quatre (revue du 4 novembre 2026).
+    if (fiche.get("par_jour")
+            and _lances_aujourdhui(fiche["id"]) + v["variantes"] > fiche["par_jour"]):
+        oublier_image()
+        return refus("erreur.cle_plafond_jour", 429, par_jour=fiche["par_jour"])
+    nuage = _nuage_du_programme(d, fiche)
+    if v["modele"] in MOTEURS_DISTANTS and not nuage:
+        oublier_image()
+        return refus("erreur.cle_sans_nuage", 400)
+    # LA GARDE AVANT LA FILE. executer() la passe aussi, mais apres le 202 :
+    # un programme apprenait le refus au sondage suivant, sous la forme d'un
+    # rendu « erreur » — et l'avait deja compte dans son plafond du jour.
+    try:
+        garde_fou(v["texte"])
+    except RuntimeError:
+        oublier_image()
+        return refus("erreur.refus_mineurs", 422)
+
+    # Tout est valide : maintenant seulement, on ecrit.
+    if neuve:
+        conv["titre"] = f"{fiche['nom']} · {(v['texte'] or 'image')[:40]}"
+        conv["api"] = {"cle": fiche["id"], "nom": fiche["nom"], "lancements": []}
+        borner_conversations_de(fiche["id"])
+        CONVERSATIONS[conv["id"]] = conv
+    # Les lancements des deux derniers jours suffisent au plafond « par jour »,
+    # un par RENDU : quatre variantes en sont quatre.
+    hier = time.time() - 2 * 24 * 3600
+    maintenant_ = time.time()
+    conv["api"]["lancements"] = ([q for q in conv["api"].get("lancements") or []
+                                  if q >= hier]
+                                 + [maintenant_] * v["variantes"])
+    marque = {"cle": fiche["id"], "nuage": nuage, "rappel": rappel,
+              "base": base_publique(req), "langue": lg}
+    tid, _devant = await deposer_demande(conv, pid, page, v, api=marque)
+    return 202, {"id": tid}
+
+
+def _attente_demandee(valeur, defaut=0):
+    """« attendre » : un entier de secondes, borne. None si illisible."""
+    if valeur is None or valeur == "":
+        return defaut
+    if isinstance(valeur, bool):
+        return None
+    try:
+        s = int(valeur)
+    except (TypeError, ValueError):
+        return None
+    return s if 0 <= s <= ATTENDRE_MAX else None
+
+
+# Huit attentes en cours par cle, au plus. Chacune tient une connexion et relit
+# le rendu deux fois par seconde : sans plafond, mille « attendre=600 »
+# ouverts par une seule cle saturaient la boucle ou les descripteurs d'un NAS
+# (revue du 4 novembre 2026). Au-dela, la requete rend l'etat sur-le-champ —
+# elle n'est pas refusee : elle n'attend pas, c'est tout.
+ATTENTES_PAR_CLE = 8
+ATTENTES = {}                # identifiant de cle -> attentes en cours
+
+
+async def attendre_rendu(tid, pid, fiche, secondes):
+    """Rend la main des que le rendu est dans un etat final, ou au bout du
+    delai. Une boucle courte plutot qu'un evenement : les etats finaux sont
+    poses a quinze endroits d'executer(), et un seul oublie laisserait un
+    programme attendre son delai entier pour rien.
+
+    ET LA CLE EST RELUE A CHAQUE TOUR : revoquee ou eteinte pendant une attente
+    de dix minutes, elle ne doit pas recevoir les images a la fin."""
+    ident = fiche["id"]
+    if not secondes or ATTENTES.get(ident, 0) >= ATTENTES_PAR_CLE:
+        return
+    ATTENTES[ident] = ATTENTES.get(ident, 0) + 1
+    try:
+        fin = time.monotonic() + secondes
+        while True:
+            if not cle_vivante(ACCES.fiche(ident) if ACCES else None):
+                return
+            trouve = _rendu_de(tid, pid, fiche)
+            if trouve is None:
+                return
+            conv, t, tour = trouve
+            if rendu_public(tid, conv, t, tour, "", "fr")["etat"] in ETATS_FINAUX:
+                return
+            if time.monotonic() >= fin:
+                return
+            await asyncio.sleep(0.5)
+    finally:
+        ATTENTES[ident] -= 1
+        if ATTENTES[ident] <= 0:
+            ATTENTES.pop(ident, None)
+
+
+async def _repondre_rendu(req, fiche, tid, statut=200):
+    pid, lg = qui(req), langue_de(req)
+    # Revoquee (ou eteinte) pendant une attente : on ne rend pas le rendu.
+    if not cle_vivante(ACCES.fiche(fiche["id"]) if ACCES else None):
+        return _sans_cle(lg, "erreur.cle_refusee")
+    trouve = _rendu_de(tid, pid, fiche)
+    if trouve is None:
+        return refus_programme("erreur.rendu_inconnu", 404, lg)
+    conv, t, tour = trouve
+    corps = rendu_public(tid, conv, t, tour, base_publique(req), lg)
+    if statut == 202 and corps["etat"] in ETATS_FINAUX:
+        statut = 200
+    rep_ = web.json_response(corps, status=statut)
+    rep_.headers["Location"] = f"{PREFIXE_PROGRAMME}rendus/{tid}"
+    return rep_
+
+
+@pour_programme
+async def api_v1_rendre(req, fiche):
+    lg = langue_de(req)
+    try:
+        d = await _json_objet(req)
+    except web.HTTPException:
+        raise
+    except Exception:
+        return refus_programme("erreur.corps_illisible", 400, lg)
+    secondes = _attente_demandee(d.get("attendre"))
+    if secondes is None:
+        return refus_programme("erreur.attendre_bornes", 400, lg, maxi=ATTENDRE_MAX)
+    # L'IDEMPOTENCE, parce que n8n reessaie. Un noeud HTTP regle sur « retry on
+    # fail » renvoie la requete quand la reponse tarde — et chaque renvoi etait
+    # un rendu de plus, du temps de carte pour une image que personne n'a
+    # demandee deux fois. Meme cle, meme rendu.
+    idem = (req.headers.get("Idempotency-Key") or "").strip()
+    if len(idem) > IDEMPOTENCE_LONGUEUR:
+        return refus_programme("erreur.idempotence_illisible", 400, lg,
+                               maxi=IDEMPOTENCE_LONGUEUR)
+    maintenant = time.time()
+    for k in [k for k, (_, q) in IDEMPOTENCE.items() if maintenant - q > IDEMPOTENCE_DUREE]:
+        IDEMPOTENCE.pop(k, None)
+    if idem and (fiche["id"], idem) in IDEMPOTENCE:
+        deja = IDEMPOTENCE[(fiche["id"], idem)][0]
+        # Le rejeu ATTEND comme la premiere fois : n8n reessaie precisement
+        # parce que la premiere reponse a tarde, et un rejeu qui rendrait
+        # « en_cours » sur-le-champ casserait le workflow qu'il devait sauver.
+        if secondes:
+            await attendre_rendu(deja, qui(req), fiche, secondes)
+        rep_ = await _repondre_rendu(req, fiche, deja)
+        rep_.headers["Idempotent-Replayed"] = "true"
+        return rep_
+    statut, corps = await lancer_pour_programme(req, fiche, d, lg)
+    if statut != 202:
+        return web.json_response(corps, status=statut)
+    tid = corps["id"]
+    if idem:
+        IDEMPOTENCE[(fiche["id"], idem)] = (tid, maintenant)
+    if secondes:
+        await attendre_rendu(tid, qui(req), fiche, secondes)
+    return await _repondre_rendu(req, fiche, tid, statut=202)
+
+
+@pour_programme
+async def api_v1_rendu(req, fiche):
+    lg = langue_de(req)
+    secondes = _attente_demandee(req.query.get("attendre"))
+    if secondes is None:
+        return refus_programme("erreur.attendre_bornes", 400, lg, maxi=ATTENDRE_MAX)
+    tid = req.match_info["tid"]
+    if secondes and _rendu_de(tid, qui(req), fiche):
+        await attendre_rendu(tid, qui(req), fiche, secondes)
+    return await _repondre_rendu(req, fiche, tid)
+
+
+@pour_programme
+async def api_v1_annuler(req, fiche):
+    lg = langue_de(req)
+    tid = req.match_info["tid"]
+    trouve = _rendu_de(tid, qui(req), fiche)
+    if trouve is None:
+        return refus_programme("erreur.rendu_inconnu", 404, lg)
+    conv, t, tour = trouve
+    if rendu_public(tid, conv, t, tour, "", lg)["etat"] in ETATS_FINAUX or t is None:
+        return refus_programme("erreur.rendu_termine", 409, lg)
+    # LA MEME ANNULATION QUE LA PAGE, variantes comprises : retirer de la file,
+    # interrompre la carte, prevenir l'agent. Elle verifie a nouveau le
+    # proprietaire, et est_admin() y vaut faux pour une cle.
+    for _rang, autre, _x in _tirages(tid, conv):
+        if autre in TACHES and TACHES[autre].get("etat") not in ("fini", "erreur", "question"):
+            req.match_info["tid"] = autre
+            await api_file_annuler(req)
+    req.match_info["tid"] = tid
+    return await _repondre_rendu(req, fiche, tid)
+
+
+@pour_programme
+async def api_v1_repondre(req, fiche):
+    """Repond a la question d'un rendu : un nouveau rendu, dans sa conversation,
+    avec « Precisions : » — exactement ce que fait la page (web/index.html,
+    « Précisions » reste francais : c'est le pivot du modele de langage)."""
+    lg = langue_de(req)
+    try:
+        d = await _json_objet(req)
+    except web.HTTPException:
+        raise
+    except Exception:
+        return refus_programme("erreur.corps_illisible", 400, lg)
+    tid = req.match_info["tid"]
+    trouve = _rendu_de(tid, qui(req), fiche)
+    if trouve is None:
+        return refus_programme("erreur.rendu_inconnu", 404, lg)
+    conv, t, tour = trouve
+    if rendu_public(tid, conv, t, tour, "", lg)["etat"] != "question":
+        return refus_programme("erreur.pas_de_question", 409, lg)
+    reponse = d.get("reponse")
+    if not isinstance(reponse, str) or not reponse.strip():
+        return refus_programme("erreur.reponse_vide", 400, lg)
+    secondes = _attente_demandee(d.get("attendre"))
+    if secondes is None:
+        return refus_programme("erreur.attendre_bornes", 400, lg, maxi=ATTENDRE_MAX)
+    demande = (t or {}).get("demande") or (tour or {}).get("demande") or ""
+    suite = {"demande": f"{demande}\n\nPrécisions : {reponse.strip()}",
+             "conversation": conv["id"]}
+    rappel = d.get("rappel", ((t or {}).get("api") or {}).get("rappel"))
+    if rappel is not None:
+        suite["rappel"] = rappel
+    statut, corps = await lancer_pour_programme(req, fiche, suite, lg)
+    if statut != 202:
+        return web.json_response(corps, status=statut)
+    if secondes:
+        await attendre_rendu(corps["id"], qui(req), fiche, secondes)
+    return await _repondre_rendu(req, fiche, corps["id"], statut=202)
+
+
+def _fichier_du_rendu(tid, rang, pid, fiche):
+    """Le fichier (noeud, sous-dossier, nom) au rang donne, ou None."""
+    trouve = _rendu_de(tid, pid, fiche)
+    if trouve is None:
+        return None
+    conv, _t, _tour = trouve
+    f = next((f for r, _v, f in _sorties_rangees(tid, conv) if r == rang), None)
+    if f is None:
+        return None
+    ident = f.get("noeud") or noeud_local()["id"]
+    # UNE MACHINE RETIREE n'est pas un 500 : url_de() leve pour un noeud que le
+    # registre ne connait plus, et api_fichier le refusait deja en 404 — ce
+    # chemin-ci l'oubliait (revue du 4 novembre 2026).
+    if noeud(ident) is None:
+        return None
+    # Un second verrou, celui de la page : le fichier doit etre dans ce que ce
+    # compte a le droit de relire. Il l'est par construction — il vient d'un
+    # tour de sa conversation —, mais une regle de permission ne se prouve pas
+    # par construction, elle se verifie.
+    if (ident, f.get("subfolder", ""), f["filename"]) not in mes_fichiers(pid):
+        return None
+    return ident, f.get("subfolder", ""), f["filename"]
+
+
+@pour_programme
+async def api_v1_fichier(req, fiche):
+    lg = langue_de(req)
+    try:
+        rang = int(req.match_info["rang"])
+    except ValueError:
+        return refus_programme("erreur.rendu_inconnu", 404, lg)
+    f = _fichier_du_rendu(req.match_info["tid"], rang, qui(req), fiche)
+    if f is None:
+        return refus_programme("erreur.rendu_inconnu", 404, lg)
+    return await servir_sortie(req, *f)
+
+
+async def api_v1_lien(req):
+    """Un fichier par lien signe : sans en-tete, pour un client qui ne sait pas
+    en poser (un lien cliquable donne par un assistant IA, un noeud n8n regle
+    au plus simple).
+
+    Le lien prouve la cle, le tirage et le rang ; on verifie EN PLUS que la cle
+    existe encore. Un lien meurt avec sa cle : revoquer une cle fuitee doit
+    fermer aussi les liens qu'elle a deja distribues.
+    """
+    lg = langue_de(req)
+    trouve = _acces.lien_valide(SECRET_LIENS, req.match_info["jeton"]) if SECRET_LIENS else None
+    fiche = ACCES.fiche(trouve[0]) if (trouve and ACCES) else None
+    if not cle_vivante(fiche):
+        return refus_programme("erreur.rendu_inconnu", 404, lg)
+    _ident, tid, rang = trouve
+    nom = (COMPTES.nom_exact(fiche["compte"]) if COMPTES else None) or fiche["compte"]
+    f = _fichier_du_rendu(tid, rang, _comptes.identifiant(nom), fiche)
+    if f is None:
+        return refus_programme("erreur.rendu_inconnu", 404, lg)
+    rep_ = await servir_sortie(req, *f)
+    # Un lien est une capacite : il ne doit pas finir dans le cache d'un proxy
+    # partage, ou n'importe qui le resservirait apres sa date.
+    rep_.headers["Cache-Control"] = "private, no-store"
+    return rep_
+
+
+@pour_programme
+async def api_v1_televerser(req, fiche):
+    return await api_televerser(req)
+
+
+def _moteurs_pour(fiche, lg):
+    liste = [{"cle": c, "titre": dit_moteur(c, "titre", m["titre"], lg),
+              "pour": dit_moteur(c, "pour", m.get("pour", ""), lg),
+              "type": m["type"], "distant": False,
+              "present": not manquants_partout(c)}
+             for c, m in CATALOGUE.items()]
+    # Un moteur distant n'est montre qu'a une cle qui a droit au nuage, et s'il
+    # a sa cle de fournisseur : proposer un choix qui sera refuse ne sert pas
+    # l'assistant qui lit cette liste pour choisir.
+    if fiche.get("nuage"):
+        liste += [{"cle": c, "titre": dit_moteur(c, "titre", m["titre"], lg),
+                   "pour": dit_moteur(c, "pour", m.get("pour", ""), lg),
+                   "type": m["type"], "distant": True, "present": True}
+                  for c, m in MOTEURS_DISTANTS.items() if moteur_distant_pret(c)]
+    return liste
+
+
+async def api_v1_contrat(req):
+    """Le contrat OpenAPI, SANS cle : il ne decrit que des formes, aucune
+    donnee, et c'est ce qu'un outil lit AVANT d'avoir une cle — un assistant
+    qu'on branche, n8n qui importe une API. Le fermer obligerait a coller la
+    cle dans un outil qui ne sait pas encore a quoi elle sert."""
+    return web.json_response(_contrat.document(base_publique(req)))
+
+
+@pour_programme
+async def api_v1_moteurs(req, fiche):
+    lg = langue_de(req)
+    return web.json_response({"moteurs": _moteurs_pour(fiche, lg),
+                              # Triees : TAILLES est un ensemble, et son
+                              # ordre changeait d'un demarrage a l'autre.
+                              "tailles": sorted(TAILLES),
+                              "priorites": [p for p in PRIORITES if p],
+                              "variantes_max": VARIANTES_MAX})
+
+
+@pour_programme
+async def api_v1_moi(req, fiche):
+    return web.json_response({
+        "compte": req.get("compte"), "cle": fiche,
+        "en_cours": _en_cours_de_cle(fiche["id"]),
+        "aujourdhui": _lances_aujourdhui(fiche["id"]),
+        "attendre_max": ATTENDRE_MAX})
+
+
+# ── les rappels ──────────────────────────────────────────────────────────
+
+# LES LIVRAISONS EN COURS, tenues par une reference forte. La boucle asyncio
+# ne garde des taches qu'une reference FAIBLE (documentation de
+# asyncio.create_task) : une livraison qui attend son essai de trente secondes
+# peut etre ramassee en route, et le programme n'est alors jamais prevenu —
+# sans trace, puisque rien n'a echoue.
+LIVRAISONS = set()
+
+
+async def _livrer_rappel(tid, marque, conv, t, tour):
+    try:
+        await _livrer_rappel_sans_garde(tid, marque, conv, t, tour)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        # Sans ce filet, la marque restait « en cours » pour toujours : le
+        # veilleur ne relance pas une livraison commencee, et le rendu n'etait
+        # jamais annonce.
+        marque["livraison"] = {"livre": False, "raison": "erreur interne"}
+        print(f"[{tid[:6]}] rappel non envoye : {type(e).__name__}", flush=True)
+
+
+async def _livrer_rappel_sans_garde(tid, marque, conv, t, tour):
+    corps_rendu = rendu_public(tid, conv, t, tour, marque.get("base") or "",
+                               marque.get("langue") or "fr")
+    secret = ACCES.secret_rappel(marque["cle"]) if ACCES else None
+    hote = urllib.parse.urlsplit(marque["rappel"]).hostname or "?"
+    # Eteinte (mot de passe change) : on ne signe plus en son nom, comme une
+    # cle revoquee. Le secret de rappel existe encore, mais il appartient a
+    # un acces que son proprietaire a voulu fermer.
+    if secret and not cle_vivante(ACCES.fiche(marque["cle"])):
+        secret = None
+    if not secret:
+        # La cle a ete revoquee pendant le rendu : on ne signe plus en son nom.
+        marque["livraison"] = {"livre": False, "raison": "cle revoquee"}
+        print(f"[{tid[:6]}] rappel non envoye : la cle d'acces a ete revoquee",
+              flush=True)
+        return
+    evenement = f"rendu.{corps_rendu['etat']}"
+    corps = _rappels.corps_de({"evenement": evenement, "id": tid,
+                               "rendu": corps_rendu,
+                               "envoye": _horodatage(time.time())})
+    async with aiohttp.ClientSession() as session:
+        res = await _rappels.livrer(session, marque["rappel"], corps, secret,
+                                    evenement=evenement,
+                                    livraison=uuid.uuid4().hex)
+    marque["livraison"] = dict(res, fin=time.time())
+    # DANS LE JOURNAL DU STUDIO, PAS DANS LE FIL DU RENDU. Le fil revient a la
+    # cle (« journal » de rendu_public) : y ecrire « injoignable », « delai
+    # depasse » ou « refuse par le recepteur » faisait du rappel une sonde de
+    # ports — une cle volee balayait une machine declaree et lisait la reponse
+    # (revue du 4 novembre 2026). L'HOTE et non l'adresse : une URL de webhook
+    # n8n porte un identifiant qui sert de secret.
+    if res.get("livre"):
+        print(f"[{tid[:6]}] rappel livre a {hote} ({res.get('essais')} essai(s))",
+              flush=True)
+    else:
+        print(f"[{tid[:6]}] rappel non livre a {hote} : {res.get('raison')} "
+              f"apres {res.get('essais')} essai(s)", flush=True)
+
+
+async def veiller_rappels():
+    """Previent chaque programme qui l'a demande, une fois, quand son rendu
+    s'acheve.
+
+    UN VEILLEUR ET NON UN CROCHET DANS journal(). Les etats finaux sont poses
+    a quinze endroits, et plusieurs ne passent pas par journal() —
+    « TACHES[tid].update(etat="question") », l'annulation. Un crochet en
+    oublierait ; un veilleur qui regarde l'etat ne peut pas en oublier.
+    """
+    while True:
+        try:
+            await asyncio.sleep(1.0)
+            for tid, t in list(TACHES.items()):
+                marque = t.get("api") or {}
+                if not marque.get("rappel") or marque.get("livraison"):
+                    continue
+                conv = CONVERSATIONS.get(t.get("conversation"))
+                tour = next((x for x in (conv or {}).get("tours", [])
+                             if x.get("id") == tid), None)
+                # UNE TACHE QUI LEVE NE PRIVE PAS LES AUTRES DE LEUR RAPPEL. Le
+                # filet etait autour du tour entier : la premiere tache en
+                # defaut arretait le parcours, a chaque seconde, et toutes
+                # celles qui la suivaient dans TACHES n'etaient jamais livrees.
+                try:
+                    etat_ = rendu_public(tid, conv, t, tour, "", "fr")["etat"]
+                except Exception as e:
+                    marque["livraison"] = {"livre": False, "raison": "erreur interne"}
+                    print(f"[studio] rappel de {tid[:6]} abandonne : "
+                          f"{type(e).__name__}", flush=True)
+                    continue
+                if etat_ not in ETATS_FINAUX:
+                    continue
+                # Posee AVANT de lancer la livraison : le tour suivant du
+                # veilleur, une seconde plus tard, ne doit pas la relancer
+                # pendant que la premiere attend son deuxieme essai.
+                marque["livraison"] = {"en_cours": True}
+                tache_ = asyncio.create_task(_livrer_rappel(tid, marque, conv, t, tour))
+                LIVRAISONS.add(tache_)
+                tache_.add_done_callback(LIVRAISONS.discard)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[studio] veilleur des rappels : {type(e).__name__}", flush=True)
+
+
+# ── MCP ──────────────────────────────────────────────────────────────────
+
+INSTRUCTIONS_MCP = (
+    "ComfyStudio fabrique des images, des videos, de la musique et des objets "
+    "3D a partir d'une demande en langage naturel, sur les cartes graphiques "
+    "de la maison. Appelle generer_rendu avec la demande telle que "
+    "l'utilisateur l'a formulee, dans sa langue ; ne la traduis pas, le studio "
+    "s'en charge. Un rendu prend de quelques secondes a plusieurs minutes : "
+    "si generer_rendu rend un identifiant sans fichier, rappelle etat_rendu "
+    "avec cet identifiant. Si l'etat est « question », pose la question a "
+    "l'utilisateur et transmets sa reponse avec repondre_question. "
+    "lister_moteurs donne les moteurs disponibles quand l'utilisateur en veut "
+    "un precis (agrandir, detourer, une video…).")
+
+_SCHEMA_ATTENDRE = {"type": "integer", "minimum": 0, "maximum": ATTENDRE_MAX,
+                    "description": "Secondes a attendre la fin avant de rendre "
+                                   "la main (defaut 45)."}
+
+
+async def _octets_de_sortie(ident, sous, nom):
+    """Les octets d'une sortie, pour l'inserer dans la reponse d'un outil. None
+    si trop gros ou introuvable : l'outil donne alors un lien."""
+    chemin = chemin_agent(ident, nom)
+    # isfile et non exists : on va l'OUVRIR, et un dossier ne s'ouvre pas.
+    if chemin and os.path.isfile(chemin):
+        if os.path.getsize(chemin) > IMAGE_MCP_MAX:
+            return None
+        with open(chemin, "rb") as f:
+            return f.read()
+    if noeud(ident) is None or est_agent(ident):
+        return None
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(f"{url_de(ident)}/view",
+                             params={"filename": nom, "subfolder": sous,
+                                     "type": "output"}) as r:
+                if r.status != 200:
+                    return None
+                # PAR MORCEAUX, JUSQU'AU BOUT. read(n) rend UN morceau, pas n
+                # octets : une image de 2 Mio arrivait tronquee a 130 Ko,
+                # toujours, puisque les sorties d'un ComfyUI local passent
+                # toutes par ce relais (revue du 4 novembre 2026).
+                corps = bytearray()
+                async for morceau in r.content.iter_chunked(64 * 1024):
+                    corps += morceau
+                    if len(corps) > IMAGE_MCP_MAX:
+                        return None
+                return bytes(corps)
+    except (aiohttp.ClientError, OSError, asyncio.TimeoutError, RuntimeError):
+        return None
+
+
+async def _resultat_mcp(req, fiche, tid):
+    """Le resultat d'un outil MCP pour un rendu : un resume, les images
+    inserees quand elles tiennent, un lien pour tout le reste, et le rendu
+    entier en contenu structure pour un client qui sait le lire."""
+    pid, lg = qui(req), langue_de(req)
+    trouve = _rendu_de(tid, pid, fiche)
+    if trouve is None:
+        raise _mcp.ErreurOutil(T("erreur.rendu_inconnu", lg))
+    conv, t, tour = trouve
+    corps = rendu_public(tid, conv, t, tour, base_publique(req), lg)
+    # La conversation EN TEXTE aussi : un client qui ne lit pas le contenu
+    # structure n'aurait sinon aucun moyen d'enchainer « la meme en bleu ».
+    lignes = [f"rendu {tid} : {corps['etat']} (conversation {corps['conversation']})"]
+    if corps["etat"] in ("en_file", "en_cours", "attente_machine"):
+        lignes.append("pas encore fini : rappelle etat_rendu avec cet identifiant.")
+    if corps["questions"]:
+        lignes.append("le studio demande : " + " / ".join(corps["questions"]))
+    if corps["description"]:
+        lignes.append(corps["description"])
+    if corps["erreur"]:
+        lignes.append("erreur : " + (corps["erreur"]["message"] or corps["erreur"]["code"]))
+    # LES LIENS AUSSI EN TEXTE. « resource_link » n'existe que depuis la
+    # revision 2025-06-18 : un client plus ancien l'ignore, et l'assistant
+    # n'aurait alors aucune adresse a donner a l'utilisateur.
+    for f in corps["fichiers"]:
+        if f["lien"]:
+            lignes.append(f"{f['nom']} ({f['type']}) : {f['lien']}")
+    contenu = [_mcp.texte("\n".join(lignes))]
+    for f in corps["fichiers"]:
+        if f["type"] == "image":
+            loc = _fichier_du_rendu(tid, f["rang"], pid, fiche)
+            octets = await _octets_de_sortie(*loc) if loc else None
+            if octets:
+                type_ = mimetypes.guess_type(f["nom"])[0] or "image/png"
+                contenu.append(_mcp.image(base64.b64encode(octets).decode("ascii"), type_))
+        if f["lien"]:
+            contenu.append(_mcp.lien(f["lien"], f["nom"],
+                                     mimetypes.guess_type(f["nom"])[0],
+                                     "valable 24 h, sans en-tete"))
+    return {"content": contenu, "structuredContent": corps,
+            "isError": corps["etat"] == "erreur"}
+
+
+async def _outil_generer(arguments, ctx):
+    req, fiche = ctx["req"], ctx["fiche"]
+    lg = langue_de(req)
+    d = {k: v for k, v in arguments.items() if k != "attendre"}
+    statut, corps = await lancer_pour_programme(req, fiche, d, lg)
+    if statut != 202:
+        raise _mcp.ErreurOutil(corps.get("erreur") or "refus")
+    await attendre_rendu(corps["id"], qui(req), fiche,
+                         arguments.get("attendre", ATTENDRE_MCP))
+    return await _resultat_mcp(req, fiche, corps["id"])
+
+
+async def _outil_etat(arguments, ctx):
+    req, fiche = ctx["req"], ctx["fiche"]
+    if _rendu_de(arguments["id"], qui(req), fiche) is None:
+        raise _mcp.ErreurOutil(T("erreur.rendu_inconnu", langue_de(req)))
+    await attendre_rendu(arguments["id"], qui(req), fiche,
+                         arguments.get("attendre", ATTENDRE_MCP))
+    return await _resultat_mcp(req, fiche, arguments["id"])
+
+
+async def _outil_repondre(arguments, ctx):
+    req, fiche = ctx["req"], ctx["fiche"]
+    lg = langue_de(req)
+    trouve = _rendu_de(arguments["id"], qui(req), fiche)
+    if trouve is None:
+        raise _mcp.ErreurOutil(T("erreur.rendu_inconnu", lg))
+    conv, t, tour = trouve
+    if rendu_public(arguments["id"], conv, t, tour, "", lg)["etat"] != "question":
+        raise _mcp.ErreurOutil(T("erreur.pas_de_question", lg))
+    # « minLength: 1 » laisse passer "   " : la route REST le refuse, l'outil
+    # le refuse aussi — sinon un rendu partait sur « Precisions : » vide.
+    if not arguments["reponse"].strip():
+        raise _mcp.ErreurOutil(T("erreur.reponse_vide", lg))
+    demande = (t or {}).get("demande") or (tour or {}).get("demande") or ""
+    statut, corps = await lancer_pour_programme(
+        req, fiche, {"demande": f"{demande}\n\nPrécisions : {arguments['reponse'].strip()}",
+                     "conversation": conv["id"]}, lg)
+    if statut != 202:
+        raise _mcp.ErreurOutil(corps.get("erreur") or "refus")
+    await attendre_rendu(corps["id"], qui(req), fiche,
+                         arguments.get("attendre", ATTENDRE_MCP))
+    return await _resultat_mcp(req, fiche, corps["id"])
+
+
+async def _outil_annuler(arguments, ctx):
+    req, fiche = ctx["req"], ctx["fiche"]
+    lg = langue_de(req)
+    trouve = _rendu_de(arguments["id"], qui(req), fiche)
+    if trouve is None:
+        raise _mcp.ErreurOutil(T("erreur.rendu_inconnu", lg))
+    conv, t, tour = trouve
+    if t is None or rendu_public(arguments["id"], conv, t, tour, "", lg)["etat"] in ETATS_FINAUX:
+        raise _mcp.ErreurOutil(T("erreur.rendu_termine", lg))
+    for _rang, autre, _x in _tirages(arguments["id"], conv):
+        if autre in TACHES and TACHES[autre].get("etat") not in ("fini", "erreur", "question"):
+            req.match_info["tid"] = autre
+            await api_file_annuler(req)
+    return await _resultat_mcp(req, fiche, arguments["id"])
+
+
+async def _outil_moteurs(arguments, ctx):
+    req, fiche = ctx["req"], ctx["fiche"]
+    liste = _moteurs_pour(fiche, langue_de(req))
+    texte_ = "\n".join(f"- {m['cle']} ({m['type']}{', distant' if m['distant'] else ''}"
+                       f"{'' if m['present'] else ', modele a telecharger'}) : "
+                       f"{m['titre']} — {m['pour']}" for m in liste)
+    return {"content": [_mcp.texte(texte_)], "structuredContent": {"moteurs": liste}}
+
+
+def outils_mcp():
+    _id = {"type": "string", "description": "L'identifiant rendu par generer_rendu."}
+    return [
+        _mcp.outil(
+            "generer_rendu", "Demander un rendu",
+            "Lance un rendu (image, video, musique, objet 3D, retouche, "
+            "agrandissement…) a partir d'une demande en langage naturel. Rend "
+            "le resultat s'il est pret dans le delai, sinon un identifiant a "
+            "suivre avec etat_rendu.",
+            {"type": "object", "additionalProperties": False,
+             "required": ["demande"],
+             "properties": {
+                 "demande": {"type": "string", "minLength": 1,
+                             "maxLength": DEMANDE_MAX,
+                             "description": "La demande, dans la langue de "
+                                            "l'utilisateur."},
+                 "moteur": {"type": "string",
+                            "description": "Une cle de lister_moteurs, pour "
+                                           "imposer un moteur (et donc "
+                                           "l'operation : agrandir, detourer…)."},
+                 "taille": {"type": "string", "enum": sorted(TAILLES)},
+                 "priorite": {"type": "string",
+                              "enum": [p for p in PRIORITES if p]},
+                 "image_base64": {"type": "string",
+                                  "description": "Une image a retoucher, "
+                                                 "agrandir, animer…, en base64 "
+                                                 "(ou URL data:)."},
+                 "image_type": {"type": "string", "enum": ["png", "jpeg", "jpg", "webp"]},
+                 "conversation": {"type": "string",
+                                  "description": "Pour enchainer sur un rendu "
+                                                 "precedent (« la meme en "
+                                                 "bleu »)."},
+                 "attendre": _SCHEMA_ATTENDRE}},
+            _outil_generer),
+        _mcp.outil(
+            "etat_rendu", "Suivre un rendu",
+            "Donne l'etat d'un rendu et ses fichiers ; attend sa fin au plus "
+            "« attendre » secondes.",
+            {"type": "object", "additionalProperties": False, "required": ["id"],
+             "properties": {"id": _id, "attendre": _SCHEMA_ATTENDRE}},
+            _outil_etat),
+        _mcp.outil(
+            "repondre_question", "Repondre au studio",
+            "Quand un rendu est dans l'etat « question », transmet la reponse "
+            "de l'utilisateur ; un nouveau rendu part.",
+            {"type": "object", "additionalProperties": False,
+             "required": ["id", "reponse"],
+             "properties": {"id": _id,
+                            "reponse": {"type": "string", "minLength": 1},
+                            "attendre": _SCHEMA_ATTENDRE}},
+            _outil_repondre),
+        _mcp.outil(
+            "annuler_rendu", "Annuler un rendu",
+            "Retire un rendu de la file, ou l'interrompt s'il calcule.",
+            {"type": "object", "additionalProperties": False, "required": ["id"],
+             "properties": {"id": _id}},
+            _outil_annuler),
+        _mcp.outil(
+            "lister_moteurs", "Lister les moteurs",
+            "Les moteurs que cette cle peut demander, avec ce qu'ils font.",
+            {"type": "object", "additionalProperties": False, "properties": {}},
+            _outil_moteurs),
+    ]
+
+
+async def api_mcp(req):
+    """Le transport « Streamable HTTP » de MCP, en sa forme la plus simple :
+    un message JSON-RPC par POST, une reponse JSON. Pas de flux SSE : aucun
+    outil d'ici n'a besoin de pousser quoi que ce soit au client en cours de
+    route, et un rendu long se suit par etat_rendu."""
+    lg = langue_de(req)
+    if req.method != "POST":
+        return web.json_response({"erreur": "POST seulement"}, status=405,
+                                 headers={"Allow": "POST"})
+    fiche = req.get("par_cle")
+    if not fiche:
+        return _sans_cle(lg)
+    entete = req.headers.get("MCP-Protocol-Version")
+    if not _mcp.version_acceptee(entete):
+        # LE CORPS DE CE 400 DECIDE DU REPLI. Un client recent essaie d'abord
+        # la revision 2026-07-28, que le studio ne parle pas ; il retombe sur
+        # « initialize » SEULEMENT si ce corps n'est pas une erreur moderne
+        # (voir mcp.refus_de_version). Une phrase a nous l'aurait laisse dehors.
+        return web.json_response(_mcp.refus_de_version(entete), status=400)
+    try:
+        message = await req.json()
+    except web.HTTPException:
+        raise
+    except Exception:
+        return web.json_response(_mcp.erreur(_mcp.CODE_ANALYSE, "Parse error"),
+                                 status=400)
+
+    def signaler(nom, exc):
+        # La trace reste ici : le client ne recoit qu'« l'outil a echoue », et
+        # sans cette ligne l'echec serait muet des deux cotes.
+        print(f"[studio] outil MCP {nom} : {type(exc).__name__}: {exc}", flush=True)
+
+    reponse = await _mcp.traiter(message, outils_mcp(),
+                                 {"req": req, "fiche": fiche},
+                                 version_logiciel=version_du_studio()[0],
+                                 instructions=INSTRUCTIONS_MCP,
+                                 signaler=signaler)
+    if reponse is None:
+        return web.Response(status=202)
+    return web.json_response(reponse)
+
+
+# ── la gestion des cles, par leur proprietaire ───────────────────────────
+
+async def api_mes_acces(req):
+    """Les cles de ce compte. Une session, jamais une cle : une cle qui
+    listerait les cles en ferait connaitre l'existence a qui l'a volee."""
+    lg = langue_de(req)
+    nom = req.get("compte")
+    if not nom or req.get("par_cle"):
+        return web.json_response({"erreur": T("erreur.connexion_requise", lg),
+                                  "connexion": True}, status=401)
+    gen = COMPTES.generation(nom)
+    cles = [dict(f, active=f.get("generation") == gen)
+            for f in (ACCES.liste(nom) if ACCES else [])]
+    return web.json_response({
+        "cles": cles, "mfa": bool(COMPTES.mfa_arme(nom)),
+        "bornes": {"cles": _acces.CLES_PAR_COMPTE, "nom": _acces.NOM_MAX,
+                   "hotes": _acces.HOTES_MAX, "en_file": _acces.EN_FILE_MAX,
+                   # Le plancher aussi : la page l'ecrivait en dur, et une borne
+                   # recopiee a la main derive le jour ou elle change ici.
+                   "en_file_min": 1,
+                   "en_file_defaut": _acces.EN_FILE_DEFAUT,
+                   "par_jour": _acces.PAR_JOUR_MAX}})
+
+
+async def api_creer_acces(req):
+    """Cree une cle. Le mot de passe ET le code, comme pour changer de mot de
+    passe : une cle contourne le second facteur pour toujours, elle ne doit
+    pas pouvoir naitre d'un onglet reste ouvert ni d'un mot de passe vole
+    seul. C'est la sixieme porte de _ouvrir_porte()."""
+    lg = langue_de(req)
+    nom = req.get("compte")
+    if not nom or req.get("par_cle"):
+        return web.json_response({"erreur": T("erreur.connexion_requise", lg),
+                                  "connexion": True}, status=401)
+    try:
+        d = await _json_objet(req)
+    except web.HTTPException:
+        raise
+    except Exception:
+        return web.json_response({"erreur": T("erreur.corps_illisible", lg)},
+                                 status=400)
+    _c, refus = _ouvrir_porte(req, nom, d.get("mdp"), d.get("code"), lg)
+    # « is not None » ET NON « if refus » : une web.Response est un
+    # MutableMapping, et avant aiohttp 3.12 sa longueur vaut 0 — un refus y
+    # est donc FAUX. Sur ces versions, que requirements.txt admet, un
+    # mot de passe faux laissait passer. Les cinq autres appelants de
+    # _ouvrir_porte l'ecrivaient deja ainsi. (Revue du 4 novembre 2026.)
+    if refus is not None:
+        return refus
+    if not ACCES:
+        # Le magasin n'est charge qu'au demarrage (charger_acces) : sans lui,
+        # ACCES.creer levait un AttributeError, donc un 500 sans phrase.
+        return web.json_response({"erreur": T("erreur.acces_illisible", lg),
+                                  "code": "acces_illisible"}, status=503)
+    hotes = d.get("hotes")
+    if hotes is None:
+        hotes = []
+    try:
+        res = ACCES.creer(nom, d.get("nom"), COMPTES.generation(nom),
+                          nuage=d.get("nuage") is True, hotes=hotes,
+                          en_file=d.get("en_file", _acces.EN_FILE_DEFAUT),
+                          par_jour=d.get("par_jour", 0))
+    except _acces.ErreurAcces as e:
+        # La phrase du dictionnaire quand acces.py en nomme une ; sa phrase
+        # francaise sinon (un refus qui ne vient pas d'une saisie).
+        message = (T(e.cle, lg, **e.valeurs) if e.cle in traductions.TEXTES
+                   else str(e))
+        return web.json_response(
+            {"erreur": message,
+             "code": e.cle.split(".", 1)[1] if e.cle else "acces_refuse"},
+            status=400)
+    print(f"[studio] cle d'acces {res['fiche']['id']} creee pour {nom}", flush=True)
+    # no-store : la reponse porte la cle en clair, une seule fois. Elle ne
+    # doit rester dans aucun cache.
+    return web.json_response(res, status=201,
+                             headers={"Cache-Control": "no-store"})
+
+
+async def api_revoquer_acces(req):
+    """Revoquer ne demande que la session : fermer une porte n'a jamais besoin
+    d'etre aussi difficile que de l'ouvrir — et c'est ce qu'on fait quand on
+    croit une cle fuitee, souvent sans le mot de passe sous la main."""
+    lg = langue_de(req)
+    nom = req.get("compte")
+    if not nom or req.get("par_cle"):
+        return web.json_response({"erreur": T("erreur.connexion_requise", lg),
+                                  "connexion": True}, status=401)
+    ident = req.match_info["ident"]
+    if not (ACCES and ACCES.revoquer(ident, compte=nom)):
+        return web.json_response({"erreur": T("erreur.cle_inconnue", lg)},
+                                 status=404)
+    print(f"[studio] cle d'acces {ident} revoquee par {nom}", flush=True)
+    return web.json_response({"revoquee": ident})
+
+
+async def api_admin_acces(req):
+    if not admin_ok(req):
+        return web.json_response({"erreur": "jeton invalide"}, status=403)
+    gens = {}
+    cles = []
+    for f in (ACCES.liste() if ACCES else []):
+        if f["compte"] not in gens:
+            gens[f["compte"]] = COMPTES.generation(f["compte"]) if COMPTES else None
+        cles.append(dict(f, active=f.get("generation") == gens[f["compte"]],
+                         en_cours=_en_cours_de_cle(f["id"])))
+    return web.json_response({"cles": cles})
+
+
+async def api_admin_acces_revoquer(req):
+    if not admin_ok(req):
+        return web.json_response({"erreur": "jeton invalide"}, status=403)
+    ident = req.match_info["ident"]
+    if not (ACCES and ACCES.revoquer(ident)):
+        return web.json_response({"erreur": "cle inconnue"}, status=404)
+    print(f"[studio] cle d'acces {ident} revoquee depuis /admin", flush=True)
+    return web.json_response({"revoquee": ident})
+
 
 def app():
     a = web.Application(client_max_size=CORPS_MAX,
@@ -15423,6 +17103,23 @@ def app():
     a.router.add_delete("/api/admin/comptes/{nom}/mfa", api_admin_mfa_retirer)
     a.router.add_get("/api/nuage", api_nuage)
     a.router.add_post("/api/nuage", api_nuage)
+    # Le pilotage par programme : voir le bloc du meme nom.
+    a.router.add_post("/api/v1/rendus", api_v1_rendre)
+    a.router.add_get("/api/v1/rendus/{tid}", api_v1_rendu)
+    a.router.add_delete("/api/v1/rendus/{tid}", api_v1_annuler)
+    a.router.add_post("/api/v1/rendus/{tid}/reponse", api_v1_repondre)
+    a.router.add_get("/api/v1/rendus/{tid}/fichiers/{rang}", api_v1_fichier)
+    a.router.add_post("/api/v1/fichiers", api_v1_televerser)
+    a.router.add_get("/api/v1/moteurs", api_v1_moteurs)
+    a.router.add_get("/api/v1/moi", api_v1_moi)
+    a.router.add_get("/api/v1/lien/{jeton}", api_v1_lien)
+    a.router.add_get("/api/v1/openapi.json", api_v1_contrat)
+    a.router.add_route("*", CHEMIN_MCP, api_mcp)
+    a.router.add_get("/api/compte/acces", api_mes_acces)
+    a.router.add_post("/api/compte/acces", api_creer_acces)
+    a.router.add_delete("/api/compte/acces/{ident}", api_revoquer_acces)
+    a.router.add_get("/api/admin/acces", api_admin_acces)
+    a.router.add_delete("/api/admin/acces/{ident}", api_admin_acces_revoquer)
     a.on_startup.append(demarrer_file)
     a.on_cleanup.append(arreter_file)
     return a
@@ -15434,6 +17131,7 @@ if __name__ == "__main__":
     charger_parc()
     charger_reglages()
     charger_comptes()
+    charger_acces()
     charger_cles()
     charger_nuage()
     charger_compteur()

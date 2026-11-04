@@ -168,6 +168,7 @@ td .detail{display:block;max-width:34ch}
       <button type="button" role="tab" id="o-cles" data-volet="cles" aria-controls="v-cles">clés d'API</button>
       <button type="button" role="tab" id="o-couts" data-volet="couts" aria-controls="v-couts">coût du nuage</button>
       <button type="button" role="tab" id="o-comptes" data-volet="comptes" aria-controls="v-comptes">comptes</button>
+      <button type="button" role="tab" id="o-acces" data-volet="acces" aria-controls="v-acces">clés d'accès</button>
       <button type="button" role="tab" id="o-aiguilleur" data-volet="aiguilleur" aria-controls="v-aiguilleur">aiguilleur</button>
     </nav>
     <section class="volet" id="v-machines" role="tabpanel" aria-labelledby="o-machines">
@@ -337,6 +338,27 @@ td .detail{display:block;max-width:34ch}
         <button id="creerCompte">créer</button>
       </div>
       <div class="alerte" id="alerteComptes"></div>
+    </div>
+
+    </section>
+    <section class="volet" id="v-acces" role="tabpanel" aria-labelledby="o-acces">
+    <div class="carte">
+      <h2 style="margin-top:0">clés d'accès</h2>
+      <p class="aide">Une clé d'accès laisse un programme — un workflow n8n,
+        un assistant IA par MCP — demander des rendus au nom d'un compte, sans
+        navigateur. Elle ne vaut que sur <code>/api/v1/</code> et
+        <code>/mcp</code>, jamais pour administrer.</p>
+      <p class="aide">D'ici, on peut <b>révoquer</b> une clé, pas en créer :
+        la création exige le mot de passe ET le second facteur de son
+        propriétaire, depuis son propre compte (bouton « clés d'accès » en
+        haut du studio). Une clé <b>éteinte</b> l'a été par un changement de
+        mot de passe ou de second facteur de son compte : elle ne vaut plus
+        rien, et son propriétaire doit en créer une autre.</p>
+      <div class="tableau"><table>
+        <thead><tr><th>compte</th><th>nom</th><th>aperçu</th><th>créée</th><th>vue</th><th>nuage</th><th>hôtes de rappel</th><th>en cours</th><th>état</th><th></th></tr></thead>
+        <tbody id="listeAcces"></tbody>
+      </table></div>
+      <div class="alerte" id="alerteAcces"></div>
     </div>
 
     </section>
@@ -757,6 +779,54 @@ async function rafraichirComptes() {
 }
 
 
+/* Les cles d'acces des programmes. La console revoque et ne cree pas : une
+   cle nee ici contournerait le mot de passe et le second facteur de son
+   proprietaire, ce que la route de creation exige justement tous les deux.
+   Ni la cle ni le secret de rappel ne reviennent jamais du serveur — seul
+   l'apercu « cs_xxxxxxxx_… », qui ne dit rien du secret. */
+const dateCourte = s => s ? new Date(s * 1000).toLocaleString("fr-FR",
+  { day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit" }) : "—";
+
+async function rafraichirAcces() {
+  const { ok, d } = await api("/api/admin/acces");
+  if (!ok || !d) return;
+  const corps = $("#listeAcces");
+  corps.innerHTML = "";
+  if (!d.cles.length) {
+    corps.innerHTML = '<tr><td colspan="10" class="detail">aucune clé '
+      + 'd’accès — aucun programme ne peut demander de rendu</td></tr>';
+  }
+  for (const c of d.cles) {
+    const tr = document.createElement("tr");
+    const vue = c.vu == null ? null
+      : Math.max(0, Math.round(Date.now() / 1000 - c.vu));
+    tr.innerHTML = `
+      <td><b>${ech(c.compte)}</b></td>
+      <td>${ech(c.nom)}</td>
+      <td class="detail"><code>${ech(c.apercu)}</code></td>
+      <td class="detail">${ech(dateCourte(c.cree))}</td>
+      <td class="detail">${ech(delai(vue))}</td>
+      <td class="detail">${c.nuage ? "autorisé" : "non"}</td>
+      <td class="detail">${(c.hotes || []).map(ech).join("<br>") || "—"}</td>
+      <td class="detail">${ech(c.en_cours)} / ${ech(c.en_file)}</td>
+      <td class="detail">${c.active ? "active"
+        : '<span title="le mot de passe ou le second facteur du compte a changé depuis sa création">éteinte</span>'}</td>
+      <td><button data-revoquer>révoquer</button></td>`;
+    corps.appendChild(tr);
+    tr.querySelector("[data-revoquer]").onclick = async () => {
+      if (!confirm(`Révoquer la clé « ${c.nom} » de ${c.compte} ?\n\n`
+                 + `Le programme qui s'en sert sera refusé dès sa prochaine `
+                 + `demande, et seul ${c.compte} pourra en créer une autre.`)) return;
+      $("#alerteAcces").textContent = "";
+      const r = await api("/api/admin/acces/" + encodeURIComponent(c.id), "DELETE");
+      if (!r.ok) { $("#alerteAcces").textContent = (r.d && r.d.erreur) || "refusé"; return; }
+      rafraichirAcces();
+    };
+  }
+}
+
+
 /* L'aiguilleur : etat, et reentrainement a la demande. Sans la mesure affichee
    a cote, on ne saurait pas si un reentrainement a ameliore ou abime. */
 async function rafraichirAiguilleur(rendu) {
@@ -1094,7 +1164,7 @@ document.querySelector("#entrainerAig").onclick = async e => {
 (async () => {
   const r = await api("/api/admin/noeuds");
   if (r.statut === 403) { montrerEntree(); }
-  else { $("#console").style.display = ""; rafraichir(); rafraichirAvis(); rafraichirCles(); rafraichirComptes(); rafraichirAiguilleur(); rafraichirCouts(); }
+  else { $("#console").style.display = ""; rafraichir(); rafraichirAvis(); rafraichirCles(); rafraichirComptes(); rafraichirAcces(); rafraichirAiguilleur(); rafraichirCouts(); }
   setInterval(() => { if ($("#console").style.display !== "none") rafraichir(); }, 5000);
 })();
 

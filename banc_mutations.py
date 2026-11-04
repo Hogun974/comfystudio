@@ -477,6 +477,18 @@ BESOINS = {
     # chiffre ouvrait la porte 27 fois sur 100, le banc rendait 41/0, et deux de
     # ses cas passaient PAR CHANCE au-dessus du trou.
     "banc_mfa.py": ["banc_mfa.py", "mfa.py"],
+    # Les trois pieces du pilotage par programme sont pures : chacune ne lit
+    # que son module. banc_rappels.py lance un vrai petit serveur aiohttp sur
+    # 127.0.0.1, mais n'ouvre aucun fichier du depot de plus.
+    "banc_acces.py": ["banc_acces.py", "acces.py"],
+    "banc_rappels.py": ["banc_rappels.py", "rappels.py"],
+    "banc_mcp.py": ["banc_mcp.py", "mcp.py"],
+    # Il importe serveur.py pour comparer le routeur au contrat : tout ce que
+    # serveur.py tire derriere lui, plus contrat.py qu'il compare.
+    "banc_contrat.py": ["banc_contrat.py", "contrat.py"] + fichiers_du_conteneur(),
+    # Il importe serveur.py et rien d'autre du depot : tout ce que serveur.py
+    # tire derriere lui (acces, rappels, mcp, contrat, comptes, traductions…).
+    "banc_pilotage.py": ["banc_pilotage.py"] + fichiers_du_conteneur(),
     # agent_noeud.py N'ETAIT COPIE PAR AUCUN BANC, et c'est ce qui rendait
     # PERIMEES les deux mutations qui le visaient — « MUTATION PERIMEE,
     # agent_noeud.py n'est pas copie pour banc_repartition.py ». Aucune de ses
@@ -7301,9 +7313,14 @@ FICHIERS = [
                "ecrit sur le disque d'un studio a connexion obligatoire",
          rougit="sont fermes a un visiteur sans compte",
          editions=[("serveur.py",
-                    brut('             or chemin.startswith("/api/noeud/"))',
-                    '             or chemin.startswith("/api/noeud/")\n'
-                    '             or chemin == "/api/televerser")'))]),
+                    # L'ancre suit la liste depuis le 4 novembre 2026 : elle se
+                    # fermait sur « /api/noeud/ », elle continue aujourd'hui sur
+                    # les routes de programme, qui se gardent elles-memes.
+                    brut('             or chemin.startswith("/api/noeud/")\n'
+                         '             # Les routes de programme',
+                         '             or chemin.startswith("/api/noeud/")\n'
+                         '             or chemin == "/api/televerser"\n'
+                         '             # Les routes de programme'))]),
 
     dict(nom="le service des scripts se ferme aux machines neuves",
          banc="banc_fichiers.py",
@@ -7312,8 +7329,8 @@ FICHIERS = [
          rougit="reste OUVERT sans compte",
          editions=[("serveur.py",
                     brut('             or chemin == "/demarrage" or chemin == "/api/demarrage"\n'
-                         '             or chemin.startswith("/api/noeud/"))',
-                         '             or chemin == "/demarrage" or chemin == "/api/demarrage")'))]),
+                         '             or chemin.startswith("/api/noeud/")\n',
+                         '             or chemin == "/demarrage" or chemin == "/api/demarrage"\n'))]),
 ]
 
 
@@ -10332,13 +10349,1393 @@ SECURITE_SEPT = [
 ]
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  Le pilotage par programme, en trois modules : acces.py (les cles
+#  d'acces), rappels.py (les rappels signes), mcp.py (le protocole des
+#  assistants IA). Chaque piece a ete ecrite avec son banc ET ses
+#  mutations, prouvees rouges sur leur ligne nommee le 4 novembre 2026 —
+#  le banc vert sur le code propre. La garde la plus chere de chacune :
+#    - une cle gardee en clair, ou qui survit au changement de mot de passe ;
+#    - un rappel qui sort de la liste des hotes declares (requete forgee
+#      cote serveur, sur un reseau de maison) ou qui suit une redirection ;
+#    - une exception d'outil qui part a l'assistant, avec un chemin du NAS.
+# ══════════════════════════════════════════════════════════════════════
+CLES_ACCES = [
+    dict(
+        nom="la cle d'acces est gardee en clair au lieu de son empreinte",
+        banc="banc_acces.py",
+        imite="Le raccourci de qui veut « pouvoir la remontrer plus tard » : le "
+              "fichier sauvegarde ou copie donne alors toutes les cles de tous "
+              "les comptes.",
+        rougit="la cle en clair n'est jamais sur disque",
+        editions=[("acces.py", brut(
+            '"empreinte": empreinte_de(cle), "secret_rappel": secret,',
+            '"empreinte": cle, "secret_rappel": secret,'))]),
+    dict(
+        nom="une cle survit au changement de mot de passe",
+        banc="banc_acces.py",
+        imite="On ne garde que le cas « compte supprime » en oubliant que la "
+              "generation avance : une cle fabriquee avec un mot de passe vole "
+              "survit au changement que le proprietaire fait pour chasser le "
+              "voleur.",
+        rougit="generation changee (mot de passe, second facteur) : la cle ne passe plus",
+        editions=[("acces.py", brut(
+            'if not isinstance(gen, int) or gen != fiche["generation"]:',
+            'if gen is None:'))]),
+    dict(
+        nom="la cle d'un compte supprime passe encore",
+        banc="banc_acces.py",
+        imite="La comparaison ecrite « s'il y a une generation et qu'elle "
+              "differe » : None n'est pas un entier, donc rien ne differe, et "
+              "le compte disparu garde ses programmes branches.",
+        rougit="compte disparu (generation None) : la cle ne passe plus",
+        editions=[("acces.py", brut(
+            'if not isinstance(gen, int) or gen != fiche["generation"]:',
+            'if isinstance(gen, int) and gen != fiche["generation"]:'))]),
+    dict(
+        nom="un identifiant inconnu est refuse avant toute empreinte",
+        banc="banc_acces.py",
+        imite="L'optimisation evidente « pas de fiche, pas la peine de "
+              "calculer » : au chronometre, on apprend quels identifiants "
+              "existent.",
+        rougit="un identifiant inconnu coute une empreinte comme un secret faux",
+        editions=[("acces.py", brut(
+            "        fiche = self.fiches.get(ident)\n"
+            "        # L'EMPREINTE EST CALCULEE",
+            "        fiche = self.fiches.get(ident)\n"
+            "        if fiche is None:\n"
+            "            return None\n"
+            "        # L'EMPREINTE EST CALCULEE"))]),
+    dict(
+        nom="reconnaitre rend la fiche interne, empreinte et secret compris",
+        banc="banc_acces.py",
+        imite="Rendre la fiche telle qu'elle est stockee, pour gagner une "
+              "copie : la premiere route qui la serialise publie le secret de "
+              "rappel.",
+        rougit="reconnaitre rend une fiche publique sans empreinte ni secret",
+        editions=[("acces.py", brut(
+            "        return self.publique(fiche)\n\n    def publique(",
+            "        return fiche\n\n    def publique("))]),
+    dict(
+        nom="la fiche publique retire l'empreinte et garde le reste",
+        banc="banc_acces.py",
+        imite="Une liste noire au lieu d'une liste blanche : on pense au champ "
+              "secret le plus visible et l'on oublie le second.",
+        rougit="le secret de rappel n'est jamais dans une fiche publique ni dans liste()",
+        editions=[("acces.py", brut(
+            "        return {\n"
+            '            "id": fiche["id"], "compte": fiche["compte"],',
+            '        return {k: v for k, v in fiche.items() if k != "empreinte"} or {\n'
+            '            "id": fiche["id"], "compte": fiche["compte"],'))]),
+    dict(
+        nom="revoquer coupe la cle d'un autre compte",
+        banc="banc_acces.py",
+        imite="Le filtre de proprietaire oublie : l'identifiant public, "
+              "affiche dans l'apercu et les journaux, suffit a couper le "
+              "programme d'un autre.",
+        rougit="revoquer avec un autre compte ne touche pas la cle d'un autre",
+        editions=[("acces.py", brut(
+            '        if compte is not None and f["compte"] != str(compte).strip().lower():\n'
+            "            return False\n",
+            ""))]),
+    dict(
+        nom="revoquer_compte oublie les minuscules",
+        banc="banc_acces.py",
+        imite="comptes.py passe le nom tel que l'humain l'a tape ; sans "
+              "normalisation, supprimer « Sacha » laisse vivre les cles de "
+              "« sacha ».",
+        rougit="revoquer_compte tue toutes les cles du compte",
+        editions=[("acces.py", brut(
+            '        c = (compte if isinstance(compte, str) else "").strip().lower()\n'
+            "        mortes",
+            '        c = (compte if isinstance(compte, str) else "").strip()\n'
+            "        mortes"))]),
+    dict(
+        nom="creer garde le compte tel qu'il est tape",
+        banc="banc_acces.py",
+        imite="Le meme oubli a l'entree : « Camille » et « camille » ont deux "
+              "listes de cles, et la revocation du compte n'en vide qu'une.",
+        rougit="le compte est garde en minuscules, comme comptes.py l'indexe",
+        editions=[("acces.py", brut(
+            '        compte = (compte if isinstance(compte, str) else "").strip().lower()',
+            '        compte = (compte if isinstance(compte, str) else "").strip()'))]),
+    dict(
+        nom="un fichier illisible est traite comme un fichier vide",
+        banc="banc_acces.py",
+        imite="Le modele de comptes.py recopie tel quel (« illisibles — aucun "
+              "compte charge ») : le premier creer() reecrit le fichier vide et "
+              "tue les cles de tout le monde.",
+        rougit="JSON tronque : creer() refuse",
+        editions=[("acces.py", brut(
+            "            self.illisible = True\n",
+            "            self.illisible = False\n"))]),
+    dict(
+        nom="sauver ecrit par-dessus un fichier illisible",
+        banc="banc_acces.py",
+        imite="La garde deplacee dans creer() « parce que c'est la qu'on "
+              "ecrit » : la prochaine methode qui sauve, ou serveur.py qui "
+              "appelle sauver() directement, ecrase le fichier.",
+        rougit="sauver() lui-meme refuse",
+        editions=[("acces.py", brut(
+            "        if self.illisible:\n"
+            '            raise ErreurAcces("le fichier des cles',
+            "        if False:\n"
+            '            raise ErreurAcces("le fichier des cles'))]),
+    dict(
+        nom="la date de dernier usage est ecrite a chaque requete",
+        banc="banc_acces.py",
+        imite="Le plus simple a ecrire : un n8n qui interroge chaque seconde "
+              "reecrit alors le fichier chaque seconde, sur le disque d'un NAS.",
+        rougit="vu ecrit au plus une fois par 600 s",
+        editions=[("acces.py", brut(
+            ">= VU_ECRIT_TOUTES:",
+            ">= 0:"))]),
+    dict(
+        nom="la vingt-et-unieme cle d'un compte passe",
+        banc="banc_acces.py",
+        imite="Le decalage d'un a la frontiere : « plus que vingt » au lieu "
+              "de « vingt deja ».",
+        rougit="la 21e cle d'un compte est refusee",
+        editions=[("acces.py", brut(
+            ">= CLES_PAR_COMPTE:",
+            "> CLES_PAR_COMPTE:"))]),
+    dict(
+        nom="le magasin s'ecrit en place, sans .tmp",
+        banc="banc_acces.py",
+        imite="Le .tmp retire « puisque ca marche pareil » : un studio coupe "
+              "au milieu de l'ecriture laisse un fichier tronque, donc "
+              "illisible, donc toutes les cles mortes au redemarrage.",
+        rougit="l'ecriture passe par un .tmp remplace d'un coup",
+        editions=[("acces.py", brut(
+            '        tmp = self.chemin + ".tmp"',
+            "        tmp = self.chemin"))]),
+    dict(
+        nom="la signature d'un lien ne couvre pas le rang",
+        banc="banc_acces.py",
+        imite="Un champ ajoute au jeton apres coup sans etre ajoute a la "
+              "charge signee : le lien d'une image ouvre toutes les autres du "
+              "rendu.",
+        rougit="lien refuse : rang altere",
+        editions=[("acces.py", brut(
+            'charge = f"lien|{ident}|{tid}|{rang}|{fin}"',
+            'charge = f"lien|{ident}|{tid}|{fin}"'))]),
+    dict(
+        nom="un lien signe n'expire jamais",
+        banc="banc_acces.py",
+        imite="La date est dans le jeton et dans la signature, mais personne "
+              "ne la compare : un lien colle dans une conversation vaut pour "
+              "toujours.",
+        rougit="un lien expire ne passe plus",
+        editions=[("acces.py", brut(
+            "    if quand > int(fin):\n        return None\n",
+            ""))]),
+    dict(
+        nom="la grammaire des hotes accepte tout sauf le point et le deux-points",
+        banc="banc_acces.py",
+        imite="Une grammaire « permissive » ecrite par exclusion : "
+              "« user@hote », « hote/chemin » et les espaces passent, et la "
+              "liste declaree ne se compare plus a l'hote d'une URL.",
+        rougit="hote refuse : identifiants",
+        editions=[("acces.py", brut(
+            'r"([a-z0-9_-]{1,63}(?:\\.[a-z0-9_-]{1,63})*)(?::([0-9]{1,5}))?")',
+            'r"([^.:]{1,63}(?:\\.[^.:]{1,63})*)(?::([0-9]{1,5}))?")'))]),
+    dict(
+        nom="un hote non ASCII passe par lower()",
+        banc="banc_acces.py",
+        imite="Les minuscules avant le controle d'alphabet : le signe kelvin "
+              "devient un « k » ASCII, et l'hote garde n'est plus celui que "
+              "l'humain a ecrit.",
+        rougit="hote refuse : non-ASCII",
+        editions=[("acces.py", brut(
+            "    if not texte.isascii():\n        return None\n",
+            ""))]),
+    dict(
+        nom="le port d'un hote n'a pas de plafond",
+        banc="banc_acces.py",
+        imite="Cinq chiffres dans l'expression reguliere passent pour une "
+              "borne ; 65536 a cinq chiffres.",
+        rougit="hote refuse : port hors bornes",
+        editions=[("acces.py", brut(
+            "if not 1 <= int(port) <= 65535:",
+            "if not 1 <= int(port):"))]),
+    dict(
+        nom="identifiant_de accepte un secret raccourci",
+        banc="banc_acces.py",
+        imite="Une forme « au moins quarante » au lieu d'exactement "
+              "quarante-trois : une cle tronquee au copier-coller est "
+              "cherchee comme une vraie, et la forme ne prouve plus 256 bits.",
+        rougit="identifiant_de refuse une forme inexacte",
+        editions=[("acces.py", brut(
+            "_([A-Za-z0-9_-]{43})",
+            "_([A-Za-z0-9_-]{40,43})"))]),
+]
+
+
+RAPPELS = [
+    # ── rappels.py : la liste des hotes, la signature, la livraison ──────
+    # banc_rappels.py imprime « NON » : rien a ajouter a MARQUE_ROUGE.
+    # BESOINS : "banc_rappels.py": ["banc_rappels.py", "rappels.py"]
+    dict(
+        nom="une liste d'hotes vide laisse tout passer",
+        banc="banc_rappels.py",
+        imite="« pas de liste, pas de restriction » est le reflexe de qui "
+              "ajoute la liste apres coup et ne veut rien casser : toute cle "
+              "creee sans hotes fait alors POSTer le studio n'importe ou.",
+        rougit="liste vide -> hote : pas de liste, aucune URL",
+        editions=[("rappels.py", brut(
+            "    for entree in hotes or ():",
+            "    if not hotes:" + chr(10) + "        return None" + chr(10)
+            + "    for entree in hotes or ():"))]),
+    dict(
+        nom="les identifiants user:mdp@ ne sont plus refuses",
+        banc="banc_rappels.py",
+        imite="on lit l'hote par .hostname, qui est juste, et l'on croit le "
+              "refus des identifiants redondant : le mot de passe d'une URL "
+              "part alors vers l'hote et dans les journaux du studio.",
+        rougit="'http://user:mdp@n8n.local/' -> identifiants",
+        editions=[("rappels.py", brut(
+            'return "identifiants"',
+            "pass"))]),
+    dict(
+        nom="tout schema est accepte",
+        banc="banc_rappels.py",
+        imite="le controle du schema saute quand on « simplifie » vers le "
+              "seul controle de l'hote ; ftp:// ou gopher:// vers un hote "
+              "autorise font alors faire au client autre chose qu'un POST.",
+        rougit="'ftp://n8n.local/x' -> schema",
+        editions=[("rappels.py", brut(
+            'return "schema"',
+            "pass"))]),
+    dict(
+        nom="une entree hote:port vaut pour tous les ports",
+        banc="banc_rappels.py",
+        imite="comparer l'hote seul est l'ecriture la plus courte ; le "
+              "proprietaire qui a declare UN service (n8n sur 5678) ouvre "
+              "alors toute la machine, console d'administration comprise.",
+        rougit="'http://192.168.1.20:5679/webhook' -> hote",
+        editions=[("rappels.py", brut(
+            "if h == hote and (p == port if p is not None else port == defaut):",
+            "if h == hote:"))]),
+    dict(
+        nom="le port par defaut ignore le schema",
+        banc="banc_rappels.py",
+        imite="« pas de port, c'est 80 » est vrai de http seulement ; une URL "
+              "https sans port est alors refusee contre une entree :443, et "
+              "le proprietaire elargit la liste pour la faire passer.",
+        rougit="'https://studio.exemple.org/rappel' -> autorisee",
+        editions=[("rappels.py", brut(
+            'port = 443 if schema == "https" else 80',
+            "port = 80"))]),
+    dict(
+        nom="l'hote autorise est compare comme un prefixe",
+        banc="banc_rappels.py",
+        imite="startswith() ressemble a une facon d'admettre les sous-chemins "
+              "ou les sous-domaines ; « n8n.local.evil.example » passe alors, "
+              "et c'est un hote que n'importe qui peut enregistrer.",
+        rougit="'http://n8n.local.evil.example/x' -> hote",
+        editions=[("rappels.py", brut(
+            "if h == hote and (p == port if p is not None else port == defaut):",
+            "if hote.startswith(h) and (p == port if p is not None else port == defaut):"))]),
+    dict(
+        nom="les caracteres ambigus ne sont plus refuses",
+        banc="banc_rappels.py",
+        imite="la barre inverse et l'espace semblent relever du client HTTP, "
+              "pas de la liste ; or urlsplit et yarl ne les decoupent pas "
+              "pareil, et l'hote verifie n'est plus l'hote contacte.",
+        rougit="-> illisible (un espace dans l'URL)",
+        editions=[("rappels.py", brut(
+            "    if not isinstance(url, str) or not url or any(c in _AMBIGUS for c in url):",
+            "    if not isinstance(url, str) or not url:"))]),
+    dict(
+        nom="la tolerance ne vaut que dans le passe",
+        banc="banc_rappels.py",
+        imite="« trop vieux » est le seul cas auquel on pense ; un corps signe "
+              "en avance, ou par une horloge folle, se rejoue alors pendant "
+              "toute la duree de l'avance.",
+        rougit="horodatage trop dans le futur -> refuse",
+        editions=[("rappels.py", brut(
+            "if abs(quand - t) > tolerance:",
+            "if quand - t > tolerance:"))]),
+    dict(
+        nom="seul le premier v1= est compare",
+        banc="banc_rappels.py",
+        imite="lire l'en-tete comme un dict garde un seul v1= ; pendant une "
+              "rotation de secret, la moitie des rappels sont refuses.",
+        rougit="deux v1= dont le second est bon (rotation de secret) -> accepte",
+        editions=[("rappels.py", brut(
+            "        for v in empreintes:",
+            "        for v in empreintes[:1]:"))]),
+    dict(
+        nom="signature_valide leve sur un en-tete hostile",
+        banc="banc_rappels.py",
+        imite="le try englobant ressemble a du bruit et saute a la relecture ; "
+              "un appel hostile devient un 500 chez le recepteur, que le "
+              "studio re-essaie quatre fois.",
+        rougit="un secret None -> faux, sans lever",
+        editions=[("rappels.py", brut(
+            "    except Exception:" + chr(10) + "        return False",
+            "    except ZeroDivisionError:" + chr(10) + "        return False"))]),
+    dict(
+        nom="l'horodatage n'est plus dans ce qui est signe",
+        banc="banc_rappels.py",
+        imite="signer le corps seul est l'ecriture naive d'un webhook, et "
+              "l'aller-retour reste vert ; mais changer « t= » suffit alors a "
+              "rajeunir un corps vole, et aucun recepteur au format ne valide.",
+        rougit="la signature est hmac-sha256",
+        editions=[("rappels.py", brut(
+            'f"{horodatage}.".encode("ascii") + corps',
+            "corps"))]),
+    dict(
+        nom="le corps n'est plus trie",
+        banc="banc_rappels.py",
+        imite="sort_keys semble cosmetique ; sans lui, deux constructions du "
+              "meme evenement donnent deux corps, et un recepteur ou un banc "
+              "qui recalcule tombe a cote.",
+        rougit="meme evenement, cles dans un autre ordre -> memes octets",
+        editions=[("rappels.py", brut(
+            "sort_keys=True).encode",
+            "sort_keys=False).encode"))]),
+    dict(
+        nom="le corps echappe les accents",
+        banc="banc_rappels.py",
+        imite="ensure_ascii=True est le defaut de json.dumps : il suffit "
+              "d'oublier l'argument pour que l'historique de n8n montre des "
+              "\\u00e9 au lieu des invites.",
+        rougit="reste un é en octets UTF-8",
+        editions=[("rappels.py", brut(
+            "ensure_ascii=False, separators",
+            "ensure_ascii=True, separators"))]),
+    dict(
+        nom="les redirections sont suivies",
+        banc="banc_rappels.py",
+        imite="allow_redirects=True est le defaut d'aiohttp : l'oublier fait "
+              "sortir la requete de la liste vers une cible que personne n'a "
+              "declaree.",
+        rougit="aucune requete n'a atteint la cible des redirections",
+        editions=[("rappels.py", brut(
+            "allow_redirects=False,",
+            "allow_redirects=True,"))]),
+    dict(
+        nom="429 n'est plus re-essaye",
+        banc="banc_rappels.py",
+        imite="« tout 4xx est un refus » est la regle qu'on retient ; 429 est "
+              "pourtant le recepteur qui demande d'attendre, et le rappel se "
+              "perd au premier pic de n8n.",
+        rougit="429 -> re-essai",
+        editions=[("rappels.py", brut(
+            "_PASSAGERS = (408, 425, 429)",
+            "_PASSAGERS = (408, 425)"))]),
+    dict(
+        nom="tout 4xx est re-essaye",
+        banc="banc_rappels.py",
+        imite="« >= 400, on re-essaie » est l'ecriture la plus courte ; un "
+              "recepteur qui refuse la signature recoit alors quatre fois le "
+              "meme rappel, et les journaux s'emplissent de 401.",
+        rougit="404 -> arret apres un essai",
+        editions=[("rappels.py", brut(
+            "    if statut >= 500:",
+            "    if statut >= 400:"))]),
+    dict(
+        nom="l'horodatage est fige au premier essai",
+        banc="banc_rappels.py",
+        imite="calculer les en-tetes une fois avant la boucle est l'evidence "
+              "de qui factorise ; le quatrieme essai part alors avec un "
+              "horodatage de deux minutes et demie, au bord de la tolerance.",
+        rougit="chaque essai signe avec l'heure de l'essai",
+        editions=[("rappels.py", brut(
+            "        attente_max = aiohttp.ClientTimeout(total=delai)",
+            "        attente_max = aiohttp.ClientTimeout(total=delai)" + chr(10)
+            + "        t0 = int(horloge())")),
+                  ("rappels.py", brut(
+            "signature(secret, int(horloge()), corps)",
+            "signature(secret, t0, corps)"))]),
+    dict(
+        nom="le delai de reponse n'est plus applique",
+        banc="banc_rappels.py",
+        imite="le timeout de la session par defaut est de cinq minutes : un "
+              "recepteur qui ne repond pas immobilise le rappel bien plus "
+              "longtemps que DELAI_REPONSE ne le promet.",
+        rougit="serveur muet plus longtemps que le delai",
+        editions=[("rappels.py", brut(
+            "        attente_max = aiohttp.ClientTimeout(total=delai)",
+            "        attente_max = aiohttp.ClientTimeout(total=None)"))]),
+    dict(
+        nom="l'annulation est avalee pendant la requete",
+        banc="banc_rappels.py",
+        imite="« except BaseException » pour que livrer() ne leve vraiment "
+              "jamais : un arret du studio pendant un rappel est alors pris "
+              "pour une coupure reseau, et l'arret attend les essais.",
+        rougit="annule pendant la requete -> CancelledError remonte",
+        editions=[("rappels.py", brut(
+            "            except asyncio.CancelledError:" + chr(10)
+            + "                raise" + chr(10)
+            + "            except asyncio.TimeoutError:",
+            "            except asyncio.TimeoutError:")),
+                  ("rappels.py", brut(
+            "            except Exception:" + chr(10)
+            + '                rendu["statut"], rendu["raison"] = None, "injoignable"',
+            "            except BaseException:" + chr(10)
+            + '                rendu["statut"], rendu["raison"] = None, "injoignable"'))]),
+    dict(
+        nom="l'annulation est avalee pendant l'attente",
+        banc="banc_rappels.py",
+        imite="le meme « except BaseException » sur le filet exterieur : "
+              "l'arret du studio tombe dans les deux minutes d'attente du "
+              "quatrieme essai, et il est rendu comme une erreur interne.",
+        rougit="annule pendant l'attente entre deux essais -> CancelledError remonte",
+        editions=[("rappels.py", brut(
+            "    except asyncio.CancelledError:" + chr(10)
+            + "        raise" + chr(10)
+            + "    except Exception:" + chr(10)
+            + "        # Un dormir()",
+            "    except BaseException:" + chr(10)
+            + "        # Un dormir()"))]),
+    dict(
+        nom="une coupure reseau fait lever livrer()",
+        banc="banc_rappels.py",
+        imite="n'attraper que les erreurs d'aiohttp semble plus propre ; une "
+              "ConnectionResetError nue traverse alors la boucle d'essais et "
+              "le rappel s'arrete au premier.",
+        rougit="connexion coupee -> re-essais aux attentes DELAIS",
+        editions=[("rappels.py", brut(
+            "            except Exception:" + chr(10)
+            + '                rendu["statut"], rendu["raison"] = None, "injoignable"',
+            "            except aiohttp.ClientError:" + chr(10)
+            + '                rendu["statut"], rendu["raison"] = None, "injoignable"'))]),
+    dict(
+        nom="aiohttp est importe en tete de rappels.py",
+        banc="banc_rappels.py",
+        imite="remonter l'import en tete est le geste de rangement le plus "
+              "courant ; un recepteur qui recopie signature_valide() sans "
+              "aiohttp ne peut plus importer le module.",
+        rougit="importer rappels n'importe pas aiohttp",
+        editions=[("rappels.py", brut(
+            "import urllib.parse" + chr(10),
+            "import urllib.parse" + chr(10) + "import aiohttp" + chr(10)))]),
+]
+
+
+PROTOCOLE_MCP = [
+    dict(
+        nom="le texte de l'exception d'un outil part au client",
+        banc="banc_mcp.py",
+        imite="le reflexe du deboguage : rendre str(e) « pour que le modele "
+              "sache ce qui s'est passe ». Le message d'une ValueError porte "
+              "souvent un chemin du NAS ou le nom d'une machine, et la reponse "
+              "sort du reseau local pour finir dans le contexte d'un modele",
+        rougit="le secret n'apparait NULLE PART dans la reponse serialisee",
+        editions=[("mcp.py", brut(
+            "        _signale(signaler, nom, e)\n"
+            "        return _echec_generique(nom), None\n"
+            "    if not isinstance(resultat, dict)",
+            "        _signale(signaler, nom, e)\n"
+            "        return {\"content\": [texte(f\"echec : {e}\")], "
+            "\"isError\": True}, None\n"
+            "    if not isinstance(resultat, dict)"))]),
+    dict(
+        nom="une notification tools/call execute l'outil",
+        banc="banc_mcp.py",
+        imite="« on traite, et on ne jette la reponse qu'a la fin si c'etait "
+              "une notification » — le schema courant d'un serveur JSON-RPC, "
+              "qui lance ici un rendu que personne n'attend et repond a un "
+              "message auquel JSON-RPC interdit de repondre",
+        rougit="un tools/call sans id n'execute PAS l'outil",
+        editions=[
+            ("mcp.py", brut(
+                "    if \"id\" not in message:\n",
+                "    if \"id\" not in message and methode != \"tools/call\":\n")),
+            ("mcp.py", brut(
+                "    if not _id_lisible(id_):\n",
+                "    if \"id\" in message and not _id_lisible(id_):\n")),
+        ]),
+    dict(
+        nom="l'id 0 est pris pour une notification",
+        banc="banc_mcp.py",
+        imite="« if not message.get('id') » : la forme qui vient sous les "
+              "doigts en Python. 0 est un id JSON-RPC parfaitement valide, et "
+              "plusieurs clients commencent leur compteur a zero : leur "
+              "initialize ne recevrait jamais de reponse",
+        rougit="ping, id 0 repris avec son type",
+        editions=[("mcp.py", brut(
+            "    if \"id\" not in message:\n",
+            "    if not message.get(\"id\"):\n"))]),
+    dict(
+        nom="un booleen passe pour un entier",
+        banc="banc_mcp.py",
+        imite="isinstance(True, int) vaut True en Python : « largeur: true » "
+              "devient une image d'un pixel de large, sans une faute pour le "
+              "modele",
+        rougit="un booleen pour un entier : resultat isError qui dit",
+        editions=[("mcp.py", brut(
+            "        return isinstance(v, int) and not isinstance(v, bool)",
+            "        return isinstance(v, int)"))]),
+    dict(
+        nom="NaN passe pour un nombre",
+        banc="banc_mcp.py",
+        imite="json.loads accepte NaN par defaut, et NaN echappe a toute "
+              "comparaison : minimum et maximum le laissent passer, et l'outil "
+              "recoit une force qui n'est pas un nombre",
+        rougit="un NaN pour un nombre : resultat isError qui dit",
+        editions=[("mcp.py", brut(
+            "        return (isinstance(v, (int, float)) and not isinstance(v, bool)\n"
+            "                and math.isfinite(v))",
+            "        return (isinstance(v, (int, float)) and not isinstance(v, bool))"))]),
+    dict(
+        nom="des arguments invalides rendent une erreur JSON-RPC -32602",
+        banc="banc_mcp.py",
+        imite="la lecture de la spec 2025-06-18, qui rangeait « Invalid "
+              "arguments » parmi les erreurs de protocole. Les clients montrent "
+              "une erreur JSON-RPC a l'humain ou l'avalent : le modele ne voit "
+              "pas sa faute et ne peut pas se corriger (SEP-1303, 2025-11-25)",
+        rougit="des arguments invalides ne sont PAS une erreur JSON-RPC -32602",
+        editions=[("mcp.py", brut(
+            "    if fautes:\n",
+            "    if fautes:\n"
+            "        return None, (CODE_PARAMETRES, \"; \".join(fautes))\n"
+            "    if fautes:\n"))]),
+    dict(
+        nom="l'enum confond True et 1",
+        banc="banc_mcp.py",
+        imite="« valeur in schema['enum'] » : True == 1 en Python, donc un "
+              "booleen passe une enum de nombres sans faute",
+        rougit="enum [0, 1] : ni True ni False",
+        editions=[("mcp.py", brut(
+            "        return isinstance(a, bool) and isinstance(b, bool) and a is b",
+            "        return a == b"))]),
+    dict(
+        nom="initialize reprend une version qu'on ne connait pas",
+        banc="banc_mcp.py",
+        imite="« on repond la version que le client demande » sans regarder "
+              "si on la parle : un client 2026-07-28 croit le serveur moderne "
+              "et lui parle un protocole sans poignee de main. La spec impose "
+              "de rendre une version qu'on supporte",
+        rougit="2026-07-28, sans poignee de main : la plus recente des notres",
+        editions=[("mcp.py", brut(
+            "        version = demandee if demandee in VERSIONS else VERSIONS[0]",
+            "        version = demandee or VERSIONS[0]"))]),
+    dict(
+        nom="2026-07-28 est declaree sans en suivre les regles",
+        banc="banc_mcp.py",
+        imite="la page d'accueil de la spec annonce 2026-07-28 comme version "
+              "courante, et l'ajouter en tete de VERSIONS a l'air d'une mise a "
+              "jour. Ce module n'a ni server/discover, ni _meta par requete, ni "
+              "resultType : il mentirait a tout client moderne",
+        rougit="aucune version sans poignee de main (2026-07-28 et suivantes)",
+        editions=[("mcp.py", brut(
+            "VERSIONS = (\"2025-11-25\", \"2025-06-18\", \"2025-03-26\")",
+            "VERSIONS = (\"2026-07-28\", \"2025-11-25\", \"2025-06-18\", "
+            "\"2025-03-26\")"))]),
+    dict(
+        nom="l'en-tete de version absent est refuse",
+        banc="banc_mcp.py",
+        imite="la lecture stricte de « le client MUST include » : mais la "
+              "requete initialize part avant que la version soit connue, et un "
+              "client 2025-03-26 n'envoie jamais l'en-tete. La spec dit "
+              "d'assumer 2025-03-26 ; refuser ferme la porte au premier message",
+        rougit="absent : accepte",
+        editions=[("mcp.py", brut(
+            "    if entete is None:\n        return True",
+            "    if entete is None:\n        return False"))]),
+    dict(
+        nom="le refus de version rend l'erreur moderne -32022",
+        banc="banc_mcp.py",
+        imite="le zele : -32022 est le code que la spec 2026-07-28 donne a "
+              "« Unsupported protocol version ». Un client des deux epoques "
+              "qui le lit conclut que le serveur est moderne, re-essaie en "
+              "moderne et ne tente jamais initialize : il reste dehors",
+        rougit="et PAS une erreur moderne (-32020 a -32099, dont -32022)",
+        editions=[("mcp.py", brut(
+            "    return erreur(CODE_REQUETE,\n"
+            "                  f\"Bad Request : version",
+            "    return erreur(-32022,\n"
+            "                  f\"Bad Request : version"))]),
+    dict(
+        nom="tools/list sert l'outil entier, fonction d'appel comprise",
+        banc="banc_mcp.py",
+        imite="« on rend la liste des outils » sans filtrer les cles : la cle "
+              "appel est une fonction, json.dumps leve dans serveur.py, et le "
+              "client recoit un 500 au lieu de la liste",
+        rougit="chaque outil a exactement name, title, description, inputSchema",
+        editions=[("mcp.py", brut(
+            "            {\"name\": o[\"name\"], \"title\": o[\"title\"],\n"
+            "             \"description\": o[\"description\"], "
+            "\"inputSchema\": o[\"inputSchema\"]}",
+            "            dict(o)"))]),
+    dict(
+        nom="le resultat d'un outil n'est plus eprouve en JSON strict",
+        banc="banc_mcp.py",
+        imite="json.dumps sans allow_nan=False : NaN sort sans erreur, mais "
+              "« NaN » n'est pas du JSON et JSON.parse le refuse — le client "
+              "n8n voit une reponse illisible et le modele ne sait rien",
+        rougit="un NaN dans le resultat : isError generique",
+        editions=[("mcp.py", brut(
+            "        json.dumps(rendu, allow_nan=False)",
+            "        json.dumps(rendu)"))]),
+    dict(
+        nom="l'annulation est avalee comme une panne d'outil",
+        banc="banc_mcp.py",
+        imite="« except BaseException » pour ne rien laisser passer : "
+              "asyncio.CancelledError est avalee, la requete abandonnee recoit "
+              "une reponse et l'arret du studio attend un outil qui ne rend "
+              "jamais la main",
+        rougit="asyncio.CancelledError traverse",
+        editions=[("mcp.py", brut(
+            "    except Exception as e:\n"
+            "        # TOUTE AUTRE EXCEPTION",
+            "    except BaseException as e:\n"
+            "        # TOUTE AUTRE EXCEPTION"))]),
+    dict(
+        nom="une reponse postee par le client recoit une reponse",
+        banc="banc_mcp.py",
+        imite="un message sans method traite comme une requete invalide : la "
+              "spec 2025-11-25 permet au client de poster une reponse, et y "
+              "repondre -32600 ouvre un ping-pong que JSON-RPC interdit",
+        rougit="une REPONSE postee par le client ne recoit pas de reponse",
+        editions=[("mcp.py", brut(
+            "    if \"method\" not in message and (\"result\" in message "
+            "or \"error\" in message):",
+            "    if False:"))]),
+    dict(
+        nom="le refus explicable passe par le chemin generique",
+        banc="banc_mcp.py",
+        imite="les clauses except dans le mauvais ordre : ErreurOutil est une "
+              "ValueError, donc un « except Exception » place devant l'attrape "
+              "— le modele recoit « l'outil a echoue » au lieu de « ce rendu "
+              "n'existe pas », et ne peut plus se corriger",
+        rougit="ErreurOutil devient un resultat isError portant son message",
+        editions=[("mcp.py", brut(
+            "    except ErreurOutil as e:\n",
+            "    except Exception as e:\n"
+            "        _signale(signaler, nom, e)\n"
+            "        return _echec_generique(nom), None\n"
+            "    except ErreurOutil as e:\n"))]),
+]
+
+
+# Le contrat OpenAPI des programmes : il frappe DES DEUX COTES — contrat.py
+# qui oublie une route ou un code, serveur.py qui en ajoute un sans le dire.
+# Un contrat qui ment est pire qu'aucun : un assistant IA le croit.
+CONTRAT = [
+    dict(
+        nom="le contrat dit qu'on lance un rendu sans cle",
+        banc="banc_contrat.py",
+        imite="un « security: [] » recopie depuis le lien signe, juste au-dessus "
+              "dans l'editeur : un client genere cesse alors de poser "
+              "l'en-tete, et un assistant croit la porte ouverte",
+        rougit="seuls le lien signe et le contrat se lisent sans cle",
+        editions=[("contrat.py", brut(
+            '            "operationId": "creerRendu",\n',
+            '            "operationId": "creerRendu",\n'
+            '            "security": [],\n'))]),
+    dict(
+        nom="le lien signe exige la cle d'apres le contrat",
+        banc="banc_contrat.py",
+        imite="un « nettoyage » qui retire la ligne qui semble ne rien dire : "
+              "le lien herite alors de bearerAuth, et un client genere pose une "
+              "cle sur un lien fait pour circuler sans elle",
+        rougit="seuls le lien signe et le contrat se lisent sans cle",
+        editions=[("contrat.py", brut(
+            '            "security": [],\n'
+            '            "parameters": [_ref("parameters", "jeton")],\n',
+            '            "parameters": [_ref("parameters", "jeton")],\n'))]),
+    dict(
+        nom="l'annulation decrite sous une autre methode",
+        banc="banc_contrat.py",
+        imite="la route d'annulation decrite en PUT ou POST, comme dans la "
+              "plupart des API : un client genere envoie une methode a laquelle "
+              "le routeur repond 405",
+        rougit="chaque route du routeur est decrite dans le contrat",
+        editions=[("contrat.py", brut(
+            '            "delete": {\n',
+            '            "put": {\n'))]),
+    dict(
+        nom="une route de programme branchee sans contrat",
+        banc="banc_contrat.py",
+        imite="la route neuve ajoutee dans app() a cote des autres, et le "
+              "contrat oublie : aucun assistant ne saura qu'elle existe",
+        rougit="chaque route du routeur est decrite dans le contrat",
+        editions=[("serveur.py", brut(
+            '    a.router.add_get("/api/v1/moi", api_v1_moi)\n',
+            '    a.router.add_get("/api/v1/moi", api_v1_moi)\n'
+            '    a.router.add_get("/api/v1/file", api_v1_moi)\n'))]),
+    dict(
+        nom="ATTENDRE_MAX recopie avec une autre valeur",
+        banc="banc_contrat.py",
+        imite="la borne montee a quinze minutes dans le contrat « parce que n8n "
+              "le permet », sans toucher serveur.py : le client envoie "
+              "attendre=900 et recoit un 400 que le contrat ne promettait pas",
+        rougit="ATTENDRE_MAX est celui de serveur.py",
+        editions=[("contrat.py", brut(
+            "ATTENDRE_MAX = 600\n",
+            "ATTENDRE_MAX = 900\n"))]),
+    dict(
+        nom="un « attendre » borne a la main dans le contrat",
+        banc="banc_contrat.py",
+        imite="le parametre de requete ecrit en litteral, avec la valeur par "
+              "defaut de n8n (300 s), au lieu de passer par _attendre()",
+        rougit="chaque « attendre » du contrat est borne a ATTENDRE_MAX",
+        editions=[("contrat.py", brut(
+            '                     "schema": _attendre("Secondes à attendre un état final "\n'
+            '                                         "avant de répondre.")},\n',
+            '                     "schema": {"type": "integer", "minimum": 0,\n'
+            '                                "maximum": 300}},\n'))]),
+    dict(
+        nom="un etat oublie dans le contrat",
+        banc="banc_contrat.py",
+        imite="attente_machine, le plus rare des sept, retire de la liste : un "
+              "client qui valide la reponse contre l'enum la rejette le jour "
+              "ou une machine est en pause",
+        rougit="chaque etat de ETATS_PROGRAMME est dans l'enum du schema Rendu",
+        editions=[("contrat.py", brut(
+            'ETATS = ("en_file", "en_cours", "attente_machine", "question",\n',
+            'ETATS = ("en_file", "en_cours", "question",\n'))]),
+    dict(
+        nom="un etat neuf pose dans serveur.py sans le contrat",
+        banc="banc_contrat.py",
+        imite="un etat ajoute au studio pour un besoin de la page ; le "
+              "programme le recoit, et aucune branche de son workflow ne le "
+              "connait",
+        rougit="chaque etat de ETATS_PROGRAMME est dans l'enum du schema Rendu",
+        editions=[("serveur.py", brut(
+            '                   "fini", "erreur", "annule")\n',
+            '                   "fini", "erreur", "annule", "suspendu")\n'))]),
+    dict(
+        nom="le code du garde-fou absent du contrat",
+        banc="banc_contrat.py",
+        imite="la table des refus recopiee depuis traductions.py avant que le "
+              "garde-fou passe avant la file : un workflow ne peut pas brancher "
+              "le seul refus qu'il ne doit jamais reessayer",
+        rougit="chaque code que serveur.py rend est dans le contrat",
+        editions=[("contrat.py", brut(
+            '    "refus_mineurs": (422, "Contenu sexuel impliquant des mineurs : refusé "\n'
+            '                           "avant la file, rien n\'est compté."),\n',
+            ""))]),
+    dict(
+        nom="le garde-fou change de statut dans serveur.py seul",
+        banc="banc_contrat.py",
+        imite="« un refus de contenu est une mauvaise requete » : 422 devient "
+              "400 dans le code, et le contrat promet encore 422 a un workflow "
+              "qui se branche sur le statut",
+        rougit="chaque code a le meme statut HTTP des deux cotes",
+        editions=[("serveur.py", brut(
+            'return refus("erreur.refus_mineurs", 422)',
+            'return refus("erreur.refus_mineurs", 400)'))]),
+    dict(
+        nom="un code de refus que serveur.py ne rend jamais",
+        banc="banc_contrat.py",
+        imite="un code prevu (« la cle a expire ») ecrit dans le contrat avant "
+              "le code qui le rendrait : un workflow attend une branche qui ne "
+              "s'allumera jamais",
+        rougit="chaque code du contrat est rendu par serveur.py",
+        editions=[("contrat.py", brut(
+            '    "reponse_vide": (400, ',
+            '    "cle_expiree": (401, "La cle a expire."),\n'
+            '    "reponse_vide": (400, '))]),
+    dict(
+        nom="un champ du rendu oublie dans le contrat",
+        banc="banc_contrat.py",
+        imite="« journal » ajoute a rendu_public apres coup, et le schema "
+              "jamais relu : un client qui valide strictement le refuse",
+        rougit="Rendu : les champs du contrat sont ceux de rendu_public",
+        editions=[("contrat.py", brut(
+            '            "journal": {"type": "array", "items": {"type": nul},\n'
+            '                        "description": "Les cinq dernières lignes du fil du "\n'
+            '                                       "rendu, celles que la page montre."},\n',
+            ""))]),
+    dict(
+        nom="un champ ajoute au rendu dans serveur.py seul",
+        banc="banc_contrat.py",
+        imite="la priorite exposee au programme « puisqu'elle est dans le "
+              "plan » : rendu_public sert trois portes, et le contrat n'en "
+              "dit rien",
+        rougit="Rendu : les champs du contrat sont ceux de rendu_public",
+        editions=[("serveur.py", brut(
+            '        "machine": t.get("noeud"),\n',
+            '        "machine": t.get("noeud"), "priorite": plan.get("priorite"),\n'))]),
+    dict(
+        nom="le champ nuage absent de la demande decrite",
+        banc="banc_contrat.py",
+        imite="le seul champ qui RESTREINT au lieu de demander, oublie parce "
+              "qu'il ne fait rien de visible : un assistant ne saurait pas "
+              "garder une demande hors du nuage",
+        rougit="DemandeRendu : les champs du contrat sont ceux que POST /api/v1/rendus lit",
+        editions=[("contrat.py", brut(
+            '            "nuage": {"type": "boolean", "default": True,\n',
+            '            "nuage_": {"type": "boolean", "default": True,\n'))]),
+    dict(
+        nom="un tuple dans le document",
+        banc="banc_contrat.py",
+        imite="ETATS passe tel quel, sans list() : json.dumps le serialise, "
+              "mais le document n'est plus egal a sa propre relecture, et un "
+              "cache qui compare les deux le croit change a chaque appel",
+        rougit="le document est du JSON pur (json.dumps, aller-retour egal)",
+        editions=[("contrat.py", brut(
+            '"enum": list(ETATS),',
+            '"enum": ETATS,'))]),
+    dict(
+        nom="un $ref vers un schema qui n'existe pas",
+        banc="banc_contrat.py",
+        imite="le schema renomme (Fichier, Fichiers) d'un cote seulement : le "
+              "document se sert, et chaque outil qui l'importe s'arrete dessus",
+        rougit="chaque $ref se resout dans le document",
+        editions=[("contrat.py", brut(
+            '"items": _ref("schemas", "Fichier")},',
+            '"items": _ref("schemas", "Fichiers")},'))]),
+    dict(
+        nom="un outil MCP oublie dans la description de /mcp",
+        banc="banc_contrat.py",
+        imite="la liste des outils recopiee avant l'ajout d'annuler_rendu : "
+              "un assistant qui lit le contrat ne sait pas qu'il peut annuler",
+        rougit="chaque outil MCP est nomme dans la description de /mcp",
+        editions=[("contrat.py", brut(
+            '"annuler_rendu, lister_moteurs.',
+            '"lister_moteurs.'))]),
+]
+
+
+# Le pilotage de bout en bout, par banc_pilotage.py : ecrit par une autre main
+# que le code, et c'est ce qui lui a fait trouver sept defauts — dont trois
+# corriges pendant qu'il s'ecrivait, deux apres, et deux risques sans cas rouge
+# devenus des cas. Les quatre dernieres mutations gardent ce qui a ete corrige
+# APRES le banc.
+PILOTAGE = [
+    dict(
+        nom="la cle d'acces vaut sur toutes les routes",
+        banc="banc_pilotage.py",
+        imite="le perimetre retire du middleware : une cle n8n ouvre /api/generer, "
+              "/api/fichier et l'administration sous le compte qui l'a creee",
+        rougit="la cle sur /api/generer est refusee en 403",
+        editions=[("serveur.py", brut(
+            "    if not chemin_de_programme(req.path):\n"
+            "        return refus_programme(\"erreur.cle_hors_perimetre\", 403, lg)",
+            "    if False:\n"
+            "        return refus_programme(\"erreur.cle_hors_perimetre\", 403, lg)"))]),
+    dict(
+        nom="admin_ok() oublie la cle d'acces",
+        banc="banc_pilotage.py",
+        imite="une cle posee sur le compte admin herite de l'administration : "
+              "le workflow qui la porte peut revoquer des cles, supprimer des "
+              "comptes, poser les cles des fournisseurs",
+        rougit="admin_ok() est faux pour une cle posee sur un compte admin",
+        editions=[("serveur.py", brut(
+            "    if req.get(\"par_cle\"):\n        return False\n"
+            "    nom = req.get(\"compte\") or \"\"",
+            "    nom = req.get(\"compte\") or \"\""))]),
+    dict(
+        nom="est_admin() oublie la cle d'acces",
+        banc="banc_pilotage.py",
+        imite="est_admin() ouvre la mediatheque et les fichiers de TOUS les "
+              "comptes a une cle n8n posee sur le compte admin",
+        rougit="est_admin() est faux pour une cle posee sur un compte admin",
+        editions=[("serveur.py", brut(
+            "    if req.get(\"par_cle\"):\n        return False\n"
+            "    return bool(req.get(\"compte\")) and COMPTES.est_admin(req[\"compte\"])",
+            "    return bool(req.get(\"compte\")) and COMPTES.est_admin(req[\"compte\"])"))]),
+    dict(
+        nom="les cles fausses ne sont plus freinees",
+        banc="banc_pilotage.py",
+        imite="le freinage oublie sur la nouvelle porte : un script essaie des "
+              "cles a pleine vitesse, chaque essai coute un sha256 et rien d'autre",
+        rougit="apres trois secrets faux pour une cle, le quatrieme rend 429",
+        editions=[("serveur.py", brut(
+            "    reste = _frein_des_cles(frein)",
+            "    reste = 0"))]),
+    dict(
+        nom="tout « Bearer » est pris pour une cle d'acces",
+        banc="banc_pilotage.py",
+        imite="derriere Authelia ou oauth2-proxy, qui posent leur propre Bearer "
+              "sur toutes les requetes, la page entiere repond 401",
+        rougit="un « Bearer » de proxy sans « cs_ » est ignore",
+        editions=[("serveur.py", brut(
+            " or not valeur.startswith(_acces.PREFIXE):",
+            ":"))]),
+    dict(
+        nom="supprimer un compte laisse vivre ses cles",
+        banc="banc_pilotage.py",
+        imite="la generation les refusait, mais un compte recree sous le meme "
+              "nom repart a la generation zero : les cles de l'ancien "
+              "proprietaire se remettent a marcher pour le nouveau",
+        rougit="supprimer le compte revoque sa cle dans le magasin",
+        editions=[("serveur.py", brut(
+            "        ACCES.revoquer_compte(nom)",
+            "        pass"))]),
+    dict(
+        nom="une session de navigateur suffit aux routes de programme",
+        banc="banc_pilotage.py",
+        imite="« si on est connecte, pas besoin de cle » : une page piegee vise "
+              "/api/v1/rendus avec le cookie de son visiteur",
+        rougit="une route v1 sans cle rend 401 « cle_requise »",
+        editions=[("serveur.py", brut(
+            "        if not fiche:\n            return _sans_cle(langue_de(req))\n"
+            "        return await gestionnaire(req, fiche)",
+            "        if not fiche and not req.get(\"compte\"):\n"
+            "            return _sans_cle(langue_de(req))\n"
+            "        return await gestionnaire(req, fiche or {\"id\": \"\", \"en_file\": 4, "
+            "\"nom\": \"page\", \"hotes\": []})"))]),
+    dict(
+        nom="exiger_compte ferme les routes de programme",
+        banc="banc_pilotage.py",
+        imite="la liste « libre » oubliee : un programme sans cookie recoit le "
+              "« connexion requise » de la page au lieu d'atteindre sa garde",
+        rougit="exiger_compte laisse /api/v1/rendus a sa propre garde",
+        editions=[("serveur.py", brut(
+            "             or chemin.startswith(PREFIXE_PROGRAMME) or chemin == CHEMIN_MCP)",
+            "             )"))]),
+    dict(
+        nom="une cle se cree sans mot de passe",
+        banc="banc_pilotage.py",
+        imite="la session suffit : un onglet reste ouvert, ou un cookie vole, "
+              "fabrique une cle qui contourne le second facteur pour toujours",
+        rougit="un mauvais mot de passe refuse la creation",
+        editions=[("serveur.py", brut(
+            "    _c, refus = _ouvrir_porte(req, nom, d.get(\"mdp\"), d.get(\"code\"), lg)",
+            "    _c, refus = None, None"))]),
+    dict(
+        nom="revoquer la cle d'un autre compte",
+        banc="banc_pilotage.py",
+        imite="l'identifiant public d'une cle passe dans les journaux et dans "
+              "l'apercu : sans le filtre du compte, n'importe qui coupe le "
+              "programme d'un autre",
+        rougit="DELETE de la cle d'un AUTRE compte rend 404",
+        editions=[("serveur.py", brut(
+            "ACCES.revoquer(ident, compte=nom)",
+            "ACCES.revoquer(ident)"))]),
+    dict(
+        nom="une cle liste les cles de son compte",
+        banc="banc_pilotage.py",
+        imite="la cle volee apprend l'existence et les hotes de toutes les "
+              "autres cles du compte",
+        rougit="une cle ne liste pas les cles, meme posee sur le compte",
+        editions=[("serveur.py", brut(
+            "a qui l'a volee.\"\"\"\n    lg = langue_de(req)\n"
+            "    nom = req.get(\"compte\")\n    if not nom or req.get(\"par_cle\"):",
+            "a qui l'a volee.\"\"\"\n    lg = langue_de(req)\n"
+            "    nom = req.get(\"compte\")\n    if not nom:"))]),
+    dict(
+        nom="la conversation de programme reprise par la page",
+        banc="banc_pilotage.py",
+        imite="un workflow horaire rend la sienne la plus recente : la demande "
+              "suivante tapee dans la page y atterrit, avec le contexte du "
+              "programme — « la meme en bleu » retouche son image",
+        rougit="conv_de() ne choisit pas la conversation de programme",
+        editions=[("serveur.py", brut(
+            "    miennes = [c for c in mes_conversations(pid) if not est_conversation_de_programme(c)]",
+            "    miennes = mes_conversations(pid)"))]),
+    dict(
+        nom="garde_fou repousse apres la mise en file",
+        banc="banc_pilotage.py",
+        imite="executer() refuse encore, mais apres le 202 : le programme "
+              "l'apprend au sondage suivant, et le refus a deja compte dans "
+              "son plafond du jour",
+        rougit="garde_fou AVANT la file",
+        editions=[("serveur.py", brut(
+            "        garde_fou(v[\"texte\"])",
+            "        pass"))]),
+    dict(
+        nom="la demande ouvre le nuage que la cle n'a pas",
+        banc="banc_pilotage.py",
+        imite="« nuage: true » dans le corps vaut plus que le reglage de la cle : "
+              "le droit au nuage n'est plus qu'une suggestion",
+        rougit="« nuage: true » dans la demande n'ouvre pas le nuage de la cle",
+        editions=[("serveur.py", brut(
+            "    return bool(fiche.get(\"nuage\")) and voulu is not False",
+            "    return voulu is True or (bool(fiche.get(\"nuage\")) and voulu is not False)"))]),
+    dict(
+        nom="le rappel part vers n'importe quel hote",
+        banc="banc_pilotage.py",
+        imite="la requete forgee cote serveur : une cle volee fait POSTer le "
+              "studio sur le routeur ou la console du NAS",
+        rougit="un rappel vers un hote non declare rend 400",
+        editions=[("serveur.py", brut(
+            "        raison = _rappels.url_autorisee(rappel.strip(), fiche.get(\"hotes\") or [])",
+            "        raison = None"))]),
+    dict(
+        nom="la borne « en_file » decalee d'un",
+        banc="banc_pilotage.py",
+        imite="le « > » au lieu de « >= » : une cle reglee sur un rendu a la "
+              "fois en tient deux",
+        rougit="« en_file » atteint : 429 « cle_file_pleine »",
+        editions=[("serveur.py", brut(
+            "if _en_cours_de_cle(fiche[\"id\"]) >= fiche[\"en_file\"]:",
+            "if _en_cours_de_cle(fiche[\"id\"]) > fiche[\"en_file\"]:"))]),
+    dict(
+        nom="le plafond du jour compte en memoire",
+        banc="banc_pilotage.py",
+        imite="compter les taches plutot que les lancements ecrits sur les "
+              "conversations : chaque redemarrage remet le plafond a zero",
+        rougit="et le plafond SURVIT a un rechargement",
+        editions=[("serveur.py", brut(
+            "    return sum(1 for c in CONVERSATIONS.values()\n"
+            "               if (c.get(\"api\") or {}).get(\"cle\") == ident\n"
+            "               for q in (c[\"api\"].get(\"lancements\") or []) if q >= minuit)",
+            "    return sum(1 for t in TACHES.values()\n"
+            "               if (t.get(\"api\") or {}).get(\"cle\") == ident\n"
+            "               and (t.get(\"debut\") or 0) >= minuit)"))]),
+    dict(
+        nom="l'Idempotency-Key n'est jamais retenue",
+        banc="banc_pilotage.py",
+        imite="n8n reessaie sur un delai : chaque renvoi devient un rendu de plus",
+        rougit="une Idempotency-Key rejouee rend le meme rendu",
+        editions=[("serveur.py", brut(
+            "        IDEMPOTENCE[(fiche[\"id\"], idem)] = (tid, maintenant)",
+            "        pass"))]),
+    dict(
+        nom="une cle ecrit dans la conversation d'une autre cle",
+        banc="banc_pilotage.py",
+        imite="le filtre par compte seul : le workflow A enchaine sur le "
+              "contexte du workflow B du meme compte",
+        rougit="la conversation d'une autre cle (meme compte) rend 404",
+        editions=[("serveur.py", brut(
+            "if not ouvrable(c, pid) or (c.get(\"api\") or {}).get(\"cle\") != fiche[\"id\"]:",
+            "if not ouvrable(c, pid):"))]),
+    dict(
+        nom="une cle lit les rendus des autres cles du compte",
+        banc="banc_pilotage.py",
+        imite="le cloisonnement par compte seul : une cle fuitee d'un workflow "
+              "lit tout ce que les autres programmes du compte ont rendu",
+        rougit="une AUTRE cle du meme compte rend 404 elle aussi",
+        editions=[("serveur.py", brut(
+            "if t.get(\"proprietaire\") != pid or (t.get(\"api\") or {}).get(\"cle\") != fiche[\"id\"]:",
+            "if t.get(\"proprietaire\") != pid:"))]),
+    dict(
+        nom="le second verrou des fichiers retire",
+        banc="banc_pilotage.py",
+        imite="« il l'est par construction » : un fichier pose sur la tache sans "
+              "etre dans aucun tour du compte est servi",
+        rougit="un fichier qui n'est dans aucun tour du compte n'est jamais servi",
+        editions=[("serveur.py", brut(
+            "    if (ident, f.get(\"subfolder\", \"\"), f[\"filename\"]) not in mes_fichiers(pid):\n"
+            "        return None",
+            "    pass"))]),
+    dict(
+        nom="nuage_permis() oublie la marque de la cle",
+        banc="banc_pilotage.py",
+        imite="un rendu demande par une cle sans nuage part chez un fournisseur "
+              "facture des que le moteur choisi est distant",
+        rougit="nuage_permis() est faux pour une tache de cle sans nuage",
+        editions=[("serveur.py", brut(
+            "    return True if not marque else bool(marque.get(\"nuage\"))",
+            "    return True"))]),
+    dict(
+        nom="l'analyse d'une cle sans nuage part au loin",
+        banc="banc_pilotage.py",
+        imite="pas d'image facturee, mais un appel de modele de langage facture "
+              "a chaque demande — le seul des deux que personne ne voit",
+        rougit="llm_distant_possible() rend \"\" pour une tache de cle sans nuage",
+        editions=[("serveur.py", brut(
+            "    if not nuage_permis(tid):\n        return \"\"\n",
+            ""))]),
+    dict(
+        nom="reprendre_file() perd la marque du programme",
+        banc="banc_pilotage.py",
+        imite="apres un redemarrage, le rendu repris n'a plus ni sa regle « pas "
+              "de nuage » ni son rappel : facture, et personne n'est prevenu",
+        rougit="reprendre_file() restaure la marque",
+        editions=[("serveur.py", brut(
+            "            TACHES[tid][\"api\"] = dict(r[\"api\"])",
+            "            pass"))]),
+    dict(
+        nom="les variantes perdent la marque du programme",
+        banc="banc_pilotage.py",
+        imite="la variante 2 d'une demande « sans nuage » est une tache "
+              "ordinaire : elle peut partir au loin, et echappe au compte de la file",
+        rougit="lancer_variantes() recopie la marque sur chaque tirage",
+        editions=[("serveur.py", brut(
+            "            TACHES[autre][\"api\"] = dict(marque, rappel=None)\n"
+            "            EN_FILE[autre][\"api\"] = TACHES[autre][\"api\"]",
+            "            pass"))]),
+    dict(
+        nom="la marque ne va pas dans le fichier de la file",
+        banc="banc_pilotage.py",
+        imite="la tache la porte, _file.json non : un redemarrage la perd",
+        rougit="l'entree de la file porte la MEME marque",
+        editions=[("serveur.py", brut(
+            "        EN_FILE[tid][\"api\"] = api",
+            "        pass"))]),
+    dict(
+        nom="le prompt traduit n'est plus garde",
+        banc="banc_pilotage.py",
+        imite="la garde ne tourne que sur la demande : le texte qu'un modele de "
+              "langage a reecrit, allonge, traduit, part au moteur sans relecture",
+        rougit="executer() appelle garde_fou APRES traduire()",
+        editions=[("serveur.py", brut(
+            "            garde_fou(texte, plan.get(\"prompt\"), plan.get(\"tags_audio\"),\n"
+            "                      plan.get(\"paroles\"))",
+            "            pass"))]),
+    dict(
+        nom="executer() n'interroge plus le droit au nuage",
+        banc="banc_pilotage.py",
+        imite="la garde du repli local supprimee : un moteur distant force sur "
+              "une cle sans nuage part chez le fournisseur",
+        rougit="executer() consulte nuage_permis()",
+        editions=[("serveur.py", brut(
+            "        if loin and not nuage_permis(tid):",
+            "        if loin and False:"))]),
+    dict(
+        nom="le rappel livre a chaque tour du veilleur",
+        banc="banc_pilotage.py",
+        imite="la livraison n'est plus marquee : n8n recoit le meme « rendu.fini » "
+              "chaque seconde, et relance son workflow a chaque fois",
+        rougit="une tache finie qui porte un rappel est livree UNE fois",
+        editions=[("serveur.py", brut(
+            "if not marque.get(\"rappel\") or marque.get(\"livraison\"):",
+            "if not marque.get(\"rappel\"):"))]),
+    dict(
+        nom="le rappel signe au nom d'une cle revoquee",
+        banc="banc_pilotage.py",
+        imite="le secret de rappel recopie dans la marque au lancement, « pour "
+              "ne pas relire le magasin » : la cle fuitee est revoquee, ses "
+              "rendus en cours previennent encore le programme qui la tenait",
+        rougit="la cle revoquee entre-temps : pas de livraison",
+        editions=[("serveur.py", brut(
+            "    secret = ACCES.secret_rappel(marque[\"cle\"]) if ACCES else None\n",
+            "    secret = (ACCES.secret_rappel(marque[\"cle\"]) if ACCES else None) or \"secret-oublie\"\n")),
+                  ("serveur.py", brut(
+            "    if secret and not cle_vivante(ACCES.fiche(marque[\"cle\"])):\n"
+            "        secret = None\n",
+            ""))]),
+    dict(
+        nom="le rappel signe au nom d'une cle eteinte",
+        banc="banc_pilotage.py",
+        imite="le mot de passe change pour chasser un intrus : sa cle est "
+              "refusee, mais les rendus qu'elle a lances previennent encore "
+              "l'hote qu'il avait declare",
+        rougit="la cle eteinte par un changement de mot de passe ne signe plus de rappel",
+        editions=[("serveur.py", brut(
+            "    if secret and not cle_vivante(ACCES.fiche(marque[\"cle\"])):\n"
+            "        secret = None\n",
+            ""))]),
+    dict(
+        nom="le lien signe survit a la cle eteinte",
+        banc="banc_pilotage.py",
+        imite="« la cle existe encore » au lieu de « la cle vaut encore » : un "
+              "changement de mot de passe laisse les liens distribues ouverts "
+              "vingt-quatre heures",
+        rougit="ses liens meurent avec elle",
+        editions=[("serveur.py", brut(
+            "    if not cle_vivante(fiche):\n        return refus_programme(\"erreur.rendu_inconnu\", 404, lg)\n"
+            "    _ident, tid, rang = trouve",
+            "    if not fiche:\n        return refus_programme(\"erreur.rendu_inconnu\", 404, lg)\n"
+            "    _ident, tid, rang = trouve"))]),
+    dict(
+        nom="/mcp sans cle",
+        banc="banc_pilotage.py",
+        imite="la garde oubliee sur la seconde entree : n'importe qui sur le "
+              "reseau lance des rendus par l'outil generer_rendu",
+        rougit="/mcp sans cle rend 401",
+        editions=[("serveur.py", brut(
+            "    fiche = req.get(\"par_cle\")\n    if not fiche:\n        return _sans_cle(lg)\n"
+            "    entete = req.headers.get(\"MCP-Protocol-Version\")",
+            "    fiche = req.get(\"par_cle\") or {\"id\": \"\", \"en_file\": 4, \"nom\": \"x\", \"hotes\": []}\n"
+            "    entete = req.headers.get(\"MCP-Protocol-Version\")"))]),
+    dict(
+        nom="la retention ferme aussi les conversations de la page",
+        banc="banc_pilotage.py",
+        imite="la regle des trente jours appliquee a tout : l'historique d'un "
+              "humain parti en vacances est efface, images comprises",
+        rougit="une conversation de la PAGE ne l'est jamais",
+        editions=[("serveur.py", brut(
+            "        if (est_conversation_de_programme(conv) and not conv.get(\"ferme\")",
+            "        if (not conv.get(\"ferme\")"))]),
+    # ── Les quatre corrections venues apres le banc (4 novembre 2026) ──────
+    # « un lien qui ne se signe pas fait tomber le rendu entier » est RETIREE :
+    # depuis les rangs fixes, aucun rang ne depasse 99 et le filet de
+    # rendu_public n'a plus de chemin pour s'ouvrir — la mutation restait
+    # verte, elle ne mesurait plus rien. C'est la borne des rangs qui protege
+    # desormais le cas des 101 fichiers, et c'est elle qu'on garde.
+    dict(
+        nom="un tirage de plus de 25 fichiers deborde sur le rang du suivant",
+        banc="banc_pilotage.py",
+        imite="la borne oubliee : le vingt-sixieme fichier de la variante 1 "
+              "prend le rang 25, celui du premier de la variante 2 — deux "
+              "fichiers derriere le meme lien signe",
+        rougit="un tirage de plus de vingt-cinq fichiers ne deborde pas",
+        editions=[("serveur.py", brut(
+            "                    if 1 <= variante <= VARIANTES_MAX and i < FICHIERS_PAR_TIRAGE" + chr(10),
+            "                    if 1 <= variante <= VARIANTES_MAX" + chr(10)))]),
+    dict(
+        nom="l'outil MCP accepte une reponse faite d'espaces",
+        banc="banc_pilotage.py",
+        imite="« minLength: 1 » laisse passer trois espaces : un rendu partait "
+              "sur « Precisions : » vide, du temps de carte pour rien, la ou la "
+              "route REST refusait le meme cas",
+        rougit="repondre_question avec une reponse blanche est refuse",
+        editions=[("serveur.py", brut(
+            '    if not arguments["reponse"].strip():\n'
+            '        raise _mcp.ErreurOutil(T("erreur.reponse_vide", lg))\n',
+            ""))]),
+    dict(
+        nom="les variantes echappent au plafond en_file",
+        banc="banc_pilotage.py",
+        imite="le plafond lu avant l'eventail : une cle reglee sur deux rendus "
+              "a la fois en lance quatre d'un coup avec « variantes: 4 »",
+        rougit="des variantes qui depasseraient « en_file » sont refusees",
+        editions=[("serveur.py", brut(
+            '    if _en_cours_de_cle(fiche["id"]) + v["variantes"] > fiche["en_file"]:',
+            '    if False:'))]),
+    dict(
+        nom="le frein se lit de nouveau avant la verification",
+        banc="banc_pilotage.py",
+        imite="l'ordre d'origine : le frein d'abord, la cle ensuite. "
+              "L'identifiant public d'une cle est dans chaque lien signe ; un "
+              "secret faux toutes les trente secondes tenait la vraie cle en "
+              "429 (revue de securite du 4 novembre 2026)",
+        rougit="et la bonne cle passe quand meme : on verifie avant de freiner",
+        editions=[("serveur.py", brut(
+            "    if fiche:\n"
+            "        ECHECS_CLES.pop((hote, ident), None)\n",
+            "    if fiche and _frein_des_cles((hote, ident)) > 0:\n"
+            "        return refus_programme(\"erreur.trop_d_essais\", 429, lg, secondes=\"1\")\n"
+            "    if fiche:\n"
+            "        ECHECS_CLES.pop((hote, ident), None)\n"))]),
+]
+
+
+# La revue de securite du 4 novembre 2026 : onze constats, chacun corrige ET
+# garde. La plus chere : « if refus: » sur une web.Response, qui est FAUSSE
+# avant aiohttp 3.12 — une cle se creait avec un mot de passe faux.
+REVUE = [
+    dict(
+        nom="une entree sans port vaut de nouveau pour tous les ports",
+        banc="banc_rappels.py",
+        imite="la regle d'origine : declarer la machine de son n8n ouvrait tous "
+              "ses ports — ComfyUI sur 8188, une console d'administration",
+        rougit="'http://n8n.local:8188/interrupt' -> hote",
+        editions=[("rappels.py", brut(
+            "(p == port if p is not None else port == defaut)",
+            "(p == port if p is not None else True)"))]),
+    dict(
+        nom="la creation de cle teste la verite d'une reponse aiohttp",
+        banc="banc_pilotage.py",
+        imite="« if refus: » sur une web.Response : vraie depuis aiohttp 3.12, "
+              "fausse avant — et requirements.txt admet 3.9. Un mot de passe "
+              "faux creait alors une cle qui contourne le second facteur",
+        rougit="un mot de passe faux ne cree AUCUNE cle",
+        editions=[("serveur.py", brut(
+            "    if refus is not None:\n        return refus\n    if not ACCES:",
+            "    if refus:\n        return refus\n    if not ACCES:"))]),
+    dict(
+        nom="la validation d'un programme teste la verite d'une reponse",
+        banc="banc_pilotage.py",
+        imite="meme faute, cote programme : un refus de validation ignore, et "
+              "la suite levait sur v[...] — un 500 a la place d'un 400",
+        rougit="et un refus de validation reste un refus",
+        editions=[("serveur.py", brut(
+            "    if statut_refus is not None:",
+            "    if statut_refus:"))]),
+    dict(
+        nom="le type d'image redevient l'extension du fichier",
+        banc="banc_pilotage.py",
+        imite="ext = \".\" + type : « png\\\\..\\\\..\\\\cible.png » passe le test de "
+              "famille (la derniere extension), Windows normalise le chemin, et "
+              "le refus qui suit EFFACE le fichier vise",
+        rougit="un type d'image qui n'est pas dans la liste est refuse",
+        editions=[("serveur.py", brut(
+            "    ext = TYPES_IMAGE.get(extension.strip().lower()) if isinstance(extension, str) else None\n"
+            "    if ext is None or ext not in EXT_IMAGE:",
+            "    ext = \".\" + extension.lower().lstrip(\".\")\n"
+            "    if famille_du_fichier(\"x\" + ext) != \"image\":"))]),
+    dict(
+        nom="l'issue d'un rappel revient dans le fil du rendu",
+        banc="banc_pilotage.py",
+        imite="journal() au lieu du journal du studio : « injoignable », « delai "
+              "depasse » reviennent a la cle — une sonde de ports",
+        rougit="l'issue d'un rappel ne revient pas dans le fil que la cle lit",
+        editions=[("serveur.py", brut(
+            "        print(f\"[{tid[:6]}] rappel non livre a {hote} : {res.get('raison')} \"\n"
+            "              f\"apres {res.get('essais')} essai(s)\", flush=True)",
+            "        journal(tid, f\"rappel non livre a {hote} : {res.get('raison')}\")"))]),
+    dict(
+        nom="les taches question ne se purgent plus",
+        banc="banc_pilotage.py",
+        imite="la liste d'origine des etats finis : « ??? » en boucle rend une "
+              "question en quelques millisecondes, et TACHES grossit sans fin",
+        rougit="les taches « question » se purgent comme les autres",
+        editions=[("serveur.py", brut(
+            'v.get("etat") in ("fini", "erreur", "question")]',
+            'v.get("etat") in ("fini", "erreur")]'))]),
+    dict(
+        nom="les conversations d'une cle ne sont plus bornees",
+        banc="banc_pilotage.py",
+        imite="une conversation par demande, trente jours : un workflow a la "
+              "minute en laisse 43 200, toutes chargees en memoire",
+        rougit="au-dela du plafond, la plus ancienne conversation de la cle est fermee",
+        editions=[("serveur.py", brut(
+            "        borner_conversations_de(fiche[\"id\"])\n", ""))]),
+    dict(
+        nom="les attentes d'une cle n'ont plus de plafond",
+        banc="banc_pilotage.py",
+        imite="mille « attendre=600 » ouverts par une seule cle saturent la "
+              "boucle ou les descripteurs d'un NAS",
+        rougit="au plafond d'attentes, une attente de plus rend la main aussitot",
+        editions=[("serveur.py", brut(
+            "    if not secondes or ATTENTES.get(ident, 0) >= ATTENTES_PAR_CLE:",
+            "    if not secondes:"))]),
+    dict(
+        nom="une attente ne relit plus la cle",
+        banc="banc_pilotage.py",
+        imite="revoquee pendant une attente de dix minutes, la cle recevait "
+              "quand meme les images a la fin",
+        rougit="une cle revoquee pendant une attente de trente secondes la voit finir",
+        editions=[("serveur.py", brut(
+            "            if not cle_vivante(ACCES.fiche(ident) if ACCES else None):\n"
+            "                return\n", ""))]),
+    dict(
+        nom="le fichier d'une machine retiree n'est plus refuse",
+        banc="banc_pilotage.py",
+        imite="url_de() leve pour un noeud que le registre ne connait plus : "
+              "un 500 la ou api_fichier rend 404",
+        rougit="le fichier d'une machine retiree du parc rend 404, pas 500",
+        editions=[("serveur.py", brut(
+            "    if noeud(ident) is None:\n        return None\n    # Un second verrou",
+            "    # Un second verrou"))]),
+    dict(
+        nom="le rang d'un fichier depend de nouveau de son ordre d'arrivee",
+        banc="banc_pilotage.py",
+        imite="la variante 2 finie avant la 1 prend le rang 0, puis le cede : un "
+              "lien deja donne sert un AUTRE fichier",
+        rougit="la variante 2 finie avant la 1 prend le rang 25",
+        editions=[("serveur.py", brut(
+            "            rang = ((variante - 1) * FICHIERS_PAR_TIRAGE + i",
+            "            rang = (len(rangees)"))]),
+    dict(
+        nom="toute cle presentee s'inscrit dans la table des echecs",
+        banc="banc_pilotage.py",
+        imite="des identifiants au hasard remplissent la table en une seconde "
+              "et demie ; dans la table commune, ils chassaient les compteurs "
+              "des mots de passe",
+        rougit="cinquante cles d'identifiant inconnu n'inscrivent rien",
+        editions=[("serveur.py", brut(
+            "    if ident and ACCES and ACCES.fiche(ident) is not None:\n        combien",
+            "    if ident:\n        combien"))]),
+    dict(
+        nom="le plafond du jour compte des demandes et non des rendus",
+        banc="banc_pilotage.py",
+        imite="« variantes: 4 » quadruplait le plafond « par_jour » de la cle",
+        rougit="le plafond du jour compte des rendus",
+        editions=[("serveur.py", brut(
+            "            and _lances_aujourdhui(fiche[\"id\"]) + v[\"variantes\"] > fiche[\"par_jour\"]):",
+            "            and _lances_aujourdhui(fiche[\"id\"]) + 1 > fiche[\"par_jour\"]):"))]),
+    dict(
+        nom="les conversations de programme comptent pour la page",
+        banc="banc_pilotage.py",
+        imite="« if not mes_conversations(pid) » : un compte qui n'a servi qu'a "
+              "des programmes n'a jamais de conversation de page",
+        rougit="un compte qui n'a servi qu'a des programmes recoit quand meme",
+        editions=[("serveur.py", brut(
+            "    if not [c for c in mes_conversations(pid) if not est_conversation_de_programme(c)]:",
+            "    if not mes_conversations(pid):"))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
              + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
              + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
-             + COMPREHENSION_SEPT)
+             + COMPREHENSION_SEPT + CLES_ACCES + RAPPELS + PROTOCOLE_MCP
+             + CONTRAT + PILOTAGE + REVUE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

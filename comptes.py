@@ -510,5 +510,24 @@ class Comptes:
         ne doit pas fermer l'ordinateur du salon."""
         return int((self.gens.get((nom or "").lower()) or {}).get("gen") or 0)
 
+    def generation(self, nom):
+        """La generation du compte, ou None s'il n'existe pas.
+
+        _generation() rend 0 pour un compte inconnu, ce qui va a la session :
+        nom_du_jeton() a deja refuse le compte disparu un test plus haut. Une
+        cle d'acces, elle, n'a que ce chiffre pour savoir si son compte vit
+        encore — et 0 est aussi la generation d'un compte qui n'a jamais change
+        son mot de passe. Les deux cas doivent se distinguer."""
+        c = self.gens.get((nom or "").lower())
+        return None if c is None else int(c.get("gen") or 0)
+
+    def nom_exact(self, nom):
+        """Le nom tel qu'il a ete cree, ou None. Les comptes s'indexent en
+        minuscules, mais le dossier de sorties porte le nom exact : un rendu
+        demande par cle irait sinon dans un dossier voisin de celui du
+        navigateur, sur un disque qui distingue la casse."""
+        c = self.gens.get((nom or "").lower())
+        return None if c is None else c.get("nom")
+
     def est_admin(self, nom):
         return bool(self.gens.get((nom or "").lower(), {}).get("admin"))

@@ -25,7 +25,9 @@ Ce qui reste ouvert sans session : la page elle-même (sinon on ne pourrait pas
 afficher le formulaire de connexion), les routes de session, les routes
 d'administration, et `/demarrage` — ces dernières vérifient elles-mêmes le
 jeton, et les fermer condamnerait le seul moyen d'entrer quand aucun compte
-n'existe encore.
+n'existe encore. `/api/v1/*` et `/mcp` ne demandent pas de session non plus :
+elles exigent une [clé d'accès](piloter-par-programme.md), et répondent
+elles-mêmes un 401 qu'un programme sait lire.
 
 **Autrefois facultatifs.** Sans compte, le studio est celui d'avant : chaque navigateur
 reçoit un identifiant opaque et garde son espace privé. Créer des comptes dans
@@ -51,8 +53,8 @@ Trois choix à connaître :
 - **La session est un jeton signé**, pas une entrée en mémoire — sinon chaque
   redémarrage du studio déconnecterait tout le monde, et il redémarre souvent.
   Le cookie est `HttpOnly`. Changer de mot de passe, armer ou désarmer le
-  second facteur ferme toutes les sessions du compte, partout ; se déconnecter
-  ne ferme que l'appareil d'où l'on sort.
+  second facteur ferme toutes les sessions du compte, partout — et éteint ses
+  clés d'accès ; se déconnecter ne ferme que l'appareil d'où l'on sort.
 - **Supprimer un compte n'efface pas son travail.** Ses conversations
   redeviennent sans propriétaire et restent sur le disque, récupérables.
 
@@ -199,7 +201,24 @@ codes**. Le second facteur protège d'un mot de passe qui fuit, pas de quelqu'un
 qui a la machine. `SECURITY.md` détaille ce qu'il protège et ce qu'il ne
 protège pas.
 
-**Il ne révoque pas les sessions ouvertes.** Armer, désarmer ou changer de mot
-de passe ne déconnecte personne : le cookie reste valable jusqu'à sa péremption.
-Pour tout invalider d'un coup, supprime `conversations/_session.json` et
-relance.
+**Armer, désarmer ou changer de mot de passe ferme toutes les sessions du
+compte**, sur tous les appareils — sauf celui d'où l'on vient de le faire, dont
+le studio repose aussitôt la session (`_session_renouvelee`). Un mot de passe
+imposé par l'administrateur ferme tout, puisqu'il passe par la même méthode.
+Chacun de ces trois gestes incrémente la *génération*
+du compte (`changer_mdp`, `mfa_confirmer`, `mfa_retirer` dans `comptes.py`), et
+un cookie signé sous une autre génération ne désigne plus personne. Régénérer
+les codes de secours, lui, ne ferme rien : le secret ne change pas. (Cette page
+a longtemps dit le contraire — « il ne révoque pas les sessions ouvertes » —,
+ce qui était vrai avant la génération et contredisait le haut de cette même
+page depuis.)
+
+**Les clés d'accès du compte s'éteignent de la même façon** : une clé née sous
+une autre génération n'est plus reconnue, et il faut en refaire une pour chaque
+programme. C'est voulu — sans ce lien, une clé fabriquée avec un mot de passe
+volé survivrait au changement de mot de passe fait pour chasser le voleur. Voir
+[Piloter le studio par programme](piloter-par-programme.md).
+
+Pour tout invalider d'un coup, tous comptes confondus, supprime
+`conversations/_session.json` et relance : un nouveau secret de session est
+tiré, et les liens signés des programmes tombent avec lui.

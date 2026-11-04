@@ -63,8 +63,14 @@ pourrait pas afficher le formulaire de connexion), les routes de session, les
 routes d'administration et `/demarrage` — qui vérifient elles-mêmes le jeton, et
 dont la fermeture condamnerait le seul moyen d'entrer sur une installation
 neuve —, les routes des machines à agent (`/api/noeud/*`, authentifiées par
-leur jeton), et une lecture sans effet ni secret : `/api/textes`, le
-dictionnaire de la page, sans quoi l'écran de connexion resterait français.
+leur jeton), les routes des programmes (`/api/v1/*` et `/mcp`), qui exigent
+elles-mêmes une **clé d'accès** et répondent un 401 qu'un programme sait lire
+(voir [plus bas](#les-clés-daccès-des-programmes)) — dont `/api/v1/lien/*`, qui
+se lit sans en-tête parce que le lien est lui-même une **capacité signée**, et
+`/api/v1/openapi.json`, la description de l'API, sans rien de propre à
+l'installation que son adresse —, et une lecture sans effet ni secret :
+`/api/textes`, le dictionnaire de la page, sans quoi l'écran de connexion
+resterait français.
 (`/api/fournisseurs`, ouverte elle aussi, disait à un inconnu quelles modalités
 partaient chez un tiers ; aucune page ne la lisait, elle a été retirée le
 6 septembre 2026.)
@@ -279,15 +285,17 @@ Dans `conversations/`, en JSON lisible :
 | Fichier | Contenu |
 |---|---|
 | `_cles.json` | **les clés d'API des fournisseurs, en clair** (Anthropic, OpenAI, Mistral, Google, Mammouth, Meshy) |
-| `_admin.json` | le jeton d'administration, en clair — et donc le secret de signature des sessions |
+| `_admin.json` | le jeton d'administration, en clair |
+| `_session.json` | le secret qui signe les sessions — et, dérivé de lui par HMAC, celui des liens signés des programmes |
 | `_noeuds.json` | les jetons des machines à agent, en clair |
 | `_comptes.json` | les empreintes scrypt et leurs sels — et **les secrets TOTP en clair**, qui ne peuvent pas être empreints (il faut les relire pour calculer le code). Les codes de secours, eux, sont empreints. |
+| `_acces.json` | les clés d'accès des programmes : **leurs empreintes sha256**, jamais les clés — et **les secrets de rappel en clair**, qu'il faut relire pour signer chaque rappel. Qui lit ce fichier peut forger un rappel ; il ne peut pas, avec, se présenter au studio. |
 | `*.json` | les conversations : demandes, prompts, chemins des images |
 
 Il n'y a **aucun chiffrement au repos**, et il n'y a rien pour en faire un :
 le studio doit pouvoir se relancer tout seul, sans personne pour taper une
-phrase de passe. `_cles.json` et `_comptes.json` sont écrits en `0600` — ce qui
-n'a d'effet que sur POSIX, et aucun sur Windows.
+phrase de passe. `_cles.json`, `_comptes.json`, `_session.json` et `_acces.json`
+sont écrits en `0600` — ce qui n'a d'effet que sur POSIX, et aucun sur Windows.
 
 Ce que ça veut dire concrètement : **qui lit le disque de l'hôte a les clés
 d'API**, et peut dépenser sur les comptes correspondants. Traite ce dossier
@@ -352,6 +360,105 @@ SSH. Servie par le studio, elle serait réécrite par le même attaquant que le
 fichier, et ne protégerait de rien. Contre un réseau hostile, la seule vraie
 réponse reste le reverse proxy TLS de plus haut, et `--studio https://…`.
 
+### Les clés d'accès des programmes
+
+**Une voie d'entrée de plus, et la plus étroite.** Un workflow n8n, un
+assistant IA par MCP ou un script présentent une clé d'accès — `cs_` + 8 hex
+(l'identifiant, public) + 43 caractères tirés par `secrets` (256 bits). Le
+détail d'usage est dans [Piloter le studio par
+programme](docs/piloter-par-programme.md) ; voici ce qu'elle ouvre et ce
+qu'elle n'ouvre pas.
+
+- **Créée par son propriétaire seul, avec son mot de passe *et* son code** si le
+  second facteur est armé, par la même porte et le même compteur d'essais que
+  le changement de mot de passe : une clé contourne le second facteur pour
+  toujours, elle ne doit pas naître d'un onglet resté ouvert ni d'un mot de
+  passe volé seul. L'administrateur peut révoquer, pas créer. La clé n'est
+  montrée qu'une fois (`Cache-Control: no-store`) ; le studio n'en garde que
+  l'**empreinte sha256**. Pas scrypt, et ce n'est pas un oubli : scrypt protège
+  un mot de passe qu'un dictionnaire devine, une clé de 256 bits n'en a pas — et
+  un scrypt par requête donnerait à n'importe qui un moyen de geler le studio en
+  envoyant des clés fausses à la chaîne.
+- **Comparée en temps constant, et sans dire si l'identifiant existe** :
+  l'empreinte est calculée et comparée même quand l'identifiant ne désigne
+  aucune clé, pour que le chronomètre ne sépare pas « inconnue » de « fausse ».
+- **Seulement sur `/api/v1/*` et `/mcp`.** Présentée ailleurs, elle est
+  refusée en 403 plutôt qu'ignorée. Elle ne vaut **jamais administration** —
+  `admin_ok()` et `est_admin()` la refusent, même posée sur le compte `admin` —
+  et ne voit que les rendus qu'**elle** a demandés : ni la médiathèque de son
+  compte, ni les rendus d'une autre de ses clés. Réciproquement, une session de
+  navigateur ne suffit pas sur `/api/v1/*` : une page piégée ne peut pas y
+  lancer de rendu avec le cookie de son visiteur.
+- **Seulement dans `Authorization: Bearer cs_…`** — jamais dans un cookie (il
+  partirait tout seul depuis n'importe quel site), jamais dans l'adresse (elle
+  finit dans les journaux). Un en-tête ne se pose pas depuis un autre site sans
+  une requête préliminaire CORS que le studio n'approuve jamais.
+- **Éteinte par la génération du compte** : changer de mot de passe, armer ou
+  désarmer le second facteur éteint toutes les clés du compte, comme ses
+  sessions. Supprimer le compte les efface.
+- **Vérifiée avant d'être freinée** : une bonne clé passe toujours. Après trois
+  secrets faux pour une même clé depuis une adresse, l'attente double (1 s, 2,
+  4… plafonnée à 30), dans une **table à part** de celle des mots de passe — des
+  clés au hasard ne peuvent pas en chasser les compteurs de connexion. Une clé
+  inconnue ou révoquée n'inscrit rien : elle n'a pas de secret à deviner. Le
+  journal écrit l'adresse, l'identifiant public et le nombre, **jamais la
+  clé**. La table vit en mémoire, comme l'autre.
+- **Bornée** : vingt clés par compte, `en_file` rendus en cours à la fois (4 par
+  défaut, 20 au plus, variantes comprises), `par_jour` facultatif, compté sur
+  le disque, variantes comprises ; huit attentes ouvertes à la fois, qui
+  s'arrêtent dès que la clé est révoquée ; cinq cents conversations ouvertes.
+- **Le type d'une image envoyée en base64 vient d'une liste** (`png`, `jpg`,
+  `webp`), jamais du client : il devient l'extension du fichier écrit, et un
+  type comme `png\..\..\cible.png` écrivait — puis effaçait — un fichier hors
+  du dossier d'entrée sous Windows (revue de sécurité du 4 novembre 2026).
+- **Sans nuage par défaut**, et jusqu'à l'analyse : une demande d'une clé sans
+  nuage n'appelle pas non plus le modèle de langage distant. Le contenu adulte
+  ne sort jamais, le garde-fou des mineurs passe **avant la file**, le plafond
+  du nuage du compte vaut pour ses clés.
+
+**Les liens signés** (`/api/v1/lien/*`) se lisent sans en-tête : le jeton
+porte la clé, le rendu, le fichier et une date de fin à 24 h, scellés par
+HMAC-SHA256 sous un secret **dérivé** du secret de session — pas un fichier de
+plus à protéger, et il ne peut pas servir à forger une session, ni l'inverse.
+Un lien meurt **avec sa clé** — révoquée, ou seulement éteinte par un
+changement de mot de passe ou de second facteur — et à sa date. La fiche d'une
+clé éteinte existe encore (la liste la montre éteinte), et c'est pourquoi le
+service du lien vérifie la génération du compte, pas seulement l'existence de
+la fiche ; un rappel n'est plus signé en son nom non plus. Il est servi en
+`Cache-Control: private, no-store`.
+
+**Les rappels** sont la seule requête que le studio émet vers une adresse
+fournie par un programme, et c'est la porte d'une **requête forgée côté
+serveur** sur un réseau de maison. Elle est fermée ainsi :
+
+- l'hôte de l'URL doit figurer dans une **liste déclarée à la création de la
+  clé**, avec le mot de passe — qui vole la clé ne peut pas l'étendre ; liste
+  vide, aucun rappel ;
+- une entrée **avec port** ne vaut que pour ce port ; **sans port**, que pour
+  le port par défaut du schéma (80, 443). Elle valait pour tous les ports :
+  déclarer la machine de son n8n ouvrait aussi son ComfyUI ;
+- l'issue d'une livraison va dans le journal du studio, **pas** dans le fil du
+  rendu que la clé relit — sinon le rappel devenait une sonde de ports ;
+- la comparaison est textuelle, sans résolution de nom : `127.1` ou
+  `2130706433` ne correspondent à rien et échouent fermés ; un nom déclaré qui
+  pointe ailleurs est le choix de celui qui l'a déclaré ;
+- `http` et `https` seulement, pas d'identifiants dans l'URL, aucun caractère sur
+  lequel deux lecteurs d'URL divergent (barre inverse, espace, contrôle) ;
+- **aucune redirection suivie** ;
+- le corps est signé (HMAC-SHA256, horodatage compris, format de Stripe) avec le
+  secret de rappel de la clé, pour que le récepteur prouve que l'événement vient
+  du studio. Le journal ne nomme que l'hôte : une URL de webhook porte souvent
+  un identifiant qui sert de secret.
+
+Le studio ne va **jamais** chercher une image à une adresse donnée par un
+programme : ce serait la même requête forgée, par une autre porte.
+
+**Ce que ça ne protège pas** : le transit — une clé passe en clair sur HTTP,
+comme un cookie de session ; une clé volée, qui lance des rendus sur la carte
+dans les limites de ses plafonds jusqu'à sa révocation ; l'hôte, qui lit les
+secrets de rappel dans `_acces.json` ; et un rappel en `http://`, lisible en
+route — la signature prouve l'origine, pas la confidentialité.
+
 ### Ce que le studio ne filtre pas
 
 Le studio ne censure pas les demandes. **Une seule limite est codée en dur** :
@@ -368,8 +475,8 @@ dans le journal de la tâche.
 
 | | |
 |---|---|
-| Protégé | mots de passe (scrypt + sel), second facteur TOTP au choix de chacun, sessions (HMAC, révoquées par la génération du compte), cookie d'administration dérivé du jeton et non le jeton, cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, en-têtes anti-cadre et anti-devinette de type, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt, dépôts d'agent liés au travail confié |
-| **Pas** protégé | le transit (HTTP simple, cookies sans `Secure`), les secrets au repos (JSON en clair, secrets TOTP compris), la déconnexion d'un seul appareil qui ne ferme pas les autres, l'hameçonnage en temps réel, l'hôte lui-même, la mise à jour automatique des agents (voir ci-dessous) |
+| Protégé | mots de passe (scrypt + sel), second facteur TOTP au choix de chacun, sessions (HMAC, révoquées par la génération du compte), cookie d'administration dérivé du jeton et non le jeton, cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, en-têtes anti-cadre et anti-devinette de type, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt, dépôts d'agent liés au travail confié, clés d'accès des programmes (empreintes sha256, créées avec mot de passe et second facteur, limitées à `/api/v1` et `/mcp`, jamais administration, éteintes par la génération du compte, liens signés et rappels compris), rappels signés vers des hôtes déclarés seulement, sans redirection suivie |
+| **Pas** protégé | le transit (HTTP simple, cookies sans `Secure`, clés d'accès comprises), les secrets au repos (JSON en clair, secrets TOTP et secrets de rappel compris), la déconnexion d'un seul appareil qui ne ferme pas les autres, l'hameçonnage en temps réel, l'hôte lui-même, la mise à jour automatique des agents (voir ci-dessous) |
 
 ### Ce qui reste ouvert : la mise à jour automatique des agents
 

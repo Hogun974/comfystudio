@@ -239,6 +239,99 @@ TEXTES = {
     "erreur.connexion_requise": {
         "fr": "connexion requise",
         "en": "sign-in required"},
+    # ── Le pilotage par programme (cles d'acces, /api/v1, /mcp) ──────────
+    # Lues par un programme et par l'humain qui regarde son execution (n8n
+    # affiche le corps de la reponse en clair) : une phrase, ET un code stable
+    # dans la reponse — refus_programme() le derive de la cle.
+    "erreur.cle_requise": {
+        "fr": "cette route attend une clé d'accès : en-tête « Authorization: Bearer cs_… »",
+        "en": "this route expects an access key: header “Authorization: Bearer cs_…”"},
+    "erreur.cle_refusee": {
+        "fr": "clé d'accès refusée : inconnue, révoquée, ou éteinte par un changement de mot de passe",
+        "en": "access key refused: unknown, revoked, or switched off by a password change"},
+    "erreur.cle_hors_perimetre": {
+        "fr": "une clé d'accès ne vaut que pour /api/v1 et /mcp",
+        "en": "an access key is only valid for /api/v1 and /mcp"},
+    "erreur.cle_inconnue": {
+        "fr": "aucune clé de ce compte ne porte cet identifiant",
+        "en": "no key of this account has that identifier"},
+    "erreur.cle_file_pleine": {
+        "fr": "cette clé a déjà {en_file} rendus en cours : attends qu'un se termine",
+        "en": "this key already has {en_file} renders in progress: wait for one to finish"},
+    "erreur.cle_file_variantes": {
+        "fr": "ces {variantes} variantes dépasseraient les {en_file} rendus en même temps de cette clé",
+        "en": "these {variantes} variants would exceed this key's {en_file} renders at the same time"},
+    "erreur.cle_plafond_jour": {
+        "fr": "cette clé a atteint son plafond de {par_jour} rendus pour aujourd'hui",
+        "en": "this key has reached its limit of {par_jour} renders for today"},
+    "erreur.cle_sans_nuage": {
+        "fr": "ce moteur est distant, et cette clé n'a pas droit au nuage",
+        "en": "this engine is remote, and this key is not allowed to use the cloud"},
+    "erreur.rappel_refuse": {
+        "fr": "adresse de rappel refusée ({raison}) : son hôte doit figurer parmi ceux déclarés à la création de la clé",
+        "en": "callback address refused ({raison}): its host must be among those declared when the key was created"},
+    "erreur.refus_mineurs": {
+        "fr": "demande refusée : contenu sexuel impliquant des mineurs",
+        "en": "request refused: sexual content involving minors"},
+    "erreur.rendu_inconnu": {
+        "fr": "aucun rendu de cette clé ne porte cet identifiant",
+        "en": "no render of this key has that identifier"},
+    "erreur.rendu_termine": {
+        "fr": "ce rendu est déjà terminé",
+        "en": "this render has already finished"},
+    "erreur.pas_de_question": {
+        "fr": "ce rendu n'attend aucune réponse",
+        "en": "this render is not waiting for an answer"},
+    "erreur.reponse_vide": {
+        "fr": "la réponse est vide",
+        "en": "the answer is empty"},
+    "erreur.conversation_inconnue": {
+        "fr": "aucune conversation de cette clé ne porte cet identifiant",
+        "en": "no conversation of this key has that identifier"},
+    "erreur.attendre_bornes": {
+        "fr": "« attendre » se donne en secondes, de 0 à {maxi}",
+        "en": "“attendre” is given in seconds, from 0 to {maxi}"},
+    "erreur.idempotence_illisible": {
+        "fr": "en-tête Idempotency-Key trop long : {maxi} caractères au plus",
+        "en": "Idempotency-Key header too long: {maxi} characters at most"},
+    "erreur.image_illisible": {
+        "fr": "image_base64 illisible : ce n'est pas du base64",
+        "en": "unreadable image_base64: this is not base64"},
+    # Les refus de acces.py (ErreurAcces.cle), lus par le proprietaire qui
+    # cree sa cle dans la page — la ou une phrase incomprise coute le plus.
+    "erreur.acces_illisible": {
+        "fr": "le fichier des clés d'accès est illisible : le studio refuse de l'écraser — à réparer sur le serveur d'abord",
+        "en": "the access-key file is unreadable: the studio refuses to overwrite it — repair it on the server first"},
+    "erreur.acces_nom_vide": {
+        "fr": "donne un nom à la clé, pour la reconnaître dans la liste",
+        "en": "give the key a name, so you can recognise it in the list"},
+    "erreur.acces_nom_long": {
+        "fr": "le nom de la clé tient en {maxi} caractères au plus",
+        "en": "the key name is {maxi} characters at most"},
+    "erreur.acces_nom_imprimable": {
+        "fr": "le nom de la clé ne prend que des caractères imprimables",
+        "en": "the key name only takes printable characters"},
+    "erreur.acces_hotes_liste": {
+        "fr": "les hôtes de rappel se donnent en liste",
+        "en": "callback hosts are given as a list"},
+    "erreur.acces_hotes_trop": {
+        "fr": "{maxi} hôtes de rappel au plus",
+        "en": "{maxi} callback hosts at most"},
+    "erreur.acces_hote_invalide": {
+        "fr": "hôte de rappel invalide : « {hote} » — un nom ou une adresse, avec un port si besoin, sans http:// ni chemin",
+        "en": "invalid callback host: “{hote}” — a name or an address, with a port if needed, without http:// or a path"},
+    "erreur.acces_en_file": {
+        "fr": "rendus en même temps : un nombre entier de {bas} à {haut}",
+        "en": "renders at the same time: a whole number from {bas} to {haut}"},
+    "erreur.acces_par_jour": {
+        "fr": "plafond par jour : un nombre entier de {bas} à {haut} (0 = sans plafond)",
+        "en": "daily limit: a whole number from {bas} to {haut} (0 = no limit)"},
+    "erreur.acces_trop_de_cles": {
+        "fr": "{maxi} clés au plus par compte : révoque celles qui ne servent plus",
+        "en": "{maxi} keys at most per account: revoke the ones you no longer use"},
+    "erreur.champ_illisible": {
+        "fr": "le champ « {champ} » n'a pas la forme attendue",
+        "en": "the field “{champ}” does not have the expected form"},
 
     # Les fichiers joints. « {famille} » vaut image, video ou audio : ce sont
     # des identifiants INTERNES, et les laisser au milieu d'une phrase traduite
@@ -1408,6 +1501,187 @@ TEXTES = {
               "recommencer l'enrôlement pour le remettre.",
         "en": "Disarm the second factor? Its secret is erased: you will have "
               "to enrol again to put it back."},
+
+    # ── les cles d'acces ────────────────────────────────────────────
+    # « CLE D'ACCES » ET JAMAIS « CLE D'API » : ce mot-la designe deja les
+    # cles que le studio presente aux fournisseurs du nuage (/admin, onglet
+    # « cles d'API »). En anglais, « access key » pour la meme raison.
+    "page.acces.bouton": {
+        "fr": "clés d'accès",
+        "en": "access keys"},
+    "page.acces.titre": {
+        "fr": "Clés d'accès",
+        "en": "Access keys"},
+    "page.acces.pourquoi": {
+        "fr": "Une clé d'accès laisse un programme — un workflow n8n, un "
+              "assistant IA par MCP — demander des rendus en ton nom, sans "
+              "navigateur.",
+        "en": "An access key lets a program — an n8n workflow, an AI "
+              "assistant over MCP — request renders on your behalf, without "
+              "a browser."},
+    "page.acces.aucune": {
+        "fr": "Aucune clé pour l'instant.",
+        "en": "No key yet."},
+    "page.acces.combien": {
+        "fr": ["{n} clé sur {total} possibles",
+               "{n} clés sur {total} possibles"],
+        "en": ["{n} key out of {total} allowed",
+               "{n} keys out of {total} allowed"]},
+    "page.acces.cree": {
+        "fr": "créée le {date}",
+        "en": "created {date}"},
+    "page.acces.vu": {
+        "fr": "utilisée le {date}",
+        "en": "last used {date}"},
+    "page.acces.jamais": {
+        "fr": "jamais utilisée",
+        "en": "never used"},
+    "page.acces.nuage.oui": {
+        "fr": "nuage autorisé",
+        "en": "cloud allowed"},
+    "page.acces.nuage.non": {
+        "fr": "sans nuage",
+        "en": "no cloud"},
+    "page.acces.en_file": {
+        "fr": ["{n} rendu à la fois", "{n} rendus à la fois"],
+        "en": ["{n} render at a time", "{n} renders at a time"]},
+    "page.acces.par_jour": {
+        "fr": ["au plus {n} rendu par jour", "au plus {n} rendus par jour"],
+        "en": ["at most {n} render a day", "at most {n} renders a day"]},
+    "page.acces.sans_plafond": {
+        "fr": "sans plafond par jour",
+        "en": "no daily cap"},
+    "page.acces.hotes": {
+        "fr": "rappels vers {hotes}",
+        "en": "callbacks to {hotes}"},
+    "page.acces.sans_rappel": {
+        "fr": "aucun hôte de rappel",
+        "en": "no callback host"},
+    "page.acces.eteinte": {
+        "fr": "éteinte",
+        "en": "switched off"},
+    # LA CAUSE, ET CE QU'IL RESTE A FAIRE. Sans elle, « eteinte » se lit comme
+    # une panne du studio ; c'est en fait le changement de mot de passe ou de
+    # second facteur qui a ferme toutes les portes du compte, celle-ci
+    # comprise — et rien ne la rallume.
+    "page.acces.eteinte.pourquoi": {
+        "fr": "Elle s'est éteinte quand le mot de passe ou le second facteur "
+              "du compte a changé : plus aucun programme ne peut s'en servir. "
+              "Révoque-la et crées-en une autre.",
+        "en": "It switched off when the account's password or second factor "
+              "changed: no program can use it any more. Revoke it and create "
+              "another one."},
+    "page.acces.revoquer": {
+        "fr": "révoquer",
+        "en": "revoke"},
+    "page.acces.revoquer.sur": {
+        "fr": "Révoquer la clé « {nom} » ? Le programme qui s'en sert sera "
+              "refusé dès sa prochaine demande.",
+        "en": "Revoke the key “{nom}”? The program using it will be "
+              "refused from its next request on."},
+    "page.acces.revoquee": {
+        "fr": "Clé révoquée.",
+        "en": "Key revoked."},
+    "page.acces.pleine": {
+        "fr": "{max} clés au plus par compte : révoque celles qui ne servent "
+              "plus pour en créer une autre.",
+        "en": "{max} keys at most per account: revoke the ones you no longer "
+              "use to create another."},
+    "page.acces.creer.titre": {
+        "fr": "Nouvelle clé",
+        "en": "New key"},
+    "page.acces.nom": {
+        "fr": "nom de la clé (ex. n8n maison)",
+        "en": "key name (e.g. home n8n)"},
+    "page.acces.nuage": {
+        "fr": "autoriser le nuage (moteurs payants)",
+        "en": "allow the cloud (paid engines)"},
+    # DECOCHEE PAR DEFAUT, et la phrase le justifie : un humain voit ce qu'il
+    # depense, un programme qui boucle ne voit rien.
+    "page.acces.nuage.pourquoi": {
+        "fr": "Décochée par défaut : un programme qui boucle peut lancer des "
+              "centaines de rendus sans que personne ne regarde, et chacun se "
+              "paierait. Sans elle, la clé reste sur les machines du studio.",
+        "en": "Unticked by default: a program stuck in a loop can launch "
+              "hundreds of renders with nobody watching, and each one would "
+              "be paid for. Without it, the key stays on the studio's own "
+              "machines."},
+    "page.acces.hotes.invite": {
+        "fr": "hôtes de rappel, un par ligne (ex. n8n.maison:5678)",
+        "en": "callback hosts, one per line (e.g. n8n.home:5678)"},
+    "page.acces.hotes.aide": {
+        "fr": "Le studio n'enverra ses rappels qu'à ces hôtes, {max} au plus : "
+              "un nom ou une adresse, avec le port si besoin, sans http:// ni "
+              "chemin. Vide : aucun rappel, le programme interroge.",
+        "en": "The studio will only send its callbacks to these hosts, {max} "
+              "at most: a name or an address, with the port if needed, "
+              "without http:// or a path. Empty: no callback, the program "
+              "polls."},
+    "page.acces.en_file.champ": {
+        "fr": "rendus en même temps",
+        "en": "renders at the same time"},
+    "page.acces.par_jour.champ": {
+        "fr": "plafond par jour (0 = aucun)",
+        "en": "daily cap (0 = none)"},
+    "page.acces.mdp.pourquoi": {
+        "fr": "Ton mot de passe, et ton code si le second facteur est armé : "
+              "une clé passe outre le second facteur pour toujours, elle ne "
+              "doit pas pouvoir naître d'un onglet resté ouvert.",
+        "en": "Your password, and your code if the second factor is armed: a "
+              "key bypasses the second factor for good, so it must not be "
+              "born from a tab left open."},
+    "page.acces.creer": {
+        "fr": "créer la clé",
+        "en": "create the key"},
+    "page.acces.fermer": {
+        "fr": "fermer",
+        "en": "close"},
+    "page.acces.refus": {
+        "fr": "refusé",
+        "en": "refused"},
+    "page.acces.neuve.titre": {
+        "fr": "La clé « {nom} » est créée.",
+        "en": "The key “{nom}” is created."},
+    # LA PHRASE LA PLUS IMPORTANTE DE L'ECRAN, comme pour les codes de
+    # secours : seule l'empreinte de la cle est gardee.
+    "page.acces.neuve.unique": {
+        "fr": "Elle ne sera plus jamais affichée : le studio n'en garde que "
+              "l'empreinte. Copie-la maintenant — perdue, elle se révoque et "
+              "se refait, elle ne se relit pas.",
+        "en": "It will never be shown again: the studio only keeps its "
+              "fingerprint. Copy it now — once lost, it is revoked and made "
+              "again, never read back."},
+    "page.acces.neuve.cle": {
+        "fr": "La clé",
+        "en": "The key"},
+    "page.acces.neuve.secret": {
+        "fr": "Le secret de rappel",
+        "en": "The callback secret"},
+    "page.acces.neuve.secret.pourquoi": {
+        "fr": "Il signe chaque rappel (en-tête X-ComfyStudio-Signature) : ton "
+              "programme s'en sert pour savoir que l'appel vient bien du "
+              "studio. Lui non plus ne sera plus affiché.",
+        "en": "It signs every callback (X-ComfyStudio-Signature header): your "
+              "program uses it to know the call really comes from the "
+              "studio. It will not be shown again either."},
+    "page.acces.n8n": {
+        "fr": "Pour n8n (nœud HTTP Request) :",
+        "en": "For n8n (HTTP Request node):"},
+    "page.acces.mcp": {
+        "fr": "Pour un assistant IA (configuration MCP) :",
+        "en": "For an AI assistant (MCP configuration):"},
+    "page.acces.copier": {
+        "fr": "copier",
+        "en": "copy"},
+    "page.acces.copie": {
+        "fr": "copié",
+        "en": "copied"},
+    "page.acces.copie.rate": {
+        "fr": "sélectionné : Ctrl+C pour copier",
+        "en": "selected: Ctrl+C to copy"},
+    "page.acces.fini": {
+        "fr": "j'ai copié",
+        "en": "I have copied it"},
 
     # ── les interrupteurs de nuage ──────────────────────────────────
     "page.nuage.plafond.title": {

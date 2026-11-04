@@ -580,6 +580,50 @@ jobs:
       - name: La mise en service d'une machine a carte, pour de vrai
         run: python banc_noeud.py
 
+      # LE PILOTAGE PAR PROGRAMME, en trois pieces pures (4 novembre 2026). Une
+      # cle d'acces laisse un workflow n8n ou un assistant IA agir AU NOM d'un
+      # compte, sans navigateur et sans second facteur : c'est la porte la plus
+      # large que le studio ait ouverte depuis les comptes, et chacune de ses
+      # trois pieces a son banc ET ses mutations.
+      #
+      # Les cles : le studio n'en garde que l'empreinte, et une cle meurt avec
+      # la generation du compte — changer son mot de passe doit l'eteindre,
+      # sinon un mot de passe vole fabriquait une cle qui lui survivait.
+      - name: Les cles d'acces ne valent que leur empreinte et meurent avec la generation du compte
+        run: python banc_acces.py
+
+      # Les rappels : le studio POSTe a l'URL qu'un programme lui donne, depuis
+      # un reseau de maison. Sans la liste des hotes declares a la creation de
+      # la cle, c'etait une requete forgee cote serveur vers le routeur ou la
+      # console du NAS. Le banc lance un vrai petit serveur aiohttp sur
+      # 127.0.0.1 : la signature est verifiee de bout en bout, et une
+      # redirection n'est jamais suivie.
+      - name: Les rappels sont signes, re-essayes avec mesure et ne sortent jamais de la liste des hotes
+        run: python banc_rappels.py
+
+      # Le protocole MCP des assistants IA, sans SDK : une exception d'outil ne
+      # part jamais au client (elle porterait un chemin du NAS), une
+      # notification n'execute rien, et un argument faux revient au modele pour
+      # qu'il se corrige au lieu d'une erreur de protocole.
+      - name: La couche MCP ne laisse fuir aucune exception et laisse le modele se corriger
+        run: python banc_mcp.py
+
+      # Le contrat OpenAPI est ce qu'un assistant IA ou un outil d'import lit
+      # AVANT d'avoir essaye une seule route. Il est ecrit a la main — le depot
+      # n'a pas de generateur — et c'est exactement ce qui derive : le banc
+      # compare le routeur et le document dans les deux sens, les codes de
+      # refus et leurs statuts, les etats, les bornes.
+      - name: Le contrat OpenAPI decrit exactement les routes, les etats et les refus des programmes
+        run: python banc_contrat.py
+
+      # Les trois pieces assemblees dans serveur.py, eprouvees par une autre
+      # main que celle du code : l'identite par cle, la cle qui ne vaut jamais
+      # administration, l'isolement des rendus entre cles, le garde-fou avant
+      # la file, le nuage interdit jusqu'a l'analyse, les rappels, MCP de bout
+      # en bout. Il a trouve sept defauts en s'ecrivant ; chacun a sa mutation.
+      - name: Le pilotage par programme, cles, rappels et MCP de bout en bout
+        run: python banc_pilotage.py
+
       # L'entrainement complet : trois centiemes de seconde, aucune dependance,
       # aucun reseau. On le lance d'abord pour son affichage — c'est lui qu'on
       # lira dans le journal de l'action quand un chiffre bougera.

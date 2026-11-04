@@ -1,0 +1,117 @@
+{
+  "name": "ComfyStudio — demander un rendu et le télécharger",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## ComfyStudio — recette simple\n\n1. Remplace `http://STUDIO:8199` par l'adresse de ton studio, dans les deux nœuds HTTP.\n2. Crée un credential **Header Auth** : *Name* `Authorization`, *Value* `Bearer cs_REMPLACER_PAR_TA_CLE_D_ACCES` — ta clé d'accès entière, créée dans la page du studio (bouton « clés d'accès »).\n3. Choisis ce credential dans les deux nœuds HTTP.\n\nAucun secret n'est dans ce fichier. Détail : docs/piloter-par-programme.md",
+        "height": 300,
+        "width": 420
+      },
+      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0001",
+      "name": "À lire d'abord",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -360]
+    },
+    {
+      "parameters": {},
+      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0002",
+      "name": "Lancer à la main",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://STUDIO:8199/api/v1/rendus",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $execution.id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"demande\": \"un renard roux dans la neige au crépuscule\",\n  \"attendre\": 300\n}",
+        "options": {
+          "timeout": 330000
+        }
+      },
+      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0003",
+      "name": "Demander le rendu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "A-CREER-DANS-N8N",
+          "name": "ComfyStudio (clé d'accès)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.fichiers[0].url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "6a1f0c2e-0b4d-4c1a-9e51-3d2b7c8a0004",
+      "name": "Télécharger le premier fichier",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "A-CREER-DANS-N8N",
+          "name": "ComfyStudio (clé d'accès)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Lancer à la main": {
+      "main": [
+        [
+          {
+            "node": "Demander le rendu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demander le rendu": {
+      "main": [
+        [
+          {
+            "node": "Télécharger le premier fichier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

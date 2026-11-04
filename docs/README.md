@@ -40,6 +40,7 @@ sujet ; le [README](../README.md) ne garde que la présentation et l'installatio
 
 - [Plusieurs utilisateurs](plusieurs-utilisateurs.md) — les espaces séparés par navigateur, l'ouverture au réseau local, et pourquoi retrouver son espace sur un téléphone passe par un compte.
 - [Comptes](comptes.md) — l'authentification obligatoire par défaut, le compte `admin`, ce qu'un compte apporte, et le second facteur (TOTP) : l'enrôler, les codes de secours, rouvrir un compte dont le téléphone est perdu.
+- [Piloter le studio par programme](piloter-par-programme.md) — **n8n, un assistant IA par MCP, un script `curl`** : une clé d'accès par programme (à ne pas confondre avec les clés d'API du nuage), l'API `/api/v1`, les états d'un rendu et quoi faire dans chacun, les rappels signés et leur vérification, deux recettes n8n pas à pas, la configuration MCP de Claude Code, et ce qui n'est pas fait.
 - [Piloter ComfyUI depuis l'interface](piloter-comfyui.md) — démarrer et arrêter le moteur depuis la barre latérale.
 - [Moteur, priorité, taille, machine](reglages-de-rendu.md) — les quatre réglages qui sont à toi, portés par la conversation, et les cas où ils ne s'appliquent pas.
 - [Le brouillon, et « refaire en soigné »](brouillon.md) — un rendu au quart des étapes pour juger un prompt, et pourquoi il ne prédit pas le cadrage.

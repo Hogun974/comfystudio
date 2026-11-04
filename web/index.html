@@ -238,6 +238,38 @@ header{display:flex;align-items:center;gap:14px;padding:12px 20px;
 .entree .avertit{color:var(--braise);font:11px var(--sans);line-height:1.45}
 .entree .dit{color:var(--encre-douce);font:11px var(--sans);line-height:1.45}
 .entree .otp{color:var(--braise);font:11px var(--mono);word-break:break-all}
+/* ── les cles d'acces ─────────────────────────────────────────────────
+   Plus large que la boite d'entree : un extrait de configuration MCP fait
+   soixante caracteres de large, et coupe a 320 px il ne se relit plus avant
+   d'etre colle. La hauteur defile dans la boite et non dans la page — le
+   voile est fixe, et une liste de vingt cles sortirait sinon de l'ecran sans
+   moyen d'atteindre le bouton du bas. */
+.entree.large{width:min(560px,94vw);max-height:90vh;overflow:auto}
+/* Le voile large prend sa largeur, ses champs aussi : dans le panneau des cles
+   d'acces, le nom tenait en 158 px sur 560 et coupait son propre exemple
+   (« home n8… »). Mesure dans le navigateur, le 4 novembre 2026. */
+.entree.large input:not([type=checkbox]),.entree.large textarea{width:100%;box-sizing:border-box}
+.entree h4{margin:6px 0 0;font:600 13px var(--sans)}
+.entree textarea{flex:none;min-height:56px;max-height:none;resize:vertical;
+  padding:8px 10px;background:var(--creux);border:1px solid var(--trait);
+  border-radius:7px;color:var(--encre);font:12px var(--mono)}
+.entree label{display:flex;align-items:center;gap:8px;font:12px var(--sans);
+  color:var(--encre-douce)}
+.entree label input[type=number]{width:7em}
+.acces-liste{margin:0;padding:0;list-style:none;display:flex;
+  flex-direction:column;gap:8px}
+.acces-liste li{border:1px solid var(--trait);border-radius:7px;padding:8px 10px;
+  display:flex;flex-direction:column;gap:4px}
+.acces-tete{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.acces-tete code{font:11px var(--mono);color:var(--encre-douce)}
+.acces-tete .rang{margin-left:auto}
+.acces-eteinte{color:var(--rouge);font:11px var(--mono)}
+/* « pre-wrap » et non « pre » : la cle fait cinquante-cinq caracteres d'un
+   seul tenant, et sur un telephone elle sortirait de la boite. La copie,
+   elle, prend le texte et non son affichage — rien ne s'y insere. */
+.entree .extrait{margin:0;white-space:pre-wrap;word-break:break-all;
+  font:12px var(--mono);user-select:all;background:var(--creux);
+  border:1px solid var(--trait);border-radius:7px;padding:8px 10px}
 .file-vive{color:var(--braise);border:1px solid var(--braise);border-radius:20px;
   padding:3px 10px}
 
@@ -2083,13 +2115,20 @@ async function peindreCompte() {
     const facteur = document.createElement("button");
     facteur.type = "button"; facteur.textContent = T("page.mfa.bouton");
     facteur.onclick = formulaireFacteur;
+    // Les cles d'acces vivent a cote du second facteur, et pour la meme
+    // raison : elles se reglent depuis son propre compte. /admin peut en
+    // revoquer une, jamais en creer — il faudrait le mot de passe du
+    // proprietaire, et son code.
+    const acces = document.createElement("button");
+    acces.type = "button"; acces.textContent = T("page.acces.bouton");
+    acces.onclick = formulaireAcces;
     const sortir = document.createElement("button");
     sortir.type = "button"; sortir.textContent = T("page.compte.sortir");
     sortir.onclick = async () => {
       await fetch("/api/compte/sortir", { method: "POST", credentials: "same-origin" });
       location.reload();
     };
-    zone.append(qui, facteur, sortir);
+    zone.append(qui, facteur, acces, sortir);
   } else {
     const b = document.createElement("button");
     b.type = "button"; b.textContent = T("page.compte.entrer");
@@ -2432,6 +2471,302 @@ function formulaireFacteur() {
       rang.append(bouton("page.annuler", async () => fermer()));
     }
   })();
+}
+
+/* ── les cles d'acces ─────────────────────────────────────────────────
+   Une cle laisse un programme — un workflow n8n, un assistant IA par MCP —
+   demander des rendus au nom de ce compte, sans navigateur (acces.py, et le
+   bloc « pilotage par programme » de serveur.py).
+
+   LA CLE ET LE SECRET DE RAPPEL N'EXISTENT EN CLAIR QUE DANS LA REPONSE DE
+   CREATION. Le studio ne garde que l'empreinte de la cle : perdue, elle se
+   revoque et se refait, elle ne se relit pas. D'ou trois regles, tenues ici :
+     - ils ne vont NULLE PART ailleurs que dans le texte du voile — ni
+       localStorage, ni l'adresse, ni la console, ni un attribut. Un attribut
+       se relit par n'importe quel script de la page et finit dans les
+       rapports d'extension ; le bouton « copier » relit donc le texte de
+       l'element au clic, il ne porte pas la valeur ;
+     - ils disparaissent a la fermeture : le voile est retire du document, et
+       revenir a la liste vide l'ecran avant de la peindre ;
+     - tant qu'ils sont a l'ecran, un clic a cote ne ferme PAS le voile. Le
+       geste est banal — on clique a cote pour revenir a la page — et il
+       perdrait sans retour une cle qu'on n'a pas encore collee.
+
+   LA CREATION DEMANDE LE MOT DE PASSE ET LE CODE, la revocation la seule
+   session : une cle contourne le second facteur pour toujours, elle ne doit
+   pas naitre d'un onglet reste ouvert ; la fermer, c'est ce qu'on fait quand
+   on la croit fuitee, souvent sans le mot de passe sous la main. */
+function formulaireAcces() {
+  const voile = document.createElement("div");
+  voile.className = "voile-entree";
+  voile.innerHTML = `<form class="entree large">
+      <h3>${ech(T("page.acces.titre"))}</h3>
+      <div class="corps-acces"></div>
+      <div class="mal"></div>
+      <div class="rang"></div>
+    </form>`;
+  document.body.appendChild(voile);
+  const f = voile.querySelector("form");
+  const corps = f.querySelector(".corps-acces");
+  const mal = f.querySelector(".mal");
+  const rang = f.querySelector(".rang");
+  let retenu = false;
+  const fermer = () => voile.remove();
+  voile.onclick = e => { if (e.target === voile && !retenu) fermer(); };
+  // Entree dans un champ soumettrait le formulaire et rechargerait la page,
+  // cle affichee comprise : les envois passent par les boutons, et eux seuls.
+  f.onsubmit = e => e.preventDefault();
+
+  const dire = (cle, classe, valeurs) => {
+    const p = document.createElement("div");
+    p.className = classe || "dit";
+    p.textContent = T(cle, valeurs);
+    return p;
+  };
+
+  const bouton = (cle, action) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = T(cle);
+    b.onclick = async () => {
+      b.disabled = true;
+      try { await action(); }
+      catch (err) { mal.textContent = err.message; }
+      finally { b.disabled = false; }
+    };
+    return b;
+  };
+
+  // La date suit la langue de la page, comme la mediatheque : locale().
+  const date = s => new Date(s * 1000).toLocaleString(locale(),
+    { day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit" });
+
+  const champ = (cle, enfant) => {
+    const l = document.createElement("label");
+    l.append(document.createTextNode(T(cle)), enfant);
+    return l;
+  };
+
+  const nombreBorne = (nom, bas, haut, valeur) => {
+    const i = document.createElement("input");
+    i.type = "number"; i.name = nom; i.min = bas; i.max = haut; i.step = 1;
+    i.value = valeur;
+    return i;
+  };
+
+  /* COPIER SANS PERMISSION A DEMANDER. navigator.clipboard n'existe que dans
+     un contexte sur — https ou 127.0.0.1 —, et le studio se joint souvent en
+     http sur l'adresse du reseau local : la, seule la selection marche. Si
+     les deux echouent, le texte reste SELECTIONNE, et Ctrl+C fait le reste. */
+  const copier = async (el, b) => {
+    const texte = el.textContent;
+    let fait = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(texte);
+        fait = true;
+      }
+    } catch (e) { fait = false; }
+    if (!fait) {
+      const plage = document.createRange();
+      plage.selectNodeContents(el);
+      const sel = getSelection();
+      sel.removeAllRanges(); sel.addRange(plage);
+      try { fait = document.execCommand("copy"); } catch (e) { fait = false; }
+    }
+    b.textContent = T(fait ? "page.acces.copie" : "page.acces.copie.rate");
+  };
+
+  const copiable = (cle, texte) => {
+    const bloc = document.createElement("pre");
+    bloc.className = "extrait";
+    bloc.textContent = texte;
+    const b = bouton("page.acces.copier", async () => copier(bloc, b));
+    const tete = document.createElement("div");
+    tete.className = "acces-tete";
+    const titre = document.createElement("span");
+    titre.textContent = T(cle);
+    const droite = document.createElement("div");
+    droite.className = "rang";
+    droite.append(b);
+    tete.append(titre, droite);
+    return [tete, bloc];
+  };
+
+  const charger = async mot => {
+    const r = await fetch("/api/compte/acces", { credentials: "same-origin" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.erreur || T("page.acces.refus"));
+    peindreListe(d, mot);
+  };
+
+  /* L'ECRAN DE LA CLE NEUVE EST UN CUL-DE-SAC, comme celui des codes de
+     secours : un seul bouton, qui revient a la liste et efface la cle de
+     l'ecran. En offrir un autre inviterait a partir sans l'avoir copiee. */
+  const peindreNeuve = x => {
+    retenu = true;
+    corps.innerHTML = ""; rang.innerHTML = ""; mal.textContent = "";
+    const origine = location.origin;
+    // Les deux extraits sont prets a coller : c'est la que se font les
+    // fautes — un « Bearer » oublie, l'adresse de la page au lieu de /mcp.
+    const n8n = `POST ${origine}/api/v1/rendus\n`
+      + `Authorization: Bearer ${x.cle}\n`
+      + `Content-Type: application/json\n\n`
+      + `{"demande": "…"}`;
+    const mcp = JSON.stringify({ mcpServers: { comfystudio: {
+      type: "http", url: origine + "/mcp",
+      headers: { Authorization: "Bearer " + x.cle } } } }, null, 2);
+    corps.append(dire("page.acces.neuve.titre", "dit", { nom: x.fiche.nom }),
+                 dire("page.acces.neuve.unique", "avertit"),
+                 ...copiable("page.acces.neuve.cle", x.cle),
+                 ...copiable("page.acces.neuve.secret", x.secret_rappel),
+                 dire("page.acces.neuve.secret.pourquoi"),
+                 ...copiable("page.acces.n8n", n8n),
+                 ...copiable("page.acces.mcp", mcp));
+    rang.append(bouton("page.acces.fini", async () => {
+      retenu = false;
+      corps.innerHTML = ""; rang.innerHTML = "";
+      rang.append(bouton("page.acces.fermer", async () => fermer()));
+      await charger("");
+    }));
+  };
+
+  const peindreListe = (d, mot) => {
+    retenu = false;
+    corps.innerHTML = ""; rang.innerHTML = ""; mal.textContent = "";
+    const b = d.bornes || {};
+    const cles = d.cles || [];
+    if (mot) corps.append(dire(mot, "avertit"));
+    corps.append(dire("page.acces.pourquoi"));
+    corps.append(cles.length
+      ? dire("page.acces.combien", "dit", { n: cles.length, total: b.cles })
+      : dire("page.acces.aucune"));
+    const ul = document.createElement("ul");
+    ul.className = "acces-liste";
+    for (const c of cles) {
+      const li = document.createElement("li");
+      const tete = document.createElement("div");
+      tete.className = "acces-tete";
+      const nom = document.createElement("b");
+      nom.textContent = c.nom;
+      const apercu = document.createElement("code");
+      apercu.textContent = c.apercu;
+      tete.append(nom, apercu);
+      if (!c.active) {
+        const e = document.createElement("span");
+        e.className = "acces-eteinte";
+        e.textContent = T("page.acces.eteinte");
+        tete.append(e);
+      }
+      const droite = document.createElement("div");
+      droite.className = "rang";
+      droite.append(bouton("page.acces.revoquer", async () => {
+        if (!confirm(T("page.acces.revoquer.sur", { nom: c.nom }))) return;
+        const r = await fetch("/api/compte/acces/" + encodeURIComponent(c.id),
+                              { method: "DELETE", credentials: "same-origin" });
+        const x = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(x.erreur || T("page.acces.refus"));
+        await charger("page.acces.revoquee");
+      }));
+      tete.append(droite);
+      const hotes = c.hotes || [];
+      const faits = document.createElement("div");
+      faits.className = "dit";
+      faits.textContent = [
+        T("page.acces.cree", { date: date(c.cree) }),
+        c.vu ? T("page.acces.vu", { date: date(c.vu) }) : T("page.acces.jamais"),
+        T(c.nuage ? "page.acces.nuage.oui" : "page.acces.nuage.non"),
+        T("page.acces.en_file", { n: c.en_file }),
+        c.par_jour ? T("page.acces.par_jour", { n: c.par_jour })
+                   : T("page.acces.sans_plafond"),
+        hotes.length ? T("page.acces.hotes", { hotes: hotes.join(", ") })
+                     : T("page.acces.sans_rappel"),
+      ].join(" · ");
+      li.append(tete, faits);
+      // LA RAISON, ET PAS SEULEMENT LE MOT. « eteinte » seul laisse croire a
+      // une panne du studio ; la cause est un geste du proprietaire — il a
+      // change son mot de passe ou son second facteur, et cela a ferme toutes
+      // ses portes, celle-ci comprise. Et rien ne la rallume : il faut en
+      // creer une autre.
+      if (!c.active) li.append(dire("page.acces.eteinte.pourquoi", "avertit"));
+      ul.appendChild(li);
+    }
+    if (cles.length) corps.append(ul);
+
+    if (cles.length >= (b.cles || 0)) {
+      corps.append(dire("page.acces.pleine", "avertit", { max: b.cles }));
+      rang.append(bouton("page.acces.fermer", async () => fermer()));
+      return;
+    }
+
+    const nomCle = document.createElement("input");
+    nomCle.name = "nom"; nomCle.maxLength = b.nom || 40;
+    nomCle.placeholder = T("page.acces.nom");
+    nomCle.autocomplete = "off";
+    // DECOCHEE PAR DEFAUT, et la phrase dit pourquoi juste dessous : un
+    // programme qui boucle ne s'arrete pas tout seul, et chaque tour lance
+    // vers un moteur du nuage se paie.
+    const nuage = document.createElement("input");
+    nuage.type = "checkbox"; nuage.name = "nuage"; nuage.checked = false;
+    const lNuage = document.createElement("label");
+    lNuage.append(nuage, document.createTextNode(T("page.acces.nuage")));
+    const hotes = document.createElement("textarea");
+    hotes.name = "hotes"; hotes.rows = 2;
+    hotes.placeholder = T("page.acces.hotes.invite");
+    const mdp = document.createElement("input");
+    mdp.type = "password"; mdp.name = "mdp";
+    mdp.placeholder = T("page.entree.mdp");
+    mdp.autocomplete = "current-password";
+    // Le champ du code porte la classe que demanderCode() rouvre : un compte
+    // arme le voit d'emblee, et si le serveur le reclame quand meme — le
+    // facteur arme depuis un autre onglet —, la marque le fait apparaitre.
+    const zoneCode = document.createElement("div");
+    zoneCode.className = "code-mfa";
+    zoneCode.hidden = !d.mfa;
+    const code = document.createElement("input");
+    code.name = "code"; code.placeholder = T("page.mfa.code");
+    code.autocomplete = "one-time-code"; code.inputMode = "numeric";
+    zoneCode.append(code);
+
+    const titre = document.createElement("h4");
+    titre.textContent = T("page.acces.creer.titre");
+    corps.append(titre, nomCle, lNuage,
+                 dire("page.acces.nuage.pourquoi", "avertit"), hotes,
+                 dire("page.acces.hotes.aide", "dit", { max: b.hotes }),
+                 champ("page.acces.en_file.champ",
+                       nombreBorne("en_file", 1, b.en_file, b.en_file_defaut)),
+                 champ("page.acces.par_jour.champ",
+                       nombreBorne("par_jour", 0, b.par_jour, 0)),
+                 dire("page.acces.mdp.pourquoi"), mdp, zoneCode);
+
+    rang.append(bouton("page.acces.creer", async () => {
+      mal.textContent = "";
+      // Un hote par ligne ; l'espace et la virgule separent aussi, parce
+      // qu'aucun des deux n'entre dans un nom d'hote et qu'une liste collee
+      // depuis un autre outil arrive souvent ainsi. Le serveur valide chacun.
+      const liste = f.hotes.value.split(/[\s,]+/).filter(Boolean);
+      const r = await fetch("/api/compte/acces", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mdp: f.mdp.value, code: f.code.value,
+                               nom: f.nom.value, nuage: f.nuage.checked,
+                               hotes: liste,
+                               en_file: Number(f.en_file.value),
+                               par_jour: Number(f.par_jour.value) }) });
+      const x = await r.json().catch(() => ({}));
+      // La MEME marque qu'a la porte d'entree : le champ, jamais le message
+      // ni le code de retour.
+      if (!r.ok && x[MARQUE_MFA]) { demanderCode(f, mal); return; }
+      if (!r.ok) throw new Error(x.erreur || T("page.acces.refus"));
+      peindreNeuve(x);
+    }), bouton("page.acces.fermer", async () => fermer()));
+  };
+
+  charger("").catch(err => {
+    corps.innerHTML = ""; rang.innerHTML = "";
+    mal.textContent = err.message;
+    rang.append(bouton("page.acces.fermer", async () => fermer()));
+  });
 }
 PRET.then(peindreCompte);
 
