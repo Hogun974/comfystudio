@@ -420,6 +420,16 @@ registre vit en mémoire : un redémarrage du studio l'oublie.
   variantes sont quatre rendus, pour `par_jour` comme pour `en_file` (code
   **429** `cle_file_variantes` quand elles dépasseraient `en_file`).
 
+**Les humains passent d'abord.** La file des rendus est commune, mais une
+demande tapée dans la page passe devant celles des programmes : l'humain attend
+devant l'écran, le programme attend son rappel. Un lot n8n ne met donc plus
+personne derrière lui. Pour qu'un jour chargé n'enterre pas un workflow, une
+demande de programme qui a attendu **dix minutes** reprend son tour d'arrivée —
+une demande humaine prend de quelques secondes à quelques minutes, dix minutes
+ne font attendre un programme que pour les humains qui sont vraiment là. La
+position que la page affiche suit la même règle. Ce n'était pas le cas au
+premier jet : la file était strictement dans l'ordre d'arrivée.
+
 Et deux bornes que la clé ne règle pas :
 
 - **Huit attentes à la fois par clé** (`attendre`). Chacune tient une connexion
@@ -875,9 +885,6 @@ champ ou un code ajoutés d'un seul côté le font rougir.
   qu'un programme lui donne : ce serait la requête forgée que la liste des
   hôtes de rappel empêche, par une autre porte. Envoie les octets —
   `POST /api/v1/fichiers` ou `image_base64`.
-- **Pas de priorité entre programmes et humains.** La file est commune, dans
-  l'ordre d'arrivée ; le plafond `en_file` est la seule chose qui empêche un
-  workflow de passer devant tout le monde par le nombre.
 - **Un rappel n'est pas persisté.** Un studio qui s'arrête pendant ses essais le
   perd. Le rendu, lui, se relit par son identifiant ; règle un délai au nœud
   Wait.

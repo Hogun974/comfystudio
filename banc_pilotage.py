@@ -1838,6 +1838,76 @@ async def s_liste():
         f"HTTP {st_2} {code(c_2)}")
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  15. Les humains d'abord dans la file
+# ══════════════════════════════════════════════════════════════════════
+async def s_humains_dabord():
+    """La file etait strictement dans l'ordre d'arrivee : un lot n8n mettait
+    l'humain devant l'ecran derriere ses rendus. Une horloge FACTICE pour le
+    vieillissement : attendre dix minutes ne mesurerait que la patience."""
+    remise_a_zero()
+    heure = [0.0]
+    for tid, api in (("p1", True), ("p2", True), ("h1", False), ("h2", False),
+                     ("sans_tache", None)):
+        if api is not None:
+            S.TACHES[tid] = {"api": {"cle": F_N8N["id"]}} if api else {}
+            S.TACHES[tid]["debut"] = time.time()
+    q = S.FileHumainsDabord(horloge=lambda: heure[0])
+    for tid in ("p1", "p2", "h1", "h2", "sans_tache"):
+        S.ATTENTE.append(tid)
+        await q.put({"tid": tid})
+    ordre = [(await q.get())["tid"] for _ in range(5)]
+    dit(ordre == ["h1", "h2", "sans_tache", "p1", "p2"],
+        "une demande humaine passe devant celles des programmes, et une demande "
+        "sans tache connue compte pour humaine", repr(ordre))
+    dit(S.ATTENTE[:3] == ["h1", "h2", "sans_tache"] and S.ATTENTE[3:] == ["p1", "p2"],
+        "et la position affichee le dit : ATTENTE range l'humain devant",
+        repr(S.ATTENTE))
+
+    # Le vieillissement : un programme qui a attendu dix minutes reprend son
+    # tour. Le temoin : a 599 s, l'humain passe encore devant.
+    for limite, attendu in ((S.VIEILLISSEMENT_PROGRAMME - 1, "humain"),
+                            (S.VIEILLISSEMENT_PROGRAMME, "programme")):
+        q = S.FileHumainsDabord(horloge=lambda: heure[0])
+        heure[0] = 0.0
+        S.TACHES["prog"] = {"api": {"cle": F_N8N["id"]}}
+        S.TACHES["humain"] = {}
+        await q.put({"tid": "prog"})
+        heure[0] = float(limite)
+        await q.put({"tid": "humain"})
+        premier = (await q.get())["tid"]
+        dit(premier == ("prog" if attendu == "programme" else "humain"),
+            f"un programme qui a attendu {limite} s : "
+            f"{'il reprend son tour' if attendu == 'programme' else 'l humain passe encore devant'}",
+            f"premier servi : {premier}")
+
+    # Le contrat d'asyncio.Queue que les travailleurs supposent : task_done et
+    # join tiennent, qsize et empty suivent.
+    q = S.FileHumainsDabord()
+    S.TACHES["a"], S.TACHES["b"] = {"api": {"cle": "x"}}, {}
+    await q.put({"tid": "a"})
+    await q.put({"tid": "b"})
+    taille = q.qsize()
+    await q.get(); q.task_done()
+    await q.get(); q.task_done()
+    try:
+        await asyncio.wait_for(q.join(), timeout=1)
+        rejoint = True
+    except asyncio.TimeoutError:
+        rejoint = False
+    dit(taille == 2 and q.empty() and rejoint,
+        "le contrat d'asyncio.Queue tient : qsize, empty, task_done et join",
+        f"qsize {taille}, vide {q.empty()}, join {rejoint}")
+    S.ATTENTE.clear()
+    # LE STUDIO S'EN SERT : une file parfaite que demarrer_file() ne cree pas
+    # serait du code mort, vert ici et absent en service.
+    import inspect
+    source_ = inspect.getsource(S.demarrer_file)
+    dit("FILE_ATTENTE = FileHumainsDabord()" in source_
+        and "asyncio.Queue()" not in source_,
+        "le studio demarre bien sa file avec les humains d'abord")
+
+
 async def principal():
     S.FILE_ATTENTE = asyncio.Queue()
     for titre, corps in (
@@ -1854,7 +1924,8 @@ async def principal():
             ("11. la retention", s_retention),
             ("12. les gardes, relues dans le texte", s_texte),
             ("13. ce que la revue de securite a trouve", s_revue),
-            ("14. retrouver ses rendus, et essayer son rappel", s_liste)):
+            ("14. retrouver ses rendus, et essayer son rappel", s_liste),
+            ("15. les humains d'abord dans la file", s_humains_dabord)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

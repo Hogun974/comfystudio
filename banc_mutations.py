@@ -11936,6 +11936,68 @@ LISTE_ESSAI = [
 ]
 
 
+# Les humains d'abord dans la file (4 novembre 2026) : un lot n8n ne fait plus
+# attendre l'humain devant l'ecran, et un programme reprend son tour au bout
+# de dix minutes.
+HUMAINS_DABORD = [
+    dict(
+        nom="les programmes passent devant les humains",
+        banc="banc_pilotage.py",
+        imite="l'ordre renverse : chaque lot n8n passe devant l'humain qui "
+              "attend devant la page",
+        rougit="une demande humaine passe devant celles des programmes",
+        editions=[("serveur.py", brut(
+            "        if self.programmes and (not self.humains or" + chr(10),
+            "        if self.programmes and (True or" + chr(10)))]),
+    dict(
+        nom="une demande sans tache compte pour un programme",
+        banc="banc_pilotage.py",
+        imite="le doute tranche contre l'humain : une demande dont la tache "
+              "n'est pas encore posee attend derriere les lots",
+        rougit="une demande humaine passe devant celles des programmes",
+        editions=[("serveur.py", brut(
+            '        programme = bool((TACHES.get(travail.get("tid")) or {}).get("api"))',
+            '        programme = travail.get("tid") not in TACHES or bool('
+            '(TACHES.get(travail.get("tid")) or {}).get("api"))'))]),
+    dict(
+        nom="un programme ne reprend jamais son tour",
+        banc="banc_pilotage.py",
+        imite="la priorite sans vieillissement : un jour charge, la demande "
+              "d'un workflow ne part jamais",
+        rougit="un programme qui a attendu 600 s : il reprend son tour",
+        editions=[("serveur.py", brut(
+            "                                maintenant - self.programmes[0][0] >= VIEILLISSEMENT_PROGRAMME):",
+            "                                False):"))]),
+    dict(
+        nom="un programme reprend son tour tout de suite",
+        banc="banc_pilotage.py",
+        imite="le vieillissement a zero : la priorite n'existe plus que sur le "
+              "papier",
+        rougit="un programme qui a attendu 599 s",
+        editions=[("serveur.py", brut(
+            "                                maintenant - self.programmes[0][0] >= VIEILLISSEMENT_PROGRAMME):",
+            "                                maintenant - self.programmes[0][0] >= 0):"))]),
+    dict(
+        nom="la position affichee ignore la priorite",
+        banc="banc_pilotage.py",
+        imite="la file sert l'humain d'abord mais la page lui annonce « dix "
+              "demandes devant » — une attente qui n'aura pas lieu",
+        rougit="et la position affichee le dit",
+        editions=[("serveur.py", brut(
+            "        if not programme:" + chr(10)
+            + '            avancer_dans_l_attente(travail.get("tid"))' + chr(10), ""))]),
+    dict(
+        nom="le studio redemarre avec une file ordinaire",
+        banc="banc_pilotage.py",
+        imite="la file prioritaire ecrite et jamais branchee : verte au banc, "
+              "absente en service",
+        rougit="le studio demarre bien sa file avec les humains d'abord",
+        editions=[("serveur.py", brut(
+            "    FILE_ATTENTE = FileHumainsDabord()",
+            "    FILE_ATTENTE = asyncio.Queue()"))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -11944,7 +12006,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
              + COMPREHENSION_SEPT + CLES_ACCES + RAPPELS + PROTOCOLE_MCP
              + CONTRAT + PILOTAGE + REVUE + GARDE_IMAGE
-             + LISTE_ESSAI)
+             + LISTE_ESSAI + HUMAINS_DABORD)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

@@ -12,6 +12,7 @@ Portable : rien n'est installe, tout tient sous D:\\ComfyStudio et s'appuie sur
 le Python embarque de ComfyUI.
 """
 import asyncio, base64, json, os, re, secrets, shlex, subprocess, sys, time, uuid
+import collections
 import datetime
 import functools
 import hashlib
@@ -15597,9 +15598,98 @@ async def ecouter_comfy():
         attente = min(attente * 2, 30)
 
 
+# Dix minutes. Une demande humaine prend de quelques secondes a quelques
+# minutes (docs/mesures.md) : au-dela de dix, un programme n'attend plus « les
+# humains qui sont la », il attendrait tous ceux qui viendront — sa demande ne
+# partirait jamais un jour charge. Passe ce delai, il reprend son tour d'arrivee.
+VIEILLISSEMENT_PROGRAMME = 600
+
+
+class FileHumainsDabord(asyncio.Queue):
+    """La file des rendus : une demande humaine passe devant celles des
+    programmes.
+
+    La file etait strictement dans l'ordre d'arrivee : un workflow n8n qui
+    deposait un lot mettait l'humain devant l'ecran derriere ses rendus, et
+    seul le plafond « en_file » de chaque cle bornait l'attente. L'humain
+    attend devant la page ; le programme, lui, attend son rappel.
+
+    SOUS-CLASSE D'asyncio.Queue PAR SES TROIS POINTS D'EXTENSION (_init, _put,
+    _get) — ceux qu'utilisent PriorityQueue et LifoQueue de la bibliotheque
+    standard. Les travailleurs, task_done(), join(), l'annulation et la reprise
+    au demarrage ne voient pas la difference : seul l'ORDRE de sortie change.
+
+    Un programme se reconnait a la marque « api » de sa tache — posee au depot,
+    restauree par reprendre_file(), recopiee sur chaque variante. Une demande
+    sans tache connue compte pour humaine : dans le doute, on ne fait pas
+    attendre quelqu'un.
+    """
+
+    def __init__(self, *args, horloge=time.monotonic, **kw):
+        self._horloge = horloge
+        super().__init__(*args, **kw)
+
+    def _init(self, maxsize):
+        # Une seule structure pour qsize() et empty(), qui lisent len(self._queue).
+        self._queue = _DeuxVoies()
+
+    def _put(self, travail):
+        programme = bool((TACHES.get(travail.get("tid")) or {}).get("api"))
+        self._queue.poser(travail, programme, self._horloge())
+        if not programme:
+            avancer_dans_l_attente(travail.get("tid"))
+
+    def _get(self):
+        return self._queue.prendre(self._horloge())
+
+
+class _DeuxVoies:
+    """Les humains, et les programmes avec leur heure d'arrivee."""
+
+    def __init__(self):
+        self.humains = collections.deque()
+        self.programmes = collections.deque()
+
+    def __len__(self):
+        return len(self.humains) + len(self.programmes)
+
+    def poser(self, travail, programme, quand):
+        if programme:
+            self.programmes.append((quand, travail))
+        else:
+            self.humains.append(travail)
+
+    def prendre(self, maintenant):
+        # Le plus ancien des programmes, s'il a assez attendu, reprend son tour.
+        if self.programmes and (not self.humains or
+                                maintenant - self.programmes[0][0] >= VIEILLISSEMENT_PROGRAMME):
+            return self.programmes.popleft()[1]
+        return self.humains.popleft()
+
+
+def avancer_dans_l_attente(tid):
+    """Place une demande humaine devant les demandes de programme dans ATTENTE.
+
+    ATTENTE dit a la page sa POSITION (« 2 demandes devant ») : si la file la
+    fait passer devant, l'affichage doit le dire, sinon il annonce une attente
+    qui n'aura pas lieu. Elle se range apres les humains deja la, et apres les
+    programmes qui ont deja assez attendu pour reprendre leur tour.
+    """
+    if tid not in ATTENTE:
+        return
+    ATTENTE.remove(tid)
+    maintenant = time.time()
+    for i, autre in enumerate(ATTENTE):
+        t_ = TACHES.get(autre) or {}
+        if t_.get("api") and maintenant - (t_.get("debut") or maintenant) < VIEILLISSEMENT_PROGRAMME:
+            ATTENTE.insert(i, tid)
+            return
+    ATTENTE.append(tid)
+
+
 async def demarrer_file(a):
     global FILE_ATTENTE
-    FILE_ATTENTE = asyncio.Queue()
+    FILE_ATTENTE = FileHumainsDabord()
     # Plusieurs travailleurs, pas un. Chacun prend une demande dans la meme
     # file ; le verrou par machine garantit qu'ils ne se disputent pas une carte.
     # Trois plutot que « autant que de machines » : les machines vont et
