@@ -500,6 +500,7 @@ BESOINS = {
     # La porte compatible OpenAI : il importe serveur.py et rien d'autre du
     # depot, comme banc_pilotage.py, et lance S.app() sur 127.0.0.1.
     "banc_openai.py": ["banc_openai.py"] + fichiers_du_conteneur(),
+    "banc_noms_sorties.py": ["banc_noms_sorties.py"] + fichiers_du_conteneur(),
     # agent_noeud.py N'ETAIT COPIE PAR AUCUN BANC, et c'est ce qui rendait
     # PERIMEES les deux mutations qui le visaient — « MUTATION PERIMEE,
     # agent_noeud.py n'est pas copie pour banc_repartition.py ». Aucune de ses
@@ -7615,8 +7616,8 @@ CONSOLE_SUITE = [
         rougit="il garde le modele le meme temps que toute analyse",
         editions=[
             ("serveur.py", brut(
-                '             "stream": False, "format": "json", "keep_alive": GARDER_LLM,\n             "options": {"temperature": 0}}',
-                '             "stream": False, "format": "json",\n             "options": {"temperature": 0}}')),
+                "                         True, MODELE_LLM, 0, GARDER_LLM)",
+                "                         True, MODELE_LLM, 0, GARDER_LLM)" + chr(10) + "    corps.pop(\"keep_alive\", None)")),
         ]),
     dict(
         nom="on interroge le modele d'une machine muette",
@@ -9353,8 +9354,8 @@ COMPREHENSION_SEPT = [
               "fois, puis l'aiguillage par mots-cles",
         rougit="corps_ollama() envoie le SCHEMA quand on lui en donne un",
         editions=[("serveur.py", brut(
-            '    if json_mode: corps["format"] = json_mode if isinstance(json_mode, dict) else "json"',
-            '    if json_mode: corps["format"] = "json"'))]),
+            '        corps["format"] = json_mode if isinstance(json_mode, dict) else "json"',
+            '        corps["format"] = "json"'))]),
     dict(
         nom="le schema ne permet plus « refus »",
         banc="banc_multilingue.py",
@@ -9766,8 +9767,8 @@ COMPREHENSION_SEPT = [
         imite="L'ETAT DU DEPOT JUSQU'AU 8 SEPTEMBRE 2026 : une question de dix mots, sans gabarit. Elle repondait « Bleu. » sur une machine ou TOUTE analyse revenait vide — un essai qui passe quand la chose qu'il eprouve est cassee donne le feu vert",
         rougit="il envoie le VRAI gabarit du plan",
         editions=[("serveur.py", brut(
-            '             "system": SYSTEME.format(catalogue=catalogue_texte(),\n                                      contexte=""),\n',
-            ''))]),
+            '                         None, SYSTEME.format(catalogue=catalogue_texte(), contexte=""),',
+            '                         None, None,'))]),
     dict(
         nom="l'essai de modele ne juge plus ce qu'on lui rend",
         banc="banc_console.py",
@@ -9830,8 +9831,8 @@ COMPREHENSION_SEPT = [
         imite="le motif est honnete — ne pas laisser un modele resident sur la carte de quelqu'un. Mais a zero, Ollama decharge en fin d'appel : la demande suivante de l'utilisateur repart du disque parce qu'un administrateur a appuye sur un bouton de diagnostic",
         rougit='il garde le modele le meme temps que toute analyse',
         editions=[('serveur.py', brut(
-            '             "stream": False, "format": "json", "keep_alive": GARDER_LLM,',
-            '             "stream": False, "format": "json", "keep_alive": 0,'))]),
+            "                         True, MODELE_LLM, 0, GARDER_LLM)",
+            "                         True, MODELE_LLM, 0, GARDER_LLM)" + chr(10) + "    corps[\"keep_alive\"] = 0"))]),
 ]
 
 SECURITE_SEPT = [
@@ -15025,6 +15026,137 @@ ADMIN_ENTREES = [
 ]
 
 
+# LES NOMS DE SORTIE (5 novembre 2026) : apres un menage du disque, ComfyUI
+# reprenait un nom deja designe par d'autres conversations.
+NOMS_SORTIES = [
+    dict(
+        nom="le prefixe des sorties ne porte plus la tache",
+        banc="banc_noms_sorties.py",
+        imite="la date seule : tous les rendus du jour partagent un prefixe, "
+              "et le compteur de ComfyUI reprend un nom apres un menage",
+        rougit="deux rendus du meme jour, meme compte, meme moteur : deux prefixes differents",
+        editions=[("serveur.py", brut(
+            '                 + f"_{tid[:8]}")',
+            '                 + "")'))]),
+    dict(
+        nom="le prefixe porte un tirage au sort au lieu de la tache",
+        banc="banc_noms_sorties.py",
+        imite="un uuid neuf a chaque passage : unique, mais une tache rejouee "
+              "apres un redemarrage eparpille ses fichiers",
+        rougit="une tache rejouee garde son prefixe",
+        editions=[("serveur.py", brut(
+            '                 + f"_{tid[:8]}")',
+            '                 + f"_{uuid.uuid4().hex[:8]}")'))]),
+]
+
+
+# LE REESSAI DU SDK openai (5 novembre 2026) : derriere un proxy qui coupe a
+# 90 s, chaque 504 relancait la carte.
+REESSAI_OPENAI = [
+    dict(
+        nom="le reessai du SDK relance un rendu",
+        banc="banc_openai.py",
+        imite="l'empreinte jamais consultee : chaque 504 du proxy fait un rendu de plus",
+        rougit="le reessai du SDK (x-stainless-retry-count: 1) rejoint le rendu deja lance",
+        editions=[("serveur.py", brut(
+            "    if empreinte and _est_un_reessai(req) and empreinte in REESSAIS_OPENAI:",
+            "    if False:"))]),
+    dict(
+        nom="toute demande identique rejoint la precedente",
+        banc="banc_openai.py",
+        imite="le reessai devine sans l'en-tete : deux personnes qui demandent "
+              "la meme image recoivent la meme",
+        rougit="mais deux demandes identiques qui ne se disent pas reessai restent deux rendus",
+        editions=[("serveur.py", brut(
+            "    if empreinte and _est_un_reessai(req) and empreinte in REESSAIS_OPENAI:",
+            "    if empreinte and empreinte in REESSAIS_OPENAI:"))]),
+    dict(
+        nom="l'empreinte oublie le prompt",
+        banc="banc_openai.py",
+        imite="une empreinte de la seule famille : tout reessai rejoint le "
+              "dernier rendu de la cle, quelle qu'en soit la demande",
+        rougit="et le reessai d'une AUTRE demande lance son propre rendu",
+        editions=[("serveur.py", brut(
+            "    brut_ = json.dumps([famille, fmt, demande], sort_keys=True, ensure_ascii=True)",
+            "    brut_ = json.dumps([famille, fmt], sort_keys=True, ensure_ascii=True)"))]),
+    dict(
+        nom="le reessai rejoue l'erreur d'un rendu echoue",
+        banc="banc_openai.py",
+        imite="tout rendu retrouve est rejoint, meme en erreur : le SDK qui "
+              "retente recoit la meme panne au lieu d'un nouvel essai",
+        rougit="le reessai d'un rendu ECHOUE en lance un nouveau",
+        editions=[("serveur.py", brut(
+            '                and (TACHES.get(deja) or {}).get("etat") not in ("erreur", "annule")):',
+            '                and True):'))]),
+]
+
+
+# LE CONTEXTE DE L'ANALYSE (5 novembre 2026) : sans num_ctx, Ollama prenait
+# 4096 sur la 2080 Ti et coupait le plan en plein JSON.
+CONTEXTE_ANALYSE = [
+    dict(
+        nom="l'analyse laisse Ollama choisir son contexte",
+        banc="banc_cerveaux.py",
+        imite="le corps d'avant : la temperature seule, et 4096 jetons choisis "
+              "d'apres la carte",
+        rougit="chaque appel a Ollama annonce son contexte",
+        editions=[("serveur.py", brut(
+            '             "options": {"temperature": temperature, "num_ctx": CONTEXTE_LLM,',
+            '             "options": {"temperature": temperature,'))]),
+    dict(
+        nom="le contexte annonce redevient celui de la carte",
+        banc="banc_cerveaux.py",
+        imite="num_ctx a 4096 : annonce, mais trop court pour le gabarit et une image",
+        rougit="tiennent dans le contexte annonce",
+        editions=[("serveur.py", brut(
+            'CONTEXTE_LLM = int(os.environ.get("STUDIO_LLM_CONTEXTE") or "8192")',
+            'CONTEXTE_LLM = int(os.environ.get("STUDIO_LLM_CONTEXTE") or "4096")'))]),
+    dict(
+        nom="l'essai de la console garde son propre corps",
+        banc="banc_console.py",
+        imite="le corps ecrit a la main dans la route : l'essai passe a 4096 "
+              "pendant que l'analyse est coupee",
+        rougit="et au MEME contexte que l'analyse",
+        editions=[("serveur.py", brut(
+            "                         True, MODELE_LLM, 0, GARDER_LLM)",
+            "                         True, MODELE_LLM, 0, GARDER_LLM)" + chr(10)
+            + "    corps[\"options\"] = {\"temperature\": 0}"))]),
+    dict(
+        nom="la penalite de repetition retombe a celle de llama-server",
+        banc="banc_cerveaux.py",
+        imite="le corps sans repeat_penalty : 1.0 sous Ollama 0.40, et le plan boucle",
+        rougit="la penalite de repetition est dite (1.1)",
+        editions=[("serveur.py", brut(
+            '                         "repeat_penalty": PENALITE_REPETITION}}',
+            '                         }}'))]),
+    dict(
+        nom="une reponse JSON n'est plus bornee",
+        banc="banc_cerveaux.py",
+        imite="une boucle court jusqu'au bout du contexte : quatre-vingts secondes",
+        rougit="une reponse JSON est bornee",
+        editions=[("serveur.py", brut(
+            '        corps["options"]["num_predict"] = LONGUEUR_JSON',
+            '        pass'))]),
+    dict(
+        nom="toute reponse est bornee, paroles comprises",
+        banc="banc_cerveaux.py",
+        imite="la borne posee hors du mode JSON : une chanson coupee a mille jetons",
+        rougit="une reponse JSON est bornee",
+        editions=[("serveur.py", brut(
+            '        corps["options"]["num_predict"] = LONGUEUR_JSON',
+            '        pass' + chr(10) + '    corps["options"]["num_predict"] = LONGUEUR_JSON'))]),
+    dict(
+        nom="un plantage CUDA ecarte le modele jusqu'au redemarrage",
+        banc="banc_cerveaux.py",
+        imite="« process has terminated » lu comme un chargement rate : une "
+              "faute passagere de la carte envoie tout au processeur du NAS",
+        rougit="un plantage en plein calcul (faute d'acces memoire CUDA) n'ecarte pas le modele",
+        editions=[("serveur.py", brut(
+            '    if "illegal memory access" in t:' + chr(10) + '        return False',
+            '    if False:' + chr(10) + '        return False'))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -15038,7 +15170,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
              + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES
-             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES)
+             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

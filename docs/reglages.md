@@ -38,6 +38,7 @@ set OLLAMA_URL=http://localhost:11434
 | `STUDIO_LLM_ECRITURE` | *(vide)* | impose le modèle d'**écriture** — enrichissement, traduction, paroles. Vide, le studio prend le plus gros modèle installé qui tienne, machine par machine. Il est ignoré sur une machine qui ne le porte pas |
 | `STUDIO_VISION` | `qwen2.5vl:7b` | le modèle qui lit les images. **Posé explicitement**, il est honoré partout où il est installé et déclare savoir voir — y compris s'il déborde la carte, parce qu'un nom écrit à la main est un choix ; le journal l'écrit alors (« lecture par X — modèle de vision imposé »). **Laissé au défaut**, il ne s'impose pas : c'est le plus gros modèle *voyant* que la carte de la machine peut tenir qui répond |
 | `STUDIO_LLM_GARDER` | `60s` | combien de temps Ollama garde le modèle chargé entre deux appels |
+| `STUDIO_LLM_CONTEXTE` | `8192` | le contexte (`num_ctx`) annoncé à Ollama à chaque appel. Sans lui, Ollama 0.40 le choisit d'après la carte — 4096 sur une 2080 Ti, et le gabarit de l'analyse en pèse déjà ~3900 : le plan était coupé en plein JSON. Le même pour tous les appels, sinon Ollama recharge le modèle |
 
 ## File, cartes et patience
 

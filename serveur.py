@@ -3645,9 +3645,12 @@ def corps_ollama(texte, image_b64, systeme, json_mode, modele, temperature, gard
     # rafale d'une demande sans immobiliser la machine pour la suivante.
     corps = {"model": modele or MODELE_LLM, "prompt": texte, "stream": False,
              "keep_alive": garder or GARDER_LLM,
-             "options": {"temperature": temperature}}
+             "options": {"temperature": temperature, "num_ctx": CONTEXTE_LLM,
+                         "repeat_penalty": PENALITE_REPETITION}}
     if systeme: corps["system"] = systeme
-    if json_mode: corps["format"] = json_mode if isinstance(json_mode, dict) else "json"
+    if json_mode:
+        corps["format"] = json_mode if isinstance(json_mode, dict) else "json"
+        corps["options"]["num_predict"] = LONGUEUR_JSON
     if image_b64: corps["images"] = [image_b64]
     return corps
 
@@ -3660,6 +3663,16 @@ def _echec_de_chargement(texte):
     ne varient pas d'une version a l'autre.
     """
     t = (texte or "").lower()
+    # SAUF UN PLANTAGE EN PLEIN CALCUL. « llama runner process has terminated:
+    # CUDA error: an illegal memory access was encountered » porte la meme
+    # formule qu'un chargement rate, et n'en est pas un : le modele etait
+    # charge, la carte a faute une fois, et Ollama relance son moteur dans les
+    # deux secondes. Vu le 5 novembre 2026 dans le journal du PC (llama-server,
+    # 0xc0000409), deux fois en tout sur des centaines d'appels. L'ecarter,
+    # c'etait envoyer toutes les analyses suivantes au processeur du NAS
+    # jusqu'au redemarrage du studio, pour une faute passagere.
+    if "illegal memory access" in t:
+        return False
     return any(m in t for m in ("error loading model", "process has terminated",
                                 "failed to initialize"))
 
@@ -3936,6 +3949,36 @@ async def _ollama_essai(ici, url, delai):
 ANALYSE_PETITE = (os.environ.get("STUDIO_ANALYSE_PETITE") or "0") == "1"
 # Combien de temps Ollama garde le modele en memoire entre deux appels.
 GARDER_LLM = os.environ.get("STUDIO_LLM_GARDER") or "60s"
+# LE CONTEXTE, DIT A CHAQUE APPEL — ET LE MEME A CHAQUE APPEL. Sans
+# « num_ctx », Ollama 0.40 le choisit d'apres la memoire de la carte : 4096 sur
+# la 2080 Ti du PC (« vram-based default context », dans son journal). Or le
+# gabarit de l'analyse en pese a lui seul ~3870 (13 300 caracteres, catalogue
+# compris) : il restait deux cents jetons pour le plan. Mesure du 5 novembre
+# 2026, par un studio d'essai, vingt-quatre analyses : quatre coupees en plein
+# JSON (« truncated = 1 » dans le journal d'Ollama, une pour une avec les
+# « reponse mal formee » du studio), dont une finie sur l'aiguillage par
+# mots-cles ; une image jointe (1024 jetons au moins) faisait deborder le
+# prompt lui-meme. 8192 tient le gabarit, une image et la reponse, pour
+# ~470 Mo de cache sur un 7B. LA MEME VALEUR PARTOUT : Ollama recharge un
+# modele dont on change le contexte, et des valeurs differentes d'un appel a
+# l'autre le feraient recharger a chaque fois. banc_cerveaux.py verifie que
+# le gabarit y tient encore quand le catalogue grossit.
+CONTEXTE_LLM = int(os.environ.get("STUDIO_LLM_CONTEXTE") or "8192")
+# LA PENALITE DE REPETITION QU'OLLAMA A PERDUE EN 0.40. Son ancien moteur
+# appliquait 1.1 par defaut ; 0.40 fait tourner llama-server, dont le defaut
+# est 1.0 (« repeat_penalty = 1.000 » dans le journal), et qwen2.5vl:7b ne
+# fixe que sa temperature. A 1.0 et temperature 0, le modele boucle : « croute
+# croustillante doree, croute croustillante doree, cro… » jusqu'au bout du
+# contexte — mesure du 5 novembre 2026, deux analyses sur vingt-quatre, 70 et
+# 80 s chacune une fois le contexte porte a 8192. 1.1, c'est la valeur avec
+# laquelle tout le studio a ete regle avant cette version.
+PENALITE_REPETITION = 1.1
+# UN PLAN TIENT EN QUELQUES CENTAINES DE JETONS. Une reponse JSON qui en
+# depasse mille est une boucle : la couper la, et non au bout des 8192 du
+# contexte, c'est echouer en dix secondes au lieu de quatre-vingts — la
+# seconde tentative et le repli par mots-cles arrivent d'autant plus tot. Le
+# texte libre (des paroles de chanson) n'a pas cette borne.
+LONGUEUR_JSON = 1024
 
 
 def noeuds_a_llm():
@@ -11130,7 +11173,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # sans cela, un noeud distant chercherait un fichier qui n'existe
             # que sur le studio.
             reference = await pousser_entree(reference, ident, tid)
-        horod = time.strftime("%Y%m%d") + ("" if len(NOEUDS) < 2 else f"_{ident}")
+        # L'IDENTIFIANT DE LA TACHE DANS LE NOM. La date seule faisait un
+        # prefixe commun a tous les rendus du jour, que seul le compteur
+        # « _00001_ » de ComfyUI departageait — et ce compteur repart du plus
+        # grand numero ENCORE SUR LE DISQUE. Vu le 5 novembre 2026 : apres un
+        # menage des sorties, le rendu suivant a repris un nom que trois
+        # conversations designaient deja, et elles ont montre une image qui
+        # n'etait pas la leur. Une tache rejouee apres un redemarrage garde le
+        # meme : ses fichiers restent ensemble. Voir banc_noms_sorties.py.
+        horod = (time.strftime("%Y%m%d") + ("" if len(NOEUDS) < 2 else f"_{ident}")
+                 + f"_{tid[:8]}")
         par = plan.get("parametres") or {}
         if par:
             journal(tid, "reglages : " + ", ".join(f"{k}={v}" for k, v in par.items()))
@@ -15488,12 +15540,11 @@ async def api_admin_essai_llm(req):
     # modele en fin d'appel : l'essai payait un chargement a froid a chaque
     # fois, ET jetait le modele que l'analyse venait de chauffer — la demande
     # suivante de l'utilisateur repartait du disque a cause d'un essai.
-    corps = {"model": MODELE_LLM,
-             "system": SYSTEME.format(catalogue=catalogue_texte(),
-                                      contexte=""),
-             "prompt": "une photo d'un chat roux endormi sur un fauteuil vert",
-             "stream": False, "format": "json", "keep_alive": GARDER_LLM,
-             "options": {"temperature": 0}}
+    # Par corps_ollama(), comme l'analyse : le meme contexte surtout — un essai
+    # a 4096 jetons passait la ou l'analyse, au meme contexte, etait coupee.
+    corps = corps_ollama("une photo d'un chat roux endormi sur un fauteuil vert",
+                         None, SYSTEME.format(catalogue=catalogue_texte(), contexte=""),
+                         True, MODELE_LLM, 0, GARDER_LLM)
     debut = time.time()
     reponse, erreur = await poser_a(ident, corps, secondes=180)
     lisible, pourquoi = False, ""
@@ -18530,6 +18581,42 @@ PREFIXE_OPENAI = "/openai/v1/"
 # image locale prend de quelques secondes a quatre minutes (docs/mesures.md) :
 # neuf minutes couvrent un chargement de modele a froid derriere une file.
 ATTENDRE_OPENAI = 540
+
+# LE REESSAI DU SDK REJOINT LE RENDU QU'IL A DEJA LANCE. openai-python
+# n'envoie aucune Idempotency-Key (_idempotency_header vaut None, lu dans la
+# 3.46) mais rejoue tout code >= 500 deux fois, en numerotant ses essais dans
+# « x-stainless-retry-count ». Or le studio est publie derriere un
+# nginx-proxy-manager dont le proxy_read_timeout est de 90 s (lu le
+# 5 novembre 2026) : une image de plus d'une minute et demie revenait en 504
+# du proxy, le SDK la redemandait, et la carte en faisait TROIS. L'empreinte
+# de la demande, sous la cle, retrouve le premier rendu — mais SEULEMENT pour
+# un essai qui se dit reessai : deux demandes identiques venues de deux
+# conversations d'Open WebUI restent deux rendus.
+REESSAIS_OPENAI = {}         # (cle, empreinte) -> (tid, quand)
+REESSAI_OPENAI_DUREE = 1800  # trois essais de 540 s et leurs pauses
+REESSAI_OPENAI_MAX = 2000
+
+
+def _empreinte_openai(famille, fmt, demande):
+    brut_ = json.dumps([famille, fmt, demande], sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(brut_.encode("ascii")).hexdigest()
+
+
+def _est_un_reessai(req):
+    try:
+        return int((req.headers.get("x-stainless-retry-count") or "0").strip()) >= 1
+    except ValueError:
+        return False
+
+
+def _noter_reessai(cle_, tid, maintenant=None):
+    maintenant = maintenant or time.time()
+    for k in [k for k, (_t, q) in REESSAIS_OPENAI.items()
+              if maintenant - q > REESSAI_OPENAI_DUREE]:
+        del REESSAIS_OPENAI[k]
+    while len(REESSAIS_OPENAI) >= REESSAI_OPENAI_MAX:
+        del REESSAIS_OPENAI[min(REESSAIS_OPENAI, key=lambda k: REESSAIS_OPENAI[k][1])]
+    REESSAIS_OPENAI[cle_] = (tid, maintenant)
 # Seize Mio par image en base64. Plus large que l'outil MCP (3 Mio, plafond de
 # l'API de Claude) : ici le client n'a pas de plafond annonce, et une image
 # 1920x1080 en PNG pese de 3 a 6 Mo. Au-dela, l'image part en lien signe.
@@ -18799,6 +18886,15 @@ async def _rendre_pour_openai(req, fiche, demande, famille, fmt, lg):
         else:
             # Perimee, ou son rendu efface : la cle ne designe plus rien.
             del IDEMPOTENCE[(fiche["id"], idem)]
+    # Sans Idempotency-Key, l'empreinte : voir REESSAIS_OPENAI.
+    empreinte = None if idem else (fiche["id"], _empreinte_openai(famille, fmt, demande))
+    if empreinte and _est_un_reessai(req) and empreinte in REESSAIS_OPENAI:
+        deja, quand = REESSAIS_OPENAI[empreinte]
+        # EN COURS OU REUSSI SEULEMENT. Le reessai qui suit un rendu ECHOUE
+        # demande un nouvel essai, pas la meme erreur rejouee.
+        if (time.time() - quand <= REESSAI_OPENAI_DUREE and _rendu_de(deja, pid, fiche)
+                and (TACHES.get(deja) or {}).get("etat") not in ("erreur", "annule")):
+            tid, rejeu = deja, True
     if tid is None:
         # LA CLE RESTREINTE A LA FAMILLE DE LA ROUTE. Sans moteur impose,
         # seule l'analyse sait ce qui sera fait ; « un chat qui court » peut
@@ -18814,6 +18910,8 @@ async def _rendre_pour_openai(req, fiche, demande, famille, fmt, lg):
             IDEMPOTENCE[(fiche["id"], idem)] = (tid, time.time())
             _borner_idempotence()
             sauver_idempotence()
+        if empreinte:
+            _noter_reessai(empreinte, tid)
     await attendre_rendu(tid, pid, fiche, ATTENDRE_OPENAI)
     rep_ = await _reponse_openai(req, fiche, tid, fmt, lg)
     if rejeu:

@@ -893,6 +893,10 @@ try:
             "pas une phrase courte qui passe quand le reste echoue",
             f"{len(envoye.get('system') or '')} caracteres, format="
             f"{envoye.get('format')!r}")
+        dit((envoye.get("options") or {}).get("num_ctx") == S.CONTEXTE_LLM,
+            "et au MEME contexte que l'analyse : a 4096 jetons, l'essai passait "
+            "la ou l'analyse etait coupee",
+            f"num_ctx={(envoye.get('options') or {}).get('num_ctx')!r}")
         for rendu, attendu in ((" ", "le modele n'a rien rendu"),
                                ("@@@@@@@@@@@@", "quelque chose d'illisible"),
                                ('{"couleur": "bleu"}', "un objet sans intention")):

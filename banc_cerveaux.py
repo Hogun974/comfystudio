@@ -1489,6 +1489,46 @@ async def degeneres():
     poser()
 
 asyncio.run(main())
+
+# ── LE CONTEXTE DE L'ANALYSE (5 novembre 2026) ─────────────────────────
+# Sans « num_ctx », Ollama prenait 4096 sur la 2080 Ti, et le gabarit en
+# pesait ~3870 : le plan etait coupe en plein JSON.
+print("\n  ── le contexte annonce a Ollama ──")
+_c = S.corps_ollama("un chat", None, "systeme", True, "qwen2.5vl:7b", 0, "60s")
+dit((_c.get("options") or {}).get("num_ctx") == S.CONTEXTE_LLM,
+    "chaque appel a Ollama annonce son contexte : sans lui, Ollama le choisit "
+    "d'apres la carte, 4096 sur la 2080 Ti",
+    repr(_c.get("options")))
+_v = S.corps_ollama("decris", "aW1n", None, False, "qwen2.5vl:7b", 0.4, "60s")
+dit((_v.get("options") or {}).get("num_ctx") == (_c.get("options") or {}).get("num_ctx"),
+    "et le MEME pour tous les appels : un contexte qui change fait recharger le modele",
+    f"{(_v.get('options') or {}).get('num_ctx')} / {(_c.get('options') or {}).get('num_ctx')}")
+dit((_c.get("options") or {}).get("repeat_penalty") == 1.1
+    and (_v.get("options") or {}).get("repeat_penalty") == 1.1,
+    "la penalite de repetition est dite (1.1) : celle de llama-server sous "
+    "Ollama 0.40 est 1.0, et qwen2.5vl boucle",
+    f"{(_c.get('options') or {}).get('repeat_penalty')!r}")
+dit((_c.get("options") or {}).get("num_predict") == S.LONGUEUR_JSON
+    and "num_predict" not in (_v.get("options") or {}),
+    "une reponse JSON est bornee (une boucle coupee en secondes), le texte "
+    "libre non (des paroles de chanson)",
+    f"json {(_c.get('options') or {}).get('num_predict')!r}, "
+    f"libre {(_v.get('options') or {}).get('num_predict')!r}")
+dit(not S._echec_de_chargement("llama runner process has terminated: CUDA error: "
+                               "an illegal memory access was encountered")
+    and S._echec_de_chargement("llama runner process has terminated: error "
+                               "loading model: unknown model architecture"),
+    "un plantage en plein calcul (faute d'acces memoire CUDA) n'ecarte pas le "
+    "modele ; un chargement rate, si")
+# 3 caracteres par jeton : plus prudent que les 3,44 mesures sur le gabarit
+# francais (13 307 caracteres, 3 866 jetons comptes par Ollama).
+_gabarit = len(S.SYSTEME.format(catalogue=S.catalogue_texte(), contexte="")) // 3
+_besoin = _gabarit + 1024 + 1024
+dit(_besoin <= S.CONTEXTE_LLM,
+    "le gabarit de l'analyse, une image (1024 jetons) et la reponse (1024) "
+    "tiennent dans le contexte annonce",
+    f"~{_gabarit} + 2048 = {_besoin} jetons pour {S.CONTEXTE_LLM}")
+
 print(f"\n  {len([o for o in ok if o])} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

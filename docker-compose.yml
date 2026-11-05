@@ -85,6 +85,7 @@ services:
       STUDIO_ANALYSE_PETITE: "${STUDIO_ANALYSE_PETITE:-}"
       STUDIO_ANALYSE_DELAI: "${STUDIO_ANALYSE_DELAI:-}"
       STUDIO_LLM_GARDER: "${STUDIO_LLM_GARDER:-}"
+      STUDIO_LLM_CONTEXTE: "${STUDIO_LLM_CONTEXTE:-}"
       STUDIO_PURGE_ORPHELINS: "${STUDIO_PURGE_ORPHELINS:-}"
       STUDIO_ADMIN: "${STUDIO_ADMIN:-}"
       # Ces trois-la ne servent QU'AVEC le montage /comfy plus bas ; les

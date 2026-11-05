@@ -142,9 +142,15 @@ try:
 
     print("\n  ── identifiant_de refuse une forme inexacte ──")
     secret_43 = morceaux[2]
+    # UNE MAJUSCULE A COUP SUR. « ident.upper() » ne change rien a un
+    # identifiant fait de chiffres seuls — (10/16)^8, une fois sur quarante-trois
+    # — et la forme « inexacte » etait alors la cle elle-meme : le banc rougissait
+    # sur un depot sain. Vu par la CI GitHub le 5 novembre 2026, apres l'avoir
+    # pris pour un verrou de l'antivirus sous Windows.
+    majuscule = (ident.upper() if ident.upper() != ident else ident[:-1] + "A")
     formes = [
         cle[:-1], cle + "x", cle + "\n", " " + cle,
-        "cs_" + ident.upper() + "_" + secret_43,
+        "cs_" + majuscule + "_" + secret_43,
         "CS_" + ident + "_" + secret_43,
         "cs_" + ident[:7] + "_" + secret_43,
         "cs_" + ident + "_" + secret_43[:40],

@@ -208,7 +208,7 @@ S._octets_de_sortie = faux_octets
 def remise_a_zero():
     for registre in (S.TACHES, S.CONVERSATIONS, S.EN_FILE, S.ARMEES,
                      S.IDEMPOTENCE, S.COURANTE, S.ENTREES, S.EN_VOL, S.AVANCES,
-                     S.ECHECS_CLES):
+                     S.ECHECS_CLES, S.REESSAIS_OPENAI):
         registre.clear()
     S.ATTENTE.clear()
     VUS.clear()
@@ -525,6 +525,42 @@ async def s_issues(c):
         and (c1 or {}).get("data") == (c2 or {}).get("data"),
         "meme Idempotency-Key : un seul rendu, la meme reponse rejouee",
         f"{len(VUS)} rendu(s), {h2.get('Idempotent-Replayed')}")
+
+    # LE REESSAI DU SDK, SANS Idempotency-Key : ce que fait openai-python
+    # apres le 504 d'un proxy qui coupe a 90 s.
+    remise_a_zero()
+    st1, c1, _h = await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"},
+                                entetes={"x-stainless-retry-count": "0"})
+    st2, c2, h2 = await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"},
+                                entetes={"x-stainless-retry-count": "1"})
+    dit(st1 == st2 == 200 and len(VUS) == 1 and h2.get("Idempotent-Replayed") == "true"
+        and (c1 or {}).get("data") == (c2 or {}).get("data"),
+        "le reessai du SDK (x-stainless-retry-count: 1) rejoint le rendu deja "
+        "lance : la carte n'en fait qu'un", f"{len(VUS)} rendu(s)")
+    remise_a_zero()
+    for _ in range(2):
+        await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"})
+    dit(len(VUS) == 2,
+        "mais deux demandes identiques qui ne se disent pas reessai restent "
+        "deux rendus", f"{len(VUS)} rendu(s)")
+    remise_a_zero()
+    await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"},
+                  entetes={"x-stainless-retry-count": "0"})
+    await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare la nuit"},
+                  entetes={"x-stainless-retry-count": "1"})
+    dit(len(VUS) == 2,
+        "et le reessai d'une AUTRE demande lance son propre rendu",
+        f"{len(VUS)} rendu(s)")
+    remise_a_zero()
+    COMPORTEMENT["mode"] = "video"
+    await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"},
+                  entetes={"x-stainless-retry-count": "0"})
+    COMPORTEMENT["mode"] = "fini"
+    st, _c2, h2 = await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"},
+                                entetes={"x-stainless-retry-count": "1"})
+    dit(len(VUS) == 2 and st == 200 and h2.get("Idempotent-Replayed") != "true",
+        "le reessai d'un rendu ECHOUE en lance un nouveau, au lieu de rejouer l'erreur",
+        f"{len(VUS)} rendu(s), HTTP {st}")
 
 
 # ══════════════════════════════════════════════════════════════════════

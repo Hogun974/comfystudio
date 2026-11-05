@@ -631,6 +631,12 @@ jobs:
       - name: La porte compatible OpenAI parle le format d'OpenAI sous les gardes du studio
         run: python banc_openai.py
 
+      # Le nom des sorties porte la tache : la date seule laissait le compteur
+      # de ComfyUI reprendre, apres un menage du disque, un nom que d'autres
+      # conversations designaient deja.
+      - name: Deux rendus ne portent jamais le meme nom de fichier
+        run: python banc_noms_sorties.py
+
       # Les deux workflows n8n du depot sont ce qu'on importe sans le relire :
       # une faute y est copiee dans chaque maison qui les branche. Le banc les
       # confronte au contrat de contrat.py, pas a une liste recopiee — chaque

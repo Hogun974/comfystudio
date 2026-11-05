@@ -1205,7 +1205,25 @@ sous les 600 s après lesquelles le SDK openai coupe, puis **réessaie**, ce qui
 aurait lancé une seconde image. Au-delà, un 504 `delai_depasse` dont le
 message donne l'identifiant du rendu : il continue, il se retrouve dans la
 page ou par `GET /api/v1/rendus/{id}`. `Idempotency-Key` vaut ici comme sur
-`/api/v1/rendus` (même registre). **Le studio ne pose pas de question à
+`/api/v1/rendus` (même registre).
+
+**Derrière un proxy, son délai compte aussi.** nginx coupe une réponse au
+bout de 60 s par défaut, nginx-proxy-manager au bout de 90 s : une image plus
+longue revient en 504 du proxy, et le SDK la redemande. Le SDK openai
+n'envoie pas d'`Idempotency-Key`, mais il numérote ses essais
+(`x-stainless-retry-count`) : un essai qui se dit réessai, sous la même clé
+et pour la même demande, **rejoint le rendu déjà lancé** au lieu d'en lancer
+un autre. Deux demandes identiques qui ne se disent pas réessai restent deux
+rendus. Le réessai ne fait pourtant que gagner du temps : pour qu'une image
+longue arrive du premier coup, montez le délai du proxy au-dessus de 540 s —
+dans nginx-proxy-manager, onglet *Advanced* de l'hôte :
+
+```nginx
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+```
+
+**Le studio ne pose pas de question à
 ces clients** : Open WebUI ou un SDK n'ont aucune façon d'y répondre, et « un
 chat » leur revenait en erreur. Là où la page demanderait une précision, il
 rend sa meilleure lecture de la demande. Le 400 `question` ne reste qu'en filet,
