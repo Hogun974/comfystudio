@@ -1930,6 +1930,833 @@ _lus = set(re.findall(r"querySelectorAll\('input\[name=\"([a-z_]+)\"\]:checked'\
 dit(_poses and _poses == _lus,
     "les cases « ce que la cle peut faire » sont relues sous leur propre nom",
     f"posees {sorted(_poses)}, relues {sorted(_lus)}")
+# LES PLAFONDS PAR FAMILLE : les memes cases des deux cotes. Un nom different
+# enverrait un objet vide — une cle sans plafond de famille, sans un mot — et
+# la famille doit voyager avec la case, sinon le chiffre n'est a personne.
+_poses_f = set(re.findall(r'nombreBorne\("([a-z_]+)",\s*0,\s*b\.par_jour,\s*0\);\s*'
+                          r'n\.dataset\.famille\s*=\s*o;', PAGE))
+_lus_f = set(re.findall(r"querySelectorAll\('input\[name=\"([a-z_]+)\"\]'\),\s*"
+                        r"x => \[x\.dataset\.famille,", PAGE))
+dit(_poses_f and _poses_f == _lus_f,
+    "les cases « plafond par famille » sont relues sous leur propre nom, avec "
+    "leur famille", f"posees {sorted(_poses_f)}, relues {sorted(_lus_f)}")
+# Ce qui reste a chaque famille, dans la fiche de la page et dans /admin : le
+# chiffre que le proprietaire cherche quand un workflow « ne marche plus ».
+_admin_src = io.open(os.path.join(ICI, "web", "admin.html"), encoding="utf-8").read()
+dit("Object.entries(c.par_famille || {})" in PAGE
+    and '"page.acces.par_famille"' in PAGE
+    and "Object.entries(c.par_famille || {})" in _admin_src,
+    "la fiche de la cle, dans la page et dans /admin, dit chaque plafond de famille")
+
+# ══ L'EN-TETE COMPACT (ronde 6) ════════════════════════════════════════
+# NEUF COMMANDES COTE A COTE faisaient cinq lignes d'en-tete a 375 px (mesure
+# du 5 novembre 2026, connecte en administrateur). Il en reste quatre sur la
+# ligne, et le reste est passe dans un menu du compte. Ce qui suit tient les
+# trois promesses de ce deplacement, qu'aucun cas plus haut ne voyait :
+#   - RIEN NE S'EST PERDU EN ROUTE : chaque commande d'avant existe encore,
+#     sous le meme id, et a la place voulue — sur la ligne ou dans le menu ;
+#   - le menu est un MENU pour qui ne le voit pas : ARIA, clavier, focus ;
+#   - les regles qui montrent ou cachent « admin » et « a faire » sont celles
+#     d'avant, ecrites une fois, et rien ne les double a cote.
+# Ce qu'il ne voit PAS : la largeur reelle. Une ligne qui deborde a 375 px ne
+# se lit que dans un navigateur ; ce banc tient seulement les regles qui l'en
+# empechent.
+print("\n  ── l'en-tete d'une ligne et le menu du compte ──")
+
+
+class _Arbre(HTMLParser):
+    """Chaque element du corps, avec ses attributs et la pile de ses ancetres.
+
+    Un ANALYSEUR, pour la meme raison que _Marques : un attribut sur trois
+    lignes ou dans un autre ordre echappe a un motif. Les elements vides
+    (« <input> », « <br> ») n'ont pas de fermante et ne s'empilent pas.
+    """
+
+    VIDES = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+             "link", "meta", "source", "track", "wbr"}
+
+    def __init__(self):
+        HTMLParser.__init__(self, convert_charrefs=True)
+        self.elements, self._pile = [], []
+
+    def handle_starttag(self, tag, attrs):
+        el = {"tag": tag, "attrs": dict(attrs), "ancetres": list(self._pile),
+              "enfants": []}
+        if self._pile:
+            self._pile[-1]["enfants"].append(el)
+        self.elements.append(el)
+        if tag not in self.VIDES:
+            self._pile.append(el)
+
+    def handle_endtag(self, tag):
+        for i in range(len(self._pile) - 1, -1, -1):
+            if self._pile[i]["tag"] == tag:
+                del self._pile[i:]
+                break
+
+
+_arbre = _Arbre()
+_arbre.feed(_CORPS_HTML)
+# L'EN-TETE DE LA PAGE, ET NON CELUI DE LA MEDIATHEQUE : le premier <header>
+# sans ancetre <header>, c'est-a-dire le premier rencontre.
+_tete = next((e for e in _arbre.elements if e["tag"] == "header"), None)
+
+
+def _par_id(i):
+    return [e for e in _arbre.elements if e["attrs"].get("id") == i]
+
+
+def _sous(el, ancetre):
+    return any(a is ancetre for a in el["ancetres"])
+
+
+# LA SOURCE N'A PAS D'ID, ET IL NE LUI EN FAUT PAS : c'est l'article 13 de
+# l'AGPL, et c'est son adresse qui la designe.
+_sources = [e for e in _arbre.elements if e["tag"] == "a"
+            and "source" in (e["attrs"].get("class") or "").split()
+            and "github.com" in (e["attrs"].get("href") or "")]
+# LES COMMANDES D'AVANT, relevees sur le commit qui precede ce travail.
+_AVANT = ["tiroir", "etatFile", "jaugeModeles", "nuages", "langue",
+          "ouvrirMedia", "compte", "lienAdmin", "lienDemarrage"]
+_egarees_tete = [i for i in _AVANT if len(_par_id(i)) != 1 or not _tete
+                 or not _sous(_par_id(i)[0], _tete)]
+dit(_tete is not None and not _egarees_tete and len(_sources) == 1
+    and _sous(_sources[0], _tete),
+    "chaque commande d'avant existe encore dans l'en-tete, sous le meme id, et "
+    "le lien « source » avec elle",
+    f"perdues ou doublees : {', '.join(_egarees_tete)}" if _egarees_tete
+    else f"{len(_sources)} lien(s) « source »" if len(_sources) != 1
+    else f"{len(_AVANT)} id et la source")
+
+_panneau = (_par_id("panneauCompte") or [None])[0]
+_menus = [e for e in _arbre.elements if e["attrs"].get("role") == "menu"]
+_menu = _menus[0] if len(_menus) == 1 else None
+# SUR LA LIGNE : ce qu'on regarde ou touche a chaque visite. DANS LE MENU : le
+# reste. La langue est dans le panneau mais HORS du role="menu" — un <select>
+# n'est pas un menuitem, et les fleches y changent la valeur.
+_LIGNE = ["tiroir", "etatFile", "jaugeModeles", "ouvrirMedia", "boutonCompte"]
+_PANNEAU = ["langue"]
+_MENU = ["compte", "lienAdmin", "lienDemarrage"]
+_mal = ([f"#{i} est dans le panneau" for i in _LIGNE
+         if _par_id(i) and _panneau and _sous(_par_id(i)[0], _panneau)]
+        + [f"#{i} est hors du panneau" for i in _PANNEAU + _MENU
+           if not (_par_id(i) and _panneau and _sous(_par_id(i)[0], _panneau))]
+        + [f"#{i} est hors du role=menu" for i in _MENU
+           if not (_par_id(i) and _menu and _sous(_par_id(i)[0], _menu))]
+        + ["la source est hors du role=menu" for _s in _sources[:1]
+           if not (_menu and _sous(_s, _menu))])
+dit(_panneau is not None and _menu is not None and _sous(_menu, _panneau)
+    and all(_par_id(i) for i in _LIGNE) and not _mal,
+    "la ligne garde l'etat des moteurs et la mediatheque ; double facteur, "
+    "cles, admin, a faire, source et la langue passent dans le menu",
+    f"{len(_menus)} element(s) role=menu" if _menu is None
+    else "pas de panneau" if _panneau is None
+    else " ; ".join(_mal) or f"{len(_LIGNE)} sur la ligne, "
+    f"{len(_PANNEAU + _MENU) + 1} dans le panneau")
+
+# LE BOUTON DIT QU'IL OUVRE UN MENU, ET LEQUEL. Sans aria-haspopup, un lecteur
+# d'ecran annonce « bouton, hogun » et rien ne dit qu'il y a quelque chose
+# derriere ; sans aria-controls qui nomme le role=menu, l'annonce « replie »
+# ne designe rien.
+_bouton = (_par_id("boutonCompte") or [{"tag": "", "attrs": {}}])[0]
+_ba = _bouton["attrs"]
+_aria_ok = (_bouton["tag"] == "button" and _ba.get("aria-haspopup") == "menu"
+            and _ba.get("aria-expanded") == "false" and _menu is not None
+            and _ba.get("aria-controls") == _menu["attrs"].get("id")
+            and _menu["attrs"].get("aria-labelledby") == "boutonCompte"
+            and _panneau is not None and "hidden" in _panneau["attrs"])
+dit(_aria_ok,
+    "le bouton du compte porte aria-haspopup=menu, aria-expanded et "
+    "aria-controls vers le role=menu, qui le nomme en retour ; le panneau nait "
+    "ferme",
+    f"bouton <{_bouton['tag']}> {sorted(k for k in _ba if k.startswith('aria'))}"
+    + ("" if _panneau is None or "hidden" in _panneau["attrs"]
+       else " ; le panneau nait ouvert"))
+
+# CHAQUE ENTREE STATIQUE EST UN menuitem, CHAQUE ENVELOPPE UN « none », ET LA
+# DECONNEXION FERME LA MARCHE, SOUS UN TRAIT. Les enfants directs du role=menu
+# ne peuvent etre que cela (plus le trait) : un <span> sans role au milieu
+# ferait du menu un arbre que le lecteur d'ecran ne sait pas parcourir.
+_enfants = _menu["enfants"] if _menu else []
+_roles = [(e["attrs"].get("id") or e["attrs"].get("class") or e["tag"],
+           e["attrs"].get("role")) for e in _enfants]
+_intrus = [n for n, r in _roles if r not in ("menuitem", "none", "separator")]
+_fin = [r for _n, r in _roles[-2:]]
+dit(len(_enfants) >= 5 and not _intrus and _fin == ["separator", "none"]
+    and _enfants[-1]["attrs"].get("id") == "sortieCompte"
+    and all(e["attrs"].get("role") == "menuitem"
+            for e in _par_id("lienAdmin") + _par_id("lienDemarrage") + _sources),
+    "les entrees du menu sont des menuitem, et « sortir » vient en dernier, "
+    "sous un role=separator",
+    f"sans role de menu : {', '.join(_intrus)}" if _intrus
+    else f"la fin du menu est {_roles[-2:]}" if _fin != ["separator", "none"]
+    else f"{len(_enfants)} enfants : " + ", ".join(f"{n}={r}" for n, r in _roles))
+
+# LES REGLES D'AFFICHAGE SONT CELLES D'AVANT, ECRITES UNE FOIS. « admin » ne
+# se montre qu'a un administrateur, « a faire » que si le serveur le dit, et
+# ni l'un ni l'autre tant qu'aucun compte n'existe — le retour anticipe de
+# peindreCompte() les laisse a leur « display:none » du HTML. On EVALUE
+# l'affectation, comme pour #boutonsMoteur plus haut, et l'on exige qu'elle
+# soit la SEULE : le menu qui rangerait ces liens en les « montrant » au
+# passage contredirait la regle sans la toucher.
+_COMPTE = _corps_de(CODE, "peindreCompte")
+
+
+def _affichage(i, champ):
+    ecrits = re.findall(r'(?:document\.querySelector|\$)\("#' + i
+                        + r'"\)\.style\.display\s*=\s*([^;]+);', CODE)
+    if len(ecrits) != 1:
+        return f"#{i} : {len(ecrits)} ecriture(s) de l'affichage"
+    m = re.fullmatch(r'(.+?)\?\s*"([^"]*)"\s*:\s*"([^"]*)"', ecrits[0].strip(), re.S)
+    if not m:
+        return f"#{i} : l'affectation ne se lit pas — {ecrits[0].strip()[:50]}"
+    faux = _bool_js(m.group(1), **{champ: False})
+    vrai = _bool_js(m.group(1), **{champ: True})
+    if faux is None or vrai is None:
+        return f"#{i} : la condition ne s'evalue pas — {m.group(1)[:50]}"
+    if (m.group(2) if faux else m.group(3)) != "none" or \
+            (m.group(2) if vrai else m.group(3)) == "none":
+        return f"#{i} : {champ} faux ne le cache pas, ou vrai ne le montre pas"
+    return ""
+
+
+_regles = [s for s in (_affichage("lienAdmin", "d.admin"),
+                       _affichage("lienDemarrage", "d.demarrage")) if s]
+_retour = _COMPTE.find("if (!d.comptes_existent && !d.connecte) return;")
+_premiere = _COMPTE.find('"#lienAdmin"')
+_naissent_caches = all(
+    (e["attrs"].get("style") or "").replace(" ", "") == "display:none"
+    for e in _par_id("lienAdmin") + _par_id("lienDemarrage"))
+dit(_COMPTE and not _regles and 0 <= _retour < _premiere and _naissent_caches,
+    "« admin » et « a faire » suivent les memes regles qu'avant : une seule "
+    "ecriture chacun, caches sans compte, montres sur « admin » et « demarrage »",
+    "peindreCompte() est introuvable" if not _COMPTE
+    else " ; ".join(_regles) if _regles
+    else "le retour « aucun compte » ne precede plus les deux regles"
+    if not 0 <= _retour < _premiere
+    else "un des deux liens ne nait plus cache" if not _naissent_caches
+    else "deux ecritures, evaluees dans les deux sens")
+
+# LES ELEMENTS DE peindreCompte() SONT RANGES, PAS REFAITS. Les deux
+# branches appellent rangerMenuCompte() — sans elle « sortir » resterait en
+# tete, au-dessus d'« admin », et les boutons crees n'auraient aucun role : les
+# fleches les sauteraient. Et le rangement pose bien le role, deplace bien
+# « sortir » sous le trait.
+_RANGER = _corps_de(CODE, "rangerMenuCompte")
+_appels = re.findall(r'rangerMenuCompte\(([^)]*)\)', _COMPTE)
+_branches = sorted(a.replace(" ", "") for a in _appels) == ["d", "d,qui,sortir"]
+_range = ('setAttribute("role", "menuitem")' in _RANGER
+          and '"#compte button' in _RANGER
+          and '$("#sortieCompte").replaceChildren' in _RANGER
+          and '$("#separeCompte").hidden' in _RANGER)
+dit(_branches and _range,
+    "peindreCompte() range ses boutons dans le menu par ses deux branches, "
+    "et le rangement leur donne le role menuitem",
+    f"appels : {_appels}" if not _branches
+    else "rangerMenuCompte() est introuvable" if not _RANGER
+    else "rangerMenuCompte() ne pose pas tout" if not _range
+    else "deux appels ; role, « sortir » et trait poses")
+
+# LE CLAVIER DU MOTIF « menu button » (APG). Echap ferme ET rend le focus au
+# bouton ; les fleches, Debut et Fin circulent ; aria-expanded suit l'etat ;
+# les entrees CACHEES (« admin » pour un non-administrateur) sont sautees,
+# sinon une fleche sur deux poserait le focus sur rien.
+_OUVRIR = _corps_de(CODE, "ouvrirMenuCompte")
+_FERMER = _corps_de(CODE, "fermerMenuCompte")
+_clavier = CODE.split('$("#menuCompte").addEventListener("keydown"', 1)
+_clavier = _clavier[1].split("\n});", 1)[0] if len(_clavier) == 2 else ""
+_echap = re.search(r'"Escape"\)\s*\{[^}]*fermerMenuCompte\(true\)', _clavier)
+_manque = ([k for k in ("ArrowDown", "ArrowUp", "Home", "End")
+            if f'"{k}"' not in _clavier]
+           + ([] if _echap else ["Echap qui rend le focus"])
+           + ([] if re.search(r'if\s*\(rendreLeFocus\)\s*boutonCompte\.focus\(\)',
+                              _FERMER) else ["le focus rendu au bouton"])
+           + ([] if 'setAttribute("aria-expanded", "true")' in _OUVRIR
+              and 'setAttribute("aria-expanded", "false")' in _FERMER
+              else ["aria-expanded"])
+           + ([] if re.search(r'entreesMenuCompte\s*=\s*\(\)\s*=>[^;]*'
+                              r'getClientRects\(\)\.length', CODE)
+              else ["le saut des entrees cachees"]))
+dit(_clavier and not _manque,
+    "le menu se mene au clavier : fleches, Debut, Fin, Echap qui rend le focus "
+    "au bouton, aria-expanded tenu, entrees cachees sautees",
+    "manque : " + ", ".join(_manque) if _manque
+    else "le gestionnaire du clavier est introuvable" if not _clavier
+    else "fleches, Debut, Fin, Echap")
+
+# LE CLIC DEHORS FERME. Un panneau reste ouvert couvrirait la conversation
+# sur telephone, ou il prend toute la largeur.
+dit(re.search(r'document\.addEventListener\("click",\s*e\s*=>\s*\{\s*'
+              r'if\s*\(!e\.target\.closest\("#menuCompte"\)\)\s*'
+              r'fermerMenuCompte\(', CODE) is not None,
+    "un clic hors du menu le referme")
+
+# LA FEUILLE DE STYLE : une ligne, un panneau qui se cache, pleine largeur sur
+# telephone, un focus visible. L'ORDRE COMPTE pour le repli : la regle de
+# 820 px replie « header », et la notre doit venir APRES elle, plus precise.
+# Le selecteur EXACT « header » : « #mediatheque header » ou « header .jauge »
+# ne replient pas la ligne de la page.
+_repli = [m.start() for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', CSS)
+          if m.group(1).strip() == "header"
+          and re.search(r'flex-wrap:\s*wrap', m.group(2))]
+_ligne = [m.start() for m in re.finditer(
+    r'body\s*>\s*header\s*\{[^}]*flex-wrap:\s*nowrap', CSS)]
+
+
+def _medias(css, largeur):
+    """Le contenu des blocs « @media (max-width:<largeur>) », accolades suivies."""
+    for m in re.finditer(r'@media\s*\(max-width:\s*' + largeur + r'\)\s*\{', css):
+        i, prof = m.end(), 1
+        while i < len(css) and prof:
+            prof += (css[i] == "{") - (css[i] == "}")
+            i += 1
+        yield css[m.end():i - 1]
+
+
+_tel = "".join(_medias(CSS, "640px"))
+_style_mal = (
+    ([] if _ligne and (not _repli or _ligne[-1] > _repli[-1])
+     else ["l'en-tete se replie encore"])
+    + ([] if re.search(r'body\s*>\s*header\s+\.jauge\s*\{[^}]*flex-wrap:\s*nowrap',
+                       CSS) else ["la jauge se replie encore"])
+    + ([] if re.search(r'\.panneau-compte\[hidden\]\s*\{\s*display:\s*none', CSS)
+       else ["« hidden » ne cache plus le panneau"])
+    # « (?<![\w-]) » et non « \b » : « border-left:0 », que le meme bloc
+    # porte, passait pour « left:0 » — et le panneau ancre a droite aussi.
+    + ([] if re.search(r'\.panneau-compte\s*\{[^}]*(?<![\w-])left:\s*0'
+                       r'[^}]*(?<![\w-])right:\s*0', _tel)
+       else ["pas de panneau pleine largeur sous 640 px"])
+    + ([] if ".bouton-compte:focus-visible" in CSS
+       and '#listeCompte [role="menuitem"]:focus-visible' in CSS
+       else ["pas de focus visible"]))
+dit(not _style_mal,
+    "la feuille tient l'en-tete sur une ligne, cache le panneau ferme, l'etale "
+    "sous 640 px et montre le focus",
+    " ; ".join(_style_mal) or f"{len(_ligne)} regle(s) de ligne apres "
+    f"{len(_repli)} repli(s)")
+
+# ══ RONDE 6 : LA SAISIE — coller, le clavier, prevenir a la fin ═════════
+# Quatre promesses de la page, et chacune a une facon muette de se casser :
+#   - une image collee qui prend un AUTRE chemin que le selecteur de fichier
+#     (un second televersement, qui divergera des plafonds et des familles) ;
+#   - un collage de texte avale comme une image (un tableur met les deux dans
+#     le presse-papiers) ;
+#   - Ctrl+Entree promis par le titre de la fleche et branche nulle part — ce
+#     fut le cas du 29 aout au 5 novembre 2026 —, ou branche sans le garde de
+#     la saisie composee ;
+#   - la permission de notifier demandee AU CHARGEMENT, ce qui la fait refuser
+#     par reflexe, et pour toujours.
+print("\n  ── la saisie : coller, clavier, prevenir ──")
+
+
+def _corps_apres(texte, ancre):
+    """Le corps de la premiere fonction qui suit « ancre », par accolades.
+
+    Pour les gestionnaires ecrits en fleche — « addEventListener("paste", e =>
+    { … }) » —, que _corps_de() ne sait pas trouver : il cherche
+    « function nom ». "" quand l'ancre manque : un NON, jamais un silence.
+    """
+    depart = texte.find(ancre)
+    if depart < 0:
+        return ""
+    ouvre = texte.find("{", depart)
+    creux = 0
+    for i in range(ouvre, len(texte)):
+        creux += (texte[i] == "{") - (texte[i] == "}")
+        if creux == 0:
+            return texte[ouvre:i + 1]
+    return ""
+
+
+# UN SEUL TELEVERSEMENT, CELUI DU SELECTEUR. Compter les appels plutot que
+# chercher une copie : une copie se reecrit de mille facons, un compte non.
+_televersements = len(re.findall(r'fetch\(\s*"/api/televerser"', CODE))
+_SELECTEUR = _corps_apres(CODE, '$("#img").onchange')
+dit(_televersements == 1 and 'fetch("/api/televerser"' in _SELECTEUR,
+    "un seul endroit televerse une piece jointe : le gestionnaire du selecteur",
+    f"{_televersements} appel(s) a /api/televerser")
+
+_COLLE = _corps_apres(CODE, '$("#txt").addEventListener("paste"')
+_DEPOT = _corps_apres(CODE, 'document.addEventListener("drop"')
+# La fonction que le collage appelle, lue dans SON corps : c'est elle qui doit
+# poser le fichier dans #img et declencher « change ».
+_appeles = [n for n in re.findall(r'(?<![\w.$])([a-zA-Z_]\w*)\(', _COLLE)
+            if _corps_de(CODE, n)]
+_pont = next((n for n in _appeles
+              if re.search(r'\$\("#img"\)\.files\s*=', _corps_de(CODE, n))
+              and 'dispatchEvent(new Event("change"))' in _corps_de(CODE, n)), "")
+dit(bool(_COLLE) and bool(_pont) and "fetch(" not in _COLLE
+    and "fetch(" not in _corps_de(CODE, _pont),
+    "une image collee passe par le selecteur : posee dans #img, « change » "
+    "declenche, aucun televersement a part",
+    f"{_pont}()" if _pont else "le collage ne rejoint pas #img")
+_depot_ok = (bool(_DEPOT) and bool(_pont) and _pont + "(" in _DEPOT
+             and "fetch(" not in _DEPOT)
+dit(_depot_ok, "et un fichier depose prend le meme pont",
+    f"{_pont}()" if _depot_ok
+    else "pas de gestionnaire de depot" if not _DEPOT
+    else f"le depot n'appelle pas {_pont or 'le pont'}()")
+
+# DU TEXTE D'ABORD : le texte brut se lit et renvoie AVANT que le collage ne
+# soit confisque. Dans l'autre ordre, coller des cellules de tableur — qui
+# arrivent avec leur image — remplacerait la phrase par une capture.
+# Le texte est lu dans une variable, et un « if (… variable …) return; » la
+# renvoie avant la confiscation. La seule exception admise est l'adresse SEULE
+# d'une image copiee : un mot, qui commence par http — la reconnaitre sans
+# exiger « pas d'espace » ferait d'une phrase « https://… et la suite » une
+# piece jointe.
+_lu = re.search(r'const (\w+) = [^;]*getData\("text/plain"\)', _COLLE)
+_i_confisque = _COLLE.find("preventDefault()")
+_renvoi = _lu and re.search(r'if \(([^;]*\b' + _lu.group(1) + r'\b[^;]*)\) return;', _COLLE)
+# Toute AUTRE variable de la condition est une exception, et chacune doit
+# porter les trois gardes de l'adresse seule.
+_defs = dict(re.findall(r'const (\w+) = ([^;]*);', _COLLE))
+_autres = (set(re.findall(r'[A-Za-z_]\w*', _renvoi.group(1))) - {"cd", _lu.group(1)}
+           if _renvoi else set())
+_exception_ok = all(n in _defs and 'startsWith("http")' in _defs[n]
+                    and 'includes(" ")' in _defs[n] and 'includes("\\n")' in _defs[n]
+                    for n in _autres)
+_texte_ok = bool(_lu and _renvoi and _renvoi.end() <= _i_confisque and _exception_ok)
+dit(_texte_ok, "un collage qui porte du texte reste un collage de texte",
+    "" if _texte_ok
+    else "le texte brut n'est pas lu, et renvoye, avant de confisquer le collage"
+    if not (_lu and _renvoi and _renvoi.end() <= _i_confisque)
+    else "l'exception de l'adresse seule admet une phrase")
+
+# CTRL+ENTREE, ET LE GARDE DE LA SAISIE COMPOSEE AVANT LUI. Le clic sur la
+# fleche, et non lancerDemande() : la fleche desactivee ne part pas, le clavier
+# ne doit pas pouvoir plus qu'elle.
+_CLAVIER = _corps_apres(CODE, '$("#txt").addEventListener("keydown"')
+_i_ime = _CLAVIER.find("isComposing")
+_i_envoi = _CLAVIER.find('$("#go").click()')
+_ctrl_entree = bool(re.search(
+    r'e\.key\s*===\s*"Enter"\s*&&\s*\(\s*e\.ctrlKey\s*\|\|\s*e\.metaKey\s*\)', _CLAVIER))
+_clavier_ok = bool(_CLAVIER and 0 <= _i_ime < _i_envoi and _ctrl_entree
+                   and re.search(r'if\s*\(\s*e\.isComposing[^)]*\)\s*return;', _CLAVIER))
+dit(_clavier_ok,
+    "Ctrl/Cmd+Entree envoie par la fleche, et jamais pendant une saisie composee",
+    "" if _clavier_ok
+    else "pas de gestionnaire de clavier sur #txt" if not _CLAVIER
+    else "Ctrl ou Cmd n'est pas lu" if not _ctrl_entree
+    else "le garde isComposing manque ou vient apres l'envoi")
+# Le titre de la fleche le promet : la promesse et le geste se tiennent.
+dit("Ctrl+Entrée" in TR.TEXTES["page.generer.title"]["fr"] and _ctrl_entree
+    and _i_envoi >= 0,
+    "le titre de la fleche promet Ctrl+Entree, et un gestionnaire le tient")
+
+# LA PERMISSION SE DEMANDE DANS LE GESTE DE LA CASE, ET NULLE PART AILLEURS.
+# Toutes les demandes de la page sont comptees, et toutes doivent tomber dans
+# le gestionnaire de #prevenir : une seule au chargement, et la fenetre
+# « autoriser ? » s'ouvrirait avant que personne ait rien demande.
+_CASE = _corps_apres(CODE, '$("#prevenir").addEventListener("change"')
+_demandes = len(re.findall(r'requestPermission\(', CODE))
+dit(_demandes >= 1 and _demandes == len(re.findall(r'requestPermission\(', _CASE)),
+    "la permission de notifier ne se demande qu'au clic sur la case",
+    f"{_demandes} demande(s) dans la page, "
+    f"{len(re.findall(r'requestPermission[(]', _CASE))} dans le geste")
+# Et AVANT tout « await » du geste : passe le premier, le navigateur ne tient
+# plus le clic pour une activation, et la demande est refusee sans fenetre.
+_i_attente = _CASE.find("await ")
+_i_demande = _CASE.find("requestPermission(")
+_geste_ok = _i_demande >= 0 and (_i_attente < 0
+                                 or ";" not in _CASE[_i_attente:_i_demande])
+dit(_geste_ok, "et dans le geste meme, avant que rien ne soit attendu",
+    "" if _geste_ok else "un await precede la demande de permission")
+
+# CE N'EST PAS UN REGLAGE DE CONVERSATION. Meme garde que pour « variantes » :
+# rangee « avec les autres », la case resterait inverse des deux tables et le
+# cas du 31 aout passerait — mais elle posterait sur /reglages une cle que le
+# serveur jette.
+dit("#prevenir" not in menu.values() and "#prevenir" not in cle
+    and "#prevenir" not in [s for s, _r in entrees]
+    and "/reglages" not in _CASE,
+    "la case des notifications reste hors de MENU_REGLAGE, CLE_REGLAGE et REGLAGES",
+    f"{sorted(menu.values())} / {[s for s, _r in entrees]}")
+
+# L'ACCROCHE : les deux endroits ou le sondage s'arrete sur un etat final —
+# la question, puis fini-ou-erreur. Une seule, et la moitie des fins se
+# taisent.
+_SUIVRE = _corps_de(CODE, "suivre")
+_i_q = _SUIVRE.find("t.etat === ETAT.question")
+_i_f = _SUIVRE.find("t.etat === ETAT.fini || t.etat === ETAT.erreur")
+_annonces = [m.start() for m in re.finditer(r'annoncerFin\(t,\s*cid\)', _SUIVRE)]
+dit(len(_annonces) == 2 and 0 <= _i_q < _annonces[0] < _i_f < _annonces[1],
+    "suivre() annonce la fin d'une question ET celle d'un rendu fini ou rate",
+    f"{len(_annonces)} accroche(s)")
+
+# Onglet visible : rien. Notification : voulue ET permise. Une notification
+# pour un rendu qu'on regarde finir est du bruit ; une notification que
+# l'utilisateur n'a pas voulue est une faute.
+_ANNONCE = _corps_de(CODE, "annoncerFin")
+_cache_ok = bool(re.match(r'\{\s*if\s*\(\s*!document\.hidden\s*\)\s*return;',
+                          _ANNONCE or ""))
+_annonce_ok = (_cache_ok and "prevenirVoulu()" in _ANNONCE
+               and 'Notification.permission !== "granted"' in _ANNONCE)
+dit(_annonce_ok,
+    "l'annonce se tait onglet visible, et ne notifie que voulue et permise",
+    "" if _annonce_ok
+    else "annoncerFin() absente" if not _ANNONCE
+    else "le garde document.hidden manque en tete" if not _cache_ok
+    else "la notification ne demande pas la case ET la permission")
+_CLIC_NOTE = _corps_apres(_ANNONCE, "n.onclick")
+dit("window.focus()" in _CLIC_NOTE and "ouvrir(cid)" in _CLIC_NOTE,
+    "cliquer la notification ramene sur l'onglet et sur la conversation du rendu")
+_RETOUR = _corps_apres(CODE, 'document.addEventListener("visibilitychange"')
+# L'expression qui retire la marque est RELUE ET JOUEE sur chacune des marques
+# que la page declare : changer « ✓ » d'un cote seulement laisserait la marque
+# dans le titre pour toujours, sans une erreur. Et elle doit etre REPOSEE dans
+# document.title — la calculer sans l'affecter ne retire rien.
+_marques_titre = re.findall(r'MARQUE_(?:FINI|ALERTE)\s*=\s*"([^"]+)"', CODE)
+_retrait = re.search(r'document\.title\s*=\s*document\.title\.replace\(/(.+?)/,\s*""\)',
+                     _RETOUR)
+_restes = [m for m in _marques_titre
+           if not _retrait or re.sub(_retrait.group(1), "", m + "ComfyStudio", count=1)
+           != "ComfyStudio"]
+_retour_ok = ("if (document.hidden) return;" in _RETOUR and _retrait
+              and len(_marques_titre) == 2 and not _restes)
+dit(_retour_ok, "revenir sur l'onglet efface la marque du titre",
+    f"{len(_marques_titre)} marques retirees" if _retour_ok
+    else "le titre n'est pas repose" if not _retrait
+    else f"marques laissees : {_restes or _marques_titre}")
+
+# LE CHAMP VIDE NE SE MESURE PAS. L'invite compte dans scrollHeight pour
+# certains navigateurs : mesurer un champ vide le laissait haut de trois
+# lignes, sans un caractere dedans.
+_AJUSTER = _corps_de(CODE, "ajuster")
+_i_vide = _AJUSTER.find("if (!t.value)")
+_i_mesure = _AJUSTER.find("scrollHeight")
+dit(0 <= _i_vide < _i_mesure
+    and re.search(r'if \(!t\.value\) \{ t\.style\.height = ""; return; \}', _AJUSTER),
+    "un champ vide reprend la hauteur de repos du CSS, sans mesurer l'invite")
+
+# ══ RONDE 6 : LE STUDIO INSTALLABLE, ET L'AVANT / APRES D'UNE RETOUCHE ═══
+# Le manifeste et les icones ne sont pas des fichiers : appli.py les fabrique
+# (sa tete dit pourquoi, et ce que les navigateurs exigent au 5 novembre
+# 2026). Ce banc l'IMPORTE — bibliotheque standard seule, comme
+# traductions.py — et relit ce que le navigateur relira : le manifeste, chaque
+# icone pixel par pixel, les balises de la page qui les annoncent.
+print("\n  ── le studio installable ──")
+import json as _json  # noqa: E402
+import struct as _struct  # noqa: E402
+import zlib as _zlib  # noqa: E402
+import appli as AP  # noqa: E402
+
+_man = _json.loads(_json.dumps(AP.manifeste()))
+_ics = _man.get("icons") or []
+_tailles = {(i.get("sizes"), i.get("purpose", "any"), i.get("type"))
+            for i in _ics}
+# LES CRITERES DE CHROME, un par un (web.dev/articles/install-criteria) : un
+# nom, start_url, un display qui ouvre une fenetre a part, 192 ET 512 px, et
+# pas de « prefer_related_applications » qui renverrait vers un magasin.
+dit((_man.get("name") or _man.get("short_name"))
+    and _man.get("display") in ("standalone", "fullscreen", "minimal-ui")
+    and str(_man.get("start_url", "")).startswith(_man.get("scope", "/"))
+    and not _man.get("prefer_related_applications")
+    and ("192x192", "any", "image/png") in _tailles
+    and ("512x512", "any", "image/png") in _tailles
+    and any(p == "maskable" for _s, p, _t in _tailles),
+    "le manifeste remplit les criteres d'installation : nom, start_url dans "
+    "le scope, display standalone, PNG 192 et 512, une icone maskable",
+    f"{sorted(_man)} ; " + ", ".join(sorted(f"{s}/{p}" for s, p, _t in _tailles)))
+dit(len(AP.manifeste()["short_name"]) <= 12,
+    "et le nom court tient sous une icone d'ecran d'accueil (12 signes)",
+    AP.manifeste()["short_name"])
+
+
+def _lire_png(octets):
+    """(largeur, hauteur, lignes RGBA) d'un PNG RGBA 8 bits non entrelace,
+    filtre 0 — ce qu'appli.png() ecrit — ou une raison de refus."""
+    if octets[:8] != b"\x89PNG\r\n\x1a\n":
+        return "signature"
+    pos, idat, tete = 8, b"", None
+    while pos < len(octets):
+        n, = _struct.unpack(">I", octets[pos:pos + 4])
+        genre, donnees = octets[pos + 4:pos + 8], octets[pos + 8:pos + 8 + n]
+        crc, = _struct.unpack(">I", octets[pos + 8 + n:pos + 12 + n])
+        if _zlib.crc32(genre + donnees) & 0xFFFFFFFF != crc:
+            return f"CRC faux sur {genre!r}"
+        if genre == b"IHDR":
+            tete = _struct.unpack(">IIBBBBB", donnees)
+        elif genre == b"IDAT":
+            idat += donnees
+        pos += 12 + n
+    if not tete or tete[2:] != (8, 6, 0, 0, 0):
+        return f"en-tete {tete}"
+    w, h = tete[0], tete[1]
+    brut = _zlib.decompress(idat)
+    pas = 1 + 4 * w
+    if len(brut) != h * pas or any(brut[i * pas] for i in range(h)):
+        return "donnees de taille ou de filtre inattendus"
+    return w, h, [brut[i * pas + 1:(i + 1) * pas] for i in range(h)]
+
+
+# CHAQUE ICONE, PIXEL PAR PIXEL. Ce qu'un navigateur refuserait (taille
+# annoncee fausse, CRC) et ce qu'il decouperait mal : une icone « maskable »
+# dont le dessin sort du cercle sur de 40 % perd ses bords chez Android, et
+# une icone « any » a fond plein jusqu'aux coins s'afficherait en carre sur
+# un ecran qui arrondit.
+_fond = bytes(int(AP.PLAN[i:i + 2], 16) for i in (1, 3, 5)) + b"\xff"
+_ko = []
+for _nom, (_cote, _plein) in AP.ICONES.items():
+    _lu = _lire_png(AP.icone(_nom))
+    if isinstance(_lu, str):
+        _ko.append(f"{_nom} : {_lu}")
+        continue
+    _w, _h, _lignes = _lu
+    if (_w, _h) != (_cote, _cote):
+        _ko.append(f"{_nom} : {_w}x{_h} pour {_cote}")
+        continue
+    _px = lambda x, y: _lignes[y][4 * x:4 * x + 4]  # noqa: E731
+    _coins = [_px(0, 0), _px(_w - 1, 0), _px(0, _h - 1), _px(_w - 1, _h - 1)]
+    if _plein and any(c[3] != 255 for c in _coins):
+        _ko.append(f"{_nom} : coins transparents sur une icone plein cadre")
+    if not _plein and any(c[3] != 0 for c in _coins):
+        _ko.append(f"{_nom} : coins pleins sur une icone « any »")
+    if _plein:
+        _c, _r = _cote / 2, 0.40 * _cote
+        _hors = sum(1 for y in range(_h) for x in range(_w)
+                    if ((x + .5 - _c) ** 2 + (y + .5 - _c) ** 2) ** .5 > _r
+                    and _px(x, y) != _fond)
+        if _hors:
+            _ko.append(f"{_nom} : {_hors} pixels dessines hors du cercle sur")
+    _ambre = sum(1 for y in range(0, _h, 4) for x in range(0, _w, 4)
+                 if _px(x, y)[0] > 200 and _px(x, y)[2] < 100)
+    if not _ambre:
+        _ko.append(f"{_nom} : aucun pixel ambre — le dessin a disparu")
+dit(len(AP.ICONES) >= 5 and not _ko,
+    "chaque icone est un PNG valide a sa taille, le dessin dans le cercle sur "
+    "des icones plein cadre, les coins transparents des autres",
+    " ; ".join(_ko) or ", ".join(AP.ICONES))
+
+# LA PAGE LES ANNONCE, sous les adresses que le serveur sert.
+_liens = dict(re.findall(r'<link rel="([a-z-]+)"[^>]*?href="([^"]+)"', PAGE))
+_apple = _liens.get("apple-touch-icon", "")
+_nom_apple = _apple[len(AP.PREFIXE_ICONES):] if _apple.startswith(AP.PREFIXE_ICONES) else ""
+dit(_liens.get("manifest") == AP.CHEMIN_MANIFESTE
+    and _nom_apple in AP.ICONES and AP.ICONES[_nom_apple] == (180, True)
+    and _liens.get("icon", "")[len(AP.PREFIXE_ICONES):] in AP.ICONES,
+    "la page lie le manifeste, l'icone d'onglet et l'apple-touch-icon (180 px, "
+    "plein cadre : iOS noircit la transparence) aux adresses servies", str(_liens))
+_vp = re.search(r'<meta name="viewport" content="([^"]+)"', PAGE)
+dit(_vp and "viewport-fit=cover" in _vp.group(1)
+    and '<meta name="apple-mobile-web-app-capable" content="yes">' in PAGE
+    and re.search(r'footer\{[^}]*padding-bottom:env\(safe-area-inset-bottom', CSS),
+    "en plein ecran sur iPhone, le pied de page s'ecarte de la barre "
+    "d'accueil : viewport-fit=cover, et env(safe-area-inset-bottom) sur footer",
+    _vp.group(1) if _vp else "pas de viewport")
+# LE SERVEUR LES ROUTE ET LES LAISSE PASSER SANS COMPTE. Le parcours reel est
+# mesure par banc_fichiers.py ; ici, que les deux moities nomment le meme
+# module, et non deux listes recopiees.
+_exiger = next((n for n in ast.walk(ARBRE_SERVEUR)
+                if isinstance(n, ast.AsyncFunctionDef) and n.name == "exiger_compte"),
+               None)
+_libre_appli = _exiger is not None and any(
+    isinstance(n, ast.Attribute) and n.attr == "CHEMINS_LIBRES"
+    for n in ast.walk(_exiger))
+dit(_libre_appli and "a.router.add_get(_appli.CHEMIN_MANIFESTE, api_manifeste)" in SERVEUR
+    and 'a.router.add_get(_appli.PREFIXE_ICONES + "{nom}", api_icone)' in SERVEUR,
+    "serveur.py route le manifeste et les icones, et exiger_compte les laisse "
+    "passer par la liste d'appli.py", "exiger_compte lit CHEMINS_LIBRES"
+    if _libre_appli else "exiger_compte ne lit pas CHEMINS_LIBRES")
+# AUCUN SERVICE WORKER. Les criteres ne l'exigent plus ; un cache d'origine
+# partagerait les conversations d'un compte avec le suivant sur le meme
+# appareil. En enregistrer un sera une decision, et ce cas devra changer avec.
+_pages_sw = []
+for _p in ("index.html", "admin.html", "demarrage.html"):
+    try:
+        _src = io.open(os.path.join(ICI, "web", _p), encoding="utf-8").read()
+    except OSError:
+        continue
+    if re.search(r"serviceWorker|\bsw\.js\b", _src):
+        _pages_sw.append(_p)
+dit(not _pages_sw and not re.search(r'add_get\([^)]*\.js["\']', SERVEUR),
+    "aucune page n'enregistre de service worker, et le serveur n'en sert "
+    "aucun : rien d'un compte dans un cache partage",
+    ", ".join(_pages_sw) or "aucun")
+
+print("\n  ── l'avant / apres d'une retouche ──")
+_types = re.search(r'const TYPES_RETOUCHE = \[([^\]]*)\]', PAGE)
+_types = re.findall(r'"([a-z_]+)"', _types.group(1)) if _types else []
+# LES TYPES SONT CEUX QUE LE SERVEUR ECRIT. Une faute de frappe d'un seul cote
+# (« retouche_fond ») ne leve rien : la retouche n'a simplement jamais son
+# curseur.
+_inconnus = [t for t in _types if f'"{t}"' not in SERVEUR]
+dit(len(_types) >= 4 and "edition" in _types and not _inconnus,
+    "les types de retouche que la page reconnait sont ceux que serveur.py "
+    "ecrit", ", ".join(_inconnus) or ", ".join(_types))
+
+
+def _cles_du_dict(fonction, nom_var):
+    """Les cles litterales du dict affecte a nom_var dans la fonction."""
+    for n in ast.walk(ARBRE_SERVEUR):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == fonction:
+            for a in ast.walk(n):
+                if (isinstance(a, ast.Assign) and isinstance(a.value, ast.Dict)
+                        and any(isinstance(c, ast.Name) and c.id == nom_var
+                                for c in a.targets)):
+                    return {k.value for k in a.value.keys
+                            if isinstance(k, ast.Constant)}
+    return set()
+
+
+def _indices_poses(fonction, nom_var):
+    """Les cles posees par « nom_var["x"] = ... » dans la fonction."""
+    poses = set()
+    for n in ast.walk(ARBRE_SERVEUR):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == fonction:
+            for a in ast.walk(n):
+                if isinstance(a, ast.Assign):
+                    for c in a.targets:
+                        if (isinstance(c, ast.Subscript) and isinstance(c.value, ast.Name)
+                                and c.value.id == nom_var
+                                and isinstance(c.slice, ast.Constant)):
+                            poses.add(c.slice.value)
+    return poses
+
+
+# CE QUE LA PAGE LIT, LE SERVEUR L'ECRIT — sur le tour (conversation
+# rechargee) ET dans /api/etat (retouche finie sous les yeux). « reprise » vit
+# sur la tache, que /api/etat sert entiere.
+_lus_aa = set(re.findall(r'\bt\.(entree|reprise|type)\b', PAGE))
+_tour = _cles_du_dict("enregistrer_tour", "tour")
+_etat = _indices_poses("api_etat", "etat")
+dit(_lus_aa == {"entree", "reprise", "type"}
+    and {"entree", "reprise", "type"} <= _tour and {"entree", "type"} <= _etat
+    and 'TACHES[tid]["reprise"] = dict(conv["derniere_sortie"])' in SERVEUR,
+    "la page lit entree, reprise et type ; le tour les porte, /api/etat les "
+    "sert, et la sortie reprise sans piece jointe est notee sur la tache",
+    f"lus {sorted(_lus_aa)}, tour {sorted(_tour & {'entree', 'reprise', 'type'})}, "
+    f"etat {sorted(_etat & {'entree', 'type'})}")
+# L'ORIGINAL JOINT SE RELIT PAR type=input, que le serveur ne sert du disque
+# qu'a son proprietaire exact.
+dit('{ filename: t.entree, subfolder: "", type: "input" }' in PAGE
+    and "ENTREES.get(nom) == qui(req)" in SERVEUR,
+    "l'original joint se demande en type=input sans sous-dossier, la forme que "
+    "serveur.py ne sert du disque qu'au proprietaire de l'entree")
+_ga = re.search(r'function garnirReponse\(.*?\nfunction ', PAGE, re.S)
+_aa = re.search(r'function avantApres\(.*?\n\}\n', PAGE, re.S)
+_aa = _aa.group(0) if _aa else ""
+_charge = _aa.find("avant.onload")
+dit(_ga and "avantApres(sortie, t);" in _ga.group(0)
+    and 0 <= _charge < _aa.find('className = "comparaison"')
+    and _aa.find("avant.src = url(f)") > _charge,
+    "garnirReponse pose l'avant / apres, et rien ne change dans la bulle "
+    "avant que l'original soit CHARGE : un 404 laisse la bulle intacte")
+dit('curseur.type = "range"' in _aa
+    and 'setAttribute("aria-label", T("page.appli.comparer.aria"))' in _aa
+    and 'curseur.addEventListener("input", poser)' in _aa
+    and "aria-valuetext" in _aa,
+    "le curseur est un input range — souris, doigt, fleches — avec un nom et "
+    "une valeur dits a un lecteur d'ecran")
+
+# ══ RONDE 6 : LA MEDIATHEQUE ═══════════════════════════════════════════
+# Trois promesses, chacune tenue par une ligne que rien ne lie a l'autre bout :
+# le fichier disparu se dit (au lieu d'une image cassee), la visionneuse passe
+# d'une piece a la suivante DE LA LISTE AFFICHEE, et « retoucher » renvoie une
+# image au champ de saisie sans passer par une route qui oublierait a qui elle
+# appartient. Chaque releve nomme la fonction lue : introuvable vaut NON.
+print("\n  ── ronde 6 : la mediatheque ──")
+_grille6 = _corps_de(CODE, "peindreGrille(")
+_garnir6 = _corps_de(CODE, "garnirReponse(")
+_veiller6 = _corps_de(CODE, "veillerAbsence(")
+_poser6 = _corps_de(CODE, "poserAbsence(")
+_plein6 = _corps_de(CODE, "plein(")
+_joindre6 = _corps_de(CODE, "joindreSortie(")
+_vue6 = _corps_de(CODE, "peindreVue(")
+dit(all((_grille6, _garnir6, _veiller6, _poser6, _plein6, _joindre6, _vue6)),
+    "temoin : les sept fonctions de la mediatheque et de la visionneuse sont lues",
+    ", ".join(n for n, c in (("peindreGrille", _grille6), ("garnirReponse", _garnir6),
+                             ("veillerAbsence", _veiller6), ("poserAbsence", _poser6),
+                             ("plein", _plein6), ("joindreSortie", _joindre6),
+                             ("peindreVue", _vue6)) if not c) or "les sept")
+
+# LES TROIS ENDROITS OU UNE VIGNETTE NAIT la font veiller : la grille, le fil,
+# la visionneuse. Un seul oubli, et c'est l'image cassee d'avant, la ou l'on
+# ne l'attendait plus. Et la source n'y est posee que si le fichier n'est pas
+# DEJA connu absent : sans ce garde, chaque lettre tapee dans la recherche
+# redemandait au serveur les memes fichiers disparus.
+_sans_veille = [n for n, c in (("la grille", _grille6), ("le fil", _garnir6),
+                               ("la visionneuse", _vue6))
+                if "veillerAbsence(el," not in c
+                or not re.search(r'!MEDIA_ABSENTS\.has\([^\n]*?\)\s*el\.src\s*=', c)]
+dit(not _sans_veille,
+    "chaque vignette (grille, fil, visionneuse) veille sur sa disparition, et "
+    "aucune ne redemande un fichier deja connu absent",
+    ", ".join(_sans_veille) or "les trois")
+
+# UN SEUL ESSAI : l'ecouteur d'erreur est « once », et la verification passe
+# par une sonde partagee. Sans « once », l'emplacement pose a la place de
+# l'image ne change rien, mais une video qui rechoue rappelait la sonde.
+_veille_ok = ('"error"' in _veiller6 and "once: true" in _veiller6
+              and "sonderAbsence(" in _veiller6 and "MEDIA_ABSENTS.add(" in _veiller6)
+dit(_veille_ok, "un fichier disparu se verifie une fois, et se retient",
+    "ecouteur « once », sonde, releve" if _veille_ok
+    else "veillerAbsence sans « once », sans sonde ou sans releve")
+
+# LES GESTES QUE L'ABSENCE COUPE SONT CEUX QUE LA PAGE POSE, sous le meme nom.
+# Les boutons se retrouvent par « data-geste » : un nom tape differemment d'un
+# cote et le bouton « plein ecran » reste vivant sur un emplacement vide — le
+# defaut meme que la ronde ferme, sans que rien ne leve.
+_geste_lus = set(re.findall(r'\[data-geste="([a-z]+)"\]', _poser6))
+_geste_poses = set(re.findall(r'dataset\.geste\s*=\s*"([a-z]+)"', CODE))
+dit(_geste_lus and _geste_lus == _geste_poses
+    and len(re.findall(r'dataset\.geste\s*=\s*"plein"', CODE)) == 2,
+    "les gestes que l'absence coupe sont ceux que la grille, le fil et la "
+    "visionneuse posent",
+    f"lus {sorted(_geste_lus)}, poses {sorted(_geste_poses)}")
+_coupe_ok = ('a[download]' in _poser6 and 'removeAttribute("href")' in _poser6
+             and "rep.disabled = true" in _poser6 and "reprendreDemande(f)" in _poser6)
+dit(_coupe_ok, "le fichier disparu coupe le telechargement et garde la demande",
+    "lien coupe, demande rendue" if _coupe_ok
+    else "poserAbsence ne coupe pas le lien, ou ne rend pas la demande")
+
+# LA VISIONNEUSE circule dans la liste FILTREE : la grille passe « liste »,
+# qui est celle que trierEtFiltrer() vient de rendre, a CHAQUE ouverture —
+# l'image comme le bouton. Un appel oublie ouvrait une vue sans fleches.
+_appels_plein = re.findall(r'\bplein\(([^)]*)\)', _grille6)
+_liste_filtree = re.search(r'const liste = trierEtFiltrer\(', _grille6)
+dit(_liste_filtree and len(_appels_plein) >= 2
+    and all(a.replace(" ", "") == "f,liste" for a in _appels_plein),
+    "la visionneuse de la grille circule dans la liste filtree affichee",
+    f"appels {_appels_plein}")
+_cles_vue = [k for k in ('"ArrowLeft"', '"ArrowRight"', '"Escape"', '"Tab"',
+                         "pieger(", "balayer(", "origine.focus()",
+                         "history.pushState")
+             if k not in _plein6]
+dit(not _cles_vue,
+    "la visionneuse : fleches, Echap, focus piege et rendu, balayage, retour "
+    "du telephone",
+    ", ".join(_cles_vue) + " absent(s) de plein()" if _cles_vue else "les huit")
+
+# UNE SEULE ROUTE POUR RENDRE UNE SORTIE AU CHAMP, et c'est /api/reprendre :
+# elle verifie la propriete avec mes_fichiers(qui(req)) — la regle de
+# l'affichage pour un utilisateur, SANS l'elargissement administrateur
+# (tous_les_fichiers) que /api/fichier accorde pour regarder. Une image
+# n'appartient qu'a son compte : un administrateur la voit, il ne la reprend
+# pas a son nom. Deux copies du fetch, et la seconde derive.
+_reprises = CODE.count('fetch("/api/reprendre"')
+dit(_reprises == 1 and 'fetch("/api/reprendre"' in _joindre6
+    and "joindreSortie(f)" in _grille6 and "joindreSortie(f)" in _vue6,
+    "« retoucher » et « reprendre » passent par une seule reprise, partagee "
+    "par la grille et la visionneuse",
+    f"{_reprises} fetch vers /api/reprendre")
+_api_rep = next((n for n in ast.walk(ARBRE_SERVEUR)
+                 if isinstance(n, ast.AsyncFunctionDef) and n.name == "api_reprendre"),
+                None)
+_appels_rep = ({c.func.id for c in ast.walk(_api_rep)
+                if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+               if _api_rep else set())
+dit(_api_rep is not None and "mes_fichiers" in _appels_rep
+    and "tous_les_fichiers" not in _appels_rep and "est_admin" not in _appels_rep,
+    "/api/reprendre ne rend une sortie qu'a son proprietaire, administrateur "
+    "compris", "api_reprendre introuvable" if _api_rep is None
+    else ", ".join(sorted(_appels_rep & {"mes_fichiers", "tous_les_fichiers",
+                                         "est_admin"})))
+
+# LES VIGNETTES DE LA GRILLE se chargent quand on les approche : six cents
+# images d'un coup, c'est six cents relais vers les machines a l'ouverture.
+dit(re.search(r'createElement\("img"\);\s*el\.loading\s*=\s*"lazy"', _grille6),
+    "les images de la grille se chargent a l'approche (loading=lazy)")
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

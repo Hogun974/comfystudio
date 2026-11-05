@@ -89,7 +89,9 @@ son compte : elle ne vaut que pour demander des rendus et les relire, jamais
 pour administrer, et ne voit que les rendus qu'elle a demandés — avec, si l'on
 veut, une date de fin, pour la clé d'un essai ou d'un invite. Le studio
 prévient la fin d'un rendu par un rappel signé, et sert sa propre description
-OpenAPI. Voir [Piloter le studio par programme](docs/piloter-par-programme.md).
+OpenAPI. Open WebUI, LibreChat ou un SDK `openai` s'y branchent aussi, comme à
+une API d'images OpenAI : base `http://STUDIO:8199/openai/v1`, la même clé.
+Voir [Piloter le studio par programme](docs/piloter-par-programme.md).
 
 **Le nœud n'ouvre aucun port**, et le studio écoute sur `127.0.0.1` par défaut.
 La connexion est obligatoire, y compris en local. Tout fonctionne sans aucune

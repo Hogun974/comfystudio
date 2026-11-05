@@ -448,6 +448,43 @@ async def main():
             f"{casse[:22]!r} leve JSONDecodeError, celle qu'aiguiller() attrape",
             leve)
 
+    # ── L'IMAGE JOINTE ET SA CONSIGNE (5 novembre 2026) ─────────────────
+    # Le modele de langage dit « image » ; le code sait mieux quand une image
+    # est jointe et que la phrase lui parle.
+    def plan_pour(texte, image, conv=None):
+        return S.normaliser({"intention": "image", "modele": "klein4b",
+                             "prompt": "a straw hat", "raison": "banc"},
+                            texte, image, conv or {})["intention"]
+    dit(plan_pour("mets-lui un petit chapeau de paille", "image") == "edition",
+        "image jointe + « mets-lui un chapeau » : retouche, malgre le modele "
+        "de langage qui disait image")
+    dit(plan_pour("remove the background", "image") == "edition"
+        and plan_pour("enleve les lunettes", "image") == "edition",
+        "en anglais et sans accent aussi")
+    dit(plan_pour("un renard dans la neige", "image") == "image",
+        "temoin : une image jointe et une demande qui ne lui parle pas reste image")
+    dit(plan_pour("mets un chat dans un jardin", False,
+                  {"derniere_sortie": {"nom": "x.png"}}) == "image",
+        "sans image JOINTE, apres une sortie precedente : « mets un chat » reste "
+        "une image neuve")
+    dit(plan_pour("mets-lui un chapeau", "video") == "image",
+        "une video jointe n'est pas une image a retoucher")
+    bascule = S.normaliser({"intention": "image", "modele": "klein4b",
+                            "prompt": "un petit chapeau de paille, champ de ble, ciel bleu",
+                            "negatif": "flou", "raison": "banc"},
+                           "mets-lui un petit chapeau de paille", "image", {})
+    dit(bascule["prompt"] == "mets-lui un petit chapeau de paille"
+        and "negatif" not in bascule,
+        "la retouche decidee par le code part avec la phrase de l'utilisateur, "
+        "pas la scene ecrite pour une image neuve", repr(bascule.get("prompt")))
+    reprise = S.normaliser({"intention": "image", "modele": "klein4b",
+                            "prompt": "a dark forest at night", "raison": "banc"},
+                           "la meme mais plus sombre", False,
+                           {"derniere_sortie": {"nom": "x.png"}})
+    dit(reprise["intention"] == "edition"
+        and reprise["prompt"] == "la meme mais plus sombre",
+        "et la reprise d'une sortie precedente aussi", repr(reprise.get("prompt")))
+
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:
         print(f"    RATE : {r}")

@@ -746,6 +746,8 @@ async def degeneres():
     S._DECHARGE_DEGENERE.clear()
     S.DEGENERESCENCES.clear()
     S._DEGENERES_TOTAL[0] = 0
+    S.QUARANTAINES.clear()
+    S._VUS_DEGENERE.clear()
     appels, decharges = [], []
     scenario = {}
     refus = {"leve": False}
@@ -755,8 +757,23 @@ async def degeneres():
         file_ = scenario.get(url) or ["{}"]
         rep_ = file_.pop(0) if len(file_) > 1 else file_[0]
         if callable(rep_):
-            return rep_(corps, url)
+            r_ = rep_(corps, url)
+            # Une reponse qui ATTEND : le temps, pour un second appel, de
+            # partir pendant que celui-ci est en vol.
+            return (await r_) if asyncio.iscoroutine(r_) else r_
         return rep_
+
+    def neuf():
+        # Chaque cas ci-dessous eprouve UNE regle. La mise de cote laissee par
+        # le cas d'avant ferait sauter le PC, et le cas ne prouverait plus rien.
+        S.QUARANTAINES.clear()
+        S._VUS_DEGENERE.clear()
+
+    def coupe(corps, url):
+        # Ce qu'Ollama 0.40.14 rend sans « format » quand le modele sort « @ »
+        # des le premier jeton (journal du PC, 5 novembre 2026).
+        raise S.ReponseDegeneree("ollama 500 : {\"error\":\"prediction "
+                                 "aborted, token repeat limit reached\"}")
 
     class FausseReponse:
         status = 200
@@ -841,6 +858,12 @@ async def degeneres():
             == "repondue par NAS ZimaOS",
             "le fil dit pourquoi, et la console dit qui a repondu",
             str(S.releve_degenerescences()["derniers"][:1]))
+        # Decharge au cas d'avant, il degenere de nouveau : c'est la seconde
+        # fois dans la fenetre, celle que le dechargement n'a pas reparee.
+        dit((PC, modele_pc) in S.QUARANTAINES
+            and any("mis de cote" in l for l in fil(tid)),
+            "et cette seconde fois dans la fenetre le met de cote",
+            str(list(S.QUARANTAINES)))
 
         # ── L'AUTRE MACHINE DEGENERE AUSSI : reparee, mais pas retentee ──
         # Le modele du PC est toujours dans la fenetre : la reprise part sur
@@ -848,6 +871,7 @@ async def degeneres():
         # prochain appel le trouvera repare —, et l'appel s'arrete la.
         del appels[:]
         del decharges[:]
+        neuf()
         tid = "banc-degen-deux"
         tids.append(tid)
         S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
@@ -866,6 +890,7 @@ async def degeneres():
         # ── L'AUTRE MACHINE NE REPOND PAS : la reponse d'origine revient ──
         del appels[:]
         del decharges[:]
+        neuf()
         tid = "banc-degen-muet"
         tids.append(tid)
         S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
@@ -890,6 +915,7 @@ async def degeneres():
         S._DECHARGE_DEGENERE.clear()
         del appels[:]
         del decharges[:]
+        neuf()
         tid = "banc-degen-charabia"
         tids.append(tid)
         S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
@@ -914,6 +940,7 @@ async def degeneres():
         S._DECHARGE_DEGENERE.clear()
         del appels[:]
         del decharges[:]
+        neuf()
         tid = "banc-degen-erreur"
         tids.append(tid)
         S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
@@ -934,6 +961,7 @@ async def degeneres():
         S._DECHARGE_DEGENERE.clear()
         del appels[:]
         del decharges[:]
+        neuf()
         tid = "banc-degen-pause"
         tids.append(tid)
         S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
@@ -960,6 +988,7 @@ async def degeneres():
         del appels[:]
         del decharges[:]
         refus["leve"] = True
+        neuf()
         tid = "banc-degen-seul"
         tids.append(tid)
         S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
@@ -975,6 +1004,394 @@ async def degeneres():
             "corrompu, et le fil le dit", f"{rendu!r}, {[a[0] for a in appels]}")
         refus["leve"] = False
         S.REGISTRE["zima"]["pause"] = None
+
+        # ══ LE 5 NOVEMBRE : LE DECHARGEMENT NE REPARE PAS ════════════════
+        # ── la repetition COUPEE par Ollama (500) est une degenerescence ──
+        neuf()
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        tid = "banc-quar-coupee"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [coupe, "{}"]
+        scenario[NAS] = ["{}"]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC, PC]
+            and [d_[0] for d_ in decharges] == [f"{PC}/api/generate"]
+            and S.releve_degenerescences()["derniers"][0]["forme"] == "coupee",
+            "un 500 « token repeat limit » est une reponse degeneree : "
+            "decharge, retente au meme endroit, et non une panne qui part a "
+            "l'agent", f"{rendu!r}, essais={[a[0] for a in appels]}, "
+                        f"dechargements={decharges}")
+        dit(any("token repeat limit" in l for l in fil(tid)),
+            "et le fil nomme la coupure", " | ".join(fil(tid))[-200:])
+
+        # ── le cas mesure : decharge, et le meme « @ » au rechargement ──
+        neuf()
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        tid = "banc-quar-cinq"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [coupe]
+        scenario[NAS] = ["{}"]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        modele_pc = appels[0][1] if appels else None
+        q_ = S.QUARANTAINES.get((PC, modele_pc)) or {}
+        dit(rendu == "" and [a[0] for a in appels] == [PC, PC]
+            and S.releve_degenerescences()["derniers"][0]["issue"]
+            == "toujours degeneree",
+            "decharge puis toujours degenere : la reponse est rendue telle "
+            "quelle, comme avant (une reprise par appel)",
+            f"{rendu!r}, essais={[a[0] for a in appels]}")
+        dit(q_ and abs(q_["fin"] - q_["debut"] - S.QUARANTAINE_DEGENERE) < 1
+            and S.QUARANTAINE_DEGENERE == 900
+            and any("mis de cote 15 min" in l for l in fil(tid)),
+            "degenere encore APRES le dechargement : (adresse, modele) est mis "
+            "de cote quinze minutes, et le fil le dit",
+            f"{q_}, {' | '.join(fil(tid))[-160:]}")
+
+        # ── pendant la mise de cote : directement a la machine suivante ──
+        del appels[:]
+        del decharges[:]
+        tid = "banc-quar-suivante"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        # Le PC rend : s'il fallait attendre sa carte, l'appel attendrait la
+        # fin du rendu. Il ne doit meme pas la regarder. Le NAS mesure « sur
+        # processeur » passe dernier : le PC, occupe, reste ainsi en tete de
+        # liste, et c'est bien la mise de cote qui le fait sauter.
+        await S.verrou_noeud("pc").acquire()
+        S._PLACEMENT[NAS]["part"] = 0.0
+        try:
+            dit([u for u, _ in S.cerveaux_utilisables()] == [PC, NAS],
+                "(decor : le PC occupe reste en tete)",
+                str(S.cerveaux_utilisables()))
+            rendu = await asyncio.wait_for(
+                S._appeler_llm("x", None, None, True, None, 0.1, tid), 5)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        finally:
+            S.VERROUS_NOEUD["pc"].release()
+            S._PLACEMENT[NAS]["part"] = 1.0
+        dit(rendu == "{}" and [a[0] for a in appels] == [NAS] and not decharges,
+            "mis de cote, le modele du PC n'est plus interroge : l'appel va "
+            "droit a la machine suivante, sans attendre la carte du PC",
+            f"{rendu!r}, essais={[a[0] for a in appels]}")
+        dit(any("est mis de cote" in l for l in fil(tid)),
+            "et le fil dit pourquoi le PC est saute", " | ".join(fil(tid))[-160:])
+
+        # ── seul et mis de cote : le repli existant (agent, puis rien) ──
+        del appels[:]
+        tid = "banc-quar-seul"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        vrai_poser = S.poser_a
+        poses = []
+
+        async def faux_poser(ident, corps, tid=None, secondes=900, patience=None):
+            poses.append(ident)
+            return "", "carte occupee"
+
+        S.poser_a = faux_poser
+        S.REGISTRE["zima"]["pause"] = 1.0
+        S._CERVEAUX[NAS]["quand"] = S.time.time()
+        for x_ in ("pc", "zima"):
+            S.ETAT_NOEUDS[x_]["llm"] = True
+            S.ETAT_NOEUDS[x_]["llm_modeles"] = [modele_pc]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        finally:
+            S.poser_a = vrai_poser
+            S.REGISTRE["zima"]["pause"] = None
+        dit(not appels and "pc" not in poses and rendu.startswith("a leve"),
+            "seul et mis de cote : ni l'Ollama du PC, ni son agent (le meme "
+            "modele) — l'appel tombe sur le repli de l'appelant",
+            f"{rendu!r}, essais={appels}, agents={poses}")
+
+        # ── la duree passee : UN appel d'essai, pas une rafale ──────────
+        # La fenetre de dix minutes a oublie les echecs, comme apres quinze.
+        S._VUS_DEGENERE.clear()
+        S._DECHARGE_DEGENERE.clear()
+        S.QUARANTAINES[(PC, modele_pc)]["fin"] = S.time.time() - 1
+        del appels[:]
+        del decharges[:]
+        tid = "banc-quar-essai"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        pendant = {}
+
+        async def essai_lent(corps, url):
+            # PENDANT que l'essai est en vol : le modele reste ferme a tout
+            # autre appel, et personne d'autre ne peut prendre l'essai.
+            pendant["ferme"] = S.en_quarantaine(PC, modele_pc)
+            pendant["second"] = S._prendre_essai(PC, modele_pc)
+            await asyncio.sleep(0)
+            return '{"intention": "image"}'
+
+        scenario[PC] = [essai_lent]
+        scenario[NAS] = ["{}"]
+        try:
+            rendu = await asyncio.wait_for(
+                S._appeler_llm("x", None, None, True, None, 0.1, tid), 5)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == '{"intention": "image"}' and [a[0] for a in appels] == [PC]
+            and pendant.get("ferme") is True and pendant.get("second") is None,
+            "la duree passee, UN appel d'essai part sur le PC ; pendant qu'il "
+            "est en vol, le modele reste ferme et l'essai ne se prend pas deux "
+            "fois", f"{rendu!r}, pendant={pendant}")
+        dit((PC, modele_pc) not in S.QUARANTAINES
+            and any("remis en service" in l for l in fil(tid)),
+            "l'essai repond : le modele est remis en service, et le fil le dit",
+            str(list(S.QUARANTAINES)))
+
+        # ── l'essai degenere : remis de cote, sans reprise au meme endroit ──
+        neuf()
+        S._DECHARGE_DEGENERE.clear()
+        S.QUARANTAINES[(PC, modele_pc)] = {
+            "debut": S.time.time() - 901, "fin": S.time.time() - 1,
+            "machine": "PC (RTX 2080 Ti)", "modele": modele_pc,
+            "essai": False, "fois": 1}
+        del appels[:]
+        del decharges[:]
+        tid = "banc-quar-rechute"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [""]
+        scenario[NAS] = ["{}"]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        q_ = S.QUARANTAINES.get((PC, modele_pc)) or {}
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC, NAS],
+            "l'essai degenere : PAS de reprise au meme endroit, la machine "
+            "suivante repond", f"{rendu!r}, essais={[a[0] for a in appels]}")
+        dit(q_.get("fois") == 2 and q_.get("fin", 0) > S.time.time() + 800
+            and not q_.get("essai"),
+            "et le modele est remis de cote pour une nouvelle duree, sur un "
+            "seul echec", str(q_))
+
+        # ── l'essai interrompu par une panne : rendu, pas perdu ─────────
+        q_["fin"] = S.time.time() - 1
+        del appels[:]
+        tid = "banc-quar-panne"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+
+        def panne(corps, url):
+            raise RuntimeError("connexion coupee")
+
+        scenario[PC] = [panne, "{}"]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC, NAS]
+            and not S.en_quarantaine(PC, modele_pc)
+            and not (S.QUARANTAINES.get((PC, modele_pc)) or {}).get("essai"),
+            "un essai qui tombe en panne est rendu : le prochain appel "
+            "reessaiera, le modele ne reste pas de cote pour toujours",
+            f"{rendu!r}, {S.QUARANTAINES.get((PC, modele_pc))}")
+        del appels[:]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC]
+            and (PC, modele_pc) not in S.QUARANTAINES,
+            "et le suivant est bien l'essai, qui le remet en service",
+            f"{rendu!r}, essais={[a[0] for a in appels]}")
+
+        # ── une machine mise de cote n'est pas un repli ─────────────────
+        neuf()
+        S._DECHARGE_DEGENERE.clear()
+        S._DECHARGE_DEGENERE[(PC, modele_pc)] = S.time.time()
+        # Le NAS ne prend pas le modele du PC : celui-ci deborde de sa carte.
+        modele_nas = (S.corps_ici({"model": modele_pc, "prompt": "x"}, NAS)
+                      or {}).get("model")
+        S.QUARANTAINES[(NAS, modele_nas)] = {
+            "debut": S.time.time(), "fin": S.time.time() + 900,
+            "machine": "NAS ZimaOS", "modele": modele_nas, "essai": False,
+            "fois": 1}
+        del appels[:]
+        del decharges[:]
+        tid = "banc-quar-repli"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [""]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == "" and [a[0] for a in appels] == [PC]
+            and S.releve_degenerescences()["derniers"][0]["issue"]
+            == "pas retentee"
+            and not any("reessaie ailleurs" in l for l in fil(tid)),
+            "la seule autre machine est mise de cote : on n'annonce pas une "
+            "reprise ailleurs qui n'aura pas lieu",
+            f"{rendu!r}, {S.releve_degenerescences()['derniers'][0]['issue']}")
+
+        # ── PAR L'AGENT : compter, mettre de cote, demander a la suivante ──
+        neuf()
+        poses = []
+        repond = {"pc": "", "zima": "{}"}
+
+        async def poser_agent(ident, corps, tid=None, secondes=900,
+                              patience=None):
+            poses.append(ident)
+            return repond[ident], ""
+
+        S.poser_a = poser_agent
+        tid = "banc-quar-agent"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        corps_ = {"model": modele_pc, "prompt": "x"}
+        try:
+            r1 = await S.demander_a_un_noeud(corps_, tid)
+            r2 = await S.demander_a_un_noeud(corps_, tid)
+            p12 = list(poses)
+            del poses[:]
+            r3 = await S.demander_a_un_noeud(corps_, tid)
+            p3 = list(poses)
+            de_cote = (PC, modele_pc) in S.QUARANTAINES
+            # Le meme mal en charabia : il n'est plus rendu quand la suivante
+            # repond.
+            neuf()
+            repond["pc"] = "@" * 40
+            del poses[:]
+            r4 = await S.demander_a_un_noeud(corps_, tid)
+            # Mis de cote par la voie DIRECTE : l'agent du PC n'est pas
+            # interroge non plus — c'est le meme Ollama.
+            neuf()
+            S.QUARANTAINES[(PC, modele_pc)] = {
+                "debut": S.time.time(), "fin": S.time.time() + 900,
+                "machine": "PC (RTX 2080 Ti)", "modele": modele_pc,
+                "essai": False, "fois": 1}
+            del poses[:]
+            r5 = await S.demander_a_un_noeud(corps_, tid)
+            p5 = list(poses)
+        finally:
+            S.poser_a = vrai_poser
+        dit(r1 == r2 == r3 == "{}" and p12 == ["pc", "zima", "pc", "zima"]
+            and p3 == ["zima"] and de_cote,
+            "par l'agent, deux reponses vides du PC dans la fenetre le mettent "
+            "de cote : la troisieme question va droit au NAS",
+            f"{r1!r} {r2!r} {r3!r}, {p12} puis {p3}")
+        dit(r4 == "{}",
+            "le charabia rendu par un agent n'est plus pris pour une reponse "
+            "quand la machine suivante repond", repr(r4))
+        dit(r5 == "{}" and p5 == ["zima"],
+            "et un modele mis de cote en direct ne l'est pas moins par l'agent "
+            "de sa machine", f"{r5!r}, {p5}")
+        for x_ in ("pc", "zima"):
+            S.ETAT_NOEUDS[x_].pop("llm", None)
+            S.ETAT_NOEUDS[x_].pop("llm_modeles", None)
+
+        # ── CE QUE REND VRAIMENT OLLAMA 0.40.14, lu par le VRAI appel ────
+        # Les deux formes du journal du PC, et les deux d'un modele qui ne se
+        # charge pas, qui doivent rester ce qu'elles etaient.
+        http = {}
+
+        class ReponseHTTP:
+            def __init__(self, statut, corps_):
+                self.status = statut
+                self._corps = corps_
+
+            async def text(self):
+                return (self._corps if isinstance(self._corps, str)
+                        else S.json.dumps(self._corps))
+
+            async def json(self):
+                return (S.json.loads(self._corps)
+                        if isinstance(self._corps, str) else self._corps)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        class SessionHTTP(FausseSession):
+            def post(self, url, json=None):
+                if (json or {}).get("keep_alive") == 0 and not json.get("prompt"):
+                    decharges.append((url, json.get("model"), 0))
+                    return ReponseHTTP(200, {})
+                file_ = http[url.rsplit("/api/", 1)[0]]
+                return ReponseHTTP(*(file_.pop(0) if len(file_) > 1 else file_[0]))
+
+        S.aiohttp.ClientSession = SessionHTTP
+        corps_ = {"model": "qwen2.5vl:7b", "prompt": "x"}
+
+        async def lire(*reponses):
+            http[PC] = list(reponses)
+            S.MODELES_CASSES.clear()
+            try:
+                return await vrai_local(dict(corps_), PC, 5)
+            except Exception as e:
+                return e
+
+        r_ = await lire((500, '{"error":"prediction aborted, token repeat '
+                              'limit reached"}'))
+        dit(isinstance(r_, S.ReponseDegeneree) and isinstance(r_, RuntimeError)
+            and not S.MODELES_CASSES,
+            "500 « token repeat limit reached » : ReponseDegeneree (une "
+            "RuntimeError pour qui ne la connait pas), et le modele n'est pas "
+            "ecarte", f"{type(r_).__name__}, {S.MODELES_CASSES}")
+        r_ = await lire((200, {"model": "", "response": "", "done": False}))
+        dit(r_ == "" and not S.MODELES_CASSES,
+            "200 {model: \"\", response: \"\", done: false} : un vide, que la "
+            "boucle traite en degenerescence — pas un modele casse",
+            f"{r_!r}, {S.MODELES_CASSES}")
+        r_ = await lire((200, {"response": "", "error": "token repeat limit "
+                                                         "reached"}))
+        dit(isinstance(r_, S.ReponseDegeneree) and not S.MODELES_CASSES,
+            "la meme coupure dite en 200 avec « error » n'ecarte pas le modele",
+            f"{type(r_).__name__}, {S.MODELES_CASSES}")
+        r_ = await lire((500, '{"error":"error loading model: cuda out of '
+                              'memory"}'))
+        dit(isinstance(r_, RuntimeError)
+            and not isinstance(r_, S.ReponseDegeneree)
+            and (PC, "qwen2.5vl:7b") in S.MODELES_CASSES,
+            "un 500 de chargement reste un modele ecarte, et une panne",
+            f"{type(r_).__name__}, {S.MODELES_CASSES}")
+        r_ = await lire((200, {"response": "", "error": "error loading model"}))
+        dit(r_ == "" and (PC, "qwen2.5vl:7b") in S.MODELES_CASSES,
+            "un 200 avec « error » de chargement aussi",
+            f"{r_!r}, {S.MODELES_CASSES}")
+        S.MODELES_CASSES.clear()
+
+        # De bout en bout, par le vrai appel : le 200 « done: false » est
+        # decharge et retente comme le vide qu'il est.
+        neuf()
+        S._DECHARGE_DEGENERE.clear()
+        del decharges[:]
+        S._ollama_local = vrai_local
+        tid = "banc-quar-fini"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        http[PC] = [(200, {"model": "", "response": "", "done": False}),
+                    (200, {"response": "{}", "done": True})]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        finally:
+            S._ollama_local = faux_local
+            S.aiohttp.ClientSession = FausseSession
+        dit(rendu == "{}" and [d_[0] for d_ in decharges]
+            == [f"{PC}/api/generate"]
+            and S.releve_degenerescences()["derniers"][0]["issue"] == "reparee",
+            "par le vrai appel, « done: false » sans reponse est decharge puis "
+            "retente, et la reprise repond", f"{rendu!r}, {decharges}")
 
         # ── CE QUI N'EST PAS DEGENERE ───────────────────────────────────
         dit(all(not S.forme_degeneree(t) for t in (
@@ -1005,6 +1422,21 @@ async def degeneres():
             f"{S.releve_degenerescences()['total']}")
         dit(("http://vieux:11434", "x") not in S._DECHARGE_DEGENERE,
             "et la fenetre oublie ce qui en est sorti")
+        neuf()
+        S._VUS_DEGENERE[("http://vieux:11434", "x")] = [S.time.time() - 9999]
+        for i in range(40):
+            for _ in range(S.SEUIL_QUARANTAINE + 3):
+                S._compter_degenere((PC, NAS)[i % 2], f"q{i}", f"m{i}", None)
+        dit(S.QUARANTAINES_MAX == 20 and len(S.QUARANTAINES) == 20
+            and len(S.releve_degenerescences().get("quarantaines") or "") <= 20
+            and ("http://vieux:11434", "x") not in S._VUS_DEGENERE
+            and all(len(v) <= S.SEUIL_QUARANTAINE
+                    for v in S._VUS_DEGENERE.values()),
+            "les mises de cote sont bornees (vingt), et le compte des echecs "
+            "oublie ce qui est sorti de la fenetre",
+            f"{len(S.QUARANTAINES)} de cote, "
+            f"{max(len(v) for v in S._VUS_DEGENERE.values())} instants au plus")
+        neuf()
     finally:
         S._ollama_local = vrai_local
         S.aiohttp.ClientSession = vraie_session
@@ -1013,6 +1445,10 @@ async def degeneres():
             S.TACHES.pop(t_, None)
 
     # ── LA CONSOLE LE MONTRE ────────────────────────────────────────────
+    S.QUARANTAINES.clear()
+    S._VUS_DEGENERE.clear()
+    for _ in range(S.SEUIL_QUARANTAINE):
+        S._compter_degenere(PC, "qwen2.5vl:7b", "PC (RTX 2080 Ti)", None)
     vrai_ok = S.admin_ok
     S.admin_ok = lambda req: True
     try:
@@ -1028,6 +1464,15 @@ async def degeneres():
         <= set(deg["derniers"][0]),
         "/api/admin/noeuds porte le releve des reponses degenerees",
         str(d.get("erreur") or (deg.get("derniers") or [None])[0]))
+    q_ = (deg.get("quarantaines") or [{}])[0]
+    dit(q_.get("modele") == "qwen2.5vl:7b"
+        and q_.get("machine") == "PC (RTX 2080 Ti)"
+        and q_.get("fin") and q_.get("debut")
+        and 890 <= (q_.get("reste") or 0) <= 900
+        and deg.get("quarantaine") == S.QUARANTAINE_DEGENERE,
+        "et les mises de cote en cours, avec leur fin", str(q_))
+    S.QUARANTAINES.clear()
+    S._VUS_DEGENERE.clear()
     try:
         page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "web", "admin.html"), encoding="utf-8").read()
@@ -1036,6 +1481,10 @@ async def degeneres():
     dit('id="langueDegenere"' in page and "d.modeles_degeneres" in page
         and "x.issue" in page,
         "et la console d'administration l'affiche",
+        "web/admin.html absent" if not page else "")
+    dit("deg.quarantaines" in page and "${ech(q.fin)}" in page
+        and "${ech(q.machine)}" in page and "!deCote.length" in page,
+        "la console montre aussi ce qui est mis de cote, et jusqu'a quand",
         "web/admin.html absent" if not page else "")
     poser()
 

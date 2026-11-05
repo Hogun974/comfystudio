@@ -2502,6 +2502,28 @@ async def s_operations():
             "executer() arrete la retouche qui deviendrait une image neuve, avant "
             "l'enrichissement", f"{(r4['erreur'] or {}).get('code')} {appels}")
 
+        # UN CLIENT QUI NE SAIT PAS REPONDRE (la route compatible OpenAI) : la
+        # question de l'analyse cede la place a sa meilleure lecture.
+        question = {"intention": "question", "modele": "klein4b", "prompt": "a cat",
+                    "raison": "banc", "parametres": {},
+                    "questions": ["De quelle couleur veux-tu le chat ?"]}
+
+        async def questionner(sans):
+            plan_du_banc.clear()
+            plan_du_banc.update(question)
+            tid_, conv_ = poser_rendu(F_N8N, "en cours")
+            if sans:
+                S.TACHES[tid_]["api"]["sans_question"] = True
+            appels.update(enrichir=0, soumettre=0)
+            await S.executer(tid_, "un chat", conv_)
+            return S.TACHES[tid_].get("etat"), appels["enrichir"]
+        avec_q = await questionner(False)
+        sans_q = await questionner(True)
+        dit(avec_q == ("question", 0) and sans_q[0] != "question" and sans_q[1] == 1,
+            "une tache « sans_question » n'est pas questionnee : executer() rend "
+            "sa meilleure lecture (temoin : sans la marque, la question part)",
+            f"avec {avec_q}, sans {sans_q}")
+
         # Le moteur du nuage choisi par l'analyse, image jointe : une retouche.
         def tache_imagee(ops):
             tid_ = tache_de(ops)
@@ -2753,6 +2775,266 @@ async def s_suivi():
     S.ACCES.revoquer(ident)
 
 
+async def s_plafonds_famille():
+    """Le plafond du jour par famille : « 50 detourages et 5 videos ». A
+    l'entree quand le moteur est impose (429), apres l'analyse sinon (rendu en
+    erreur, avant l'enrichissement) ; compte sur le disque, variantes
+    comprises, une seule fois par demande, et dit par /api/v1/moi, la liste
+    du proprietaire, /admin et decrire_cle."""
+    remise_a_zero()
+    S.COMPTES.creer("noe", MDP)
+    biscuit = {"studio_compte": S.COMPTES.jeton("noe")}
+    voulus = {"video": 2, "detourer": 50}
+    st, c, _r = await appel(Req("/api/compte/acces", "POST", cookies=biscuit,
+                                corps={"mdp": MDP, "nom": "videos bornees",
+                                       "par_jour_familles": dict(voulus, audio=0)}),
+                            S.api_creer_acces)
+    fiche_r = (c or {}).get("fiche") or {}
+    dit(st == 201 and fiche_r.get("par_jour_familles") == voulus
+        and (S.ACCES.fiche(fiche_r.get("id", "")) or {}).get("par_jour_familles") == voulus,
+        "POST /api/compte/acces transmet « par_jour_familles » a la cle",
+        f"HTTP {st} {fiche_r.get('par_jour_familles')}")
+    st_m, c_m, _r = await appel(Req("/api/compte/acces", "POST", cookies=biscuit,
+                                    corps={"mdp": MDP, "nom": "mal bornee",
+                                           "par_jour_familles": {"video": "cinq"}}),
+                                S.api_creer_acces)
+    dit(st_m == 400 and code(c_m) == "acces_par_jour_familles",
+        "un plafond illisible rend 400 « acces_par_jour_familles », et aucune cle",
+        f"HTTP {st_m} {code(c_m)}")
+    if st != 201:
+        return
+    k_v, ident_v = c["cle"], fiche_r["id"]
+
+    # ── A L'ENTREE : le moteur impose dit la famille ────────────────────
+    lances = [await lancer(k_v, {"demande": f"un renard qui court {i}", "moteur": "wan5b"})
+              for i in range(2)]
+    avant = etat_des_registres()
+    st3, c3, rep3 = await lancer(k_v, {"demande": "un troisieme renard", "moteur": "wan5b"})
+    dit([x[0] for x in lances] == [202, 202] and st3 == 429
+        and code(c3) == "cle_plafond_famille" and rien_de_plus(avant),
+        "un moteur impose d'une famille a son plafond rend 429 « cle_plafond_famille », "
+        "sans file", f"{[x[0] for x in lances]} puis {st3} {code(c3)}")
+    dit(S._lances_par_famille(ident_v) == {"video": 2},
+        "le compte de la famille suit les rendus lances", repr(S._lances_par_famille(ident_v)))
+    ra3 = int((rep3.headers.get("Retry-After") if rep3 is not None else None) or 0)
+    dit(abs(ra3 - S.secondes_avant_minuit()) <= 2 and (c3 or {}).get("reessayer_dans") == ra3,
+        "et le plafond d'une famille dit de reessayer a minuit, en-tete et corps",
+        f"{ra3} s, minuit dans {S.secondes_avant_minuit()} s")
+    dit("« video »" in (c3 or {}).get("erreur", "") and "2" in (c3 or {}).get("erreur", ""),
+        "le refus nomme la famille et son plafond", (c3 or {}).get("erreur", ""))
+    dit(((S.ACCES.suivi(ident_v) or {}).get("refus") or {}).get("cle_plafond_famille") == 1,
+        "le refus d'entree compte dans le suivi de la cle",
+        repr((S.ACCES.suivi(ident_v) or {}).get("refus")))
+    st_i, c_i, _r = await lancer(k_v, {"demande": "un renard", "moteur": "klein4b"})
+    dit(st_i == 202 and S._lances_par_famille(ident_v) == {"video": 2},
+        "temoin : une famille sans plafond passe, et ne compte dans aucune",
+        f"HTTP {st_i} {code(c_i)}")
+    marque_v = (S.TACHES.get((lances[0][1] or {}).get("id")) or {}).get("api") or {}
+    file_v = (S.EN_FILE.get((lances[0][1] or {}).get("id")) or {}).get("api") or {}
+    dit(marque_v.get("famille_comptee") == "video" and marque_v.get("par_jour_familles") == voulus
+        and file_v.get("famille_comptee") == "video",
+        "la marque de la tache, et son entree de file, disent la famille deja "
+        "comptee : executer() ne la recomptera pas", repr(marque_v))
+    vider_file()
+
+    # LES VARIANTES COMPTENT, et plus de variantes que le plafond lui-meme
+    # n'annonce aucun delai : minuit n'y changera rien.
+    k_var = nouvelle_cle("noe", "trois images", par_jour_familles={"image": 3},
+                         en_file=10)["cle"]
+    st1, _c, _r = await lancer(k_var, {"demande": "un chat", "moteur": "klein4b",
+                                       "variantes": 2})
+    st2, c2, _r = await lancer(k_var, {"demande": "un chat", "moteur": "klein4b",
+                                       "variantes": 2})
+    dit(st1 == 202 and st2 == 429 and code(c2) == "cle_plafond_famille"
+        and "reessayer_dans" in (c2 or {}),
+        "deux variantes, puis deux de plus sur un plafond de trois : la seconde "
+        "demande est refusee", f"HTTP {st1} puis {st2} {code(c2)}")
+    _st, c_j, rep_j = await lancer(k_var, {"demande": "un chat", "moteur": "klein4b",
+                                           "variantes": 4})
+    dit(code(c_j) == "cle_plafond_famille" and "reessayer_dans" not in (c_j or {})
+        and rep_j is not None and "Retry-After" not in rep_j.headers,
+        "quatre variantes sur un plafond de trois : 429 sans Retry-After",
+        f"{code(c_j)} {sorted(c_j or {})}")
+    # LES DEUX PLAFONDS S'APPLIQUENT : celui du jour compte tout.
+    k_pj = nouvelle_cle("noe", "un par jour", par_jour=1,
+                        par_jour_familles={"video": 5})["cle"]
+    st_p1, _c, _r = await lancer(k_pj, {"demande": "un renard", "moteur": "wan5b"})
+    st_p2, c_p2, _r = await lancer(k_pj, {"demande": "un renard", "moteur": "wan5b"})
+    dit(st_p1 == 202 and code(c_p2) == "cle_plafond_jour",
+        "temoin : « par_jour » s'applique a cote du plafond de la famille",
+        f"HTTP {st_p1} puis {code(c_p2)}")
+    f_v1 = nouvelle_cle("noe", "une video, quatre variantes", en_file=10,
+                        par_jour_familles={"video": 1})
+    st_v4, c_v4, _r = await lancer(f_v1["cle"], {"demande": "un renard",
+                                                 "moteur": "wan5b", "variantes": 4})
+    dit(st_v4 == 202 and S._lances_par_famille(f_v1["fiche"]["id"]) == {"video": 1},
+        "quatre « variantes » d'une video n'en font qu'une : le plafond de la "
+        "famille la compte une fois", f"HTTP {st_v4} {code(c_v4)} "
+        f"{S._lances_par_famille(f_v1['fiche']['id'])}")
+    vider_file()
+
+    # LE DISQUE : le compte survit a un rechargement, et une conversation
+    # d'avant ce champ ne compte dans aucune famille.
+    S.CONVERSATIONS.clear()
+    S.TACHES.clear()
+    S.charger_conversations()
+    st4, c4, _r = await lancer(k_v, {"demande": "un renard apres redemarrage",
+                                     "moteur": "wan5b"})
+    dit(S._lances_par_famille(ident_v) == {"video": 2} and code(c4) == "cle_plafond_famille",
+        "et le plafond d'une famille SURVIT a un rechargement",
+        f"relu {S._lances_par_famille(ident_v)}, {code(c4)}")
+    f_vieille = fiche_de(nouvelle_cle("noe", "conversation d'avant",
+                                      par_jour_familles={"video": 1})["cle"])
+    vieille = conv_de_programme(f_vieille)
+    vieille["api"]["lancements"] = [time.time()] * 3
+    abimee = conv_de_programme(f_vieille)
+    abimee["api"]["familles"] = ["video", [time.time()], None, [time.time(), 3],
+                                 {"video": 1}, [time.time() - 86400, "video"]]
+    dit(S._lances_par_famille(f_vieille["id"]) == {}
+        and S._lances_aujourdhui(f_vieille["id"]) == 3,
+        "une conversation d'avant, sans « familles », compte dans « par_jour » "
+        "et dans aucune famille ; un rendu d'hier et des entrees abimees ne "
+        "comptent pas, et rien ne leve",
+        repr(S._lances_par_famille(f_vieille["id"])))
+
+    # ── CE QUI RESTE : /api/v1/moi, la liste, /admin, decrire_cle ─────────
+    attendu = {"video": {"aujourdhui": 2, "plafond": 2, "reste": 0},
+               "detourer": {"aujourdhui": 0, "plafond": 50, "reste": 50}}
+    _st, c_moi, _r = await appel(Req("/api/v1/moi", cle=k_v), S.api_v1_moi)
+    _st, c_n8n, _r = await appel(Req("/api/v1/moi", cle=K_N8N), S.api_v1_moi)
+    dit((c_moi or {}).get("par_famille") == attendu
+        and ((c_moi or {}).get("cle") or {}).get("par_jour_familles") == voulus
+        and (c_n8n or {}).get("par_famille") == {},
+        "GET /api/v1/moi dit ce qui reste a chaque famille bornee, et rien pour "
+        "une cle sans plafond de famille", repr((c_moi or {}).get("par_famille")))
+    _st, c_l, _r = await appel(Req("/api/compte/acces", cookies=biscuit), S.api_mes_acces)
+    mienne = next((x for x in (c_l or {}).get("cles") or [] if x.get("id") == ident_v), {})
+    _st, c_a, _r = await appel(Req("/api/admin/acces", entetes={"X-Admin": JETON_ADMIN}),
+                               S.api_admin_acces)
+    vue = next((x for x in (c_a or {}).get("cles") or [] if x.get("id") == ident_v), {})
+    dit(mienne.get("par_famille") == attendu and vue.get("par_famille") == attendu,
+        "la liste du proprietaire et /admin disent ce qui reste a chaque famille",
+        f"{mienne.get('par_famille')} / {vue.get('par_famille')}")
+    st, c, _r = await mcp(k_v, rpc("tools/call", {"name": "decrire_cle", "arguments": {}}))
+    res_ = (c or {}).get("result") or {}
+    texte_ = ((res_.get("content") or [{}])[0]).get("text", "")
+    dit((res_.get("structuredContent") or {}).get("par_famille") == attendu
+        and "rendus « video » aujourd'hui : 2 sur 2, reste 0" in texte_
+        and "rendus « detourer » aujourd'hui : 0 sur 50, reste 50" in texte_,
+        "decrire_cle le dit aussi, en texte : chaque famille, son plafond, ce qui reste",
+        texte_[-160:])
+
+    # ── APRES L'ANALYSE : executer() arrete la famille de trop ──────────
+    appels = {"enrichir": 0}
+    plan_du_banc = {}
+
+    async def faux_aiguiller(texte, tid, conv, img_b64, **_k):
+        return dict(plan_du_banc)
+
+    async def faux_enrichir(plan, texte, tid):
+        appels["enrichir"] += 1
+        raise RuntimeError("arret du banc apres la garde des plafonds")
+
+    async def faux_soumettre(*_a, **_k):
+        raise RuntimeError("le banc ne rend rien")
+
+    video = {"intention": "video", "modele": "wan5b", "prompt": "a fox running",
+             "raison": "banc", "parametres": {}}
+    image = {"intention": "image", "modele": "klein4b", "prompt": "a fox",
+             "raison": "banc", "parametres": {}, "largeur": 1024, "hauteur": 1024}
+    garde = (S.aiguiller, S.enrichir, S.soumettre_robuste)
+    S.aiguiller, S.enrichir, S.soumettre_robuste = faux_aiguiller, faux_enrichir, faux_soumettre
+    try:
+        async def executer_pour(fiche, plan, variantes=1, en_plus=None):
+            plan_du_banc.clear()
+            plan_du_banc.update(plan)
+            tid, conv = poser_rendu(fiche, "en cours")
+            S.TACHES[tid]["api"]["par_jour_familles"] = dict(fiche.get("par_jour_familles") or {})
+            S.TACHES[tid]["api"].update(en_plus or {})
+            # L'entree de file, comme reprendre_file() la refait : un AUTRE
+            # objet que la marque de la tache.
+            S.EN_FILE[tid] = {"tid": tid, "conversation": conv["id"],
+                              "api": dict(S.TACHES[tid]["api"])}
+            appels.update(enrichir=0)
+            await S.executer(tid, "un renard qui court dans la neige", conv,
+                             variantes=variantes)
+            t = S.TACHES[tid]
+            return tid, t, S.rendu_public(tid, conv, t, None, "", "fr"), \
+                S.rendu_public(tid, conv, t, None, "", "en")
+
+        f_e = fiche_de(nouvelle_cle("noe", "une video par jour",
+                                    par_jour_familles={"video": 1})["cle"])
+        tid1, t1, r1, _en = await executer_pour(f_e, video)
+        dit(appels["enrichir"] == 1 and S._lances_par_famille(f_e["id"]) == {"video": 1}
+            and (r1["erreur"] or {}).get("code") != "cle_plafond_famille",
+            "la premiere video du jour passe la garde et va jusqu'a l'enrichissement ; "
+            "elle est comptee", f"{appels} {S._lances_par_famille(f_e['id'])}")
+        dit((t1.get("api") or {}).get("famille_comptee") == "video"
+            and ((S.EN_FILE.get(tid1) or {}).get("api") or {}).get("famille_comptee") == "video",
+            "la marque de la tache ET celle de son entree de file disent la famille "
+            "comptee : un redemarrage ne la recompte pas")
+        avant_s = dict((S.ACCES.suivi(f_e["id"]) or {}).get("refus") or {})
+        _tid, _t, r2, en2 = await executer_pour(f_e, video)
+        dit(r2["etat"] == "erreur" and (r2["erreur"] or {}).get("code") == "cle_plafond_famille"
+            and appels["enrichir"] == 0 and S._lances_par_famille(f_e["id"]) == {"video": 1},
+            "la seconde video, que l'analyse a lue sans moteur impose, finit en erreur "
+            "« cle_plafond_famille » avant l'enrichissement, sans compter",
+            f"{r2['etat']} {(r2['erreur'] or {}).get('code')} {appels}")
+        dit("this key has reached its limit" in (en2["erreur"] or {}).get("message", "")
+            and "« video »" in (r2["erreur"] or {}).get("message", ""),
+            "le message nomme la famille, et se traduit",
+            f"{(r2['erreur'] or {}).get('message')} / {(en2['erreur'] or {}).get('message')}")
+        dit(((S.ACCES.suivi(f_e["id"]) or {}).get("refus") or {}).get("cle_plafond_famille")
+            == avant_s.get("cle_plafond_famille", 0) + 1,
+            "le refus tardif du plafond de famille compte dans le suivi de la cle",
+            repr((S.ACCES.suivi(f_e["id"]) or {}).get("refus")))
+        _tid, _t, r3, _en = await executer_pour(f_e, image)
+        dit(appels["enrichir"] == 1,
+            "temoin : une image sur la meme cle passe, sa famille n'a pas de plafond",
+            repr(appels))
+        _tid, _t, r4, _en = await executer_pour(f_e, video,
+                                                en_plus={"famille_comptee": "video"})
+        dit(appels["enrichir"] == 1 and S._lances_par_famille(f_e["id"]) == {"video": 1},
+            "une demande deja comptee (moteur impose a l'entree, ou variante du "
+            "premier tirage) n'est ni recomptee ni refusee",
+            f"{appels} {S._lances_par_famille(f_e['id'])}")
+        _tid, _t, r5, _en = await executer_pour(
+            f_e, dict(video, intention="image"))
+        dit((r5["erreur"] or {}).get("code") == "cle_plafond_famille" and appels["enrichir"] == 0,
+            "la famille se juge sur le moteur du plan, pas sur l'intention : "
+            "wan5b est une video", f"{(r5['erreur'] or {}).get('code')} {appels}")
+        f_3 = fiche_de(nouvelle_cle("noe", "trois images par jour",
+                                    par_jour_familles={"image": 3, "video": 1})["cle"])
+        _tid, _t, r6, _en = await executer_pour(f_3, image, variantes=4)
+        refusees_4 = (r6["erreur"] or {}).get("code") == "cle_plafond_famille"
+        _tid, _t, r7, _en = await executer_pour(f_3, image, variantes=2)
+        dit(refusees_4 and appels["enrichir"] == 1
+            and S._lances_par_famille(f_3["id"]) == {"image": 2},
+            "apres l'analyse aussi, les variantes comptent : quatre images sur un "
+            "plafond de trois sont refusees, deux passent et comptent deux",
+            f"{(r6['erreur'] or {}).get('code')} {S._lances_par_famille(f_3['id'])}")
+        _tid_v, _t, r8, _en = await executer_pour(f_3, video, variantes=4)
+        dit(appels["enrichir"] == 1
+            and S._lances_par_famille(f_3["id"]) == {"image": 2, "video": 1},
+            "mais une video ne se tire pas en variantes : « quatre » videos en "
+            "font une, et elle passe un plafond d'une",
+            f"{(r8['erreur'] or {}).get('code')} {S._lances_par_famille(f_3['id'])}")
+        # Sur le disque : la conversation est ecrite au moment du compte.
+        S.CONVERSATIONS.clear()
+        S.charger_conversations()
+        dit(S._lances_par_famille(f_e["id"]) == {"video": 1}
+            and S._lances_par_famille(f_3["id"]) == {"image": 2, "video": 1},
+            "le compte fait apres l'analyse survit a un rechargement",
+            f"{S._lances_par_famille(f_e['id'])} {S._lances_par_famille(f_3['id'])}")
+        dit(S.plafond_famille_refuse(uuid.uuid4().hex, {}, video) is None
+            and S.plafond_famille_refuse(_tid, {}, video) is None,
+            "plafond_famille_refuse() ne refuse rien a la page, ni a une demande "
+            "deja comptee")
+    finally:
+        S.aiguiller, S.enrichir, S.soumettre_robuste = garde
+        S.EN_FILE.clear()
+
+
 def brut_du_fichier(chemin):
     with open(chemin, encoding="utf-8") as f:
         return f.read()
@@ -2778,7 +3060,8 @@ async def principal():
             ("15. les humains d'abord dans la file", s_humains_dabord),
             ("16. un rappel en cours survit a un redemarrage", s_rappels_persistants),
             ("17. ce que la cle peut faire", s_operations),
-            ("18. le suivi des cles", s_suivi)):
+            ("18. le suivi des cles", s_suivi),
+            ("19. le plafond du jour par famille", s_plafonds_famille)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

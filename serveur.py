@@ -288,6 +288,10 @@ import mcp as _mcp
 # reste, et tenu en accord avec le routeur par banc_contrat.py.
 import contrat as _contrat
 import aiguilleur as _aiguilleur
+# Le manifeste et les icones du studio installable : un module plutot que des
+# fichiers dans web/, pour que les deux empaquetages les emportent sans liste
+# a tenir (voir sa tete).
+import appli as _appli
 import traductions
 # T() est appele a soixante endroits dans ce fichier : le nom court est ici
 # pour que la ligne de refus tienne sur une ligne et se relise comme avant.
@@ -3349,6 +3353,16 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # Une image a lire et pas de modele de vision ici : substituer en
             # rendrait une description inventee, sans que rien ne le dise.
             continue
+        # MIS DE COTE : on passe, AVANT d'attendre sa carte. Attendre la fin
+        # d'un rendu pour interroger un modele dont on sait qu'il degenere,
+        # c'est payer deux fois.
+        modele_q = ici.get("model") or ""
+        if en_quarantaine(url, modele_q):
+            journal_une_fois(tid, f"{titre_ol} : {modele_q} est mis de cote "
+                                  f"(reponses degenerees) — on passe a la "
+                                  f"machine suivante")
+            continue
+        essai_ = False
         # La carte de la machine qui heberge cet Ollama : une carte ne fait
         # qu'une tache a la fois, analyse comprise. PAS d'echappatoire — la
         # version qui lançait l'analyse « malgre tout » au bout de vingt
@@ -3403,32 +3417,67 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # corps_ici sur chaque adresse restante juste pour savoir s'il y a
             # un repli, et chacune ecrivait « lecture par X » — trois lignes
             # pour une lecture, dont deux annonçant une machine qui n'a rien lu.
+            # L'ESSAI, s'il y en a un a faire, est pris ICI, apres l'attente de
+            # la carte : un autre appel a pu le prendre pendant ce temps.
+            essai_ = _prendre_essai(url, modele_q)
+            if essai_ is None:
+                continue
+            if essai_:
+                journal(tid, f"{titre_ol} : essai de {modele_q} apres sa mise "
+                             f"de cote — un seul appel")
+            # Une adresse mise de cote n'est pas un repli : la compter ferait
+            # partir la reprise vers une machine que la boucle sautera.
             reste_ = any(corps_ici(corps, u) is not None
                          and not (i and (noeud(i) or {}).get("pause"))
+                         and not en_quarantaine(
+                             u, (corps_ici(corps, u) or {}).get("model") or "")
                          for u, i in cerveaux[rang_ + 1:])
             delai = ((300 if reste_ else 900) if ici.get("images")
                      else 900 if ecriture else ANALYSE_DELAI)
-            rendu = await _ollama_local(ici, url, delai)
+            rendu, coupe_ = await _ollama_essai(ici, url, delai)
             modele_ici = ici.get("model") or ""
             # Vide AVEC un champ « error », c'est un modele qui ne se charge
             # pas : _ollama_local l'a deja ecarte, et le decharger n'y peut
             # rien. Seul le vide sans erreur — ou le charabia — se repare.
             forme_ = ("" if _casse_ici(url, modele_ici)
-                      else forme_degeneree(rendu))
+                      else coupe_ or forme_degeneree(rendu))
             if forme_:
                 trace_ = await reparer_degenere(url, modele_ici, forme_, tid,
                                                 titre_ol)
+                trace_["quarantaine"] = _compter_degenere(url, modele_ici,
+                                                          titre_ol, tid)
                 if reprise_ is not None:
                     # La reprise a deja eu lieu ailleurs : celle-ci ne se
                     # retente pas, et la reponse est rendue comme avant.
                     reprise_["issue"] = "toujours degeneree"
+                elif trace_["quarantaine"]:
+                    # MIS DE COTE A L'INSTANT : jamais de reprise au meme
+                    # endroit — un essai qui degenere ne devient pas une
+                    # rafale, et un modele que le dechargement n'a pas repare
+                    # ne le sera pas davantage la seconde fois. Ailleurs s'il y
+                    # a ou ; sinon la reponse est rendue telle quelle.
+                    reprise_ = trace_
+                    degenere_ = rendu
+                    reprise_["issue"] = "mise de cote"
+                    if reste_:
+                        reprise_["issue"] = "retentee ailleurs"
+                        journal(tid, f"{titre_ol} : on reessaie ailleurs")
+                        continue
+                    journal(tid, f"{titre_ol} : aucune autre machine — la "
+                                 f"reponse est rendue telle quelle")
                 elif trace_["decharge"]:
                     reprise_ = trace_
                     degenere_ = rendu
                     reprise_["issue"] = "reprise sans reponse"
-                    rendu = await _ollama_local(ici, url, delai)
+                    rendu, coupe_ = await _ollama_essai(ici, url, delai)
+                    encore_ = coupe_ or forme_degeneree(rendu)
                     reprise_["issue"] = ("toujours degeneree"
-                                         if forme_degeneree(rendu) else "reparee")
+                                         if encore_ else "reparee")
+                    if encore_:
+                        # LE CAS DU 5 NOVEMBRE : decharge, recharge, et le meme
+                        # « @ ». C'est la seconde fois dans la fenetre.
+                        reprise_["quarantaine"] = _compter_degenere(
+                            url, modele_ici, titre_ol, tid)
                     journal(tid, f"{titre_ol} : apres dechargement, "
                                  + ("toujours rien d'utilisable — la reponse "
                                     "est rendue telle quelle"
@@ -3445,6 +3494,8 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                     continue
             elif reprise_ is not None and reprise_["issue"] == "retentee ailleurs":
                 reprise_["issue"] = f"repondue par {titre_ol}"
+            if essai_ and not forme_:
+                _lever_quarantaine(url, modele_q, tid, titre_ol)
             # OU CET OLLAMA A MIS LE MODELE. Ici et pas ailleurs : le modele
             # est encore charge, et l'appel vient de reussir — sonder une
             # adresse qui vient d'echouer n'apprendrait rien.
@@ -3479,6 +3530,11 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
         finally:
             if verrou_ol is not None:
                 verrou_ol.release()
+            # Un essai interrompu — delai, panne, carte reprise — ne conclut
+            # rien : on le rend, sans quoi le modele resterait de cote pour
+            # toujours derriere un essai que personne ne finira.
+            if essai_:
+                _rendre_essai(url, modele_q)
     # LA REPRISE N'A RIEN DONNE DE MIEUX. Un modele a pourtant repondu, mal :
     # c'est cette reponse que l'appel rendait avant de savoir la reconnaitre,
     # et on la rend encore, plutot qu'une exception ou un detour de plusieurs
@@ -3606,6 +3662,26 @@ def _echec_de_chargement(texte):
     t = (texte or "").lower()
     return any(m in t for m in ("error loading model", "process has terminated",
                                 "failed to initialize"))
+
+
+class ReponseDegeneree(RuntimeError):
+    """Ollama a lui-meme coupe une reponse qui ne faisait que se repeter.
+
+    RuntimeError, comme l'erreur qu'elle remplace : un appelant qui ne la
+    connait pas la traite exactement comme avant.
+    """
+
+
+def _repetition_coupee(texte):
+    """Ce message dit-il qu'Ollama a arrete un modele qui se repetait.
+
+    Mesure du 5 novembre 2026 sur le PC (Ollama 0.40.14, qwen2.5vl:7b) : le
+    modele sort « @ » des le premier jeton. Sans « format », Ollama coupe et
+    rend 500 « prediction aborted, token repeat limit reached ». Ce n'est PAS
+    un chargement impossible — le modele est charge, il degenere — et l'ecarter
+    jusqu'au redemarrage interdirait un modele qui, la plupart du temps, marche.
+    """
+    return "token repeat limit" in (texte or "").lower()
 
 
 def _casse_ici(url, nom):
@@ -3794,9 +3870,20 @@ async def _ollama_local(corps, url=None, secondes=900):
                 brut_ = (await r.text())[:300]
                 if _echec_de_chargement(brut_):
                     _ecarter_modele(corps.get("model") or "", brut_, url)
+                # UNE REPETITION COUPEE EST UNE REPONSE DEGENEREE, pas une panne :
+                # en RuntimeError ordinaire, elle partait a l'adresse suivante
+                # puis au detour par l'agent — celui du PC compris, donc le meme
+                # modele —, et jamais au dechargement ni a la mise de cote.
+                elif _repetition_coupee(brut_):
+                    raise ReponseDegeneree(f"ollama {r.status} : {brut_[:160]}")
                 raise RuntimeError(f"ollama {r.status} : {brut_[:160]}")
             d = await r.json()
             rep_ = d.get("response", "")
+            if not rep_.strip() and _repetition_coupee(str(d.get("error") or "")):
+                # La meme coupure, dite en 200 par un Ollama plus ancien : sans
+                # ce tri, le champ « error » ecartait le modele comme s'il ne se
+                # chargeait pas.
+                raise ReponseDegeneree(f"ollama : {str(d['error'])[:160]}")
             if not rep_.strip() and d.get("error"):
                 # Ollama a repondu 200 avec un champ « error » : le modele
                 # existe, il ne se CHARGE pas.
@@ -3809,11 +3896,26 @@ async def _ollama_local(corps, url=None, secondes=900):
                 # couvrait que la voie distante : celle-ci jetait
                 # « done_reason » et « eval_count », les deux seules choses
                 # qui expliquent un silence.
+                # « fini » aussi : le 5 novembre 2026, avec « format », Ollama a
+                # rendu 200 {"model": "", "response": "", "done": false} — la
+                # grammaire de llama-server avait rejete le premier jeton, « @ ».
+                # C'est un vide comme un autre pour l'appelant, qui le traite en
+                # reponse degeneree ; ici, on le distingue.
                 print(f"  [ollama] reponse vide de {corps.get('model')} — "
-                      f"arret={d.get('done_reason')} "
+                      f"fini={d.get('done')} arret={d.get('done_reason')} "
                       f"jetons={d.get('eval_count')} "
                       f"erreur={str(d.get('error'))[:80]}", flush=True)
             return rep_
+
+
+async def _ollama_essai(ici, url, delai):
+    """(reponse, "coupee") quand Ollama a coupe une repetition, (reponse, "")
+    sinon. La reponse d'une coupure est "" : c'est ce que l'appelant recoit si
+    rien de mieux ne vient, comme d'un 200 vide."""
+    try:
+        return await _ollama_local(ici, url, delai), ""
+    except ReponseDegeneree:
+        return "", "coupee"
 
 
 # L'ANCIENNE REGLE, gardee comme echappatoire et ETEINTE PAR DEFAUT.
@@ -3989,15 +4091,56 @@ async def demander_a_un_noeud(corps, tid=None, secondes=None):
     # apres lui.
     a_llm = list(noeuds_a_llm())
     libres = [i for i in a_llm if not verrou_noeud(i).locked()]
+    # LA MEME MISE DE COTE QUE LA VOIE DIRECTE, et sous la MEME cle quand on
+    # connait l'Ollama de cette machine : l'agent du PC interroge l'Ollama du
+    # PC. Sans cela, le repli d'une analyse dont le modele du PC venait d'etre
+    # mis de cote reposait la question… au meme modele, par son agent.
+    degenere_ = ""
     for ident in libres + [i for i in a_llm if i not in libres]:
-        reponse, erreur = await poser_a(ident, corps, tid,
-                                        secondes or 900, patience=0)
-        if erreur:
-            journal(tid, f"{(noeud(ident) or {}).get('titre', ident)} : {erreur}")
+        titre_ = (noeud(ident) or {}).get("titre", ident)
+        modele_ = _modele_du_noeud(ident, corps.get("model"))
+        ou_ = _url_du_cerveau(ident) or f"agent:{ident}"
+        if en_quarantaine(ou_, modele_):
+            journal_une_fois(tid, f"{titre_} : {modele_} est mis de cote "
+                                  f"(reponses degenerees) — on ne le lui "
+                                  f"demande pas")
             continue
-        if reponse:
+        essai_ = _prendre_essai(ou_, modele_)
+        if essai_ is None:
+            continue
+        try:
+            reponse, erreur = await poser_a(ident, corps, tid,
+                                            secondes or 900, patience=0)
+            if erreur:
+                journal(tid, f"{titre_} : {erreur}")
+                continue
+            forme_ = forme_degeneree(reponse)
+            if forme_:
+                # L'AGENT NE DECHARGE RIEN, et le studio ne peut pas le faire a
+                # sa place : il ne connait pas l'adresse de cet Ollama. Reste
+                # a compter, a mettre de cote, et a demander a la suivante.
+                trace_ = {"quand": time.time(), "machine": titre_,
+                          "modele": modele_, "forme": forme_,
+                          "decharge": False, "issue": "par son agent"}
+                DEGENERESCENCES.append(trace_)
+                _DEGENERES_TOTAL[0] += 1
+                trace_["quarantaine"] = _compter_degenere(ou_, modele_, titre_,
+                                                          tid)
+                journal(tid, f"{titre_} : {modele_} a rendu "
+                             + ("une reponse vide" if forme_ == "vide"
+                                else "du charabia")
+                             + " par son agent — on demande a la suivante")
+                degenere_ = degenere_ or reponse
+                continue
+            if essai_:
+                _lever_quarantaine(ou_, modele_, tid, titre_)
             return reponse
-    return ""
+        finally:
+            if essai_:
+                _rendre_essai(ou_, modele_)
+    # Rien de mieux : le charabia d'un agent est rendu comme avant, le vide
+    # aussi — "" reste « pas de reponse » pour l'appelant.
+    return degenere_
 
 
 async def liberer_modele(tid):
@@ -4060,6 +4203,109 @@ _DECHARGE_DEGENERE = {}
 DEGENERESCENCES = collections.deque(maxlen=20)
 _DEGENERES_TOTAL = [0]
 
+# ══ UN MODELE QUE LE DECHARGEMENT NE REPARE PAS ════════════════════════
+# LE DECHARGEMENT NE REPARE PAS TOUT. Mesure du 5 novembre 2026 sur le PC
+# (Ollama 0.40.14, qwen2.5vl:7b, RTX 2080 Ti) : le modele sort « @ » des le
+# premier jeton, par intermittence, et le meme modele FRAIS recommence. Chaque
+# analyse perdait cinq a dix secondes sur lui — decharger, recharger, retenter —
+# avant de passer ailleurs ou aux mots-cles.
+#
+# DEUX FOIS DANS LA FENETRE, et non « apres un dechargement ». Le premier
+# echec decharge quand c'est permis ; le second, dans les dix minutes, est donc
+# celui d'un modele que le dechargement n'a pas repare — le cas mesure. Mais la
+# meme regle vaut la ou le studio ne PEUT pas decharger : par l'agent d'une
+# machine, ou quand Ollama refuse le dechargement. Une regle qui demanderait un
+# dechargement reussi n'y mettrait jamais rien de cote. Deux appels simultanes
+# qui degenerent ensemble suffisent aussi : c'est deja une preuve.
+SEUIL_QUARANTAINE = 2
+# Quinze minutes : plus que la fenetre — une mise de cote qui finirait avant
+# qu'on ait oublie les echecs ne mettrait rien de cote —, assez court pour
+# qu'un modele repare a la main revienne sans redemarrer le studio.
+QUARANTAINE_DEGENERE = 900
+# Ce que la console montre, et ce que la memoire garde : une entree par
+# (adresse, modele), purgee au-dela. Un parc compte deux ou trois machines.
+QUARANTAINES_MAX = 20
+# (adresse, modele) -> instants des dernieres degenerescences, dans la fenetre.
+_VUS_DEGENERE = {}
+# (adresse, modele) -> {"debut", "fin", "machine", "modele", "essai", "fois"}.
+# « essai » : l'unique appel laisse passer une fois la duree ecoulee.
+QUARANTAINES = {}
+
+
+def en_quarantaine(url, modele):
+    """Cet appel doit-il passer a cote : mis de cote, ou son essai en vol."""
+    q = QUARANTAINES.get((url, modele))
+    return bool(q) and (q["fin"] > time.time() or q["essai"])
+
+
+def _prendre_essai(url, modele):
+    """False : rien a essayer. True : CET appel est l'essai. None : ferme.
+
+    UN SEUL APPEL D'ESSAI. La duree ecoulee, la rafale d'une demande — trois a
+    quatre appels — repartirait sinon tout entiere sur ce modele, alors qu'on
+    ne sait pas encore s'il repond : c'est l'essai qui doit le dire.
+    """
+    q = QUARANTAINES.get((url, modele))
+    if not q:
+        return False
+    if q["fin"] > time.time() or q["essai"]:
+        return None
+    q["essai"] = True
+    return True
+
+
+def _rendre_essai(url, modele):
+    """L'essai n'a rien conclu (panne, delai) : le suivant reessaiera."""
+    q = QUARANTAINES.get((url, modele))
+    if q:
+        q["essai"] = False
+
+
+def _lever_quarantaine(url, modele, tid, titre):
+    """L'essai a rendu une vraie reponse : le modele revient dans le tour."""
+    if QUARANTAINES.pop((url, modele), None) is not None:
+        _VUS_DEGENERE.pop((url, modele), None)
+        journal(tid, f"{modele} sur {titre} repond de nouveau — remis en service")
+
+
+def _compter_degenere(url, modele, titre, tid):
+    """Compte une degenerescence ; rend la fin de la mise de cote, ou None.
+
+    Un essai qui degenere remet de cote tout de suite, sans attendre un
+    second echec : la fenetre, plus courte que la mise de cote, a oublie ceux
+    d'avant, et c'est precisement ce qu'on venait verifier.
+    """
+    maintenant = time.time()
+    for cle_, vus_ in list(_VUS_DEGENERE.items()):
+        vus_[:] = [t for t in vus_ if maintenant - t < FENETRE_DEGENERE]
+        if not vus_:
+            del _VUS_DEGENERE[cle_]
+    cle = (url, modele)
+    vus = _VUS_DEGENERE.setdefault(cle, [])
+    vus.append(maintenant)
+    del vus[:-SEUIL_QUARANTAINE]
+    q = QUARANTAINES.get(cle)
+    if q and not q["essai"] and q["fin"] > maintenant:
+        # Deja de cote : un appel parti avant la mise de cote revient. On ne
+        # prolonge pas, on ne le redit pas.
+        return q["fin"]
+    if not (q and q["essai"]) and len(vus) < SEUIL_QUARANTAINE:
+        return None
+    fin = maintenant + QUARANTAINE_DEGENERE
+    QUARANTAINES[cle] = {"debut": maintenant, "fin": fin, "machine": titre,
+                         "modele": modele, "essai": False,
+                         "fois": (q or {}).get("fois", 0) + 1}
+    for cle_, q_ in list(QUARANTAINES.items()):
+        if q_["fin"] < maintenant - 86400:
+            del QUARANTAINES[cle_]
+    while len(QUARANTAINES) > QUARANTAINES_MAX:
+        del QUARANTAINES[min(QUARANTAINES, key=lambda c: QUARANTAINES[c]["fin"])]
+    journal(tid, f"{modele} sur {titre} degenere encore — mis de cote "
+                 f"{QUARANTAINE_DEGENERE // 60} min, jusqu'a "
+                 f"{time.strftime('%H:%M', time.localtime(fin))} : les appels "
+                 f"iront a la machine suivante")
+    return fin
+
 
 def forme_degeneree(rendu):
     """« vide », « repetition », ou "" pour une reponse qui en est une."""
@@ -4085,16 +4331,19 @@ async def reparer_degenere(url, modele, forme, tid, titre):
              "forme": forme, "decharge": False, "issue": "pas retentee"}
     DEGENERESCENCES.append(trace)
     _DEGENERES_TOTAL[0] += 1
-    quoi = ("une reponse vide" if forme == "vide"
-            else "du charabia (un meme caractere repete)")
+    # « coupee » : Ollama a lui-meme arrete la repetition, et l'a dit par un
+    # 500 — ce n'est plus « sans erreur ».
+    quoi = {"vide": "une reponse vide sans erreur",
+            "coupee": "une repetition qu'Ollama a coupee (token repeat limit)",
+            }.get(forme, "du charabia (un meme caractere repete) sans erreur")
     ident = cerveau(url).get("noeud")
     if ident and (noeud(ident) or {}).get("pause"):
         # Son proprietaire s'en sert : on ne lui decharge rien, meme casse.
-        journal(tid, f"{modele} sur {titre} a rendu {quoi} sans erreur — "
+        journal(tid, f"{modele} sur {titre} a rendu {quoi} — "
                      f"machine en pause, on n'y touche pas")
         return trace
     if (url, modele) in _DECHARGE_DEGENERE:
-        journal(tid, f"{modele} sur {titre} a rendu {quoi} sans erreur — deja "
+        journal(tid, f"{modele} sur {titre} a rendu {quoi} — deja "
                      f"decharge il y a "
                      f"{maintenant - _DECHARGE_DEGENERE[(url, modele)]:.0f} s, "
                      f"on ne le decharge pas encore")
@@ -4105,7 +4354,7 @@ async def reparer_degenere(url, modele, forme, tid, titre):
     # Les entrees de _CHAUD qui nomment ce modele restent : la fin de leur
     # rafale dechargera ce que la reprise aura recharge, comme prevu.
     trace["decharge"] = await liberer_modele_a(url, modele)
-    journal(tid, f"{modele} sur {titre} a rendu {quoi} sans erreur — "
+    journal(tid, f"{modele} sur {titre} a rendu {quoi} — "
                  + ("modele decharge pour le reparer" if trace["decharge"]
                     else "le dechargement n'a pas abouti"))
     return trace
@@ -4113,11 +4362,26 @@ async def reparer_degenere(url, modele, forme, tid, titre):
 
 def releve_degenerescences():
     """Pour la console : le compte, et les dernieres, la plus recente d'abord."""
+    maintenant = time.time()
     return {"total": _DEGENERES_TOTAL[0],
             "fenetre": FENETRE_DEGENERE,
             "derniers": [dict(x, heure=time.strftime("%d/%m %H:%M:%S",
                                                      time.localtime(x["quand"])))
-                         for x in reversed(DEGENERESCENCES)]}
+                         for x in reversed(DEGENERESCENCES)],
+            # CE QUI EST DE COTE EN CE MOMENT, et jusqu'a quand. Une mise de
+            # cote echue reste listee tant que son essai n'a pas conclu : le
+            # modele n'est pas encore revenu, la console ne doit pas le dire.
+            "quarantaine": QUARANTAINE_DEGENERE,
+            "quarantaines": sorted(
+                ({"machine": q["machine"], "modele": q["modele"],
+                  "debut": time.strftime("%d/%m %H:%M:%S",
+                                         time.localtime(q["debut"])),
+                  "fin": time.strftime("%d/%m %H:%M:%S",
+                                       time.localtime(q["fin"])),
+                  "reste": max(0, round(q["fin"] - maintenant)),
+                  "essai": q["essai"], "fois": q["fois"]}
+                 for q in list(QUARANTAINES.values())),
+                key=lambda x: x["reste"])}
 
 
 SYS_TRADUCTION = """Tu traduis du francais vers l'anglais. Tu ne fais que cela.
@@ -6005,6 +6269,20 @@ _REPRISE = re.compile(r"\b(la|le) m[eê]me\b|\bcelle-ci\b|\bcelui-ci\b|\bcette i
                       r"contrast[ée]|net|flou|grand|petit|chaud|froid)\b|"
                       r"\bsans (le|la|les|l')\b|\bajoute\b|\benl[èe]ve\b|\bretire\b|"
                       r"\bchange (le|la|les|l')\b|\bremplace\b|\bmets-?y\b|\bau lieu de\b", re.I)
+# UNE CONSIGNE ADRESSEE A L'IMAGE JOINTE. Mesure du 5 novembre 2026, dans la
+# page : le chat de la mediatheque joint, « mets-lui un petit chapeau de
+# paille », et le modele de langage a repondu « image » — klein4b a dessine
+# une femme au chapeau, le chat n'etait plus la. _REPRISE ne connaissait pas
+# « mets-lui ». Plus large que _REPRISE, donc reservee a une image JOINTE A
+# CETTE DEMANDE : apres une simple sortie precedente, « mets un chat dans un
+# jardin » est une image neuve, pas une retouche.
+_RETOUCHE_JOINTE = re.compile(
+    r"\b(mets|ajoute|donne|fais|habille|coiffe|maquille|peins|colorie|colore)-?"
+    r"(lui|leur|la|le|les|y)\b|"
+    r"\b(enl[eè]ve|retire|efface|supprime|change|remplace|transforme|modifie|"
+    r"retouche|am[eé]liore|nettoie|recadre|recolore|eclaircis|assombris)\b|"
+    r"\b(put|add|give|remove|erase|delete|change|replace|turn|make (it|him|her|them))\b",
+    re.I)
 PIXELS_AUTO = 1216 * 832   # au-dela, le temps de rendu explose sans gain reel
 
 # « 2/3 min », « trois minutes », « 1 min 30 », « 45 secondes ». Le petit modele
@@ -6192,6 +6470,25 @@ def appliquer_parametres(plan):
     plan["parametres_ajustes"] = ajustes
     return plan
 
+def consigne_de_retouche(plan, texte):
+    """Le prompt d'une retouche que le CODE a decidee : la phrase de
+    l'utilisateur, pas la scene que le modele de langage a ecrite.
+
+    Mesure du 5 novembre 2026 : le chat joint, « mets-lui un petit chapeau de
+    paille », et le modele, qui croyait faire une image, avait ecrit « un
+    petit chapeau de paille, ensoleille, champ de ble, ciel bleu ». La
+    bascule en retouche gardait ce prompt ; le moteur d'edition l'a pris au
+    mot et a peint un champ de ble — le chat n'etait plus la. Une consigne
+    de retouche dit quoi CHANGER : c'est la demande elle-meme. enrichir()
+    n'y touche pas (une retouche ne s'enrichit pas), traduire() la traduit
+    si le moteur l'exige.
+    """
+    consigne = (texte or "").strip()
+    if consigne:
+        plan["prompt"] = consigne
+        plan.pop("negatif", None)
+
+
 def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
     plan["priorite"] = priorite
     intention = plan.get("intention")
@@ -6230,6 +6527,17 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
         plan["intention"] = "edition"
         plan["modele"] = "edition"
         plan["raison"] = "reprise de l'image precedente detectee"
+        consigne_de_retouche(plan, texte)
+    # L'IMAGE JOINTE ET UN VERBE QUI LUI PARLE (voir _RETOUCHE_JOINTE). Le
+    # « meme personnage » reste une image neuve : c'est voulu, executer() la
+    # rend avec la reference.
+    if (a_une_image == "image" and plan["intention"] == "image"
+            and _RETOUCHE_JOINTE.search(texte or "")
+            and not veut_meme_personnage(texte or "")):
+        plan["intention"] = "edition"
+        plan["modele"] = "edition"
+        plan["raison"] = "image jointe et consigne de retouche"
+        consigne_de_retouche(plan, texte)
     if plan["intention"] in ("edition", "video_image") and not source:
         plan["intention"] = "image"
     # UNE IMAGE, et pas « une piece jointe ». « a_une_image » porte la famille :
@@ -9627,6 +9935,9 @@ def enregistrer_tour(conv, tid, texte, plan, intention, cle, sorties, etat, erre
         # de l'image COURANTE, qui a pu changer depuis. On refaisait donc autre
         # chose en promettant « meme prompt, meme moteur, meme taille ».
         "entree": TACHES.get(tid, {}).get("image"),
+        # ET LA SORTIE REPRISE quand rien n'etait joint (« retouche-la ») :
+        # l'original d'une retouche, que la page montre sous le resultat.
+        "reprise": TACHES.get(tid, {}).get("reprise"),
         "secondes": TACHES.get(tid, {}).get("secondes"),
         # CE QUE L'ANALYSE A COUTE, garde avec le reste. Le journal d'une
         # demande vit en memoire et n'est jamais ecrit : une fois la demande
@@ -10244,6 +10555,10 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # doit pouvoir retomber sur l'execution plutot que de l'interroger.
             if not qs and plan.get("questions_forcees"):
                 qs = list(QUESTIONS_SANS_SUJET)
+            if qs and ((TACHES.get(tid) or {}).get("api") or {}).get("sans_question"):
+                journal(tid, "le client ne sait pas repondre a une question — "
+                             "le studio rend sa meilleure lecture de la demande")
+                qs = []
             if qs:
                 plan.pop("prompt_repli", None)
                 TACHES[tid].update(etat="question", questions=qs, plan=plan)
@@ -10267,6 +10582,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         if refus_op:
             raise RefusMoteur("cette cle d'acces ne permet pas cette operation",
                               refus_op)
+        # Et le plafond du jour de cette famille, au meme endroit : la famille
+        # n'est sue que maintenant, et rien n'a encore travaille.
+        refus_fam = plafond_famille_refuse(tid, conv, plan, texte, variantes)
+        if refus_fam:
+            raise RefusMoteur("cette cle d'acces a atteint son plafond du jour "
+                              "pour cette famille", refus_fam)
         # apres l'aiguillage ET l'eventuel modele impose : le moteur est arrete,
         # on sait donc si sa langue impose une traduction.
         if plan.pop("prompt_repli", False):
@@ -10351,6 +10672,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         if intention in ("edition", "video_image", "agrandir", "detourer") \
                 and not image and conv.get("derniere_sortie"):
             image = await recuperer_sortie(conv["derniere_sortie"], conv.get("proprietaire"))
+            # LA SORTIE REPRISE, nommee sur la tache puis sur le tour : c'est
+            # l'« avant » que la page compare au resultat. Pas « image » : ce
+            # champ-la est ce que la demande a JOINT, que « refaire » rejoue
+            # tel quel, et la copie reprise_… s'efface au bout de quarante
+            # entrees — la sortie, elle, vit autant que sa conversation.
+            TACHES[tid]["reprise"] = dict(conv["derniere_sortie"])
             journal(tid, f"reprise de l'image precedente : {image}")
 
         if intention == "lecture":
@@ -11281,6 +11608,31 @@ async def page(req):
         adopter(qui(req))
     return web.FileResponse(os.path.join(ICI, "web", "index.html"),
                             headers=SANS_CACHE)
+
+
+async def api_manifeste(req):
+    """Ce qui rend le studio installable (appli.py dit ce que les navigateurs
+    exigent). Sans cache, comme les pages : un nom ou une couleur corriges
+    doivent se voir a la prochaine visite, pas dans une semaine."""
+    return web.json_response(_appli.manifeste(), headers=SANS_CACHE,
+                             content_type="application/manifest+json")
+
+
+async def api_icone(req):
+    """Une icone du manifeste, dessinee au premier appel puis gardee.
+
+    Dans un fil a part : la grande icone coute un dixieme de seconde de calcul
+    pur, et la boucle sert les sondages de tout le monde pendant ce temps.
+    Un jour de cache : le dessin ne change qu'avec le code, et un ecran
+    d'accueil qui redemanderait l'icone a chaque ouverture ne gagnerait rien.
+    """
+    nom = req.match_info.get("nom", "")
+    if nom not in _appli.ICONES:
+        return web.json_response({"erreur": "inconnue"}, status=404)
+    octets = await asyncio.get_running_loop().run_in_executor(
+        None, _appli.icone, nom)
+    return web.Response(body=octets, content_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 async def api_textes(req):
@@ -12457,6 +12809,11 @@ async def api_etat(req):
                   if t.get("id") == tid), None) or {}
     etat["esquisse"] = bool(tour_.get("esquisse"))
     etat["au_propre"] = tour_.get("au_propre")
+    # CE QUI FAIT L'AVANT / APRES, pour la meme raison : sans le type ni
+    # l'entree, une retouche qui se termine sous les yeux n'aurait sa
+    # comparaison qu'apres un rechargement. « reprise » vit deja sur la tache.
+    etat["type"] = tour_.get("type")
+    etat["entree"] = tour_.get("entree")
     # ARMEE, et pour combien de temps encore. La marque ne vivait que sur
     # /api/file : la bulle dependait donc d'un sondage separe, et une page
     # rechargee affichait « en cours » pendant deux secondes et demie — assez
@@ -13188,9 +13545,29 @@ async def api_fichier(req):
     ident = req.query.get("noeud") or noeud_local()["id"]
     if genre not in ("output", "input"):
         return web.json_response({"erreur": "inconnu"}, status=404)
-    permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(qui(req))
+    # L'ADMINISTRATEUR VOIT TOUT CE QUI A ETE PRODUIT, ET CE QU'IL A LUI-MEME
+    # TELEVERSE. tous_les_fichiers() ne connait que les sorties des
+    # conversations : un administrateur ne relisait pas sa PROPRE piece jointe,
+    # et l'avant / apres de sa retouche restait vide — vu dans la page le
+    # 5 novembre 2026. Ses entrees seulement : celles des autres restent a eux.
+    permis = ((tous_les_fichiers() | mes_fichiers(qui(req))) if est_admin(req)
+              else mes_fichiers(qui(req)))
     if noeud(ident) is None or (ident, sous, nom) not in permis:
         return web.json_response({"erreur": "inconnu"}, status=404)
+    # CE QU'ON A TELEVERSE SE RELIT SUR LE DISQUE DU STUDIO, ou il a ete ecrit.
+    # Le relais vers le /view d'un ComfyUI local ne le trouvait que si ce
+    # ComfyUI existe ET partage ce dossier : sur le studio sans carte du
+    # reseau — le cas de production depuis le 29 aout 2026 — il n'y a personne
+    # au bout, et l'original d'une retouche (l'avant / apres de la page) ne
+    # pouvait pas s'afficher. Seulement pour son PROPRIETAIRE exact, nom par
+    # nom dans ENTREES : la liste d'autorisation ci-dessus ne distingue pas
+    # « input » d'« output », et un nom de sortie a moi ne doit pas ouvrir un
+    # fichier homonyme depose par quelqu'un d'autre dans ce dossier.
+    if genre == "input" and not sous and ENTREES.get(nom) == qui(req):
+        chemin = _sous(DOSSIER_ENTREE, os.path.basename(nom))
+        if chemin and os.path.isfile(chemin):
+            return web.FileResponse(chemin,
+                                    headers={"X-Content-Type-Options": "nosniff"})
     return await servir_sortie(req, ident, sous, nom, genre)
 
 
@@ -13729,6 +14106,13 @@ async def exiger_compte(req, handler):
              # avec WWW-Authenticate — et non le « connexion requise » de la
              # page, fait pour afficher un formulaire.
              or chemin.startswith(PREFIXE_PROGRAMME) or chemin == CHEMIN_MCP)
+    # La porte compatible OpenAI, pour la meme raison : sa garde est
+    # pour_programme, et son 401 doit etre celui qu'un client OpenAI lit.
+    libre = libre or chemin.startswith(PREFIXE_OPENAI)
+    # LE MANIFESTE ET SES ICONES, en adresses exactes : le navigateur les
+    # demande SANS cookie, et ferme ici le studio ne s'installerait jamais en
+    # connexion obligatoire. Ils ne disent rien de personne (appli.py).
+    libre = libre or chemin in _appli.CHEMINS_LIBRES
     if libre or req.get("compte"):
         return await handler(req)
     # LE SEUL REFUS DE MIDDLEWARE TRADUIT, et le plus lu de tous : c'est ce
@@ -16092,7 +16476,10 @@ async def vider_suivi_des_cles(_app=None):
 
 
 def chemin_de_programme(chemin):
-    return chemin.startswith(PREFIXE_PROGRAMME) or chemin == CHEMIN_MCP
+    # /openai/v1/ AUSSI : la meme cle, presentee par Open WebUI ou un SDK
+    # openai, sous les memes regles (voir « compatibilite OpenAI »).
+    return (chemin.startswith(PREFIXE_PROGRAMME) or chemin == CHEMIN_MCP
+            or chemin.startswith(PREFIXE_OPENAI))
 
 
 def porteur_de_cle(req):
@@ -16186,7 +16573,8 @@ def reessayer_dans(code, reste=None):
     """Les secondes a annoncer dans Retry-After pour ce code de 429."""
     if code == "trop_d_essais":
         return max(1, int(math.ceil(reste or 1)))
-    if code == "cle_plafond_jour":
+    # Le plafond d'une famille se remet a zero au meme minuit que celui du jour.
+    if code in ("cle_plafond_jour", "cle_plafond_famille"):
         return secondes_avant_minuit()
     return REESSAI_FILE
 
@@ -16593,6 +16981,69 @@ def _lances_aujourdhui(ident):
                for q in (c["api"].get("lancements") or []) if q >= minuit)
 
 
+# LA FAMILLE DE CHAQUE RENDU, A COTE DE « lancements ». Une liste a part de
+# [instant, famille] et non une famille glissee dans « lancements » : les
+# conversations d'avant ont des instants nus, et _lances_aujourdhui les lit
+# tels quels — changer la forme d'une entree aurait fait relire de travers le
+# plafond du jour de chaque cle existante. Une conversation d'avant n'a pas de
+# « familles » : elle ne compte dans aucun plafond de famille, et ses
+# lancements restent comptes dans « par_jour ».
+#
+# ECRITE QUAND LA FAMILLE EST SUE, pas avant : a l'entree quand le moteur est
+# impose, apres l'analyse sinon (plafond_famille_refuse). Seulement pour une
+# cle qui borne cette famille : une autre n'a rien a compter, et l'ecrire
+# apres l'analyse coute une ecriture de conversation et de file par rendu.
+def _lances_par_famille(ident):
+    """{famille: rendus du jour} de la cle, compte sur le disque comme
+    _lances_aujourdhui, variantes comprises."""
+    minuit = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+    comptes_ = {}
+    for c in CONVERSATIONS.values():
+        if (c.get("api") or {}).get("cle") != ident:
+            continue
+        for e in c["api"].get("familles") or []:
+            if (isinstance(e, (list, tuple)) and len(e) == 2
+                    and isinstance(e[0], (int, float)) and e[0] >= minuit
+                    and isinstance(e[1], str)):
+                comptes_[e[1]] = comptes_.get(e[1], 0) + 1
+    return comptes_
+
+
+def _noter_famille(conv, famille_, combien, quand=None):
+    """Inscrit « combien » rendus de cette famille sur la conversation, et
+    oublie ceux d'avant-hier : deux jours suffisent au plafond, comme pour
+    « lancements »."""
+    quand = time.time() if quand is None else quand
+    api_ = conv.setdefault("api", {})
+    hier = quand - 2 * 24 * 3600
+    api_["familles"] = ([e for e in api_.get("familles") or []
+                         if isinstance(e, (list, tuple)) and len(e) == 2
+                         and isinstance(e[0], (int, float)) and e[0] >= hier]
+                        + [[quand, famille_]] * combien)
+
+
+def _rendus_de(type_, variantes):
+    """Combien de rendus une demande de ce type fera, pour le plafond de sa
+    famille. Les variantes comptent ou elles existent : quatre images en sont
+    quatre. Une video ou une retouche ne se tirent pas en variantes —
+    executer() les ramene a un seul rendu — et compter quatre videos pour
+    une seule fermerait la famille a une cle qui n'a rien fait."""
+    return variantes if type_ in VARIANTES_POSSIBLE else 1
+
+
+def par_famille_de(fiche):
+    """Ou la cle en est de chaque plafond de famille, aujourd'hui :
+    {famille: {"aujourdhui", "plafond", "reste"}}. Vide pour une cle sans
+    plafond de famille."""
+    plafonds = fiche.get("par_jour_familles") or {}
+    if not plafonds:
+        return {}
+    faits = _lances_par_famille(fiche["id"])
+    return {f: {"aujourdhui": faits.get(f, 0), "plafond": p,
+                "reste": max(0, p - faits.get(f, 0))}
+            for f, p in plafonds.items()}
+
+
 # Cinq cents conversations ouvertes par cle, au plus. Une par demande, gardees
 # trente jours : un workflow a la minute en laisserait 43 200, toutes chargees
 # en memoire au demarrage et relues a chaque sondage (revue du 4 novembre
@@ -16728,6 +17179,47 @@ def operation_refusee(tid, plan, texte=""):
                     permises=_noms_operations(ops))
 
 
+def plafond_famille_refuse(tid, conv, plan, texte="", variantes=1):
+    """La marque du refus quand la famille que l'analyse a decidee a deja
+    atteint son plafond du jour pour la cle de cette tache, ou None — et,
+    quand elle passe, ses rendus sont inscrits sur la conversation.
+
+    AU MEME ENDROIT QUE operation_refusee, et avec le meme type_effectif :
+    une famille se juge sur ce qui sera VRAIMENT fait, et avant
+    l'enrichissement — une sixieme video du jour ne coute ni appel de modele
+    de langage ni minute de carte.
+
+    UNE SEULE FOIS PAR DEMANDE. La marque garde « famille_comptee » : une
+    demande dont le moteur etait impose a ete comptee a l'entree, et les
+    variantes heritent la marque du premier tirage, qui a compte pour tout le
+    groupe — sans elle, quatre variantes en compteraient sept. La
+    marque va dans le fichier de la file aussitot : un redemarrage ne refait
+    pas le compte d'une demande deja comptee.
+    """
+    tache = (TACHES.get(tid) or {}) if tid else {}
+    marque = tache.get("api")
+    plafonds = (marque or {}).get("par_jour_familles") or {}
+    if not plafonds or marque.get("famille_comptee"):
+        return None
+    type_ = type_effectif(plan, texte, image=tache.get("image"))
+    famille_ = _acces.famille(type_)
+    plafond = plafonds.get(famille_)
+    if not plafond:
+        return None
+    rendus = _rendus_de(type_, variantes)
+    if _lances_par_famille(marque.get("cle")).get(famille_, 0) + rendus > plafond:
+        return panne_de("panne.cle_plafond_famille", famille=famille_,
+                        plafond=plafond)
+    _noter_famille(conv, famille_, rendus)
+    # La tache et son entree de file : reprendre_file() en fait deux objets.
+    for m in (marque, (EN_FILE.get(tid) or {}).get("api")):
+        if isinstance(m, dict):
+            m["famille_comptee"] = famille_
+    sauver(conv)
+    sauver_file()
+    return None
+
+
 def nuage_permis(tid):
     """Une tache peut-elle sortir chez un fournisseur facture ?
 
@@ -16801,7 +17293,11 @@ def _suivre_les_refus(lancer):
 # trop petite finissent aussi en « erreur », mais ce ne sont pas des refus de
 # la cle : les compter sous elle ferait chercher au proprietaire la faute de
 # son programme dans une panne du studio.
-REFUS_TARDIFS = frozenset(("cle_operation_interdite", "refus_mineurs"))
+#
+# Le plafond d'une famille en est un : l'entree l'aurait rendu en 429 si le
+# moteur avait ete impose.
+REFUS_TARDIFS = frozenset(("cle_operation_interdite", "cle_plafond_famille",
+                           "refus_mineurs"))
 
 
 def noter_refus_tardif(tid):
@@ -16943,6 +17439,8 @@ async def lancer_pour_programme(req, fiche, d, lg):
     # impose, seule l'analyse sait ce qui sera fait : executer() verifie
     # apres elle (operation_refusee).
     ops = fiche.get("operations") or []
+    plafonds = fiche.get("par_jour_familles") or {}
+    famille_comptee = None
     if d.get("moteur") is not None and v["modele"]:
         type_ = _type_du_rendu(v["modele"], v.get("image"))
         if not _acces.operation_permise(ops, type_):
@@ -16950,6 +17448,20 @@ async def lancer_pour_programme(req, fiche, d, lg):
             return refus("erreur.cle_operation_interdite", 403,
                          operation=_nom_operation(type_),
                          permises=_noms_operations(ops))
+        # LE PLAFOND DE SA FAMILLE, au meme moment et pour la meme raison :
+        # le moteur dit la famille. Les variantes comptent la ou elles
+        # existent (_rendus_de) ; plus de rendus que le plafond lui-meme, et
+        # minuit n'y changera rien.
+        famille_ = _acces.famille(type_)
+        plafond_ = plafonds.get(famille_)
+        rendus_famille = _rendus_de(type_, v["variantes"])
+        if plafond_:
+            if _lances_par_famille(fiche["id"]).get(famille_, 0) + rendus_famille > plafond_:
+                oublier_image()
+                return refus("erreur.cle_plafond_famille", 429,
+                             jamais=rendus_famille > plafond_,
+                             famille=famille_, plafond=plafond_)
+            famille_comptee = famille_
     # LA GARDE AVANT LA FILE. executer() la passe aussi, mais apres le 202 :
     # un programme apprenait le refus au sondage suivant, sous la forme d'un
     # rendu « erreur » — et l'avait deja compte dans son plafond du jour.
@@ -16978,11 +17490,24 @@ async def lancer_pour_programme(req, fiche, d, lg):
     conv["api"]["lancements"] = ([q for q in conv["api"].get("lancements") or []
                                   if q >= hier]
                                  + [maintenant_] * v["variantes"])
+    if famille_comptee:
+        _noter_famille(conv, famille_comptee, rendus_famille, maintenant_)
     # « operations » sur la marque, comme le nuage : executer() la lit apres
-    # l'analyse, et reprendre_file() la restaure avec la tache.
+    # l'analyse, et reprendre_file() la restaure avec la tache. Les plafonds
+    # par famille aussi, et la famille deja comptee a l'entree : executer() ne
+    # la recompte pas (plafond_famille_refuse).
     marque = {"cle": fiche["id"], "nuage": nuage, "rappel": rappel,
               "base": base_publique(req), "langue": lg,
-              "operations": list(ops)}
+              "operations": list(ops),
+              "par_jour_familles": dict(plafonds),
+              "famille_comptee": famille_comptee}
+    # UN CLIENT QUI NE SAIT PAS REPONDRE. La route compatible OpenAI pose
+    # « _sans_question » sur sa copie de la fiche : Open WebUI ou un SDK n'ont
+    # aucune branche pour une question, et « un chat » leur revenait en 400.
+    # Le studio execute alors sa meilleure lecture, comme quand l'analyse n'a
+    # rien produit d'exploitable (executer, intention « question »).
+    if fiche.get("_sans_question"):
+        marque["sans_question"] = True
     tid, _devant = await deposer_demande(conv, pid, page, v, api=marque)
     return 202, {"id": tid}
 
@@ -17422,6 +17947,9 @@ def description_de_cle(req, fiche):
         "compte": req.get("compte"), "cle": fiche,
         "en_cours": _en_cours_de_cle(fiche["id"]),
         "aujourdhui": _lances_aujourdhui(fiche["id"]),
+        # Ce qui reste a chaque famille bornee : un assistant qui le lit avant
+        # sa sixieme video ne l'apprend pas par un rendu en erreur.
+        "par_famille": par_famille_de(fiche),
         "attendre_max": ATTENDRE_MAX}
 
 
@@ -17642,13 +18170,16 @@ _SCHEMA_ATTENDRE = {"type": "integer", "minimum": 0, "maximum": ATTENDRE_MAX,
                                    "la main (defaut 45)."}
 
 
-async def _octets_de_sortie(ident, sous, nom):
+async def _octets_de_sortie(ident, sous, nom, plafond=IMAGE_MCP_MAX):
     """Les octets d'une sortie, pour l'inserer dans la reponse d'un outil. None
-    si trop gros ou introuvable : l'outil donne alors un lien."""
+    si trop gros ou introuvable : l'outil donne alors un lien.
+
+    « plafond » : celui de MCP par defaut ; la route compatible OpenAI passe le
+    sien (IMAGE_OPENAI_MAX), son client n'ayant pas la borne de Claude."""
     chemin = chemin_agent(ident, nom)
     # isfile et non exists : on va l'OUVRIR, et un dossier ne s'ouvre pas.
     if chemin and os.path.isfile(chemin):
-        if os.path.getsize(chemin) > IMAGE_MCP_MAX:
+        if os.path.getsize(chemin) > plafond:
             return None
         with open(chemin, "rb") as f:
             return f.read()
@@ -17668,7 +18199,7 @@ async def _octets_de_sortie(ident, sous, nom):
                 corps = bytearray()
                 async for morceau in r.content.iter_chunked(64 * 1024):
                     corps += morceau
-                    if len(corps) > IMAGE_MCP_MAX:
+                    if len(corps) > plafond:
                         return None
                 return bytes(corps)
     except (aiohttp.ClientError, OSError, asyncio.TimeoutError, RuntimeError):
@@ -17837,6 +18368,13 @@ async def _outil_decrire(arguments, ctx):
         (f"rendus aujourd'hui : {corps['aujourdhui']} sur {cle['par_jour']} "
          f"(remise a zero a minuit, heure du studio)" if cle.get("par_jour")
          else f"rendus aujourd'hui : {corps['aujourdhui']}, sans plafond"),
+    ] + [
+        # Une ligne par famille bornee, avec ce qui reste : c'est le chiffre
+        # que l'assistant doit lire avant de demander.
+        f"rendus « {f} » aujourd'hui : {x['aujourdhui']} sur {x['plafond']}, "
+        f"reste {x['reste']}"
+        for f, x in corps["par_famille"].items()
+    ] + [
         ("expire le " + _horodatage(cle["expire"]) if cle.get("expire")
          else "sans date de fin"),
     ]
@@ -17917,8 +18455,8 @@ def outils_mcp():
         _mcp.outil(
             "decrire_cle", "Decrire la cle",
             "Ce que cette cle permet avant d'essayer : les operations "
-            "permises, le nuage, les rendus en file et le plafond du jour "
-            "(et ou l'on en est), la date de fin.",
+            "permises, le nuage, les rendus en file, le plafond du jour et "
+            "celui de chaque famille (et ce qui reste), la date de fin.",
             {"type": "object", "additionalProperties": False, "properties": {}},
             _outil_decrire),
     ]
@@ -17966,6 +18504,503 @@ async def api_mcp(req):
     return web.json_response(reponse)
 
 
+# ── compatibilite OpenAI ─────────────────────────────────────────────────
+# Open WebUI (Images > OpenAI), LibreChat, le noeud OpenAI de n8n et les SDK
+# openai (« base_url= ») savent parler a « une API d'images OpenAI » des qu'on
+# leur donne une adresse de base et une cle. Ces trois routes leur suffisent :
+# la base a donner est « http://studio:8199/openai/v1 », la cle est une cle
+# d'acces du studio, et les images sortent des cartes de la maison.
+#
+# LA FORME EST CELLE D'OPENAI, RELUE DANS LE SDK openai-python le 5 novembre
+# 2026 (types/image_generate_params.py, images_response.py, image.py,
+# _client.py) : un corps JSON {prompt, model, n, size, response_format,
+# quality, style, user…}, une reponse {created, data: [{b64_json | url,
+# revised_prompt}]}, et une erreur {"error": {message, type, param, code}} —
+# le SDK lit « body.get("error", body) » puis code, param et type. Les edits
+# partent en multipart/form-data, l'image sous « image » ou « image[] ».
+#
+# LES GARDES SONT CELLES DE /api/v1/rendus, PAS UNE COPIE : la cle passe par
+# le meme middleware, la demande par lancer_pour_programme (bornes de la cle,
+# nuage, garde-fou, validation), l'attente par attendre_rendu, l'idempotence
+# par le meme registre. Ce bloc ne fait que traduire, a l'aller et au retour.
+PREFIXE_OPENAI = "/openai/v1/"
+# NEUF MINUTES, SOUS LES DIX DU SDK. openai-python coupe une requete a 600 s
+# par defaut, ATTENDRE_MAX justement ; attendre autant, c'etait laisser le SDK
+# couper le premier, puis REESSAYER — un second rendu pour la meme image. Une
+# image locale prend de quelques secondes a quatre minutes (docs/mesures.md) :
+# neuf minutes couvrent un chargement de modele a froid derriere une file.
+ATTENDRE_OPENAI = 540
+# Seize Mio par image en base64. Plus large que l'outil MCP (3 Mio, plafond de
+# l'API de Claude) : ici le client n'a pas de plafond annonce, et une image
+# 1920x1080 en PNG pese de 3 a 6 Mo. Au-dela, l'image part en lien signe.
+IMAGE_OPENAI_MAX = 16 * 1024 ** 2
+FORMATS_OPENAI = ("url", "b64_json")
+# Le nom a choisir pour « laisser le studio choisir » : le premier de
+# GET /openai/v1/models, pour un client qui prend le premier de la liste.
+MODELE_STUDIO = "comfystudio"
+# La qualite d'OpenAI vers la priorite du studio. « low » n'est pas le
+# brouillon : un quart des etapes ne predit pas l'image finale (voir
+# _FACTEUR_ETAPES), et un client qui demande « low » veut une image, pas une
+# esquisse a refaire. Une valeur inconnue est ignoree, comme « style » : la
+# liste d'OpenAI s'allonge a chaque modele, et refuser la suivante casserait
+# un client qui ne l'a pas choisie.
+QUALITES_OPENAI = {"low": "rapide", "medium": "", "auto": "", "standard": "",
+                   "high": "soigne", "hd": "soigne", "xhigh": "soigne",
+                   "max": "soigne"}
+# Le SDK REESSAIE les 429 de lui-meme, deux fois, et n'honore Retry-After que
+# s'il est court ; au-dela il reessaie a son rythme. Un plafond du jour (des
+# heures jusqu'a minuit) ou une demande qui depasse le plafond lui-meme ne
+# s'arrangent pas en huit secondes : « X-Should-Retry: false », que le SDK lit
+# avant tout le reste (_base_client._should_retry), l'arrete.
+REESSAI_SDK_MAX = 60
+# LE CHAMP FAUTIF, quand un refus du studio en nomme un : le « param »
+# d'OpenAI, que les clients affichent a cote du message.
+PARAMS_OPENAI = {"demande_vide": "prompt", "demande_trop_longue": "prompt",
+                 "refus_mineurs": "prompt", "variantes_bornes": "n",
+                 "variantes_illisible": "n", "taille_non_prise": "size",
+                 "image_illisible": "image", "fichier_vide": "image",
+                 "fichier_trop_lourd": "image", "image_inconnue": "image",
+                 "moteur_inconnu": "model", "moteur_sans_cle": "model",
+                 "cle_sans_nuage": "model"}
+# Trente-deux champs de formulaire et 64 Kio par champ de texte : un edit en
+# porte une dizaine, et « prompt » tient en DEMANDE_MAX caracteres. Le corps
+# multipart echappe a client_max_size (il se lit en flux) : sans borne, un
+# formulaire de cent mille champs vides tenait la boucle.
+CHAMPS_OPENAI_MAX = 32
+TEXTE_OPENAI_MAX = 64 * 1024
+_NE_LE = int(time.time())
+
+
+def _type_openai(statut):
+    """Le « type » d'une erreur, d'apres son statut. Les clients branchent sur
+    le statut et le code ; le type est la famille que la doc d'OpenAI nomme."""
+    if statut == 401:
+        return "authentication_error"
+    if statut == 403:
+        return "permission_error"
+    if statut == 404:
+        return "not_found_error"
+    if statut == 429:
+        return "rate_limit_error"
+    if statut >= 500:
+        return "server_error"
+    return "invalid_request_error"
+
+
+def erreur_openai(statut, message, code=None, param=None, apres=None):
+    """Une erreur au format d'OpenAI. Le « code » est celui du studio : stable,
+    documente dans le contrat, et le meme que sur /api/v1."""
+    rep_ = web.json_response({"error": {"message": message,
+                                        "type": _type_openai(statut),
+                                        "param": param, "code": code}},
+                             status=statut)
+    if apres is not None:
+        avec_reessai(rep_, apres)
+    # UN 5xx NE SE REJOUE PAS ICI. Le SDK reessaie tout 5xx ; or une panne
+    # rendue par cette route arrive APRES le lancement — la rejouer, c'est un
+    # second rendu sur la carte pour la meme image.
+    if statut >= 500 or (statut == 429 and (apres is None or apres > REESSAI_SDK_MAX)):
+        rep_.headers["X-Should-Retry"] = "false"
+    return rep_
+
+
+def depuis_le_studio(statut, corps):
+    """Un refus du studio ({erreur, code, reessayer_dans}) en erreur OpenAI."""
+    corps = corps if isinstance(corps, dict) else {}
+    code = corps.get("code")
+    return erreur_openai(statut, corps.get("erreur") or str(statut), code=code,
+                         param=PARAMS_OPENAI.get(code),
+                         apres=corps.get("reessayer_dans"))
+
+
+def _corps_du_studio(rep_):
+    """Le corps d'un refus du studio, ou None si la reponse n'en est pas un."""
+    if not isinstance(rep_, web.Response) or rep_.status < 400 \
+            or rep_.content_type != "application/json" or not rep_.body:
+        return None
+    try:
+        corps = json.loads(rep_.text)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(corps, dict) and "erreur" in corps and "error" not in corps:
+        return corps
+    return None
+
+
+# Ce qu'un refus emporte de la reponse d'origine : le schema attendu (401), le
+# delai (429), la date de fin de la cle, les methodes permises (405).
+_ENTETES_GARDES = ("WWW-Authenticate", "Retry-After", ENTETE_EXPIRE, "Allow")
+
+
+@web.middleware
+async def format_openai(req, handler):
+    """TOUTE reponse d'erreur sous /openai/v1/ parle OpenAI.
+
+    Un middleware et non chaque route : les refus qui comptent le plus naissent
+    AVANT la route — la cle fausse ou expiree (identite), le frein, l'origine
+    refusee, la cle absente (pour_programme), le 404 du routeur. Un client
+    OpenAI lit « error.message » ; un « erreur » a nous lui donnait « Unknown
+    error », ou rien.
+    """
+    if not req.path.startswith(PREFIXE_OPENAI):
+        return await handler(req)
+    try:
+        rep_ = await handler(req)
+    except web.HTTPException as sortie:
+        if sortie.status < 400:
+            raise
+        rep_ = erreur_openai(sortie.status, sortie.reason or str(sortie.status))
+        for k in _ENTETES_GARDES:
+            if k in sortie.headers:
+                rep_.headers[k] = sortie.headers[k]
+        return rep_
+    except Exception as e:
+        # Le SDK reessaierait le 500 nu d'aiohttp : un second rendu peut-etre.
+        # La trace reste ici, le client n'a que la phrase.
+        print(f"[studio] route OpenAI {req.path} : {type(e).__name__}: {e}", flush=True)
+        return erreur_openai(500, T("erreur.openai_panne", langue_de(req)), code="panne")
+    corps = _corps_du_studio(rep_)
+    if corps is None:
+        return rep_
+    neuve = depuis_le_studio(rep_.status, corps)
+    for k in _ENTETES_GARDES:
+        if k in rep_.headers:
+            neuve.headers[k] = rep_.headers[k]
+    return neuve
+
+
+def taille_proche(size):
+    """La taille de TAILLES la plus proche de « LARGEURxHAUTEUR ».
+
+    None pour « auto » ou rien (le studio choisit), False si illisible.
+    LE CADRAGE D'ABORD, LA SURFACE ENSUITE : 1536x1024 (3:2) doit donner
+    1216x832 et non 1600x900 — un client qui demande un paysage veut un
+    paysage, et une surface un peu plus petite se voit moins qu'un cadre
+    rogne. D'ou le poids de 4 sur l'ecart des proportions.
+    """
+    if size is None or (isinstance(size, str) and size.strip().lower() in ("", "auto")):
+        return None
+    m = re.fullmatch(r"\s*(\d{1,5})\s*[xX]\s*(\d{1,5})\s*", size) if isinstance(size, str) else None
+    if not m or not int(m.group(1)) or not int(m.group(2)):
+        return False
+    lar, hau = int(m.group(1)), int(m.group(2))
+
+    def ecart(t):
+        tl, th = (int(x) for x in t.split("x"))
+        return (4 * abs(math.log((lar / hau) / (tl / th)))
+                + abs(math.log((lar * hau) / (tl * th))), t)
+    return min(TAILLES, key=ecart)
+
+
+def _moteurs_openai(fiche, famille, lg):
+    """Les moteurs de cette cle qui font « famille » (image ou retouche) sur
+    cette route : presents, permis, et dont le rendu est bien de la famille —
+    un moteur d'image du nuage retouche ce qu'on lui joint (_type_du_rendu)."""
+    joint = famille == "retouche"
+    return [m for m in _moteurs_pour(fiche, lg) if m["present"]
+            and _acces.famille(_type_du_rendu(m["cle"], joint)) == famille]
+
+
+def _demande_openai(d, famille, fiche, lg):
+    """(demande pour lancer_pour_programme, format de reponse, None), ou
+    (None, None, refus au format OpenAI)."""
+    def champ(nom):
+        return None, None, erreur_openai(400, T("erreur.champ_illisible", lg, champ=nom),
+                                         code="champ_illisible", param=nom)
+    prompt = d.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return champ("prompt")
+    # PAS DE FLUX. Le studio ne pousse pas d'images partielles ; repondre en
+    # JSON a qui attend des evenements SSE le ferait attendre pour rien.
+    if d.get("stream") in (True, "true", "True", "1"):
+        return None, None, erreur_openai(400, T("erreur.openai_flux", lg),
+                                         code="flux_refuse", param="stream")
+    n = d.get("n")
+    if n is None or n == "":
+        n = 1
+    elif isinstance(n, bool):
+        return champ("n")
+    else:
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            return champ("n")
+    # La borne pour une creation seulement : une retouche ignore n (plus bas),
+    # et refuser n=8 sur un edit, ce serait refuser un champ qu'on n'utilise pas.
+    if famille == "image" and not 1 <= n <= VARIANTES_MAX:
+        return None, None, erreur_openai(
+            400, T("erreur.variantes_bornes", lg, plafond=VARIANTES_MAX),
+            code="variantes_bornes", param="n")
+    modele = d.get("model") if isinstance(d.get("model"), str) else ""
+    fmt = d.get("response_format")
+    if fmt is None or fmt == "":
+        # LE DEFAUT DE L'ORIGINAL : « url » pour les anciens dall-e, le base64
+        # pour tout le reste — les modeles gpt-image ne rendent que lui, et un
+        # client ecrit pour eux ne pose pas le champ.
+        fmt = "url" if modele.startswith("dall-e") else "b64_json"
+    if fmt not in FORMATS_OPENAI:
+        return champ("response_format")
+    demande = {"demande": prompt}
+    # UN MODELE INCONNU EST IGNORE, pas refuse : « dall-e-3 » ou « gpt-image-1 »
+    # est ce que ces clients envoient par defaut, et le refuser fermerait la
+    # porte a tous ceux qu'on n'a pas regles. Le studio choisit alors, comme
+    # pour une demande sans moteur.
+    if modele in {m["cle"] for m in _moteurs_openai(fiche, famille, lg)}:
+        demande["moteur"] = modele
+    if famille == "image":
+        taille = taille_proche(d.get("size"))
+        if taille is False:
+            return champ("size")
+        if taille:
+            demande["taille"] = taille
+        # n EN VARIANTES pour une creation seulement : executer() rend une
+        # retouche une seule fois quel que soit le nombre, et le plafond du
+        # jour aurait compte quatre rendus pour une image.
+        demande["variantes"] = n
+    priorite = QUALITES_OPENAI.get(str(d.get("quality") or "").strip().lower(), "")
+    if priorite:
+        demande["priorite"] = priorite
+    return demande, fmt, None
+
+
+def _permet_openai(fiche, famille, lg):
+    """Le refus d'une cle qui ne permet pas la famille de la route, ou None."""
+    ops = fiche.get("operations") or []
+    if _acces.operation_permise(ops, "image" if famille == "image" else "edition"):
+        return None
+    # Compte sous la cle comme les refus de lancement : c'est ce que le
+    # proprietaire doit voir quand Open WebUI insiste avec la cle de son n8n.
+    if ACCES:
+        ACCES.noter_refus(fiche["id"], "cle_operation_interdite")
+    return erreur_openai(403, T("erreur.cle_operation_interdite", lg,
+                                operation=famille, permises=_noms_operations(ops)),
+                         code="cle_operation_interdite")
+
+
+async def _rendre_pour_openai(req, fiche, demande, famille, fmt, lg):
+    """Lance (ou rejoue), attend, et rend la reponse OpenAI."""
+    if ATTENTES.get(fiche["id"], 0) >= ATTENTES_PAR_CLE:
+        # Au-dela des attentes permises, attendre_rendu rend la main tout de
+        # suite : une route qui n'a pas d'etat intermediaire a rendre doit
+        # refuser AVANT de lancer, sinon le rendu part et l'image ne revient pas.
+        return erreur_openai(429, T("erreur.openai_attentes", lg, n=ATTENTES_PAR_CLE),
+                             code="attentes_pleines", apres=REESSAI_FILE)
+    idem = (req.headers.get("Idempotency-Key") or "").strip()
+    if len(idem) > IDEMPOTENCE_LONGUEUR:
+        return erreur_openai(400, T("erreur.idempotence_illisible", lg,
+                                    maxi=IDEMPOTENCE_LONGUEUR),
+                             code="idempotence_illisible")
+    pid = qui(req)
+    tid, rejeu = None, False
+    if idem and (fiche["id"], idem) in IDEMPOTENCE:
+        deja, quand = IDEMPOTENCE[(fiche["id"], idem)]
+        if time.time() - quand <= IDEMPOTENCE_DUREE and _rendu_de(deja, pid, fiche):
+            tid, rejeu = deja, True
+        else:
+            # Perimee, ou son rendu efface : la cle ne designe plus rien.
+            del IDEMPOTENCE[(fiche["id"], idem)]
+    if tid is None:
+        # LA CLE RESTREINTE A LA FAMILLE DE LA ROUTE. Sans moteur impose,
+        # seule l'analyse sait ce qui sera fait ; « un chat qui court » peut
+        # partir en video sur une cle qui permet tout. La marque de la tache
+        # porte alors « operations: [image] », et executer() arrete la video
+        # apres l'analyse (operation_refusee), avant toute carte.
+        restreinte = dict(fiche, operations=[famille], _sans_question=True)
+        statut, corps = await lancer_pour_programme(req, restreinte, demande, lg)
+        if statut != 202:
+            return depuis_le_studio(statut, corps)
+        tid = corps["id"]
+        if idem:
+            IDEMPOTENCE[(fiche["id"], idem)] = (tid, time.time())
+            _borner_idempotence()
+            sauver_idempotence()
+    await attendre_rendu(tid, pid, fiche, ATTENDRE_OPENAI)
+    rep_ = await _reponse_openai(req, fiche, tid, fmt, lg)
+    if rejeu:
+        rep_.headers["Idempotent-Replayed"] = "true"
+    return rep_
+
+
+async def _reponse_openai(req, fiche, tid, fmt, lg):
+    """Le rendu fini en ImagesResponse, ou l'erreur qui dit pourquoi pas."""
+    pid = qui(req)
+    morte = _morte_pendant_l_attente(fiche)
+    if morte:
+        return erreur_openai(401, T(morte, lg), code=morte.split(".", 1)[1])
+    trouve = _rendu_de(tid, pid, fiche)
+    if trouve is None:
+        return erreur_openai(404, T("erreur.rendu_inconnu", lg), code="rendu_inconnu")
+    conv, t, tour = trouve
+    corps = rendu_public(tid, conv, t, tour, base_publique(req), lg)
+    etat = corps["etat"]
+    if etat not in ETATS_FINAUX:
+        # Le rendu continue : le dire, avec de quoi le retrouver, plutot que de
+        # laisser le client croire a un echec et relancer.
+        return erreur_openai(504, T("erreur.openai_delai", lg, secondes=ATTENDRE_OPENAI,
+                                    rendu=tid), code="delai_depasse")
+    if etat == "question":
+        # Un client OpenAI ne sait pas repondre a une question : la phrase la
+        # porte, pour que l'humain reformule.
+        return erreur_openai(400, T("erreur.openai_question", lg,
+                                    questions=" / ".join(corps["questions"])),
+                             code="question", param="prompt")
+    if etat in ("erreur", "annule"):
+        err = corps["erreur"] or {}
+        code = err.get("code") or "inconnue"
+        # UNE OPERATION HORS DE LA ROUTE est une faute de la demande — l'analyse
+        # y a lu une video —, pas une panne : 400, et le client ne rejoue pas.
+        statut = (400 if code == "cle_operation_interdite"
+                  else 422 if code == "refus_mineurs" else 500)
+        return erreur_openai(statut, err.get("message") or code, code=code,
+                             param="prompt" if statut < 500 else None)
+    images = [f for f in corps["fichiers"] if f["type"] == "image"]
+    if not images:
+        return erreur_openai(500, T("erreur.openai_sans_image", lg, rendu=tid),
+                             code="sans_image")
+    revise = ((t or {}).get("plan") or {}).get("prompt") or (tour or {}).get("prompt")
+    data = []
+    for f in images:
+        item = {}
+        if fmt == "b64_json" and f["rang"] is not None:
+            loc = _fichier_du_rendu(tid, f["rang"], pid, fiche)
+            octets = await _octets_de_sortie(*loc, plafond=IMAGE_OPENAI_MAX) if loc else None
+            if octets:
+                item["b64_json"] = base64.b64encode(octets).decode("ascii")
+        if "b64_json" not in item:
+            # LE LIEN SIGNE, ABSOLU : il se suit sans en-tete, ce que fait
+            # Open WebUI quand l'image n'est pas sur l'origine de la base. Il
+            # sert aussi de repli a un base64 trop lourd ou injoignable — une
+            # image en lien vaut mieux qu'une liste vide.
+            item["url"] = f["lien"] or f["url"]
+        item["revised_prompt"] = revise
+        data.append(item)
+    return web.json_response({"created": int((t or {}).get("debut") or time.time()),
+                              "data": data})
+
+
+@pour_programme
+async def api_openai_generer(req, fiche):
+    """POST /openai/v1/images/generations."""
+    lg = langue_de(req)
+    refus_ = _permet_openai(fiche, "image", lg)
+    if refus_ is not None:
+        return refus_
+    try:
+        d = await _json_objet(req)
+    except web.HTTPException:
+        raise
+    except Exception:
+        return erreur_openai(400, T("erreur.corps_illisible", lg), code="corps_illisible")
+    demande, fmt, refus_ = _demande_openai(d, "image", fiche, lg)
+    if refus_ is not None:
+        return refus_
+    return await _rendre_pour_openai(req, fiche, demande, "image", fmt, lg)
+
+
+async def _lire_borne(part, maxi):
+    """Les octets d'une partie, ou None au-dela de « maxi » — coupe pendant la
+    lecture, comme api_televerser, pour ne pas tenir 2 Go en memoire."""
+    octets = bytearray()
+    while True:
+        bloc = await part.read_chunk()
+        if not bloc:
+            return bytes(octets)
+        octets += bloc
+        if len(octets) > maxi:
+            return None
+
+
+async def _formulaire_openai(req, lg):
+    """(champs texte, (octets, type) de la premiere image, None) ou
+    (None, None, refus). « image » ou « image[] » : le SDK envoie le second
+    pour une liste, Open WebUI aussi ; le studio ne retouche que la premiere.
+    « mask » est lu et ecarte : aucun moteur d'ici ne prend un masque OpenAI."""
+    # « refuser » et non « refus » : banc_contrat.py releve les appels
+    # « refus("erreur.… », statut) » du bloc comme des refus de /api/v1, au
+    # format du studio. Ceux-ci sont au format d'OpenAI, et leurs codes sont
+    # ceux de la page (formulaire_attendu, aucun_fichier).
+    def refuser(cle, statut, param=None, **valeurs):
+        return None, None, erreur_openai(statut, T(cle, lg, **valeurs),
+                                         code=cle.split(".", 1)[1], param=param)
+    champs, image = {}, None
+    try:
+        formulaire = await req.multipart()
+        for _ in range(CHAMPS_OPENAI_MAX + 1):
+            part = await formulaire.next()
+            if part is None:
+                break
+            if len(champs) + (image is not None) >= CHAMPS_OPENAI_MAX:
+                return refuser("erreur.champ_illisible", 400, champ="multipart")
+            nom = part.name or ""
+            if nom in ("image", "image[]") and image is None:
+                octets = await _lire_borne(part, FAMILLES["image"][1])
+                if octets is None:
+                    return refuser("erreur.fichier_trop_lourd", 413, "image",
+                                 famille=T("famille.image", lg),
+                                 mega=FAMILLES["image"][1] // 1024 ** 2)
+                # LE TYPE PAR L'EN-TETE D'ABORD : Open WebUI nomme ses fichiers
+                # d'un UUID sans extension. _deposer_octets ne garde de toute
+                # facon que ce qui est dans TYPES_IMAGE.
+                type_ = (part.headers.get("Content-Type") or "").split(";")[0]
+                type_ = type_.split("/")[-1].strip().lower()
+                if type_ not in TYPES_IMAGE:
+                    type_ = os.path.splitext(part.filename or "")[1][1:].lower()
+                image = (octets, type_)
+            elif part.filename or nom in ("image", "image[]", "mask"):
+                await part.release()
+            else:
+                brut_ = await _lire_borne(part, TEXTE_OPENAI_MAX)
+                if brut_ is None:
+                    return refuser("erreur.champ_illisible", 400, nom, champ=nom)
+                champs[nom] = brut_.decode("utf-8", "replace")
+        else:
+            return refuser("erreur.champ_illisible", 400, champ="multipart")
+    # AttributeError aussi : une partie qui est elle-meme un multipart imbrique
+    # n'a ni nom ni fichier, et ce n'est pas une panne du studio.
+    except (AssertionError, ValueError, KeyError, AttributeError):
+        return refuser("erreur.formulaire_attendu", 400)
+    if image is None:
+        return refuser("erreur.aucun_fichier", 400, "image")
+    return champs, image, None
+
+
+@pour_programme
+async def api_openai_retoucher(req, fiche):
+    """POST /openai/v1/images/edits : une retouche, famille « retouche »."""
+    lg = langue_de(req)
+    refus_ = _permet_openai(fiche, "retouche", lg)
+    if refus_ is not None:
+        return refus_
+    champs, image, refus_ = await _formulaire_openai(req, lg)
+    if refus_ is not None:
+        return refus_
+    demande, fmt, refus_ = _demande_openai(champs, "retouche", fiche, lg)
+    if refus_ is not None:
+        return refus_
+    # L'image par le chemin du base64 de /api/v1/rendus : meme liste de types,
+    # meme plafond, meme depot, et effacee si la demande est refusee.
+    demande["image_base64"] = base64.b64encode(image[0]).decode("ascii")
+    demande["image_type"] = image[1] or "png"
+    return await _rendre_pour_openai(req, fiche, demande, "retouche", fmt, lg)
+
+
+@pour_programme
+async def api_openai_modeles(req, fiche):
+    """GET /openai/v1/models : ce qu'un client met dans sa liste deroulante.
+    Les moteurs d'image et de retouche que CETTE cle peut faire tourner, et
+    « comfystudio » en tete — le choix du studio."""
+    lg = langue_de(req)
+    ops = fiche.get("operations") or []
+    vus = [MODELE_STUDIO]
+    for famille, type_ in (("image", "image"), ("retouche", "edition")):
+        if _acces.operation_permise(ops, type_):
+            vus += [m["cle"] for m in _moteurs_openai(fiche, famille, lg)
+                    if m["cle"] not in vus]
+    return web.json_response({"object": "list", "data": [
+        {"id": c, "object": "model", "created": _NE_LE, "owned_by": "comfystudio"}
+        for c in vus]})
+
+
 # ── la gestion des cles, par leur proprietaire ───────────────────────────
 
 async def api_mes_acces(req):
@@ -17985,6 +19020,7 @@ async def api_mes_acces(req):
                  expiree=_acces.expiree(f),
                  en_cours=_en_cours_de_cle(f["id"]),
                  aujourdhui=_lances_aujourdhui(f["id"]),
+                 par_famille=par_famille_de(f),
                  # Ses refus du jour et les secrets faux presentes sous son
                  # identifiant : le proprietaire est le premier a devoir
                  # apprendre qu'on essaie sa cle.
@@ -18044,7 +19080,8 @@ async def api_creer_acces(req):
                           en_file=d.get("en_file", _acces.EN_FILE_DEFAUT),
                           par_jour=d.get("par_jour", 0),
                           expire_jours=d.get("expire_jours", 0),
-                          operations=d.get("operations"))
+                          operations=d.get("operations"),
+                          par_jour_familles=d.get("par_jour_familles"))
     except OSError as e:
         print(f"[studio] cle d'acces non creee pour {nom} : {e}", flush=True)
         return web.json_response({"erreur": T("erreur.acces_ecriture", lg),
@@ -18153,6 +19190,7 @@ async def api_admin_acces(req):
                          expiree=_acces.expiree(f),
                          en_cours=_en_cours_de_cle(f["id"]),
                          aujourdhui=_lances_aujourdhui(f["id"]),
+                         par_famille=par_famille_de(f),
                          suivi=ACCES.suivi(f["id"])))
     return web.json_response({"cles": cles})
 
@@ -18171,7 +19209,13 @@ def app():
     a = web.Application(client_max_size=CORPS_MAX,
                         middlewares=[en_tetes_surs, identite, origine_verifiee,
                                      exiger_compte])
+    # format_openai SECOND : apres en_tetes_surs, pour que ses erreurs portent
+    # les trois en-tetes ; avant identite, pour traduire les refus de la cle.
+    # Insere ici plutot qu'ecrit dans la liste, que d'autres gardes relisent.
+    a.middlewares.insert(1, format_openai)
     a.router.add_get("/", page)
+    a.router.add_get(_appli.CHEMIN_MANIFESTE, api_manifeste)
+    a.router.add_get(_appli.PREFIXE_ICONES + "{nom}", api_icone)
     a.router.add_get("/api/textes", api_textes)
     a.router.add_post("/api/textes", api_textes)
     a.router.add_get("/api/modeles", api_modeles)
@@ -18262,6 +19306,10 @@ def app():
     a.router.add_get("/api/v1/lien/{jeton}", api_v1_lien)
     a.router.add_get("/api/v1/openapi.json", api_v1_contrat)
     a.router.add_route("*", CHEMIN_MCP, api_mcp)
+    # La compatibilite OpenAI : base « /openai/v1 » a donner au client.
+    a.router.add_post(PREFIXE_OPENAI + "images/generations", api_openai_generer)
+    a.router.add_post(PREFIXE_OPENAI + "images/edits", api_openai_retoucher)
+    a.router.add_get(PREFIXE_OPENAI + "models", api_openai_modeles)
     a.router.add_get("/api/compte/acces", api_mes_acces)
     a.router.add_post("/api/compte/acces", api_creer_acces)
     a.router.add_delete("/api/compte/acces/{ident}", api_revoquer_acces)

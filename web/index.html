@@ -2,8 +2,24 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ComfyStudio</title>
+<!-- ronde 6 : le studio installable. Le manifeste et les icones sont servis
+     par serveur.py (appli.py), libres sans compte : le navigateur les demande
+     sans cookie. « viewport-fit=cover » au-dessus est ce qui donne une valeur
+     aux env(safe-area-inset-*) : sans lui, iOS les laisse a zero et le champ
+     de saisie passe sous la barre d'accueil en plein ecran.
+     La barre d'etat « black » et non « black-translucent » : translucide, le
+     texte de l'heure est blanc sur l'en-tete creme du theme clair. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/icones/appli-192.png">
+<link rel="apple-touch-icon" href="/icones/appli-apple-180.png">
+<meta name="theme-color" content="#1d1915" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ComfyStudio">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
 /* ═══ Console d'atelier ═══════════════════════════════════════════════
    Aucune police distante : l'outil doit fonctionner hors ligne.        */
@@ -431,7 +447,7 @@ main{flex:1;overflow-y:auto;min-width:0}
 .sortie audio{width:100%;margin-top:4px}
 .sortie a{color:var(--braise)}
 /* La vue plein ecran : fond opaque, media borne a l'ecran, rien d'autre. */
-.plein{position:fixed;inset:0;z-index:60;background:#000000e6;display:flex;
+.plein{position:fixed;inset:0;z-index:60;background:#000000f5;display:flex;
   align-items:center;justify-content:center;padding:18px}
 .plein img,.plein video{max-width:100%;max-height:100%;border-radius:6px}
 .plein .fermer{position:absolute;top:12px;right:14px;background:#0006;
@@ -577,6 +593,11 @@ textarea{flex:1;min-height:50px;max-height:190px;resize:none;padding:12px 14px;
   background:var(--creux);color:var(--encre);border:1px solid var(--trait-vif);
   border-radius:10px;font:15.5px/1.5 var(--serif)}
 textarea::placeholder{color:var(--encre-pale)}
+/* L'EXEMPLE TIENT SUR UNE LIGNE. Le champ vide a la hauteur des boutons (ronde 6) :
+   sur telephone, « un renard dans les hautes herbes au couchant… » passait a la
+   ligne et la seconde etait coupee a mi-hauteur. Il s'arrete en « … » tant que
+   rien n'est tape ; le texte saisi, lui, revient a la ligne normalement. */
+textarea:placeholder-shown{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 textarea:focus-visible{outline:2px solid var(--braise);outline-offset:1px;
   border-color:var(--braise)}
 .envoyer{flex:none;width:50px;height:50px;border-radius:10px;cursor:pointer;
@@ -670,6 +691,217 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     white-space:nowrap}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* ── ronde 6 : en-tete compact ────────────────────────────────────────
+   UNE LIGNE, ET ELLE NE SE REPLIE PLUS. Sous 820 px l'en-tete passait en
+   « flex-wrap:wrap » : c'etait le seul moyen de loger neuf commandes, et il en
+   faisait cinq lignes a 375 px. Il n'en reste que quatre sur la ligne ; ce qui
+   doit ceder cede EN LARGEUR — le nom du compte, puis l'etat des moteurs, se
+   coupent en « … » — et jamais en hauteur. « body > header » et non « header » :
+   la mediatheque a son propre en-tete, qui garde ses regles. */
+body > header{flex-wrap:nowrap}
+body > header .jauge{flex-wrap:nowrap;min-width:0}
+body > header .jauge > *{flex:0 0 auto}
+/* L'ORDRE DANS LEQUEL ON CEDE, par les poids de « flex-shrink » : le nom du
+   compte d'abord, jusqu'a ne garder que « ▾ » ; le compteur de la file
+   ensuite, coupe en « … » dans sa pastille ; l'etat des moteurs en dernier, et
+   jamais sous la largeur de « 19/20 ». Mesure du 5 novembre 2026 a 375 px,
+   avec deux demandes en file et un nom long : a poids egaux, c'etait l'etat
+   des moteurs qui cedait, et il ne restait que « 1 » — un chiffre qui ment. */
+body > header #jaugeModeles{flex:0 1 auto;min-width:36px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+body > header #etatFile{flex:0 10 auto;min-width:0;display:flex}
+body > header #etatFile .file-vive{min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+body > header .jauge .nuages{flex-wrap:nowrap}
+/* Vides, ils prenaient encore leur part d'espacement : deux « gap » de 8 px,
+   le prix d'un caractere du nom sur telephone. */
+body > header #etatFile:empty,body > header #nuages:empty{display:none}
+.menu-compte{position:relative;display:flex;min-width:36px}
+body > header .jauge > .menu-compte{flex:0 1000 auto}
+.bouton-compte{display:inline-flex;align-items:center;gap:5px;min-width:36px;
+  max-width:24ch;font:11px var(--mono);color:var(--encre-douce);cursor:pointer;
+  background:transparent;border:1px solid var(--trait);border-radius:7px;
+  padding:2px 8px}
+.bouton-compte:hover,.bouton-compte[aria-expanded="true"]{
+  border-color:var(--braise);color:var(--braise)}
+.bouton-compte:focus-visible{outline:2px solid var(--braise);outline-offset:2px}
+.nom-compte{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bouton-compte.connecte .nom-compte{color:var(--braise)}
+.fleche-compte{flex:none;font-size:9px}
+/* « display:flex » efface l'effet de l'attribut « hidden » : sans cette regle
+   le panneau resterait ouvert pour toujours. */
+.panneau-compte{position:absolute;top:calc(100% + 8px);right:0;z-index:41;
+  display:flex;flex-direction:column;gap:2px;min-width:220px;
+  max-width:min(320px,calc(100vw - 24px));padding:6px;
+  background:var(--plan);border:1px solid var(--trait);border-radius:12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+  font:11.5px/1.4 var(--mono);letter-spacing:normal;color:var(--encre-douce)}
+.panneau-compte[hidden]{display:none}
+.qui-compte{padding:6px 10px 8px;border-bottom:1px solid var(--trait);
+  margin-bottom:4px;color:var(--encre-pale);overflow-wrap:anywhere}
+.qui-compte b{color:var(--braise);font-weight:400}
+.qui-compte:empty{display:none}
+.panneau-compte .choix-langue{align-self:flex-start;margin:4px 6px}
+body > header .nuages-menu .nuages{flex-wrap:wrap;justify-content:flex-start;
+  padding:4px 6px}
+.nuages-menu:empty{display:none}
+.liste-compte,.liste-compte .compte{display:flex;flex-direction:column;
+  align-items:stretch;gap:2px}
+/* Par l'id : « .compte button », « .lien-admin » et « .jauge .source »
+   dessinent ces memes elements en pastilles, et ils doivent perdre ici, dans
+   la liste, sans etre touches la ou ils servent encore. */
+#listeCompte [role="menuitem"]{display:flex;align-items:center;width:100%;
+  min-height:32px;padding:6px 10px;margin:0;border:0;border-radius:7px;
+  background:transparent;color:var(--encre-douce);font:11.5px/1.3 var(--mono);
+  text-align:left;text-decoration:none;cursor:pointer}
+#listeCompte [role="menuitem"]:hover,#listeCompte [role="menuitem"]:focus{
+  background:var(--creux);color:var(--braise)}
+#listeCompte [role="menuitem"]:focus-visible{outline:2px solid var(--braise);
+  outline-offset:-2px}
+.separe-compte{height:1px;background:var(--trait);margin:4px 6px}
+@media (max-width:640px){
+  /* Les ecarts resserres : quatorze pixels entre chaque piece, plus la
+     marge du ☰, c'etait la largeur du mot court de la mediatheque. */
+  body > header{gap:8px;padding-left:10px;padding-right:10px;position:relative}
+  body > header .tiroir-bouton{margin-right:0}
+  body > header .jauge{gap:5px}
+  body > header #etatFile .file-vive{padding:2px 7px}
+  /* « 19/20 » seul : le texte nu qui suit le chiffre passe a zero. Il reste
+     dans la page, donc un lecteur d'ecran dit toujours la phrase entiere ; et
+     « connexion… » ou « serveur injoignable », ecrits dans le <b>, restent
+     lisibles. */
+  body > header #jaugeModeles{font-size:0}
+  body > header #jaugeModeles b{font-size:11px}
+  /* « medias » au lieu de « mediatheque » : le mot court est pose par le
+     script (data-abrege, depuis le dictionnaire). Tant qu'il n'est pas la,
+     rien ne change. La seconde forme de « content » retire le mot court du
+     nom accessible ; un navigateur qui ne la connait pas garde la premiere. */
+  #ouvrirMedia[data-abrege]{font-size:0}
+  #ouvrirMedia[data-abrege]::before{content:attr(data-abrege);
+    content:attr(data-abrege) / "";font:11px var(--mono)}
+  .bouton-compte{min-height:34px;max-width:none}
+  /* Le panneau pleine largeur, sous l'en-tete : ancre au bouton, il sortait
+     de l'ecran a gauche des que le nom etait court. */
+  .menu-compte{position:static}
+  .panneau-compte{top:100%;left:0;right:0;max-width:none;min-width:0;
+    border-radius:0 0 12px 12px;border-left:0;border-right:0;
+    max-height:calc(100vh - 64px);overflow:auto}
+  #listeCompte [role="menuitem"]{min-height:42px}
+}
+
+/* ── ronde 6 : la saisie ──────────────────────────────────────────────
+   Le champ part d'une ligne, a la hauteur des deux boutons qui le bordent, et
+   grandit avec le texte (ajuster()), et defile au-dela de la borne haute.
+   Mesure du 5 novembre 2026, Chrome sans tete, champ VIDE : 50 px a 1400 de
+   large, mais 71 px a 390 — l'invite comptait dans scrollHeight et passait sur
+   deux lignes ; trois ou quatre dans une colonne plus etroite encore. Vide, il
+   fait desormais 50 px partout.
+   Sur telephone, 190 px avec le clavier ouvert, c'est la moitie de ce qui
+   reste visible : le fil disparaissait derriere le prompt. Les unites vh n'y
+   aident pas — Chrome sur Android ne les retrecit pas quand le clavier
+   s'ouvre —, d'ou une borne fixe. */
+#txt{min-height:50px;overflow-y:auto}
+@media (max-width:640px){#txt{max-height:130px}}
+/* L'aide se range au bout de la barre, la ou il reste de la place : une ligne
+   de plus sous le champ, c'etait seize pixels de hauteur perdus a chaque
+   ecran pour une phrase qu'on lit une fois. */
+.aide-saisie{margin-left:auto;font:10.5px var(--mono);color:var(--encre-pale);
+  opacity:.75;letter-spacing:.02em}
+/* Sans clavier physique, ni Ctrl ni Entree ne servent : l'aide mentirait. */
+@media (hover:none) and (pointer:coarse){.aide-saisie{display:none}}
+.prevenir-fin{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+  border:1px solid var(--trait-vif);border-radius:7px;padding:4px 11px;
+  font:11.5px var(--mono);color:var(--encre-douce);letter-spacing:.02em}
+.prevenir-fin[hidden]{display:none}
+.prevenir-fin:hover{border-color:var(--braise);color:var(--braise)}
+.prevenir-fin:focus-within{outline:2px solid var(--braise);outline-offset:2px}
+.prevenir-fin input{accent-color:var(--braise);margin:0}
+.refus-prevenir{color:var(--encre-pale);font-size:10.5px}
+.refus-prevenir:empty{display:none}
+/* Un fichier tenu au-dessus de la page : le pied s'eclaire pour dire ou il
+   tombera. */
+footer.depot{box-shadow:inset 0 0 0 2px var(--braise)}
+
+/* ── ronde 6 : appli installable, avant / apres ── */
+/* LES ZONES SURES. En appli plein ecran sur iPhone, la barre d'accueil se
+   pose SUR la page : sans ce rembourrage, la fleche d'envoi tombait sous elle.
+   Le pied de page porte le rembourrage et non .saisie : c'est lui qui a le
+   fond, et la bande sous le champ doit etre de sa couleur. Sur les cotes,
+   le corps entier, pour l'encoche en paysage — sans toucher aux marges de
+   l'en-tete, que d'autres regles reglent selon la largeur. */
+footer{padding-bottom:env(safe-area-inset-bottom,0px)}
+body{padding-left:env(safe-area-inset-left,0px);
+  padding-right:env(safe-area-inset-right,0px)}
+.plein .fermer{top:max(12px,env(safe-area-inset-top,0px));
+  right:max(14px,env(safe-area-inset-right,0px))}
+/* L'avant / apres d'une retouche : l'original pose sur le resultat, decoupe a
+   droite du curseur. « contain » : une retouche recadree au multiple de 16
+   ne doit pas deformer l'original pour lui coller. Aucun pointeur sur lui,
+   pour que le clic sur l'image ouvre toujours le plein ecran du RESULTAT. */
+.comparaison{position:relative;width:fit-content;max-width:100%}
+.reponse .sortie .comparaison img.original{position:absolute;inset:0;
+  width:100%;height:100%;object-fit:contain;pointer-events:none;outline:none;
+  clip-path:inset(0 calc(100% - var(--part,50%)) 0 0)}
+.comparaison-trait{position:absolute;top:0;bottom:0;left:var(--part,50%);
+  width:2px;margin-left:-1px;background:var(--braise);pointer-events:none;
+  box-shadow:0 0 0 1px #0007}
+.comparaison-regle{display:flex;align-items:center;gap:9px;margin-top:7px;
+  font:11px var(--mono);color:var(--encre-pale)}
+.comparaison-regle input{flex:1;min-width:0;accent-color:var(--braise);
+  cursor:ew-resize}
+.comparaison-regle input:focus-visible{outline:2px solid var(--braise);
+  outline-offset:2px}
+@media (max-width:640px){.comparaison-regle input{min-height:34px}}
+
+/* ── ronde 6 : mediatheque ──
+   La visionneuse : la piece, sa legende et ses gestes en colonne, bornes a
+   l'ecran ; le compteur en haut a gauche, en face de la croix ; les fleches sur
+   les bords. « pinch-zoom » : le doigt qui glisse change de piece au lieu de
+   faire defiler une page qui n'a rien a defiler, et deux doigts agrandissent
+   encore. */
+.plein{touch-action:pinch-zoom}
+.plein .visio-scene{margin:0;display:flex;flex-direction:column;align-items:center;
+  gap:9px;max-width:100%;max-height:100%;min-height:0}
+.plein .visio-cadre{display:flex;justify-content:center;min-height:0;max-width:100%}
+.plein .visio-cadre img,.plein .visio-cadre video{max-height:calc(100vh - 150px);
+  object-fit:contain}
+.plein .visio-legende{display:flex;flex-direction:column;gap:3px;max-width:70ch;
+  text-align:center;color:#fffd;font:13.5px var(--serif)}
+.plein .visio-legende small{font:11px var(--mono);color:#fff9}
+.plein .visio-gestes{display:flex;gap:8px}
+.plein .visio-gestes button,.plein .visio-pas{background:#0006;border:1px solid #fff4;
+  color:#fff;border-radius:9px;font:12px var(--mono);padding:5px 11px;cursor:pointer}
+.plein .visio-gestes button:hover:not(:disabled),.plein .visio-pas:hover{background:#0009;
+  border-color:var(--braise)}
+.plein .visio-gestes button:disabled{opacity:.45;cursor:default}
+.plein .visio-pas{position:absolute;top:50%;transform:translateY(-50%);
+  font-size:24px;line-height:1;padding:14px 12px}
+.plein .visio-prec{left:10px}
+.plein .visio-suiv{right:10px}
+.plein .visio-pas[hidden],.plein .visio-compte[hidden]{display:none}
+.plein .visio-compte{position:absolute;top:16px;left:16px;color:#fffc;
+  font:12px var(--mono);letter-spacing:.04em}
+.plein button:focus-visible{outline:2px solid var(--braise);outline-offset:2px}
+/* Sur telephone, les fleches descendent sous la piece : au milieu des bords
+   elles couvraient l'image, et le pouce les trouve en bas. */
+@media (max-width:640px){
+  .plein{padding:52px 10px 78px}
+  .plein .visio-pas{top:auto;bottom:14px;transform:none}
+  .plein .visio-cadre img,.plein .visio-cadre video{max-height:calc(100vh - 230px)}
+}
+/* Le fichier disparu : un emplacement a la taille d'une vignette, et non une
+   image cassee — on comprend pourquoi la carte ne montre rien. */
+.introuvable{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;min-height:140px;padding:16px 12px;border:1px dashed var(--trait-vif);
+  border-radius:7px;background:var(--creux);color:var(--encre-pale);
+  font:11.5px var(--mono);text-align:center}
+.introuvable b{font-weight:600;color:var(--encre-douce)}
+.introuvable small{font-size:10.5px}
+.introuvable .introuvable-signe{font-size:24px;line-height:1;opacity:.6}
+.plein .introuvable{min-width:260px;min-height:200px;background:#0006;
+  border-color:#fff4;color:#fffa}
+.plein .introuvable b{color:#fff}
+.actions-sortie a[aria-disabled="true"]{opacity:.4;cursor:default;pointer-events:none}
 </style>
 </head>
 <body>
@@ -696,6 +928,39 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     <span id="etatFile"></span>
     <span id="jaugeModeles"><b data-t="page.moteurs.connexion">connexion…</b></span>
     <span class="nuages" id="nuages"></span>
+    <button type="button" class="lien-admin" id="ouvrirMedia"
+            data-t-title="page.media.ouvrir.title" data-t="page.media.nom"
+            title="tout ce que tu as produit">médiathèque</button>
+    <!-- ── ronde 6 : en-tete compact ──
+         UNE LIGNE A TOUTES LES LARGEURS, ET LE RESTE DERRIERE LE NOM. Mesure
+         du 5 novembre 2026, connecte en administrateur : neuf commandes cote a
+         cote passaient sur deux lignes a 800 px et sur CINQ a 375 px — un tiers
+         de l'ecran du telephone avant la premiere bulle. Restent sur la ligne
+         ce qu'on regarde ou qu'on touche a chaque visite : l'etat des moteurs
+         et la mediatheque. Le reste se regle une fois par mois et passe dans
+         le menu du compte.
+
+         CE SONT LES MEMES ELEMENTS, PAS DES COPIES. #compte, #lienAdmin,
+         #lienDemarrage, le lien « source » et le menu de langue sont ceux
+         d'avant, avec leurs id et leurs gestionnaires : peindreCompte() les
+         montre et les cache exactement comme hier, et un releve de
+         banc_page.py exige qu'aucun ne se soit perdu en route. Seuls
+         « sortir » et la ligne du nom sont deplaces apres coup, par
+         rangerMenuCompte() — la deconnexion va en dernier, sous un trait, la
+         ou on ne la touche pas en visant les cles d'acces.
+
+         LA LANGUE ET LES NUAGES SONT DANS LE PANNEAU, HORS DU role="menu". Un
+         <select> n'est pas un menuitem : les fleches y changent la valeur, et
+         celle-ci recharge la page. Les fleches du menu passent donc sur les
+         seuls menuitems, et la tabulation atteint le reste. -->
+    <div class="menu-compte" id="menuCompte">
+      <button type="button" class="bouton-compte" id="boutonCompte"
+              aria-haspopup="menu" aria-expanded="false"
+              aria-controls="listeCompte"><span class="nom-compte"
+              id="nomCompte" data-t="page.entete.menu">menu</span><span
+              class="fleche-compte" aria-hidden="true">▾</span></button>
+      <div class="panneau-compte" id="panneauCompte" hidden>
+      <span class="qui-compte" id="quiCompte"></span>
     <!-- LE MENU DE LANGUE, DANS L'EN-TETE ET NON DANS LES REGLAGES. Il y a
          vecu une heure, sous le bouton « reglages » du pied de page, et c'est
          un mauvais domicile pour deux raisons. La premiere se voit : ce
@@ -721,11 +986,11 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       <select id="langue" data-t-aria-label="page.langue.aria"
               aria-label="Langue"></select>
     </span>
-    <button type="button" class="lien-admin" id="ouvrirMedia"
-            data-t-title="page.media.ouvrir.title" data-t="page.media.nom"
-            title="tout ce que tu as produit">médiathèque</button>
-    <span class="compte" id="compte"></span>
-    <a class="lien-admin" id="lienAdmin" href="/admin" style="display:none"
+      <span class="nuages-menu" id="nuagesMenu"></span>
+      <div class="liste-compte" id="listeCompte" role="menu"
+           aria-labelledby="boutonCompte">
+    <span class="compte" id="compte" role="none"></span>
+    <a class="lien-admin" id="lienAdmin" role="menuitem" href="/admin" style="display:none"
        data-t-title="page.admin.title" data-t="page.admin"
        title="administration : machines, comptes, clés">admin</a>
     <!-- LA PREMIERE MISE EN ROUTE, ET CE LIEN DISPARAIT. Il ne s'affiche que
@@ -734,17 +999,22 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
          liste entierement verte est un lien qu'on cesse de voir, et le jour ou
          quelque chose y rougira personne n'ira regarder. Le rouvrir ensuite se
          fait depuis /admin, ou l'adresse est ecrite. -->
-    <a class="lien-admin" id="lienDemarrage" href="/demarrage" style="display:none"
+    <a class="lien-admin" id="lienDemarrage" role="menuitem" href="/demarrage" style="display:none"
        data-t-title="page.demarrage.title" data-t="page.demarrage"
        title="première mise en route : ce qui manque encore à ce studio">à faire</a>
     <!-- L'infobulle tenait sur DEUX lignes de source, saut de ligne compris
          dans l'attribut : le texte affiche portait donc un retour a la ligne
          que le dictionnaire n'aurait pas su reproduire, et le releve des deux
          moities aurait rougi sur une difference invisible a l'oeil. -->
-    <a class="source" href="https://github.com/Hogun974/comfystudio"
+    <a class="source" role="menuitem" href="https://github.com/Hogun974/comfystudio"
        target="_blank" rel="noopener" data-t-title="page.source.title"
        data-t="page.source"
        title="ComfyStudio est sous licence AGPL-3.0 : le code source vous est dû, le voici">source</a>
+        <div class="separe-compte" id="separeCompte" role="separator" hidden></div>
+        <span class="sortie-compte" id="sortieCompte" role="none"></span>
+      </div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -831,6 +1101,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
              accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.webm,.mkv,.mov,.mp3,.wav,.flac,.ogg,.opus,.m4a">
       <button type="button" id="plier" aria-expanded="false" data-t="page.reglages">réglages</button>
       <span class="actifs" id="actifs"></span>
+      <span class="aide-saisie" id="aideSaisie" data-t="page.saisie.aide">Ctrl+Entrée envoie · Entrée va à la ligne · une image se colle ou se dépose ici</span>
     </div>
     <div class="outils replie" id="outils">
       <select id="forcer" data-t-aria-label="page.forcer.aria" aria-label="Forcer un moteur">
@@ -890,6 +1161,20 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
         <option value="4" data-t-data-court="page.variantes.4" data-court="4 variantes"
                 data-t="page.variantes.4">4 variantes</option>
       </select>
+      <!-- Ronde 6, la saisie. CE N'EST PAS UN REGLAGE DE CONVERSATION non plus :
+           la permission de notifier appartient au NAVIGATEUR, pas a une
+           conversation ni a un compte, et REGLAGES_CONV (serveur.py) ne la
+           connait pas. Retenue dans ce navigateur, HORS de MENU_REGLAGE, de
+           CLE_REGLAGE et de REGLAGES — banc_page.py l'exige. Cachee tant que le
+           script ne l'a pas jugee utile : grisee avec sa raison en http clair,
+           absente d'un navigateur qui ne connait pas « Notification ». -->
+      <label class="prevenir-fin" id="prevenirFin" hidden
+             data-t-title="page.saisie.prevenir.title"
+             title="Une notification du navigateur quand un rendu se termine pendant que cet onglet est caché. La permission se demande ici, au premier clic, jamais avant.">
+        <input type="checkbox" id="prevenir">
+        <span data-t="page.saisie.prevenir">me prévenir quand un rendu est fini</span>
+        <span class="refus-prevenir" id="refusPrevenir"></span>
+      </label>
     </div>
     <div class="jointe" id="jointe" style="display:none">
       <span id="apercu-zone"></span>
@@ -1137,7 +1422,15 @@ function ajuster() {
   const t = $("#txt");
   if (!t) return;
   t.style.height = "auto";
-  t.style.height = t.scrollHeight + "px";
+  // VIDE, ON NE MESURE PAS. Un champ vide n'a rien a mesurer, et certains
+  // navigateurs comptent l'INVITE dans scrollHeight — elle passe sur
+  // plusieurs lignes des que la colonne retrecit, et le champ vide restait
+  // grand (constate le 5 novembre 2026 : pres de 150 px, vide). Au repos, la
+  // hauteur est celle du CSS. Plein, la bordure en plus : scrollHeight ne la
+  // compte pas, et sans elle deux pixels de trop faisaient paraitre une barre
+  // de defilement.
+  if (!t.value) { t.style.height = ""; return; }
+  t.style.height = (t.scrollHeight + t.offsetHeight - t.clientHeight) + "px";
 }
 
 /* ── fil ─────────────────────────────────────────────────────────── */
@@ -1190,25 +1483,42 @@ function actionsSortie(f) {
     gros.type = "button";
     gros.textContent = T("page.plein_ecran");
     gros.onclick = () => plein(f);
+    gros.dataset.geste = "plein";       // ronde 6 : veillerAbsence() le retrouve
     zone.appendChild(gros);
   }
   return zone;
 }
 
 /* Regarder une sortie en grand. Le clic sur l'image elle-meme fait la meme
-   chose : c'est le geste que tout le monde essaie en premier. */
-function plein(f) {
+   chose : c'est le geste que tout le monde essaie en premier.
+
+   « liste » : les pieces entre lesquelles les fleches circulent, dans l'ordre
+   ou la grille les montre — la liste FILTREE, celle qu'on a sous les yeux, et
+   non la mediatheque entiere : « la suivante » est celle d'a cote. Sans elle
+   (le fil), la vue reste celle d'une seule piece. Le corps de la visionneuse
+   est dans le bloc « ronde 6 : mediatheque », en fin de script. */
+function plein(f, liste) {
+  const montrable = x => EXT_IMG.test(x.filename) || EXT_VID.test(x.filename);
+  const suite = liste && liste.includes(f) && montrable(f)
+              ? liste.filter(montrable) : [f];
+  let rang = suite.indexOf(f);
+  // Le focus revient a ce qui a ouvert la vue : sans cela, le clavier
+  // repartait du haut de la page apres chaque image regardee.
+  const origine = document.activeElement;
   const voile = document.createElement("div");
   voile.className = "plein";
-  const el = document.createElement(EXT_VID.test(f.filename) ? "video" : "img");
-  el.src = url(f);
-  if (el.tagName === "VIDEO") { el.controls = true; el.autoplay = true; }
-  else el.alt = f.filename;
+  const vue = construireVue(voile, suite.length > 1);
   const fermer = document.createElement("button");
   fermer.type = "button"; fermer.className = "fermer";
   fermer.setAttribute("aria-label", T("page.fermer.aria")); fermer.textContent = "✕";
-  voile.append(el, fermer);
+  voile.appendChild(fermer);
+  const montrer = pas => {
+    rang = (rang + pas + suite.length) % suite.length;
+    peindreVue(vue, suite[rang], rang, suite.length);
+  };
+  montrer(0);
   document.body.appendChild(voile);
+  fermer.focus();
 
   // « parti » et non le hash : history.back() est ASYNCHRONE, et location.hash
   // vaut encore « #vue » a l'instant ou l'on revient. Un clic sur la croix
@@ -1216,23 +1526,46 @@ function plein(f) {
   // voile ou le clic remonte — donc DEUX retours arriere. Le second sortait de
   // la page : on se retrouvait dans /admin, d'ou l'on venait.
   let parti = false;
-  const partir = () => {
+  // « rendre » faux : « retoucher » ferme la vue pour donner le focus au champ
+  // de saisie, pas au bouton de la grille qu'on quitte avec la mediatheque.
+  const partir = rendre => {
     if (parti) return;
     parti = true;
+    fermerVue = null;
     voile.remove();
     document.removeEventListener("keydown", auClavier);
     removeEventListener("popstate", partir);
     // On ne retire l'entree d'historique que si c'est bien la notre : un retour
     // arriere l'a peut-etre deja consommee.
     if (location.hash === "#vue") history.back();
+    if (rendre !== false && origine && origine.isConnected && origine.focus)
+      origine.focus();
   };
-  const auClavier = e => { if (e.key === "Escape") partir(); };
+  fermerVue = partir;
+  const auClavier = e => {
+    if (e.key === "Escape") partir();
+    // Les fleches d'une video ou d'un champ leur appartiennent : elles y
+    // deplacent la lecture ou le curseur, pas la visionneuse.
+    else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && suite.length > 1
+             && !["VIDEO", "AUDIO", "INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) {
+      e.preventDefault();
+      montrer(e.key === "ArrowLeft" ? -1 : 1);
+    } else if (e.key === "Tab") pieger(voile, e);
+  };
+  vue.prec.onclick = e => { e.stopPropagation(); montrer(-1); };
+  vue.suiv.onclick = e => { e.stopPropagation(); montrer(1); };
+  if (suite.length > 1) balayer(voile, montrer);
   // Une entree d'historique, pour que le bouton retour du telephone ferme
   // l'image au lieu de quitter la page.
   history.pushState({ vue: 1 }, "", "#vue");
   addEventListener("popstate", partir);
   document.addEventListener("keydown", auClavier);
-  voile.onclick = e => { if (e.target !== el) partir(); };
+  // Le fond seul ferme : la legende, le compteur et les boutons se touchent
+  // sans faire disparaitre ce qu'on regarde.
+  voile.onclick = e => {
+    if (e.target === voile || e.target === vue.scene || e.target === vue.cadre)
+      partir();
+  };
   // stopPropagation en plus du drapeau : deux verrous pour la meme porte, parce
   // que celle-ci donnait sur une page que personne n'avait demandee.
   fermer.onclick = e => { e.stopPropagation(); partir(); };
@@ -1464,13 +1797,15 @@ function garnirReponse(bloc, t, cid) {
     else if (EXT_IMG.test(f.filename)) { el = document.createElement("img"); el.alt = f.filename; }
     else { el = document.createElement("a"); el.href = u; el.download = f.filename;
            el.textContent = T("page.telecharger.fichier", { nom: f.filename }); }
-    if (el.tagName !== "A") el.src = u;
+    if (el.tagName !== "A" && !MEDIA_ABSENTS.has(u)) el.src = u;
     // Le nom sert a retrouver le fichier, pas a lire l'image : infobulle.
     el.title = f.filename;
     sortie.appendChild(el);
     if (el.tagName === "IMG") { el.style.cursor = "zoom-in"; el.onclick = () => plein(f); }
     if (el.tagName !== "A") sortie.appendChild(actionsSortie(f));
+    if (el.tagName !== "A") veillerAbsence(el, sortie.lastChild, f);
   });
+  avantApres(sortie, t);   // ronde 6 : l'original d'une retouche, s'il est a moi
   if (rate) {
     const e = document.createElement("div");
     e.className = "echec"; e.textContent = t.erreur || T("page.echec.defaut");
@@ -2129,11 +2464,13 @@ async function peindreCompte() {
       location.reload();
     };
     zone.append(qui, facteur, acces, sortir);
+    rangerMenuCompte(d, qui, sortir);   // ronde 6 : en-tete compact
   } else {
     const b = document.createElement("button");
     b.type = "button"; b.textContent = T("page.compte.entrer");
     b.onclick = formulaireEntree;
     zone.appendChild(b);
+    rangerMenuCompte(d);                // ronde 6 : en-tete compact
   }
 }
 
@@ -2741,6 +3078,12 @@ function formulaireAcces() {
         // Ou l'on en est, a cote des plafonds qui suivent.
         T("page.acces.usage", { aujourdhui: c.aujourdhui || 0,
                                 en_cours: c.en_cours || 0 }),
+        // Chaque famille bornee, ou elle en est : « vidéo : 3 sur 5
+        // aujourd'hui ». Rien pour une cle sans plafond de famille.
+        ...Object.entries(c.par_famille || {}).map(([f, x]) =>
+          T("page.acces.par_famille", { famille: T("operation." + f),
+                                        aujourdhui: x.aujourdhui || 0,
+                                        plafond: x.plafond })),
         // Les refus du jour, par code : rien quand il n'y en a pas, c'est le
         // cas courant. Les codes sont ceux que le programme a lus.
         s.refus_total
@@ -2820,6 +3163,19 @@ function formulaireAcces() {
       lOp.append(caseOp, document.createTextNode(T("operation." + o)));
       ops.append(lOp);
     }
+    // LE PLAFOND DU JOUR DE CHAQUE FAMILLE, une case par famille, a 0 :
+    // aucun. Les memes familles que les cases au-dessus, et la meme borne
+    // que le plafond par jour — le serveur les recoit de la, la page ne les
+    // recopie pas.
+    const parFamille = document.createElement("div");
+    parFamille.className = "operations";
+    for (const o of (b.operations || [])) {
+      const n = nombreBorne("plafond_famille", 0, b.par_jour, 0);
+      n.dataset.famille = o;
+      const lN = document.createElement("label");
+      lN.append(document.createTextNode(T("operation." + o) + " "), n);
+      parFamille.append(lN);
+    }
     const hotes = document.createElement("textarea");
     hotes.name = "hotes"; hotes.rows = 2;
     hotes.placeholder = T("page.acces.hotes.invite");
@@ -2849,6 +3205,8 @@ function formulaireAcces() {
                        nombreBorne("en_file", 1, b.en_file, b.en_file_defaut)),
                  champ("page.acces.par_jour.champ",
                        nombreBorne("par_jour", 0, b.par_jour, 0)),
+                 champ("page.acces.par_famille.champ", parFamille),
+                 dire("page.acces.par_famille.aide"),
                  champ("page.acces.expire.champ", expire),
                  dire("page.acces.mdp.pourquoi"), mdp, zoneCode);
 
@@ -2858,6 +3216,12 @@ function formulaireAcces() {
       // qu'aucun des deux n'entre dans un nom d'hote et qu'une liste collee
       // depuis un autre outil arrive souvent ainsi. Le serveur valide chacun.
       const liste = f.hotes.value.split(/[\s,]+/).filter(Boolean);
+      // Les cases a 0 ne partent pas : 0 veut dire « aucun plafond », et le
+      // serveur le lirait pareil.
+      const plafonds = Object.fromEntries(
+        Array.from(corps.querySelectorAll('input[name="plafond_famille"]'),
+                   x => [x.dataset.famille, Number(x.value)])
+          .filter(([, n]) => n > 0));
       const r = await fetch("/api/compte/acces", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -2869,7 +3233,8 @@ function formulaireAcces() {
                                expire_jours: Number(f.expire_jours.value),
                                operations: Array.from(
                                  corps.querySelectorAll('input[name="operation"]:checked'),
-                                 x => x.value) }) });
+                                 x => x.value),
+                               par_jour_familles: plafonds }) });
       const x = await r.json().catch(() => ({}));
       // La MEME marque qu'a la porte d'entree : le champ, jamais le message
       // ni le code de retour.
@@ -3026,12 +3391,12 @@ function peindreGrille() {
     const carte = document.createElement("figure");
     carte.className = "media";
     let el;
-    if (f.famille === FAMILLE.video) { el = document.createElement("video"); el.controls = true; }
+    if (f.famille === FAMILLE.video) { el = document.createElement("video"); el.controls = true; el.preload = "metadata"; }
     else if (f.famille === FAMILLE.audio) { el = document.createElement("audio"); el.controls = true; }
     else if (f.famille === FAMILLE.image) { el = document.createElement("img"); el.loading = "lazy"; el.alt = f.demande; }
     else { el = document.createElement("div"); el.className = "cube"; el.textContent = "▣"; }
-    if (el.tagName !== "DIV") el.src = url(f);
-    if (el.tagName === "IMG") { el.style.cursor = "zoom-in"; el.onclick = () => plein(f); }
+    if (el.tagName !== "DIV" && !MEDIA_ABSENTS.has(url(f))) el.src = url(f);
+    if (el.tagName === "IMG") { el.style.cursor = "zoom-in"; el.onclick = () => plein(f, liste); }
     // Un brouillon garde la taille et le cadrage d'une image finie : rien ne les
     // separe a l'oeil. La marque va sur ce qui se regarde — la vignette — et
     // seulement a defaut dans la legende, pour un son qu'on n'a pas a masquer.
@@ -3191,46 +3556,28 @@ function peindreGrille() {
     if (f.famille === FAMILLE.image || f.famille === FAMILLE.video) {
       const gros = document.createElement("button");
       gros.type = "button"; gros.textContent = T("page.plein_ecran");
-      gros.onclick = () => plein(f);
+      gros.onclick = () => plein(f, liste);
+      gros.dataset.geste = "plein";
       actions.appendChild(gros);
     }
     if (f.famille !== FAMILLE.objet3d) {
       const rep = document.createElement("button");
-      rep.type = "button"; rep.textContent = T("page.reprendre");
-      rep.title = T("page.reprendre.title");
+      // Pour une image, le geste porte le nom de ce qu'on va en faire : on la
+      // joint pour ecrire sa retouche. « reprendre » reste aux sons et aux
+      // videos, qu'on reprend pour les prolonger plus que pour les corriger.
+      const image = f.famille === FAMILLE.image;
+      rep.type = "button"; rep.dataset.geste = "joindre";
+      rep.textContent = T(image ? "page.media.retoucher" : "page.reprendre");
+      rep.title = T(image ? "page.media.retoucher.title" : "page.reprendre.title");
       rep.onclick = async () => {
         rep.disabled = true;
-        try {
-          const r = await fetch("/api/reprendre", {
-            method: "POST", credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ filename: f.filename,
-                                   subfolder: f.subfolder || "", noeud: f.noeud }) });
-          const d = await r.json().catch(() => ({}));
-          if (!r.ok || !d.image) throw new Error(d.erreur || T("page.reprise.impossible"));
-          imageJointe = d.image;
-          $("#nomimg").textContent = f.filename;
-          // La vignette avec : une piece jointe sans apercu ne dit pas laquelle
-          // on vient de reprendre, et on en reprend souvent plusieurs de suite.
-          const zone = $("#apercu-zone");
-          zone.innerHTML = "";
-          if (f.famille === FAMILLE.image) {
-            const i = document.createElement("img");
-            i.src = url(f); i.alt = f.filename; zone.appendChild(i);
-          } else if (f.famille === FAMILLE.video) {
-            const v = document.createElement("video");
-            v.src = url(f); v.muted = true; zone.appendChild(v);
-          } else {
-            zone.innerHTML = '<span class="genre">♪</span>';
-          }
-          $("#jointe").style.display = "";
-          fermerMediatheque();
-          $("#txt").focus();
-        } catch (err) { $("#alerte").textContent = err.message; }
+        try { await joindreSortie(f); }
+        catch (err) { $("#alerte").textContent = err.message; }
         finally { rep.disabled = false; }
       };
       actions.appendChild(rep);
     }
+    veillerAbsence(el, actions, f);
     carte.appendChild(actions);
     g.appendChild(carte);
   }
@@ -3942,6 +4289,7 @@ function suivre(id, bloc, cid) {
         clearInterval(minuteur); suivis.delete(id);
         if (visible) { garnirQuestion(bloc, t, cid); auBas(); }
         listerConversations();
+        annoncerFin(t, cid);   // ronde 6 : onglet cache, titre et notification
         return;
       }
       if (t.etat === ETAT.fini || t.etat === ETAT.erreur) {
@@ -3961,6 +4309,7 @@ function suivre(id, bloc, cid) {
                   || (derniere && derniere.msg) || t.erreur;
         if (visible) { garnirReponse(bloc, t); auBas(); }
         listerConversations();
+        annoncerFin(t, cid);   // ronde 6 : onglet cache, titre et notification
         // Le compte d'appels distants n'avance qu'ici : une demande finie est le
         // seul moment ou « nuage 118/120 » peut etre devenu faux. Sans ce
         // rappel, la mention et les interrupteurs restaient sur l'etat du
@@ -4006,6 +4355,675 @@ function suivre(id, bloc, cid) {
     }
   }, 1200);
   suivis.set(id, { bloc, minuteur });
+}
+
+/* ── ronde 6 : en-tete compact ────────────────────────────────────────
+   Le menu du compte : un bouton au nom du compte, un panneau, et le motif
+   « menu button » du W3C (APG) pour le clavier — Entree ou Espace ouvrent et
+   posent le focus sur la premiere entree, les fleches circulent, Echap ferme
+   et REND LE FOCUS AU BOUTON. Sans ce dernier point, un utilisateur au
+   clavier qui referme le menu se retrouve en haut de la page, et doit
+   retabuler depuis le debut pour retrouver ou il etait. */
+const boutonCompte = $("#boutonCompte");
+const panneauCompte = $("#panneauCompte");
+
+/* Appelee par peindreCompte(), une fois ses elements crees : elle les RANGE,
+   elle ne les refait pas. « sortir » et la ligne du nom sortent de #compte
+   pour aller la ou le menu les veut ; leurs gestionnaires voyagent avec eux,
+   puisque ce sont les memes noeuds. Ce que peindreCompte() montre ou cache
+   (#lienAdmin selon « admin », #lienDemarrage selon « demarrage ») n'est pas
+   relu ici : une seconde regle, posee a cote, finirait par contredire la
+   premiere. */
+function rangerMenuCompte(d, qui, sortir) {
+  if (d.connecte) {
+    $("#nomCompte").textContent = d.nom;
+    // Le nom entier au survol : sur la ligne il est coupe en « … » des qu'il
+    // depasse la place, et la ligne du panneau ne se lit qu'apres un clic.
+    boutonCompte.title = d.nom;
+    boutonCompte.classList.add("connecte");
+  }
+  $("#quiCompte").replaceChildren(...(qui ? [qui] : []));
+  $("#sortieCompte").replaceChildren(...(sortir ? [sortir] : []));
+  $("#separeCompte").hidden = !sortir;
+  for (const b of document.querySelectorAll("#compte button, #sortieCompte button"))
+    b.setAttribute("role", "menuitem");
+}
+
+/* LES ENTREES VISIBLES SEULEMENT. #lienAdmin et #lienDemarrage restent dans
+   le menu quand peindreCompte() les cache ; une fleche qui s'y poserait
+   mettrait le focus sur un element invisible, et le clavier semblerait mort
+   une fois sur deux. */
+const entreesMenuCompte = () =>
+  [...document.querySelectorAll('#listeCompte [role="menuitem"]')]
+    .filter(el => el.getClientRects().length > 0);
+
+function ouvrirMenuCompte(versLaFin) {
+  panneauCompte.hidden = false;
+  boutonCompte.setAttribute("aria-expanded", "true");
+  const liste = entreesMenuCompte();
+  const cible = versLaFin ? liste[liste.length - 1] : liste[0];
+  if (cible) cible.focus();
+}
+
+function fermerMenuCompte(rendreLeFocus) {
+  if (panneauCompte.hidden) return;
+  panneauCompte.hidden = true;
+  boutonCompte.setAttribute("aria-expanded", "false");
+  if (rendreLeFocus) boutonCompte.focus();
+}
+
+// Le clic suffit pour Entree et Espace : un <button> le declenche deja pour
+// les deux touches, et le gerer une seconde fois l'ouvrirait puis le fermerait.
+boutonCompte.addEventListener("click", () =>
+  panneauCompte.hidden ? ouvrirMenuCompte(false) : fermerMenuCompte(true));
+boutonCompte.addEventListener("keydown", e => {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  e.preventDefault();
+  ouvrirMenuCompte(e.key === "ArrowUp");
+});
+
+$("#menuCompte").addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    if (panneauCompte.hidden) return;
+    e.preventDefault();
+    fermerMenuCompte(true);
+    return;
+  }
+  // Seulement depuis une entree : sur le <select> de la langue, une fleche
+  // doit rester a lui — c'est elle qui change la valeur.
+  const ici = e.target.closest('[role="menuitem"]');
+  if (!ici || panneauCompte.hidden) return;
+  const liste = entreesMenuCompte();
+  const i = liste.indexOf(ici);
+  let j = null;
+  if (e.key === "ArrowDown") j = (i + 1) % liste.length;
+  else if (e.key === "ArrowUp") j = (i - 1 + liste.length) % liste.length;
+  else if (e.key === "Home") j = 0;
+  else if (e.key === "End") j = liste.length - 1;
+  // Espace active un menuitem, lien compris (APG) ; un lien, seul, ferait
+  // defiler la page.
+  else if (e.key === " " && ici.tagName === "A") { e.preventDefault(); ici.click(); }
+  if (j === null || !liste.length) return;
+  e.preventDefault();
+  liste[j].focus();
+});
+
+// Une entree choisie ferme le menu. Le gestionnaire de l'entree a deja joue
+// (il est sur la cible, celui-ci ecoute la remontee) : le formulaire du second
+// facteur est ouvert quand le panneau se referme.
+$("#listeCompte").addEventListener("click", e => {
+  if (e.target.closest('[role="menuitem"]')) fermerMenuCompte(false);
+});
+// Le clic dehors, et le focus qui sort par la tabulation : dans les deux cas
+// on regarde ailleurs, et un panneau reste ouvert couvrirait la conversation.
+document.addEventListener("click", e => {
+  if (!e.target.closest("#menuCompte")) fermerMenuCompte(false);
+});
+$("#menuCompte").addEventListener("focusout", e => {
+  if (e.relatedTarget && !$("#menuCompte").contains(e.relatedTarget))
+    fermerMenuCompte(false);
+});
+
+/* SUR TELEPHONE, LES NUAGES PASSENT DANS LE PANNEAU. Cinq interrupteurs et
+   « nuage 118/120 » ne tiennent pas a cote du logo sur 375 px : laisses sur la
+   ligne, ils la cassaient en deux, exactement ce que ce bloc existe pour
+   empecher. C'est le meme noeud qui se deplace — peindreNuages() le retrouve
+   par son id ou qu'il soit — et il revient a sa place des que l'ecran
+   s'elargit. Un repere vide garde cette place. */
+const ecranEtroit = matchMedia("(max-width:640px)");
+const repereNuages = document.createComment(" nuages ");
+$("#nuages").before(repereNuages);
+function rangerNuages() {
+  if (ecranEtroit.matches) $("#nuagesMenu").appendChild($("#nuages"));
+  else repereNuages.after($("#nuages"));
+}
+rangerNuages();
+ecranEtroit.addEventListener("change", rangerNuages);
+
+// Le mot court de la mediatheque, lu par la feuille de style sous 640 px.
+PRET.then(() => { $("#ouvrirMedia").dataset.abrege = T("page.entete.media.court"); });
+
+/* ── ronde 6 : la saisie ──────────────────────────────────────────────
+   Coller une image, envoyer au clavier, et etre prevenu quand un rendu finit
+   pendant qu'on regarde ailleurs. */
+
+/* UN FICHIER COLLE OU DEPOSE PREND LE CHEMIN DU SELECTEUR, ET AUCUN AUTRE. On
+   le pose dans #img et l'on declenche « change » : c'est le gestionnaire du
+   selecteur qui televerse, montre l'apercu et rapporte le refus du serveur
+   (famille, plafond de taille). Une seconde copie du televersement aurait
+   diverge a la premiere retouche — c'est arrive a l'envoi, quand la reponse
+   a une precision oubliait la moitie des champs (voir reglagesDemandes()).
+   banc_page.py exige qu'un seul endroit de la page poste
+   sur /api/televerser.
+
+   LE NOM COMPTE : le serveur range le fichier selon son EXTENSION
+   (famille_du_fichier), et une capture d'ecran collee peut arriver sans nom.
+   On lui en donne un tire de son type — « image collée.png » —, et
+   « image/svg+xml » devient « .svg+xml », que le serveur refusera avec sa
+   phrase a lui, la meme que pour un fichier choisi. */
+function joindreCommeSelecteur(f) {
+  const ext = (f.type.split("/")[1] || "").replace(/^x-/, "").replace(/^jpeg$/, "jpg");
+  const nom = /\.[a-z0-9]+$/i.test(f.name || "") ? f.name
+            : T("page.saisie.colle.nom") + "." + ext;
+  try {
+    const dt = new DataTransfer();
+    dt.items.add(nom === f.name ? f : new File([f], nom, { type: f.type }));
+    $("#img").files = dt.files;
+    $("#img").dispatchEvent(new Event("change"));
+  } catch (err) {
+    $("#alerte").textContent = T("page.joindre.echec", { quoi: err.message });
+  }
+}
+
+/* Le premier fichier d'un presse-papiers ou d'un depot. « files » d'abord ;
+   « items » ensuite, parce que Safari ne remplit pas toujours le premier pour
+   une image copiee. */
+function fichierTransporte(dt) {
+  if (!dt) return null;
+  if (dt.files && dt.files.length) return dt.files[0];
+  for (const it of dt.items || [])
+    if (it.kind === "file") { const f = it.getAsFile(); if (f) return f; }
+  return null;
+}
+
+/* DU TEXTE D'ABORD. Copier des cellules d'un tableur, ou un paragraphe de
+   traitement de texte, met AUSSI une image dans le presse-papiers — le rendu
+   de la selection. Le prendre pour une piece jointe aurait remplace par une
+   capture la phrase qu'on voulait coller. Une image copiee n'arrive qu'avec
+   son ADRESSE pour tout texte, quand elle en a une — un seul mot, qui
+   commence par http : celle-la ne se colle pas, l'image si. */
+$("#txt").addEventListener("paste", e => {
+  const cd = e.clipboardData;
+  const brut = cd ? cd.getData("text/plain").trim() : "";
+  const adresseSeule = brut.startsWith("http") && !brut.includes(" ")
+                       && !brut.includes("\n");
+  if (!cd || (brut && !adresseSeule)) return;
+  const f = fichierTransporte(cd);
+  if (!f) return;
+  e.preventDefault();
+  joindreCommeSelecteur(f);
+});
+
+/* Le glisser-deposer. Sans lui, un fichier lache sur la page n'etait pas
+   « refuse » : le navigateur l'OUVRAIT a la place du studio, et la
+   conversation en cours disparaissait. On prend tout le document, et l'on
+   s'efface devant un gestionnaire qui l'aurait deja pris (defaultPrevented). */
+const portePieces = dt => !!dt && [...(dt.types || [])].includes("Files");
+document.addEventListener("dragover", e => {
+  if (!portePieces(e.dataTransfer) || e.defaultPrevented) return;
+  e.preventDefault();
+  document.querySelector("footer").classList.add("depot");
+});
+document.addEventListener("dragleave", e => {
+  if (!e.relatedTarget) document.querySelector("footer").classList.remove("depot");
+});
+document.addEventListener("drop", e => {
+  document.querySelector("footer").classList.remove("depot");
+  if (!portePieces(e.dataTransfer) || e.defaultPrevented) return;
+  e.preventDefault();
+  const f = fichierTransporte(e.dataTransfer);
+  if (f && !$("#txt").disabled) joindreCommeSelecteur(f);
+});
+
+/* CTRL+ENTREE ENVOIE, ENTREE VA A LA LIGNE. Le titre de la fleche le promet
+   depuis le premier jour — « Générer (Ctrl+Entrée) » — et le gestionnaire
+   s'etait perdu le 29 aout, quand la saisie a change de place (508c7cf) : le
+   titre mentait depuis. Entree seule reste un saut de ligne, comme avant :
+   un prompt se compose sur plusieurs lignes, et l'envoyer au premier retour
+   coupait la phrase. « click() » et non lancerDemande() : la fleche desactivee
+   (pas connecte) ne part pas, et le clavier ne doit pas pouvoir plus qu'elle.
+
+   LA SAISIE COMPOSEE N'EST PAS UN ENVOI. En japonais ou en chinois, Entree
+   VALIDE le mot que l'IME propose ; sans ce garde, la demande partait sur un
+   mot a moitie ecrit. keyCode 229 en plus : Safari envoie la touche qui
+   valide le mot avec isComposing deja faux, mais ce code-la. */
+$("#txt").addEventListener("keydown", e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#go").click(); }
+});
+
+/* ── prevenir quand un rendu finit ─────────────────────────────────────
+   Un rendu dure de quelques secondes a plusieurs minutes, et l'on va voir
+   ailleurs. Rien ne disait qu'il avait fini : on revenait trop tot, ou bien
+   trop tard. Deux signes, et seulement quand l'onglet est CACHE — sous les
+   yeux, la bulle suffit :
+     - le titre de l'onglet, toujours : il ne demande aucune permission ;
+     - une notification, si l'utilisateur l'a voulue ET que le navigateur l'a
+       permise. LA PERMISSION NE SE DEMANDE JAMAIS AU CHARGEMENT : une fenetre
+       « autoriser les notifications ? » a la premiere visite, avant d'avoir
+       rien fait, se refuse par reflexe — et un refus ne se redemande plus.
+       Elle se demande au clic sur la case des reglages, et la seulement
+       (banc_page.py le verifie).
+   L'accroche est dans suivre(), aux deux endroits ou le sondage s'arrete. */
+const MARQUE_FINI = "✓ ", MARQUE_ALERTE = "! ";
+const CLE_PREVENIR = "prevenirFin";
+const notesOuvertes = new Set();
+
+function prevenirVoulu() {
+  try { return localStorage.getItem(CLE_PREVENIR) === "1"; } catch (e) { return false; }
+}
+
+function marquerTitre(grave) {
+  const nu = document.title.replace(/^(✓|!) /, "");
+  // L'alerte l'emporte : trois rendus finis et un rate, c'est le rate qu'on
+  // doit venir voir.
+  const deja = document.title.startsWith(MARQUE_ALERTE);
+  document.title = (grave || deja ? MARQUE_ALERTE : MARQUE_FINI) + nu;
+}
+
+function annoncerFin(t, cid) {
+  if (!document.hidden) return;
+  const grave = t.etat !== ETAT.fini;
+  marquerTitre(grave);
+  if (!prevenirVoulu() || !("Notification" in window)
+      || Notification.permission !== "granted") return;
+  const titre = T(t.etat === ETAT.fini ? "page.saisie.notif.fini"
+                : t.etat === ETAT.question ? "page.saisie.notif.question"
+                : "page.saisie.notif.erreur");
+  const corps = String(t.demande || "").slice(0, 140);
+  try {
+    const n = new Notification(titre, { body: corps, tag: "rendu-" + (t.id || "") });
+    notesOuvertes.add(n);
+    n.onclose = () => notesOuvertes.delete(n);
+    // Le clic ramene sur l'onglet ET sur la conversation du rendu : il a pu
+    // finir dans une autre que celle qu'on avait laissee ouverte.
+    n.onclick = () => {
+      window.focus();
+      n.close();
+      if (cid && cid !== convActive) ouvrir(cid);
+    };
+  } catch (e) {
+    // Chrome sur Android refuse le constructeur : il n'y notifie que par un
+    // service worker. Le titre de l'onglet a deja parle.
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  document.title = document.title.replace(/^(✓|!) /, "");
+  for (const n of notesOuvertes) n.close();
+  notesOuvertes.clear();
+});
+
+/* La case. Cochee seulement si les DEUX sont vrais — voulu ici, permis par le
+   navigateur : une case cochee qui ne notifie pas est un mensonge. Une
+   permission refusee se dit a cote, avec ce qui reste (le titre). */
+function peindrePrevenir() {
+  const permis = Notification.permission;
+  $("#prevenir").checked = prevenirVoulu() && permis === "granted";
+  $("#refusPrevenir").textContent = prevenirVoulu() && permis === "denied"
+    ? T("page.saisie.prevenir.refuse") : "";
+}
+
+/* EN HTTP CLAIR, AUCUN NAVIGATEUR NE NOTIFIE. La permission est reservee aux
+   contextes surs — https, ou la machine elle-meme (localhost) —, et le studio
+   se sert d'ordinaire en http sur le reseau de la maison. La case reste
+   visible, grisee, et dit pourquoi : cachee, on l'aurait cherchee ; active,
+   elle aurait ete refusee sans fenetre ni explication. */
+if (!window.isSecureContext) {
+  $("#prevenirFin").hidden = false;
+  $("#prevenir").disabled = true;
+  PRET.then(() => { $("#refusPrevenir").textContent = T("page.saisie.prevenir.https"); });
+} else if ("Notification" in window) {
+  $("#prevenirFin").hidden = false;
+  PRET.then(peindrePrevenir);
+  $("#prevenir").addEventListener("change", async e => {
+    const voulu = e.target.checked;
+    try { localStorage.setItem(CLE_PREVENIR, voulu ? "1" : "0"); } catch (err) {}
+    // DANS LE GESTE, avant tout « await » : passe ce point, le navigateur ne
+    // tient plus le clic pour un geste et refuse de demander. L'ancienne forme
+    // de Safari rend undefined et repond par un rappel ; les deux sont lues.
+    if (voulu && Notification.permission === "default")
+      await new Promise(fin => {
+        const p = Notification.requestPermission(fin);
+        if (p && p.then) p.then(fin);
+      });
+    peindrePrevenir();
+  });
+}
+
+/* Sur Mac, la touche est Cmd : l'aide le dit avec le signe du clavier. */
+PRET.then(() => {
+  const plateforme = String(navigator.platform || "");
+  if (plateforme.startsWith("Mac") || plateforme.startsWith("iP"))
+    $("#aideSaisie").textContent = T("page.saisie.aide.mac");
+});
+
+/* ── ronde 6 : appli installable, avant / apres ──────────────────────
+   AUCUN SERVICE WORKER N'EST ENREGISTRE ICI, ET C'EST VOULU (appli.py dit
+   pourquoi) : les navigateurs n'en exigent plus pour installer, et un cache
+   d'origine partagerait les conversations d'un compte avec le suivant sur le
+   meme appareil. banc_page.py tient la regle. */
+
+/* Les intentions dont le resultat est la MEME image, modifiee. Les valeurs
+   sont celles que serveur.py ecrit dans « type » (INTENTIONS_DU_PLAN et les
+   trois retouches localisees de raccourci_ecrit) ; un agrandissement ou un
+   detourage changent l'image autrement, et le curseur n'y montrerait rien
+   d'utile. */
+const TYPES_RETOUCHE = ["edition", "retoucher_zone", "retoucher_fond",
+                        "retoucher_sujet"];
+
+/* L'original d'une retouche, sous la forme qu'attend url(), ou null.
+   « entree » : ce que la demande avait joint (/api/televerser, ou une piece
+   reprise de la mediatheque) — relu par type=input, que serveur.py ne rend
+   qu'a son proprietaire. « reprise » : la sortie precedente, quand rien
+   n'etait joint (« retouche-la ») — une sortie de mes conversations, que la
+   liste d'autorisation de /api/fichier couvre deja. Rien d'autre : aucune
+   devinette sur « l'image d'avant dans le fil », qui peut etre une autre. */
+function origineDe(t) {
+  if (!t || !TYPES_RETOUCHE.includes(t.type)) return null;
+  const r = t.reprise || {};
+  const f = t.entree ? { filename: t.entree, subfolder: "", type: "input" }
+          : r.filename ? { filename: r.filename, subfolder: r.subfolder || "",
+                           noeud: r.noeud, type: "output" }
+          : null;
+  // Une image seulement : une video retouchee n'a pas de curseur qui tienne.
+  return f && EXT_IMG.test(f.filename) ? f : null;
+}
+
+/* Le curseur avant / apres, pose sur la premiere image du resultat.
+   L'ORIGINAL EST CHARGE D'ABORD, et rien ne change tant qu'il n'est pas la :
+   une entree purgee (quarante par compte), un fichier qui n'est pas a moi ou
+   une machine eteinte rendent 404, et la bulle reste exactement ce qu'elle
+   etait — pas de curseur qui ne devoilerait rien.
+   Un <input type=range> : souris, doigt et fleches du clavier sans une ligne
+   de plus, et un lecteur d'ecran l'annonce comme un curseur. */
+function avantApres(sortie, t) {
+  if (!t || t.etat !== ETAT.fini) return;
+  const f = origineDe(t);
+  const apres = sortie.querySelector(":scope > img");
+  if (!f || !apres) return;
+  const avant = new Image();
+  avant.className = "original";
+  avant.alt = T("page.appli.avant.alt");
+  avant.onload = () => {
+    // La bulle a pu etre repeinte entre-temps (garnirReponse vide .sortie) :
+    // on ne pose rien sur une image qui n'est plus affichee.
+    if (apres.parentNode !== sortie) return;
+    const boite = document.createElement("div");
+    boite.className = "comparaison";
+    apres.replaceWith(boite);
+    const trait = document.createElement("i");
+    trait.className = "comparaison-trait";
+    boite.append(apres, avant, trait);
+
+    const regle = document.createElement("div");
+    regle.className = "comparaison-regle";
+    const curseur = document.createElement("input");
+    curseur.type = "range";
+    curseur.min = "0"; curseur.max = "100"; curseur.step = "1"; curseur.value = "50";
+    curseur.setAttribute("aria-label", T("page.appli.comparer.aria"));
+    curseur.title = T("page.appli.comparer.title");
+    const poser = () => {
+      boite.style.setProperty("--part", curseur.value + "%");
+      // Le pourcentage seul ne dit pas DE QUOI : « 50 » annonce par un lecteur
+      // d'ecran ne dit pas que la moitie gauche est l'original.
+      curseur.setAttribute("aria-valuetext",
+                           T("page.appli.comparer.valeur", { n: curseur.value }));
+    };
+    curseur.addEventListener("input", poser);
+    poser();
+    const gauche = document.createElement("span");
+    gauche.textContent = T("page.appli.avant");
+    const droite = document.createElement("span");
+    droite.textContent = T("page.appli.apres");
+    regle.append(gauche, curseur, droite);
+    boite.after(regle);
+  };
+  avant.src = url(f);
+}
+
+/* ── ronde 6 : mediatheque ─────────────────────────────────────────────
+   Trois choses que la grille et le fil ne savaient pas faire : dire qu'un
+   fichier a disparu, passer d'une piece a la suivante en plein ecran, et
+   renvoyer une image vers le champ de saisie pour la retoucher. */
+
+/* LES FICHIERS QUI N'EXISTENT PLUS, par adresse. Un fichier purge, efface, ou
+   dont la machine est eteinte affichait une image CASSEE avec son texte de
+   remplacement : la carte restait, avec « telecharger » et « plein ecran »
+   vivants, et rien ne disait pourquoi rien ne marchait. La grille se repeint a
+   chaque lettre tapee dans la recherche : sans ce releve, chaque repeinte
+   redemandait les memes fichiers absents au serveur. Il se vide a chaque
+   ouverture de la mediatheque — une machine rallumee rend ses fichiers.
+   SONDES : une seule verification en vol par adresse, quel que soit le nombre
+   de vignettes qui echouent dessus. */
+const MEDIA_ABSENTS = new Set(), SONDES = new Map();
+$("#ouvrirMedia").addEventListener("click", () => {
+  MEDIA_ABSENTS.clear(); SONDES.clear();
+});
+
+/* Une image qui ne se decode pas n'est pas un fichier disparu : seul le
+   serveur sait lequel des deux. Une sonde d'un octet le lui demande, UNE fois :
+   un refus (404 : efface, purge ; 5xx : machine eteinte) vaut absence ; un
+   fichier present garde sa vignette telle que le navigateur la montre, et ses
+   boutons — on peut toujours le telecharger. */
+function sonderAbsence(u) {
+  if (!SONDES.has(u))
+    SONDES.set(u, fetch(u, { headers: { Range: "bytes=0-0" }, cache: "no-store",
+                             credentials: "same-origin" })
+      .then(r => { r.body?.cancel?.().catch(() => {}); return !r.ok; })
+      .catch(() => true));
+  return SONDES.get(u);
+}
+
+/* Branche sur une vignette (image, video, son) la reaction a son echec. Un
+   seul essai par element (« once ») : l'emplacement qui la remplace n'a plus
+   de source, rien ne se redemande en boucle. */
+function veillerAbsence(el, zone, f) {
+  if (!el || !["IMG", "VIDEO", "AUDIO"].includes(el.tagName)) return;
+  const u = url(f);
+  if (MEDIA_ABSENTS.has(u)) { poserAbsence(el, zone, f); return; }
+  el.addEventListener("error", async () => {
+    if (!(await sonderAbsence(u))) return;
+    MEDIA_ABSENTS.add(u);
+    poserAbsence(el, zone, f);
+  }, { once: true });
+}
+
+/* L'emplacement « fichier introuvable », et les gestes qui ne peuvent plus
+   servir. « telecharger » et « plein ecran » se coupent : ils n'auraient rien
+   a montrer. Le bouton qui joint le fichier au champ de saisie ne peut plus
+   le joindre non plus, mais ce qu'on avait DEMANDE existe encore : il devient
+   « reprendre la demande », le seul geste qui reste utile devant un rendu
+   perdu — le refaire. */
+function poserAbsence(el, zone, f) {
+  const p = document.createElement("div");
+  p.className = "introuvable";
+  p.title = f.filename;
+  p.innerHTML = `<span class="introuvable-signe" aria-hidden="true">∅</span>`
+              + `<b>${ech(T("page.media.introuvable"))}</b>`
+              + `<small>${ech(T("page.media.introuvable.pourquoi"))}</small>`;
+  // Une video se coupe avant de partir : retiree du document, elle
+  // continuerait de chercher sa source.
+  if (el.tagName !== "IMG") { el.removeAttribute("src"); el.load?.(); }
+  if (el.parentNode) el.replaceWith(p);
+  if (!zone) return;
+  for (const b of zone.querySelectorAll('[data-geste="plein"], [data-geste="retoucher"]')) {
+    b.disabled = true; b.title = T("page.media.introuvable");
+  }
+  for (const a of zone.querySelectorAll("a[download]")) {
+    a.removeAttribute("href");
+    a.setAttribute("aria-disabled", "true");
+    a.title = T("page.media.introuvable");
+  }
+  const rep = zone.querySelector('[data-geste="joindre"]');
+  if (!rep) return;
+  if (!f.demande) { rep.disabled = true; return; }
+  rep.textContent = T("page.media.reprendre_demande");
+  rep.title = T("page.media.reprendre_demande.title");
+  rep.onclick = () => reprendreDemande(f);
+}
+
+/* La demande d'un rendu perdu, remise dans le champ — sans l'envoyer : on
+   la relit, on la corrige peut-etre, et c'est l'utilisateur qui la renvoie.
+   /api/mediatheque coupe « demande » a 120 signes ; la conversation porte
+   l'entiere, et c'est elle qu'on prend quand on peut la lire. Le moteur suit,
+   comme pour « relancer » dans le fil. */
+async function reprendreDemande(f) {
+  let texte = f.demande || "", moteur = f.moteur;
+  if (f.conversation && f.tour) {
+    try {
+      const r = await fetch("/api/conversation/" + encodeURIComponent(f.conversation),
+                            { credentials: "same-origin" });
+      const c = r.ok ? await r.json() : {};
+      const t = (c.tours || []).find(x => x.id === f.tour);
+      if (t && t.demande) { texte = t.demande; moteur = t.modele || moteur; }
+    } catch (e) { /* la demande coupee vaut mieux qu'un champ vide */ }
+  }
+  $("#txt").value = texte;
+  if (moteur && [...$("#forcer").options].some(o => o.value === moteur))
+    $("#forcer").value = moteur;
+  ajuster();
+  if (typeof peindreActifs === "function") peindreActifs();
+  fermerMediatheque();
+  $("#txt").focus();
+}
+
+/* Une sortie du studio redevient une entree : /api/reprendre la recopie dans
+   le cache d'entree de la machine — apres avoir verifie qu'elle appartient au
+   demandeur, avec la meme regle que l'affichage (mes_fichiers) — et rend le nom
+   sous lequel la joindre. La suite est celle d'un fichier televerse.
+   Partage par « retoucher » / « reprendre » de la grille et « retoucher » de
+   la visionneuse : deux copies de ces vingt lignes auraient diverge a la
+   premiere correction. */
+let fermerVue = null;
+async function joindreSortie(f) {
+  const r = await fetch("/api/reprendre", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: f.filename,
+                           subfolder: f.subfolder || "", noeud: f.noeud }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.image) throw new Error(d.erreur || T("page.reprise.impossible"));
+  imageJointe = d.image;
+  // L'apercu d'un fichier televerse avant celui-ci ne sert plus a rien.
+  if (apercuURL) { URL.revokeObjectURL(apercuURL); apercuURL = null; }
+  $("#nomimg").textContent = f.filename;
+  // La vignette avec : une piece jointe sans apercu ne dit pas laquelle
+  // on vient de reprendre, et on en reprend souvent plusieurs de suite.
+  const zone = $("#apercu-zone");
+  zone.innerHTML = "";
+  if (EXT_IMG.test(f.filename)) {
+    const i = document.createElement("img");
+    i.src = url(f); i.alt = f.filename; zone.appendChild(i);
+  } else if (EXT_VID.test(f.filename)) {
+    const v = document.createElement("video");
+    v.src = url(f); v.muted = true; zone.appendChild(v);
+  } else {
+    zone.innerHTML = '<span class="genre">♪</span>';
+  }
+  $("#jointe").style.display = "";
+  if (fermerVue) fermerVue(false);
+  fermerMediatheque();
+  $("#txt").focus();
+}
+
+/* Le squelette de la visionneuse, pose une fois par ouverture ; peindreVue()
+   le remplit a chaque pas. Les fleches et le compteur n'existent que s'il y a
+   plus d'une piece : « 1 / 1 » et deux fleches qui ne menent nulle part
+   feraient croire a une panne. */
+function construireVue(voile, plusieurs) {
+  voile.setAttribute("role", "dialog");
+  voile.setAttribute("aria-modal", "true");
+  voile.setAttribute("aria-label", T("page.media.visio.aria"));
+  const scene = document.createElement("figure");
+  scene.className = "visio-scene";
+  const cadre = document.createElement("div");
+  cadre.className = "visio-cadre";
+  const legende = document.createElement("figcaption");
+  legende.className = "visio-legende";
+  const gestes = document.createElement("div");
+  gestes.className = "visio-gestes";
+  scene.append(cadre, legende, gestes);
+  const compte = document.createElement("span");
+  compte.className = "visio-compte";
+  compte.setAttribute("aria-live", "polite");
+  const fleche = (classe, cle, signe) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "visio-pas " + classe;
+    b.setAttribute("aria-label", T(cle)); b.title = T(cle);
+    b.textContent = signe; b.hidden = !plusieurs;
+    return b;
+  };
+  const prec = fleche("visio-prec", "page.media.visio.precedent", "‹");
+  const suiv = fleche("visio-suiv", "page.media.visio.suivant", "›");
+  compte.hidden = !plusieurs;
+  voile.append(scene, compte, prec, suiv);
+  return { scene, cadre, legende, gestes, compte, prec, suiv };
+}
+
+/* Une piece dans la visionneuse : le media, sa demande et son moteur en
+   legende (« pourquoi celle-ci » se demande en la regardant, pas apres), le
+   rang, et « retoucher » pour une image. */
+function peindreVue(vue, f, rang, n) {
+  const video = EXT_VID.test(f.filename);
+  const el = document.createElement(video ? "video" : "img");
+  if (video) { el.controls = true; el.autoplay = true; }
+  else el.alt = f.demande || f.filename;
+  if (!MEDIA_ABSENTS.has(url(f))) el.src = url(f);
+  vue.cadre.replaceChildren(el);
+  const detail = [f.a, f.moteur, f.taille && f.taille.replace("x", " × ")]
+    .filter(Boolean).map(ech).join(" · ");
+  vue.legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
+                        + (detail ? `<small>${detail}</small>` : "");
+  vue.compte.textContent = T("page.media.visio.compte", { n: rang + 1, total: n });
+  vue.gestes.replaceChildren();
+  if (!video) {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.geste = "retoucher";
+    b.textContent = T("page.media.retoucher");
+    b.title = T("page.media.retoucher.title");
+    b.onclick = async e => {
+      e.stopPropagation();
+      b.disabled = true; b.textContent = "…";
+      try { await joindreSortie(f); }
+      catch (err) {
+        // SUR LE BOUTON : la barre d'alerte est sous la visionneuse, qui
+        // couvre tout l'ecran — un refus ecrit la ne serait lu par personne.
+        b.disabled = false;
+        b.textContent = T("page.impossible", { quoi: err.message });
+      }
+    };
+    vue.gestes.appendChild(b);
+  }
+  veillerAbsence(el, vue.gestes, f);
+}
+
+/* Le focus reste dans la visionneuse tant qu'elle est ouverte : Tab apres le
+   dernier bouton revenait sinon sur la grille, CACHEE dessous, et le clavier
+   agissait sur des cartes qu'on ne voyait pas. */
+function pieger(voile, e) {
+  const prenables = [...voile.querySelectorAll("button, video[controls], a[href]")]
+    .filter(x => !x.disabled && !x.hidden);
+  if (!prenables.length) return;
+  const premier = prenables[0], dernier = prenables[prenables.length - 1];
+  const ici = document.activeElement;
+  if (e.shiftKey && (ici === premier || !voile.contains(ici))) {
+    e.preventDefault(); dernier.focus();
+  } else if (!e.shiftKey && (ici === dernier || !voile.contains(ici))) {
+    e.preventDefault(); premier.focus();
+  }
+}
+
+/* Le doigt : un trait franchement horizontal passe a la piece voisine, comme
+   dans toute galerie de telephone. Pas sur une video — glisser sur sa barre de
+   lecture, c'est chercher un instant du film, pas changer de film — ni a deux
+   doigts, qui agrandissent. */
+function balayer(voile, montrer) {
+  let x0 = null, y0 = 0;
+  voile.addEventListener("touchstart", e => {
+    const t = e.touches[0];
+    x0 = e.touches.length === 1 && e.target.tagName !== "VIDEO" ? t.clientX : null;
+    y0 = t.clientY;
+  }, { passive: true });
+  voile.addEventListener("touchend", e => {
+    if (x0 === null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy))
+      montrer(dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 </script>
 </body>

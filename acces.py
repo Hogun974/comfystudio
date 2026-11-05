@@ -28,8 +28,8 @@ CE QUE CE MODULE NE FAIT PAS.
 
   - Il ne DECIDE RIEN de ce qu'une cle a le droit de faire. Il rend la fiche ;
     serveur.py applique le perimetre (rendus seulement, jamais
-    l'administration), les plafonds « en_file » et « par_jour », et la
-    permission du nuage. Une cle ne vaut JAMAIS administration, et ce n'est pas
+    l'administration), les plafonds « en_file », « par_jour » et
+    « par_jour_familles », et la permission du nuage. Une cle ne vaut JAMAIS administration, et ce n'est pas
     ici que cela se garantit : c'est dans la route qui la lit.
   - Il n'envoie aucun rappel : rappels.py le fait, en signant avec le secret
     que secret_rappel() lui rend, vers un hote que la fiche declare.
@@ -167,6 +167,51 @@ def operations_valides(operations):
                               cle="erreur.acces_operations",
                               familles=", ".join(OPERATIONS))
     return [o for o in OPERATIONS if o in operations]
+
+
+def par_jour_familles_valides(plafonds):
+    """Les plafonds du jour par famille d'une cle, {famille: rendus}, dans
+    l'ordre d'OPERATIONS. Leve ErreurAcces sur autre chose qu'un objet de
+    familles connues vers des entiers de 0 a PAR_JOUR_MAX.
+
+    POURQUOI PAR FAMILLE. Un detourage prend deux secondes de carte, une video
+    huit minutes : un seul « par_jour » assez large pour cinquante detourages
+    laisse passer cinquante videos — une nuit de carte prise par un workflow
+    emballe. « 50 detourages et 5 videos par jour » ne s'ecrivait pas. Les
+    deux plafonds s'appliquent : celui du jour compte tout, celui-ci une
+    famille.
+
+    None ou {} : aucun plafond de plus que « par_jour ». Un zero veut dire
+    « sans plafond » pour cette famille, comme pour « par_jour » — la page
+    envoie une case par famille, et une case laissee a 0 n'est pas un plafond
+    de zero rendu. Il ne reste donc pas dans la fiche : « video: 0 » et
+    l'absence de « video » se lisent pareil, ils s'ecrivent pareil.
+    """
+    if plafonds is None:
+        return {}
+    refus = ErreurAcces("par_jour_familles : un objet {famille: rendus par "
+                        "jour}, familles parmi " + ", ".join(OPERATIONS),
+                        cle="erreur.acces_par_jour_familles",
+                        familles=", ".join(OPERATIONS), bas=0,
+                        haut=PAR_JOUR_MAX)
+    # Un dict et rien d'autre : une liste de paires ou une chaine JSON collee
+    # telle quelle seraient lues de travers plutot que refusees.
+    if not isinstance(plafonds, dict):
+        raise refus
+    for f, n in plafonds.items():
+        if (not isinstance(f, str) or f not in OPERATIONS
+                or isinstance(n, bool) or not isinstance(n, int)
+                or not 0 <= n <= PAR_JOUR_MAX):
+            raise refus
+    return {f: plafonds[f] for f in OPERATIONS if plafonds.get(f)}
+
+
+def _plafonds_lisibles(p):
+    """Les plafonds par famille relus du disque ont la forme d'un droit."""
+    return p is None or (isinstance(p, dict) and all(
+        isinstance(f, str) and f in OPERATIONS and isinstance(n, int)
+        and not isinstance(n, bool) and 0 <= n <= PAR_JOUR_MAX
+        for f, n in p.items()))
 
 
 def famille(type_):
@@ -426,7 +471,11 @@ class Acces:
                         and (x.get("operations") is None
                              or (isinstance(x["operations"], list)
                                  and all(isinstance(o, str) and o in OPERATIONS
-                                         for o in x["operations"])))):
+                                         for o in x["operations"])))
+                        # Les plafonds par famille : meme regle. Un plafond
+                        # abime lu comme « aucun » rouvrirait les cinquante
+                        # videos qu'on avait bornees a cinq.
+                        and _plafonds_lisibles(x.get("par_jour_familles"))):
                     raise ValueError(f"fiche mal formee : {x.get('id')!r}")
                 fiches[x["id"]] = x
         except FileNotFoundError:
@@ -500,7 +549,7 @@ class Acces:
     # ── cles ─────────────────────────────────────────────────────────────
     def creer(self, compte, nom, generation, *, nuage=False, hotes=(),
               en_file=EN_FILE_DEFAUT, par_jour=0, expire_jours=0,
-              operations=None, maintenant=None):
+              operations=None, par_jour_familles=None, maintenant=None):
         """Une cle neuve. Rend {"cle", "secret_rappel", "fiche"}.
 
         LA CLE ET LE SECRET DE RAPPEL SONT MONTRES UNE FOIS, ICI. Le studio ne
@@ -565,6 +614,7 @@ class Acces:
                                "duree de vie en jours (0 = sans fin)",
                                cle="erreur.acces_expire")
         operations = operations_valides(operations)
+        par_jour_familles = par_jour_familles_valides(par_jour_familles)
         if sum(1 for f in self.fiches.values()
                if f["compte"] == compte) >= CLES_PAR_COMPTE:
             raise ErreurAcces(f"{CLES_PAR_COMPTE} cles au plus par compte : "
@@ -591,6 +641,7 @@ class Acces:
             "par_jour": par_jour,
             "expire": quand + expire_jours * 86400 if expire_jours else None,
             "operations": operations,
+            "par_jour_familles": par_jour_familles,
         }
         try:
             self.sauver()
@@ -775,6 +826,9 @@ class Acces:
             # Ce que la cle peut faire ; vide : tout. Une copie, pour qu'un
             # appelant qui la modifie ne touche pas la fiche.
             "operations": list(fiche.get("operations") or []),
+            # Les plafonds du jour par famille ; vide : rien de plus que
+            # « par_jour ». Une copie aussi.
+            "par_jour_familles": dict(fiche.get("par_jour_familles") or {}),
         }
 
     # ── le suivi ─────────────────────────────────────────────────────────

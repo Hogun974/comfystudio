@@ -253,8 +253,8 @@ TEXTES = {
         "fr": "clé d'accès expirée : elle a passé sa date de fin. Crées-en une autre depuis la page",
         "en": "access key expired: it is past its end date. Create another one from the page"},
     "erreur.cle_hors_perimetre": {
-        "fr": "une clé d'accès ne vaut que pour /api/v1 et /mcp",
-        "en": "an access key is only valid for /api/v1 and /mcp"},
+        "fr": "une clé d'accès ne vaut que pour /api/v1, /openai/v1 et /mcp",
+        "en": "an access key is only valid for /api/v1, /openai/v1 and /mcp"},
     "erreur.cle_inconnue": {
         "fr": "aucune clé de ce compte ne porte cet identifiant",
         "en": "no key of this account has that identifier"},
@@ -270,6 +270,12 @@ TEXTES = {
     "erreur.cle_plafond_jour": {
         "fr": "cette clé a atteint son plafond de {par_jour} rendus pour aujourd'hui",
         "en": "this key has reached its limit of {par_jour} renders for today"},
+    # « {famille} » est le MOT DE L'API (« video »), entre guillemets comme
+    # « {operation} » plus bas : c'est la cle que le programmeur a ecrite
+    # dans « par_jour_familles ».
+    "erreur.cle_plafond_famille": {
+        "fr": "cette clé a atteint son plafond de {plafond} rendus « {famille} » pour aujourd'hui",
+        "en": "this key has reached its limit of {plafond} “{famille}” renders for today"},
     "erreur.cle_sans_nuage": {
         "fr": "ce moteur est distant, et cette clé n'a pas droit au nuage",
         "en": "this engine is remote, and this key is not allowed to use the cloud"},
@@ -335,6 +341,9 @@ TEXTES = {
     "erreur.acces_par_jour": {
         "fr": "plafond par jour : un nombre entier de {bas} à {haut} (0 = sans plafond)",
         "en": "daily limit: a whole number from {bas} to {haut} (0 = no limit)"},
+    "erreur.acces_par_jour_familles": {
+        "fr": "« par_jour_familles » : pour chaque famille parmi {familles}, un nombre entier de {bas} à {haut} (0 = sans plafond)",
+        "en": "“par_jour_familles”: for each family among {familles}, a whole number from {bas} to {haut} (0 = no limit)"},
     "erreur.acces_ecriture": {
         "fr": "le fichier des clés d'accès n'a pas pu être écrit : rien n'a changé, réessaie plus tard",
         "en": "the access key file could not be written: nothing changed, try again later"},
@@ -355,6 +364,26 @@ TEXTES = {
     "erreur.cle_operation_interdite": {
         "fr": "cette clé ne permet pas « {operation} » : seulement {permises}",
         "en": "this key does not allow “{operation}”: only {permises}"},
+    # La compatibilite OpenAI (/openai/v1/) : ce que lit l'humain derriere
+    # Open WebUI ou LibreChat, qui ne voit que « error.message ».
+    "erreur.openai_flux": {
+        "fr": "le studio ne diffuse pas l'image en cours de rendu : retire « stream »",
+        "en": "the studio does not stream the image while rendering: remove “stream”"},
+    "erreur.openai_attentes": {
+        "fr": "cette clé attend déjà {n} rendus en même temps : réessaie dans un instant",
+        "en": "this key is already waiting for {n} renders at once: try again in a moment"},
+    "erreur.openai_delai": {
+        "fr": "le rendu {rendu} n'est pas fini au bout de {secondes} s ; il continue — retrouve-le dans la page ou par GET /api/v1/rendus/{rendu}",
+        "en": "render {rendu} is not finished after {secondes} s; it carries on — find it in the page or with GET /api/v1/rendus/{rendu}"},
+    "erreur.openai_question": {
+        "fr": "le studio a besoin d'une précision avant de dessiner : {questions} — précise la demande et renvoie-la",
+        "en": "the studio needs a detail before drawing: {questions} — make the request more precise and send it again"},
+    "erreur.openai_sans_image": {
+        "fr": "le rendu {rendu} n'a produit aucune image",
+        "en": "render {rendu} produced no image"},
+    "erreur.openai_panne": {
+        "fr": "le studio a rencontré une panne sur cette demande ; elle n'est pas relancée",
+        "en": "the studio hit a failure on this request; it is not restarted"},
     # Les huit familles d'acces.OPERATIONS, traduites POUR LA PAGE : les cases
     # a cocher et la fiche de la cle, que lit un humain.
     "operation.image": {"fr": "créer une image", "en": "create an image"},
@@ -665,6 +694,11 @@ TEXTES = {
     "panne.cle_operation_interdite": {
         "fr": "cette clé ne permet pas « {operation} » : seulement {permises}",
         "en": "this key does not allow “{operation}”: only {permises}"},
+    # Le plafond d'une famille, quand c'est l'analyse qui l'a lue : la meme
+    # phrase que le refus d'entree.
+    "panne.cle_plafond_famille": {
+        "fr": "cette clé a atteint son plafond de {plafond} rendus « {famille} » pour aujourd'hui",
+        "en": "this key has reached its limit of {plafond} “{famille}” renders for today"},
     "panne.refus_mineurs": {
         "fr": "demande refusée : contenu sexuel impliquant des mineurs",
         "en": "request refused: sexual content involving minors"},
@@ -850,6 +884,18 @@ TEXTES = {
               "est dû, le voici",
         "en": "ComfyStudio is licensed under AGPL-3.0: the source code is "
               "owed to you, here it is"},
+    # ── ronde 6 : en-tete compact ──
+    # Le libelle du bouton du menu tant que personne n'est connecte : connecte,
+    # il porte le nom du compte, qui est une donnee et ne se traduit pas.
+    "page.entete.menu": {
+        "fr": "menu",
+        "en": "menu"},
+    # LE MOT COURT DE LA MEDIATHEQUE, sous 640 px seulement. Le mot entier
+    # coutait trente pixels de plus, et a 375 px c'etait le nom du compte qui
+    # les payait. Le bouton garde son nom entier pour un lecteur d'ecran.
+    "page.entete.media.court": {
+        "fr": "médias",
+        "en": "library"},
 
     # ── la mediatheque ──────────────────────────────────────────────
     "page.fermer.aria": {
@@ -951,6 +997,45 @@ TEXTES = {
     "page.reprise.impossible": {
         "fr": "reprise impossible",
         "en": "cannot reuse this file"},
+    # ── ronde 6 : mediatheque ──
+    # LE FICHIER DISPARU SE DIT, ET DIT POURQUOI. Une image cassee avec son
+    # texte de remplacement laissait croire a une panne de la page ; la
+    # seconde ligne nomme les trois causes, dont une seule — la machine
+    # eteinte — se repare en la rallumant.
+    "page.media.introuvable": {
+        "fr": "fichier introuvable",
+        "en": "file not found"},
+    "page.media.introuvable.pourquoi": {
+        "fr": "effacé, purgé, ou sa machine est éteinte",
+        "en": "deleted, purged, or its machine is off"},
+    "page.media.reprendre_demande": {
+        "fr": "reprendre la demande",
+        "en": "reuse the request"},
+    "page.media.reprendre_demande.title": {
+        "fr": "le fichier n'existe plus : sa demande revient dans le champ, "
+              "à toi de la renvoyer",
+        "en": "the file is gone: its request goes back into the input, "
+              "for you to send again"},
+    "page.media.retoucher": {
+        "fr": "retoucher",
+        "en": "retouch"},
+    "page.media.retoucher.title": {
+        "fr": "joindre cette image au champ de saisie pour écrire sa retouche",
+        "en": "attach this image to the input to describe your retouch"},
+    "page.media.visio.aria": {
+        "fr": "visionneuse",
+        "en": "viewer"},
+    "page.media.visio.precedent": {
+        "fr": "rendu précédent (←)",
+        "en": "previous render (←)"},
+    "page.media.visio.suivant": {
+        "fr": "rendu suivant (→)",
+        "en": "next render (→)"},
+    # Des chiffres et une barre : la meme forme dans les deux langues. La cle
+    # existe pour qu'une langue qui l'ecrit autrement n'ait qu'a la poser.
+    "page.media.visio.compte": {
+        "fr": "{n} / {total}",
+        "en": "{n} / {total}"},
 
     # ── la barre laterale ───────────────────────────────────────────
     "page.conv.neuve": {
@@ -1014,6 +1099,53 @@ TEXTES = {
     "page.saisie.exemple": {
         "fr": "un renard dans les hautes herbes au coucher du soleil…",
         "en": "a fox in the tall grass at sunset…"},
+    # ── ronde 6 : la saisie — coller, le clavier, prevenir a la fin ──
+    # L'aide nomme la touche du clavier qu'on a sous les doigts : Cmd sur Mac,
+    # Ctrl ailleurs. Deux phrases entieres plutot qu'un « {touche} » : le signe
+    # « ⌘ » ne se lit pas comme un mot, et l'ordre change d'une langue a
+    # l'autre.
+    "page.saisie.aide": {
+        "fr": "Ctrl+Entrée envoie · Entrée va à la ligne · une image se colle "
+              "ou se dépose ici",
+        "en": "Ctrl+Enter sends · Enter starts a new line · paste or drop an "
+              "image here"},
+    "page.saisie.aide.mac": {
+        "fr": "⌘+Entrée envoie · Entrée va à la ligne · une image se colle "
+              "ou se dépose ici",
+        "en": "⌘+Enter sends · Enter starts a new line · paste or drop an "
+              "image here"},
+    # Le nom montre a cote de l'apercu d'une capture collee sans nom. Le
+    # serveur ne le garde pas : il ne lit que l'extension.
+    "page.saisie.colle.nom": {
+        "fr": "image collée",
+        "en": "pasted image"},
+    "page.saisie.prevenir": {
+        "fr": "me prévenir quand un rendu est fini",
+        "en": "notify me when a render is done"},
+    "page.saisie.prevenir.title": {
+        "fr": "Une notification du navigateur quand un rendu se termine "
+              "pendant que cet onglet est caché. La permission se demande "
+              "ici, au premier clic, jamais avant.",
+        "en": "A browser notification when a render finishes while this tab "
+              "is hidden. Permission is asked here, on the first click, never "
+              "before."},
+    "page.saisie.prevenir.refuse": {
+        "fr": "refusé par le navigateur — seul le titre de l'onglet préviendra",
+        "en": "blocked by the browser — only the tab title will tell you"},
+    "page.saisie.prevenir.https": {
+        "fr": "impossible en http — le navigateur ne notifie qu'en https ; "
+              "le titre de l'onglet préviendra",
+        "en": "not available over http — browsers only notify over https; "
+              "the tab title will tell you"},
+    "page.saisie.notif.fini": {
+        "fr": "Rendu terminé",
+        "en": "Render finished"},
+    "page.saisie.notif.erreur": {
+        "fr": "Le rendu n'a pas abouti",
+        "en": "The render did not complete"},
+    "page.saisie.notif.question": {
+        "fr": "Le studio te pose une question",
+        "en": "The studio has a question for you"},
     "page.brouillon.title": {
         "fr": "Un rendu au quart des étapes : quelques secondes au lieu de "
               "quelques minutes. De quoi juger le prompt, le moteur et "
@@ -1783,6 +1915,21 @@ TEXTES = {
     "page.acces.par_jour.champ": {
         "fr": "plafond par jour (0 = aucun)",
         "en": "daily cap (0 = none)"},
+    # Le plafond du jour de chaque famille, dans la fiche de la cle :
+    # « {famille} » est deja traduite (operation.*), c'est un humain qui lit.
+    "page.acces.par_famille": {
+        "fr": "{famille} : {aujourdhui} sur {plafond} aujourd'hui",
+        "en": "{famille}: {aujourdhui} of {plafond} today"},
+    "page.acces.par_famille.champ": {
+        "fr": "plafond par jour, famille par famille (0 = aucun)",
+        "en": "daily cap, family by family (0 = none)"},
+    "page.acces.par_famille.aide": {
+        "fr": "En plus du plafond par jour : « 50 détourages et 5 vidéos ». "
+              "Une vidéo prend des minutes de carte, un détourage des "
+              "secondes — un seul plafond ne les sépare pas.",
+        "en": "On top of the daily cap: “50 background removals and 5 "
+              "videos”. A video takes minutes of GPU time, a background "
+              "removal seconds — a single cap cannot tell them apart."},
     "page.acces.mdp.pourquoi": {
         "fr": "Ton mot de passe, et ton code si le second facteur est armé : "
               "une clé passe outre le second facteur pour toujours, elle ne "
@@ -1974,6 +2121,28 @@ TEXTES = {
     "page.devis.estime": {
         "fr": "≈ {mot}",
         "en": "≈ {mot}"},
+
+    # ── ronde 6 : l'avant / apres d'une retouche ────────────────────
+    # « avant » a gauche, « apres » a droite : le curseur devoile l'original
+    # par la gauche. La valeur annoncee dit DE QUOI est le pourcentage.
+    "page.appli.avant": {
+        "fr": "avant",
+        "en": "before"},
+    "page.appli.apres": {
+        "fr": "après",
+        "en": "after"},
+    "page.appli.avant.alt": {
+        "fr": "l’image d’origine, avant la retouche",
+        "en": "the original image, before the edit"},
+    "page.appli.comparer.aria": {
+        "fr": "Comparer avec l’image d’origine",
+        "en": "Compare with the original image"},
+    "page.appli.comparer.title": {
+        "fr": "glisser pour dévoiler l’image d’origine",
+        "en": "drag to reveal the original image"},
+    "page.appli.comparer.valeur": {
+        "fr": "{n} % de l’image d’origine visible",
+        "en": "{n}% of the original image visible"},
 
     # ══ LA PREMIERE MISE EN ROUTE ══════════════════════════════════════
     # UNE FAMILLE A ELLE, ET NON « page. ». banc_page.py exige qu'aucune cle

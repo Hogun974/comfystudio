@@ -1135,17 +1135,126 @@ try:
     jointe = d.get("image")
     poser_comfy(200, b"ma piece jointe", {"Content-Type": "image/png"})
     rep = lancer(demander(filename=jointe, type="input", pid=MOI))
-    dit(st == 200 and rep.status == 200 and len(RELAIS) == 1
-        and RELAIS[0]["params"]["type"] == "input",
+    # SUR LE DISQUE DU STUDIO, ET PLUS PAR LE RELAIS, depuis le 5 novembre
+    # 2026 (ronde 6, l'avant / apres) : le relais vers le /view d'un ComfyUI
+    # local ne trouvait rien sur le studio sans carte du reseau, ou il n'y a
+    # personne au bout. Ce cas exigeait jusque-la UN appel relaye.
+    _sur_disque = os.path.realpath(os.path.join(DOSSIER_ENTREE, jointe or "?"))
+    dit(st == 200 and rep.status == 200 and not RELAIS
+        and chemin_servi(rep) == _sur_disque
+        and rep.headers.get("X-Content-Type-Options") == "nosniff",
         "ce que J'AI televerse, je le relis par /api/fichier?type=input : les "
         "deux routes se tiennent, l'une depose et l'autre ressert",
-        f"HTTP {rep.status}")
+        f"HTTP {rep.status}, servi depuis {chemin_servi(rep)}, "
+        f"{len(RELAIS)} relais")
     poser_comfy()
     rep = lancer(demander(filename=jointe, type="input", pid=TOI))
     dit(rep.status == 404 and not RELAIS,
         "et le voisin ne le relit pas, alors que le fichier est bien la : "
         "ENTREES retient un PROPRIETAIRE, pas seulement un nom",
         f"HTTP {rep.status}")
+    poser_comfy()
+    rep = lancer(demander(filename=jointe, type="input", pid=MOI, compte="chef"))
+    dit(rep.status == 200 and chemin_servi(rep) == _sur_disque,
+        "un ADMINISTRATEUR relit sa propre piece jointe : sans elle, l'avant / "
+        "apres de sa retouche restait vide", f"HTTP {rep.status}")
+    poser_comfy()
+    rep = lancer(demander(filename=jointe, type="input", pid=TOI, compte="chef"))
+    dit(rep.status == 404 and not RELAIS,
+        "mais un administrateur ne relit pas la piece jointe d'un autre : ses "
+        "entrees a lui seulement", f"HTTP {rep.status}")
+
+    # ET LE DISQUE NE S'OUVRE QU'AU PROPRIETAIRE EXACT. La liste d'autorisation
+    # ne distingue pas « input » d'« output » : un nom de SORTIE a moi passe
+    # sa porte. Si la lecture sur disque se contentait d'elle, une sortie a moi
+    # homonyme d'une piece jointe du voisin ouvrirait le fichier du voisin.
+    st_t, d_t = lancer(televerser("sa-piece.png", b"la piece du voisin", pid=TOI))
+    jointe_toi = d_t.get("image") or "?"
+    conversation("homonyme", MOI, [{"filename": jointe_toi, "subfolder": ""}])
+    poser_comfy(200, b"relaye", {"Content-Type": "image/png"})
+    rep = lancer(demander(filename=jointe_toi, type="input", pid=MOI))
+    CONVERSATIONS.pop("homonyme", None)
+    dit(st_t == 200 and chemin_servi(rep) != os.path.realpath(
+            os.path.join(DOSSIER_ENTREE, jointe_toi)),
+        "une SORTIE a moi qui porte le nom d'une piece jointe du voisin "
+        "n'ouvre pas le fichier du voisin sur le disque : ENTREES decide, nom "
+        "par nom", f"servi depuis {chemin_servi(rep)}")
+
+    # ── le studio installable : le manifeste et ses icones ────────────
+    # Fabriques par appli.py et servis par deux routes. Le cas mesure ce que
+    # le NAVIGATEUR lira : un manifeste qui se lit, et chaque icone qu'il
+    # annonce, au bon type et a la bonne taille.
+    import struct as _struct  # noqa: E402
+
+    def cote_png(octets):
+        if not isinstance(octets, bytes) or octets[:8] != b"\x89PNG\r\n\x1a\n":
+            return None
+        return _struct.unpack(">II", octets[16:24])
+
+    async def appeler(nom_route, req):
+        route = du_studio(nom_route, None)
+        if route is None:
+            return Panne(f"{nom_route} n'existe pas dans ce serveur.py")
+        try:
+            return await route(req)
+        except Exception as souci:      # noqa: BLE001
+            return Panne(souci)
+
+    rep = lancer(appeler("api_manifeste", Req(chemin="/manifest.webmanifest")))
+    try:
+        man = json.loads(rep.text)
+    except Exception:       # noqa: BLE001
+        man = {}
+    dit(rep.status == 200 and getattr(rep, "content_type", "")
+        == "application/manifest+json" and man.get("display") == "standalone"
+        and man.get("start_url") == "/" and man.get("name"),
+        "/manifest.webmanifest rend un manifeste lisible, au type que le "
+        "navigateur attend", f"HTTP {rep.status}, "
+        f"{getattr(rep, 'content_type', '?')}, {sorted(man)[:6]}")
+    _icones_ko = []
+    _vus = set()
+    for ic in man.get("icons") or []:
+        nom_ic = str(ic.get("src", "")).rsplit("/", 1)[-1]
+        r_ic = lancer(appeler("api_icone", Req(match={"nom": nom_ic},
+                                                chemin=ic.get("src", ""))))
+        cote = cote_png(corps_de(r_ic))
+        attendu = tuple(int(v) for v in str(ic.get("sizes", "0x0")).split("x"))
+        if r_ic.status != 200 or cote != attendu \
+                or getattr(r_ic, "content_type", "") != "image/png":
+            _icones_ko.append(f"{nom_ic}={r_ic.status}/{cote}")
+        _vus.add((attendu[0], ic.get("purpose", "any")))
+    dit(not _icones_ko and {(192, "any"), (512, "any"),
+                            (512, "maskable")} <= _vus,
+        "chaque icone du manifeste est servie en PNG, a la taille annoncee — "
+        "192 et 512, plus une « maskable »", ", ".join(_icones_ko)
+        or ", ".join(f"{c}/{p}" for c, p in sorted(_vus)))
+    rep = lancer(appeler("api_icone", Req(match={"nom": "../serveur.py"})))
+    dit(rep.status == 404 and not corps_de(rep).startswith(b"#"),
+        "et un nom d'icone inconnu rend 404 : la route sert une LISTE, pas "
+        "un dossier", f"HTTP {rep.status}")
+
+    # ── ce que la bulle apprend a la fin d'une retouche ───────────────
+    # Le type et l'entree vivent sur le TOUR ; sans eux dans /api/etat, une
+    # retouche finie sous les yeux n'aurait son avant / apres qu'au
+    # rechargement suivant.
+    S.TACHES["t-etat-banc"] = {"etapes": [], "etat": "fini",
+                               "proprietaire": MOI, "conversation": "c-etat",
+                               "image": jointe}
+    CONVERSATIONS["c-etat"] = {"id": "c-etat", "proprietaire": MOI,
+                               "tours": [{"id": "t-etat-banc", "type": "edition",
+                                          "entree": jointe}]}
+    rep = lancer(appeler("api_etat", Req(match={"tid": "t-etat-banc"}, pid=MOI)))
+    S.TACHES.pop("t-etat-banc", None)
+    CONVERSATIONS.pop("c-etat", None)
+    try:
+        etat_ = json.loads(rep.text)
+    except Exception:       # noqa: BLE001
+        etat_ = {}
+    dit(rep.status == 200 and etat_.get("type") == "edition"
+        and etat_.get("entree") == jointe,
+        "/api/etat dit le TYPE du tour et son ENTREE : la page pose l'avant / "
+        "apres des la fin du rendu", f"HTTP {rep.status}, type="
+        f"{etat_.get('type')!r}, entree={etat_.get('entree')!r}")
 
     # LES INTERGICIELS, PARCE QUE C'EST LA QUE VIT LA GARDE. Les trois routes
     # ne verifient rien elles-memes : origine_verifiee et exiger_compte le font
@@ -1198,6 +1307,34 @@ try:
             "tandis que le service des scripts reste OUVERT sans compte, "
             "delibere : une machine neuve n'a encore aucun jeton",
             ", ".join(ouvertes) or "3 adresses ouvertes")
+
+        # LE MANIFESTE ET SES ICONES SONT OUVERTS AUSSI, et pour une raison du
+        # meme ordre : le navigateur les demande SANS cookie. Fermes, le studio
+        # ne s'installerait jamais en connexion obligatoire — et le refus
+        # serait muet, la console du navigateur seule le dirait.
+        _libres = sorted(getattr(du_studio("_appli", None),
+                                 "CHEMINS_LIBRES", ()) or ())
+        _fermes = []
+        for chemin in _libres:
+            rep = lancer(par("exiger_compte", Req(chemin=chemin)))
+            if rep.status != 200:
+                _fermes.append(f"{chemin}={rep.status}")
+        dit(len(_libres) >= 5 and "/manifest.webmanifest" in _libres
+            and not _fermes,
+            "le manifeste et les icones de l'appli s'ouvrent sans compte : le "
+            "navigateur les demande sans cookie",
+            ", ".join(_fermes) or f"{len(_libres)} adresses ouvertes")
+        # ET PAS UNE ADRESSE DE PLUS : des adresses EXACTES, pas un prefixe.
+        # « /icones/ » ouvert en prefixe ouvrirait tout ce qu'on y ajoutera.
+        _voisines = []
+        for chemin in ("/icones/autre.png", "/icones/", "/manifest.webmanifest/x",
+                       "/manifest.json"):
+            rep = lancer(par("exiger_compte", Req(chemin=chemin)))
+            if rep.status != 401:
+                _voisines.append(f"{chemin}={rep.status}")
+        dit(not _voisines,
+            "et leurs voisines restent fermees : la liste est faite d'adresses "
+            "exactes, pas d'un prefixe", ", ".join(_voisines) or "4 refus 401")
     finally:
         S.AUTH = vrai_auth
 

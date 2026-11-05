@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Le contrat OpenAPI du pilotage par programme : /api/v1/* et /mcp.
+"""Le contrat OpenAPI du pilotage par programme : /api/v1/*, /mcp, /openai/v1/*.
+
+LES ROUTES COMPATIBLES OPENAI Y SONT, et dans leur propre forme. Elles parlent
+le format d'OpenAI (corps, reponse, erreur « error »), pas celui de Refus : un
+client OpenAI n'a que faire de ce document, mais un outil qui l'importe — n8n,
+un generateur — doit savoir qu'elles existent, et banc_contrat.py doit pouvoir
+les confronter au routeur comme les autres. D'ou leurs schemas « OpenAI* » a
+part, et leur table de codes, CODES_OPENAI.
 
 POURQUOI CE MODULE EXISTE. Un assistant IA qu'on branche sur une API, un
 outil qui importe une description d'API (Postman, Insomnia, un generateur de
@@ -69,6 +76,13 @@ TYPES_FICHIER = ("image", "video", "audio", "objet3d", "autre")
 OUTILS_MCP = ("generer_rendu", "etat_rendu", "repondre_question",
               "annuler_rendu", "lister_rendus", "lister_moteurs",
               "decrire_cle")
+# La compatibilite OpenAI, recopiee de serveur.py comme le reste.
+PREFIXE_OPENAI = "/openai/v1/"
+ATTENDRE_OPENAI = 540
+FORMATS_OPENAI = ("url", "b64_json")
+MODELE_STUDIO = "comfystudio"
+QUALITES_OPENAI = ("low", "medium", "auto", "standard", "high", "hd",
+                   "xhigh", "max")
 
 # ── Les refus qui portent un code ───────────────────────────────────────
 # Le code est la cle de traductions.py sans sa famille (refus_programme). Il
@@ -83,8 +97,9 @@ REFUS = {
                          "réessayer : demander une clé neuve."),
     "cle_expiree": (401, "La clé a passé sa date de fin. Ne pas réessayer : "
                          "en créer une autre depuis la page."),
-    "cle_hors_perimetre": (403, "Une clé d'accès présentée hors de /api/v1 et "
-                                "/mcp. Elle n'y vaut rien, jamais."),
+    "cle_hors_perimetre": (403, "Une clé d'accès présentée hors de /api/v1, "
+                                "/openai/v1 et /mcp. Elle n'y vaut rien, "
+                                "jamais."),
     "trop_d_essais": (429, "Trop de clés refusées depuis cette adresse : "
                            "attendre le nombre de secondes annoncé."),
     "corps_illisible": (400, "Le corps n'est pas un objet JSON."),
@@ -98,6 +113,13 @@ REFUS = {
                                 "attendre."),
     "cle_plafond_jour": (429, "La clé a atteint son plafond « par_jour » : "
                               "rien ne passera avant minuit, heure du studio."),
+    "cle_plafond_famille": (429, "Le moteur imposé est d'une famille qui a "
+                                 "atteint son plafond du jour (champ "
+                                 "« par_jour_familles ») : rien de cette "
+                                 "famille avant minuit, les autres passent. "
+                                 "Sans moteur imposé, le même refus arrive "
+                                 "après l'analyse, comme rendu en « erreur » "
+                                 "de même code."),
     "champ_illisible": (400, "Un champ n'a pas la forme attendue ; la phrase "
                              "le nomme."),
     "rappel_refuse": (400, "L'adresse de rappel est refusée : hôte non déclaré "
@@ -150,6 +172,26 @@ REFUS_COMMUNS = {
     "aucun_fichier": (400, "Formulaire sans champ qui porte un nom de fichier."),
     "format_refuse": (400, "Extension hors des familles acceptées ; la phrase "
                            "les liste."),
+}
+
+# LES CODES PROPRES A LA COMPATIBILITE OPENAI. Les routes /openai/v1/ rendent
+# aussi tout code des deux tables ci-dessus (une cle refusee, un plafond, le
+# garde-fou), dans « error.code ». Ceux-ci n'existent que la : une route
+# synchrone a des issues que /api/v1/rendus rend en etat. banc_contrat.py les
+# releve dans serveur.py, dans les deux sens.
+CODES_OPENAI = {
+    "flux_refuse": (400, "« stream » demandé : le studio ne diffuse pas "
+                         "d'images partielles."),
+    "attentes_pleines": (429, "La clé attend déjà autant de rendus que permis "
+                              "en même temps : réessayer après Retry-After."),
+    "delai_depasse": (504, f"Le rendu n'est pas fini au bout de "
+                           f"{ATTENDRE_OPENAI} s ; il continue, l'identifiant "
+                           f"est dans le message. X-Should-Retry: false."),
+    "question": (400, "Le studio demande une précision ; elle est dans le "
+                      "message. Reformuler la demande."),
+    "sans_image": (500, "Le rendu a abouti sans produire d'image."),
+    "panne": (500, "Une panne du studio sur cette demande ; non rejouée "
+                   "(X-Should-Retry: false)."),
 }
 
 _REF = "#/components/"
@@ -223,6 +265,7 @@ def _schemas():
                              "description": "« annule », ou la raison : "
                                             "« refus_mineurs », "
                                             "« cle_operation_interdite », "
+                                            "« cle_plafond_famille », "
                                             "« moteur_nulle_part »… ; "
                                             "« echec » pour une panne sans "
                                             "phrase, « inconnue » à défaut."},
@@ -271,8 +314,9 @@ def _schemas():
                 "type": "integer", "minimum": 1,
                 "description": "Sur un 429 seulement : les secondes avant de "
                                "réessayer, comme l'en-tête Retry-After. "
-                               "Exactes pour trop_d_essais et "
-                               "cle_plafond_jour (minuit) ; un conseil pour "
+                               "Exactes pour trop_d_essais, "
+                               "cle_plafond_jour et cle_plafond_famille "
+                               "(minuit) ; un conseil pour "
                                "une file pleine. ABSENT quand attendre ne "
                                "servirait à rien : plus de variantes que le "
                                "plafond lui-même."},
@@ -385,6 +429,16 @@ def _schemas():
                                           "« cle_operation_interdite »), et "
                                           "GET /api/v1/moteurs ne le montre "
                                           "pas."},
+            "par_jour_familles": {
+                "type": "object",
+                "propertyNames": {"enum": list(_acces.OPERATIONS)},
+                "additionalProperties": {"type": "integer", "minimum": 1,
+                                         "maximum": _acces.PAR_JOUR_MAX},
+                "description": "Le plafond du jour de chaque famille bornée, "
+                               "en plus de « par_jour » ; vide : aucun. "
+                               "Atteint : 429 « cle_plafond_famille » (ou "
+                               "rendu en erreur de ce code, sans moteur "
+                               "imposé)."},
         },
     }
     evenement = {
@@ -420,6 +474,18 @@ def _schemas():
                 "cle": _ref("schemas", "Cle"),
                 "en_cours": {"type": "integer"},
                 "aujourdhui": {"type": "integer"},
+                "par_famille": {
+                    "type": "object",
+                    "description": "Pour chaque famille de "
+                                   "« par_jour_familles » : ses rendus du "
+                                   "jour, son plafond, ce qui reste avant "
+                                   "minuit.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "aujourdhui": {"type": "integer", "minimum": 0},
+                            "plafond": {"type": "integer", "minimum": 1},
+                            "reste": {"type": "integer", "minimum": 0}}}},
                 "attendre_max": {"type": "integer"},
             }},
         "ListeRendus": {
@@ -510,7 +576,8 @@ def _reponses():
                 "description": "Bearer realm=\"comfystudio\""}},
             "content": _json(_ref("schemas", "Refus"))},
         "Freine": dict(refus, description="trop_d_essais, cle_file_pleine, "
-                                          "cle_file_variantes, cle_plafond_jour.",
+                                          "cle_file_variantes, cle_plafond_jour, "
+                                          "cle_plafond_famille.",
                        headers={"Retry-After": {
                            "schema": {"type": "integer", "minimum": 1},
                            "description": "Secondes avant de réessayer "
@@ -735,6 +802,176 @@ def _rappel():
         "responses": {"200": {"description": "Tout 2xx vaut livré."}}}}}
 
 
+def _schemas_openai():
+    """Les formes d'OpenAI, relues dans le SDK openai-python (types
+    image_generate_params, images_response, image, model) le 5 novembre 2026.
+    Seuls les champs que le studio LIT sont decrits ; les autres (style, user,
+    background, moderation, output_format…) sont acceptes et ignores."""
+    nul = ["string", "null"]
+    codes = "\n".join(f"| `{c}` | {s} | {q} |" for c, (s, q) in CODES_OPENAI.items())
+    return {
+        "OpenAIDemandeImages": {
+            "type": "object", "required": ["prompt"],
+            "description": "Le corps de POST /images/generations d'OpenAI. Les "
+                           "champs non décrits ici sont acceptés et ignorés.",
+            "properties": {
+                "prompt": {"type": "string", "maxLength": DEMANDE_MAX,
+                           "description": "La demande, dans sa langue : le "
+                                          "studio l'analyse comme une demande "
+                                          "de la page."},
+                "model": {"type": "string",
+                          "description": "Un moteur d'image de GET "
+                                         "/openai/v1/models. Tout autre nom "
+                                         "(dall-e-3, gpt-image-1, "
+                                         f"« {MODELE_STUDIO} ») est ignoré : "
+                                         "le studio choisit."},
+                "n": {"type": "integer", "minimum": 1, "maximum": VARIANTES_MAX,
+                      "default": 1,
+                      "description": "Des variantes : chacune compte dans les "
+                                     "plafonds de la clé."},
+                "size": {"type": "string",
+                         "description": "« LARGEURxHAUTEUR » ou « auto ». "
+                                        "Ramenée à la plus proche de : "
+                                        + ", ".join(TAILLES)
+                                        + " (le cadrage d'abord)."},
+                "response_format": {"type": "string", "enum": list(FORMATS_OPENAI),
+                                    "description": "Défaut : url pour un "
+                                                   "modèle « dall-e-* », "
+                                                   "b64_json sinon."},
+                "quality": {"type": "string", "enum": list(QUALITES_OPENAI),
+                            "description": "low : rapide ; high, hd, xhigh, "
+                                           "max : soigné ; le reste : défaut. "
+                                           "Une autre valeur est ignorée."},
+                "stream": {"type": "boolean", "enum": [False],
+                           "description": "true est refusé (flux_refuse)."},
+            }},
+        "OpenAIImages": {
+            "type": "object", "required": ["created", "data"],
+            "properties": {
+                "created": {"type": "integer",
+                            "description": "Horodatage Unix de la demande."},
+                "data": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "b64_json": {"type": "string",
+                                     "description": "L'image en base64."},
+                        "url": {"type": "string",
+                                "description": f"Un lien signé absolu, "
+                                               f"valable {LIEN_DUREE // 3600} h, "
+                                               f"sans en-tête — aussi le "
+                                               f"repli d'un base64 trop lourd."},
+                        "revised_prompt": {"type": nul,
+                                           "description": "Le prompt que le "
+                                                          "studio a rendu."}}}}}},
+        "OpenAIErreur": {
+            "type": "object", "required": ["error"],
+            "description": (
+                "L'erreur au format d'OpenAI, que le SDK lit par "
+                "body.get(\"error\", body). « code » est un code stable du "
+                "studio : ceux de Refus, ou ceux-ci, propres à ces routes :\n\n"
+                "| code | statut | ce que le client en fait |\n|---|---|---|\n"
+                + codes + "\n\nUn rendu en erreur rend 500 avec le code de sa "
+                "panne, sauf cle_operation_interdite (400 : l'analyse y a lu "
+                "autre chose qu'une image) et refus_mineurs (422)."),
+            "properties": {"error": {
+                "type": "object", "required": ["message", "type", "param", "code"],
+                "properties": {
+                    "message": {"type": "string"},
+                    "type": {"type": "string",
+                             "enum": ["invalid_request_error",
+                                      "authentication_error",
+                                      "permission_error", "not_found_error",
+                                      "rate_limit_error", "server_error"]},
+                    "param": {"type": nul},
+                    "code": {"type": nul}}}}},
+        "OpenAIModeles": {
+            "type": "object",
+            "properties": {
+                "object": {"type": "string", "enum": ["list"]},
+                "data": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "object": {"type": "string", "enum": ["model"]},
+                        "created": {"type": "integer"},
+                        "owned_by": {"type": "string"}}}}}},
+    }
+
+
+def _chemins_openai():
+    """Les trois routes compatibles OpenAI. La base a donner au client est
+    « <studio>/openai/v1 » : il y ajoute lui-meme « /images/generations »."""
+    err = {"content": _json(_ref("schemas", "OpenAIErreur"))}
+
+    def erreurs(*statuts):
+        rep = {"401": dict(err, description="Clé absente, refusée ou expirée "
+                                            "(WWW-Authenticate)."),
+               "429": dict(err, description="Un plafond de la clé, ou trop "
+                                            "d'attentes. Retry-After quand un "
+                                            "délai a un sens ; X-Should-Retry: "
+                                            "false quand réessayer ne sert à "
+                                            "rien.",
+                           headers={"X-Should-Retry": {"schema": {
+                                        "type": "string", "enum": ["false"]}},
+                                    "Retry-After": {"schema": {"type": "integer"}}}),
+               "500": dict(err, description="Panne ou rendu en erreur ; "
+                                            "X-Should-Retry: false.")}
+        for s in statuts:
+            rep[str(s)] = dict(err, description="Refusé : lire error.code.")
+        return rep
+    images = {"200": {"description": "Le rendu fini.",
+                      "content": _json(_ref("schemas", "OpenAIImages"))},
+              "504": dict(err, description="delai_depasse : le rendu continue.")}
+    commun = (f"Synchrone : la réponse attend la fin du rendu, au plus "
+              f"{ATTENDRE_OPENAI} s (sous les 600 s du SDK openai). Mêmes "
+              f"gardes que POST /api/v1/rendus : plafonds de la clé, nuage, "
+              f"garde-fou, Idempotency-Key. La clé doit permettre la famille "
+              f"de la route, et la tâche y est restreinte : une demande que "
+              f"l'analyse lit comme une vidéo est arrêtée avant toute carte.")
+    return {
+        PREFIXE_OPENAI + "images/generations": {"post": {
+            "operationId": "openaiGenererImages",
+            "summary": "Compatible OpenAI : créer des images",
+            "description": commun + " Famille « image ».",
+            "parameters": [_ref("parameters", "IdempotencyKey")],
+            "requestBody": {"required": True,
+                            "content": _json(_ref("schemas", "OpenAIDemandeImages"))},
+            "responses": dict(erreurs(400, 403, 422), **images)}},
+        PREFIXE_OPENAI + "images/edits": {"post": {
+            "operationId": "openaiRetoucherImage",
+            "summary": "Compatible OpenAI : retoucher une image",
+            "description": commun + (" Famille « retouche ». Une seule image "
+                                     "est retouchée (la première de « image » "
+                                     "ou « image[] ») ; « mask » est ignoré, "
+                                     "« n » et « size » aussi."),
+            "parameters": [_ref("parameters", "IdempotencyKey")],
+            "requestBody": {"required": True, "content": {
+                "multipart/form-data": {"schema": {
+                    "type": "object", "required": ["image", "prompt"],
+                    "properties": {
+                        "image": {"type": "string", "contentMediaType":
+                                  "application/octet-stream",
+                                  "description": "png, jpeg ou webp ; le type "
+                                                 "est lu dans l'en-tête de la "
+                                                 "partie, puis l'extension."},
+                        "prompt": {"type": "string"},
+                        "model": {"type": "string"},
+                        "response_format": {"type": "string",
+                                            "enum": list(FORMATS_OPENAI)},
+                        "quality": {"type": "string"}}}}}},
+            "responses": dict(erreurs(400, 403, 413, 422), **images)}},
+        PREFIXE_OPENAI + "models": {"get": {
+            "operationId": "openaiListerModeles",
+            "summary": "Compatible OpenAI : les moteurs d'image de la clé",
+            "description": f"« {MODELE_STUDIO} » en tête (le choix du studio), "
+                           f"puis les moteurs d'image et de retouche présents "
+                           f"que la clé peut faire tourner.",
+            "responses": dict(erreurs(), **{
+                "200": {"description": "La liste.",
+                        "content": _json(_ref("schemas", "OpenAIModeles"))}})}},
+    }
+
+
 def document(base: str = "") -> dict:
     """Le document OpenAPI 3.1, neuf a chaque appel.
 
@@ -753,15 +990,17 @@ def document(base: str = "") -> dict:
                 "retouches) à un studio ComfyStudio depuis un programme : n8n, "
                 "un assistant IA, un script. Une clé d'accès par programme, "
                 "créée par son propriétaire dans la page (mot de passe et "
-                "second facteur). La clé ne vaut que sur /api/v1 et /mcp, "
-                "jamais pour l'administration, et ne voit que les rendus "
-                "qu'elle a demandés. Documentation : "
+                "second facteur). La clé ne vaut que sur /api/v1, /openai/v1 "
+                "et /mcp, jamais pour l'administration, et ne voit que les "
+                "rendus qu'elle a demandés. /openai/v1 parle le format de "
+                "l'API d'images d'OpenAI, pour Open WebUI, LibreChat ou un "
+                "SDK openai (base « <studio>/openai/v1 »). Documentation : "
                 "docs/piloter-par-programme.md."),
             "license": {"name": "AGPL-3.0-only",
                         "identifier": "AGPL-3.0-only"},
         },
         "security": [{"bearerAuth": []}],
-        "paths": _chemins(),
+        "paths": dict(_chemins(), **_chemins_openai()),
         "webhooks": _rappel(),
         "components": {
             "securitySchemes": {"bearerAuth": {
@@ -772,7 +1011,7 @@ def document(base: str = "") -> dict:
                                "Une clé qui a une date de fin la rappelle "
                                "sur chaque réponse, dans l'en-tête "
                                "X-ComfyStudio-Cle-Expire (RFC 3339)."}},
-            "schemas": _schemas(),
+            "schemas": dict(_schemas(), **_schemas_openai()),
             "parameters": _parametres(),
             "responses": _reponses(),
         },

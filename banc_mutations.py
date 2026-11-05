@@ -427,9 +427,12 @@ BESOINS = {
     # de MENU_REGLAGE et CLE_REGLAGE, dont la derive a fait perdre un reglage
     # pendant des jours. Le fichier est ouvert sous try la-bas : sans lui le
     # banc ROUGIT sur un cas nomme au lieu de mourir.
+    # appli.py DEPUIS LA RONDE 6 : banc_page.py l'IMPORTE pour relire le
+    # manifeste et chaque icone pixel par pixel. Bibliotheque standard seule,
+    # comme traductions.py.
     "banc_page.py": ["banc_page.py", "web/index.html", "web/demarrage.html",
                      "web/admin.html", "traductions.py", "serveur.py",
-                     "acces.py"],
+                     "acces.py", "appli.py"],
     # LE SEUL BANC AVEC banc_page.py A LIRE DEUX MONDES : comptes.py qu'il
     # IMPORTE (et mfa.py avec lui, que comptes.py importe en tete), et
     # serveur.py qu'il LIT par l'arbre de syntaxe pour la derniere section — un
@@ -494,6 +497,9 @@ BESOINS = {
     # Il importe serveur.py et rien d'autre du depot : tout ce que serveur.py
     # tire derriere lui (acces, rappels, mcp, contrat, comptes, traductions…).
     "banc_pilotage.py": ["banc_pilotage.py"] + fichiers_du_conteneur(),
+    # La porte compatible OpenAI : il importe serveur.py et rien d'autre du
+    # depot, comme banc_pilotage.py, et lance S.app() sur 127.0.0.1.
+    "banc_openai.py": ["banc_openai.py"] + fichiers_du_conteneur(),
     # agent_noeud.py N'ETAIT COPIE PAR AUCUN BANC, et c'est ce qui rendait
     # PERIMEES les deux mutations qui le visaient — « MUTATION PERIMEE,
     # agent_noeud.py n'est pas copie pour banc_repartition.py ». Aucune de ses
@@ -7218,8 +7224,8 @@ FICHIERS = [
                "de tout le monde »",
          rougit="un compte ORDINAIRE, lui, ne voit rien de plus qu'un visiteur",
          editions=[("serveur.py",
-                    brut("permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(qui(req))",
-                    "permis = tous_les_fichiers()"))]),
+                    brut("permis = ((tous_les_fichiers() | mes_fichiers(qui(req))) if est_admin(req)" + chr(10) + "              else mes_fichiers(qui(req)))",
+                    "permis = (tous_les_fichiers()" + chr(10) + "              )"))]),
 
     dict(nom="l'administrateur ne voit plus que ses propres fichiers",
          banc="banc_fichiers.py",
@@ -7227,8 +7233,8 @@ FICHIERS = [
                "l'oubli que tous_les_fichiers() a ete ecrite pour reparer",
          rougit="un administrateur relit la production de tout le monde",
          editions=[("serveur.py",
-                    brut("permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(qui(req))",
-                    "permis = mes_fichiers(qui(req))"))]),
+                    brut("permis = ((tous_les_fichiers() | mes_fichiers(qui(req))) if est_admin(req)" + chr(10) + "              else mes_fichiers(qui(req)))",
+                    "permis = (mes_fichiers(qui(req))" + chr(10) + "              )"))]),
 
     dict(nom="l'appartenance du fichier n'est plus verifiee",
          banc="banc_fichiers.py",
@@ -7287,8 +7293,9 @@ FICHIERS = [
                "l'extension ne promet pas, sur l'origine du studio",
          rougit="et avec « nosniff »",
          editions=[("serveur.py",
-                    brut('headers={"X-Content-Type-Options": "nosniff"})',
-                    "headers={})"))]),
+                    brut('headers={"X-Content-Type-Options": "nosniff"})'
+                         + chr(10) + "    if est_agent(ident):",
+                         "headers={})" + chr(10) + "    if est_agent(ident):"))]),
 
     dict(nom="un agent muet est quand meme rappele par le reseau",
          banc="banc_fichiers.py",
@@ -12301,9 +12308,9 @@ EXPIRATION = [
         editions=[("serveur.py", brut(
             '                          par_jour=d.get("par_jour", 0),' + chr(10)
             + '                          expire_jours=d.get("expire_jours", 0),' + chr(10)
-            + '                          operations=d.get("operations"))',
+            + '                          operations=d.get("operations"),',
             '                          par_jour=d.get("par_jour", 0),' + chr(10)
-            + '                          operations=d.get("operations"))'))]),
+            + '                          operations=d.get("operations"),'))]),
     dict(
         nom="le contrat ne decrit pas la date de fin",
         banc="banc_contrat.py",
@@ -12396,8 +12403,8 @@ REESSAI = [
               "les trente secondes jusqu'a minuit",
         rougit="et Retry-After compte jusqu'a minuit",
         editions=[("serveur.py", brut(
-            '    if code == "cle_plafond_jour":' + chr(10)
-            + "        return secondes_avant_minuit()" + chr(10), ""))]),
+            '    if code in ("cle_plafond_jour", "cle_plafond_famille"):',
+            '    if code in ("cle_plafond_famille",):'))]),
     dict(
         nom="minuit compte a partir d'aujourd'hui",
         banc="banc_pilotage.py",
@@ -12532,8 +12539,10 @@ USAGE_CLES = [
         editions=[("serveur.py", brut(
             '                 en_cours=_en_cours_de_cle(f["id"]),' + chr(10)
             + '                 aujourdhui=_lances_aujourdhui(f["id"]),' + chr(10)
+            + '                 par_famille=par_famille_de(f),' + chr(10)
             + "                 # Ses refus du jour",
-            "                 # Ses refus du jour"))]),
+            '                 par_famille=par_famille_de(f),' + chr(10)
+            + "                 # Ses refus du jour"))]),
     dict(
         nom="l'administration ne dit pas les lancements du jour",
         banc="banc_pilotage.py",
@@ -12639,8 +12648,8 @@ OPERATIONS_CLE = [
             "                        and (x.get(\"operations\") is None" + chr(10)
             + "                             or (isinstance(x[\"operations\"], list)" + chr(10)
             + "                                 and all(isinstance(o, str) and o in OPERATIONS" + chr(10)
-            + "                                         for o in x[\"operations\"])))):",
-            "                        ):"))]),
+            + "                                         for o in x[\"operations\"])))" + chr(10),
+            "                        and True" + chr(10)))]),
     dict(
         nom="les familles gardent l'ordre et les doublons de la requete",
         banc="banc_acces.py",
@@ -12668,8 +12677,8 @@ OPERATIONS_CLE = [
         rougit="POST /api/compte/acces transmet « operations » a la cle",
         editions=[("serveur.py", brut(
             "                          expire_jours=d.get(\"expire_jours\", 0)," + chr(10)
-            + "                          operations=d.get(\"operations\"))",
-            "                          expire_jours=d.get(\"expire_jours\", 0))"))]),
+            + "                          operations=d.get(\"operations\"),",
+            "                          expire_jours=d.get(\"expire_jours\", 0),"))]),
     dict(
         nom="le moteur impose n'est pas compare a ce que la cle permet",
         banc="banc_pilotage.py",
@@ -12690,8 +12699,8 @@ OPERATIONS_CLE = [
         rougit="temoin : un moteur d'image passe, et la tache comme son entree de file",
         editions=[("serveur.py", brut(
             "              \"base\": base_publique(req), \"langue\": lg," + chr(10)
-            + "              \"operations\": list(ops)}",
-            "              \"base\": base_publique(req), \"langue\": lg}"))]),
+            + "              \"operations\": list(ops),",
+            "              \"base\": base_publique(req), \"langue\": lg,"))]),
     dict(
         nom="executer ne verifie pas l'operation apres l'analyse",
         banc="banc_pilotage.py",
@@ -12781,8 +12790,8 @@ OPERATIONS_CLE = [
             "                               expire_jours: Number(f.expire_jours.value)," + chr(10)
             + "                               operations: Array.from(" + chr(10)
             + "                                 corps.querySelectorAll('input[name=\"operation\"]:checked')," + chr(10)
-            + "                                 x => x.value) }) });",
-            "                               expire_jours: Number(f.expire_jours.value) }) });"))]),
+            + "                                 x => x.value),",
+            "                               expire_jours: Number(f.expire_jours.value),"))]),
     dict(
         nom="les cases sont relues sous un autre nom",
         banc="banc_page.py",
@@ -13172,9 +13181,9 @@ OLLAMA_DEGENERE = [
         rougit="le fil de la demande le dit",
         editions=[("serveur.py", brut(
             chr(10) + '    journal(tid, f"{modele} sur {titre} a rendu {quoi} '
-            'sans erreur — "' + chr(10),
+            '— "' + chr(10),
             chr(10) + '    print(tid, f"{modele} sur {titre} a rendu {quoi} '
-            'sans erreur — "' + chr(10)))]),
+            '— "' + chr(10)))]),
     dict(
         nom="la trace de la console n'est plus bornee",
         banc="banc_cerveaux.py",
@@ -13444,6 +13453,1578 @@ SUIVI_CLES = [
 ]
 
 
+# ── Un modele que le dechargement ne repare pas (ronde 5, 5 novembre 2026) ──
+# Journal d'Ollama 0.40.14 sur le PC : qwen2.5vl:7b sort « @ » des le premier
+# jeton ; avec « format », 200 {"response": "", "done": false} ; sans, 500
+# « token repeat limit reached ». Le meme modele frais recommence. Chaque
+# mutation retire une piece : reconnaitre les deux formes, mettre de cote au
+# second echec, passer a cote sans attendre la carte, un seul essai a la fin,
+# la meme regle par l'agent, le dire, et les bornes.
+QUARANTAINE_MODELES = [
+    dict(
+        nom="la repetition coupee redevient une panne",
+        banc="banc_cerveaux.py",
+        imite="l'etat d'avant : le 500 « token repeat limit » leve une "
+              "RuntimeError ordinaire, part a la machine suivante puis au "
+              "detour par l'agent du PC — le meme modele —, jamais decharge",
+        rougit="500 « token repeat limit reached » : ReponseDegeneree",
+        editions=[("serveur.py", brut(
+            "                elif _repetition_coupee(brut_):",
+            "                elif False:"))]),
+    dict(
+        nom="la boucle ne lit plus la coupure",
+        banc="banc_cerveaux.py",
+        imite="l'exception levee mais personne pour la reconnaitre : elle "
+              "tombe dans le « except » general de la boucle, comme une panne",
+        rougit="un 500 « token repeat limit » est une reponse degeneree",
+        editions=[("serveur.py", brut(
+            "    except ReponseDegeneree:",
+            "    except ZeroDivisionError:"))]),
+    dict(
+        nom="la coupure dite en 200 ecarte le modele",
+        banc="banc_cerveaux.py",
+        imite="le champ « error » lu comme un chargement impossible : un "
+              "modele qui marche la plupart du temps est interdit jusqu'au "
+              "redemarrage",
+        rougit="la meme coupure dite en 200 avec « error » n'ecarte pas le modele",
+        editions=[("serveur.py", brut(
+            '            if not rep_.strip() and _repetition_coupee(str(d.get("error") or "")):',
+            "            if False:"))]),
+    dict(
+        nom="toute erreur prise pour une coupure",
+        banc="banc_cerveaux.py",
+        imite="un tri trop large : un modele qui ne se charge pas est decharge "
+              "et retente au lieu d'etre ecarte",
+        rougit="un 200 avec « error » de chargement aussi",
+        editions=[("serveur.py", brut(
+            '    return "token repeat limit" in (texte or "").lower()',
+            "    return True"))]),
+    dict(
+        nom="un 200 done false pris pour un modele casse",
+        banc="banc_cerveaux.py",
+        imite="« done: false » lu comme un echec de chargement : le modele de "
+              "vision du PC ecarte pour toujours sur une grammaire qui a "
+              "rejete un « @ »",
+        rougit="200 {model: \"\", response: \"\", done: false} : un vide",
+        editions=[("serveur.py", brut(
+            '            if not rep_.strip() and d.get("error"):',
+            '            if not rep_.strip() and (d.get("error") or d.get("done") is False):'))]),
+    dict(
+        nom="le seuil de la mise de cote ne se franchit jamais",
+        banc="banc_cerveaux.py",
+        imite="la quarantaine ecrite et jamais declenchee : chaque analyse "
+              "repaie cinq a dix secondes sur le meme modele, toute la journee",
+        rougit="degenere encore APRES le dechargement",
+        editions=[("serveur.py", brut(
+            "SEUIL_QUARANTAINE = 2", "SEUIL_QUARANTAINE = 99"))]),
+    dict(
+        nom="un seul echec met de cote",
+        banc="banc_cerveaux.py",
+        imite="la quarantaine au premier vide : le modele resident corrompu du "
+              "4 novembre, que le dechargement reparait, perd quinze minutes",
+        rougit="une reponse VIDE sans erreur est retentee une fois",
+        editions=[("serveur.py", brut(
+            "SEUIL_QUARANTAINE = 2", "SEUIL_QUARANTAINE = 1"))]),
+    dict(
+        nom="la reprise apres dechargement n'est pas comptee",
+        banc="banc_cerveaux.py",
+        imite="le cas mesure oublie : decharge, recharge, le meme « @ », et "
+              "rien ne le retient",
+        rougit="degenere encore APRES le dechargement",
+        editions=[("serveur.py", brut(
+            '                        reprise_["quarantaine"] = _compter_degenere(' + chr(10)
+            + "                            url, modele_ici, titre_ol, tid)",
+            "                        pass"))]),
+    dict(
+        nom="la mise de cote attend la carte",
+        banc="banc_cerveaux.py",
+        imite="le test fait apres l'attente du verrou : l'analyse attend la fin "
+              "d'un rendu pour sauter un modele qu'elle savait ne pas employer",
+        rougit="mis de cote, le modele du PC n'est plus interroge",
+        editions=[("serveur.py", brut(
+            "        if en_quarantaine(url, modele_q):",
+            "        if False:"))]),
+    dict(
+        nom="l'essai se prend deux fois",
+        banc="banc_cerveaux.py",
+        imite="la duree passee, toute la rafale de la demande repart sur le "
+              "modele : chaque appel se croit l'essai",
+        rougit="la duree passee, UN appel d'essai",
+        editions=[("serveur.py", brut(
+            '    if q["fin"] > time.time() or q["essai"]:',
+            '    if q["fin"] > time.time():'))]),
+    dict(
+        nom="pendant l'essai le modele est ouvert",
+        banc="banc_cerveaux.py",
+        imite="la fin de la mise de cote lue seule : pendant que l'essai est "
+              "en vol, les autres appels reviennent sur le modele",
+        rougit="la duree passee, UN appel d'essai",
+        editions=[("serveur.py", brut(
+            '    return bool(q) and (q["fin"] > time.time() or q["essai"])',
+            '    return bool(q) and q["fin"] > time.time()'))]),
+    dict(
+        nom="l'essai reussi ne remet pas en service",
+        banc="banc_cerveaux.py",
+        imite="la mise de cote qui ne se leve jamais : chaque appel devient un "
+              "essai, et la console montre de cote un modele qui repond",
+        rougit="l'essai repond : le modele est remis en service",
+        editions=[("serveur.py", brut(
+            "            if essai_ and not forme_:" + chr(10)
+            + "                _lever_quarantaine(url, modele_q, tid, titre_ol)",
+            "            pass"))]),
+    dict(
+        nom="l'essai degenere n'est pas remis de cote",
+        banc="banc_cerveaux.py",
+        imite="l'essai juge sur le compte de la fenetre, qui a tout oublie "
+              "en quinze minutes : decharge, retente, rafale",
+        rougit="l'essai degenere : PAS de reprise au meme endroit",
+        editions=[("serveur.py", brut(
+            '    if not (q and q["essai"]) and len(vus) < SEUIL_QUARANTAINE:',
+            "    if len(vus) < SEUIL_QUARANTAINE:"))]),
+    dict(
+        nom="un modele mis de cote est retente au meme endroit",
+        banc="banc_cerveaux.py",
+        imite="la branche de la reprise qui ne regarde que le dechargement : "
+              "le modele qu'on vient de mettre de cote est rappele aussitot",
+        rougit="l'essai degenere : PAS de reprise au meme endroit",
+        editions=[("serveur.py", brut(
+            '                elif trace_["quarantaine"]:',
+            "                elif False:"))]),
+    dict(
+        nom="l'essai interrompu reste pris",
+        banc="banc_cerveaux.py",
+        imite="un delai pendant l'essai, et le modele reste de cote pour "
+              "toujours derriere un essai que personne ne finira",
+        rougit="un essai qui tombe en panne est rendu",
+        editions=[("serveur.py", brut(
+            "            if essai_:" + chr(10)
+            + "                _rendre_essai(url, modele_q)",
+            "            pass"))]),
+    dict(
+        nom="la mise de cote dure dix fois trop",
+        banc="banc_cerveaux.py",
+        imite="une duree non bornee : un modele repare a la main reste "
+              "ecarte jusqu'au redemarrage du studio",
+        rougit="est mis de cote quinze minutes",
+        editions=[("serveur.py", brut(
+            "    fin = maintenant + QUARANTAINE_DEGENERE",
+            "    fin = maintenant + 10 * QUARANTAINE_DEGENERE"))]),
+    dict(
+        nom="les mises de cote ne sont plus bornees",
+        banc="banc_cerveaux.py",
+        imite="un dictionnaire qui grossit d'un modele a chaque nom inconnu",
+        rougit="les mises de cote sont bornees",
+        editions=[("serveur.py", brut(
+            "    while len(QUARANTAINES) > QUARANTAINES_MAX:",
+            "    while False:"))]),
+    dict(
+        nom="le compte des echecs n'oublie rien",
+        banc="banc_cerveaux.py",
+        imite="deux vides a une semaine d'intervalle mettent de cote un modele "
+              "qui marche",
+        rougit="les mises de cote sont bornees",
+        editions=[("serveur.py", brut(
+            "        vus_[:] = [t for t in vus_ if maintenant - t < FENETRE_DEGENERE]",
+            "        pass"))]),
+    dict(
+        nom="une machine mise de cote compte comme repli",
+        banc="banc_cerveaux.py",
+        imite="la sonde du repli qui ignore la mise de cote : le fil annonce "
+              "une reprise ailleurs que la boucle sautera",
+        rougit="la seule autre machine est mise de cote",
+        editions=[("serveur.py", brut(
+            "                         and not en_quarantaine(" + chr(10)
+            + '                             u, (corps_ici(corps, u) or {}).get("model") or "")'
+            + chr(10), ""))]),
+    dict(
+        nom="l'agent ne partage pas la cle de la voie directe",
+        banc="banc_cerveaux.py",
+        imite="le repli par l'agent du PC repose la question au modele que la "
+              "voie directe vient de mettre de cote — le meme Ollama",
+        rougit="et un modele mis de cote en direct ne l'est pas moins par l'agent",
+        editions=[("serveur.py", brut(
+            '        ou_ = _url_du_cerveau(ident) or f"agent:{ident}"',
+            '        ou_ = f"agent:{ident}"'))]),
+    dict(
+        nom="l'agent ne compte pas ses reponses vides",
+        banc="banc_cerveaux.py",
+        imite="le chemin de l'agent laisse de cote : chaque repli redemande au "
+              "PC, qui rend vide, avant le NAS",
+        rougit="par l'agent, deux reponses vides du PC",
+        editions=[("serveur.py", brut(
+            '                trace_["quarantaine"] = _compter_degenere(ou_, modele_, titre_,'
+            + chr(10) + "                                                          tid)",
+            '                trace_["quarantaine"] = None'))]),
+    dict(
+        nom="le charabia d'un agent repris pour une reponse",
+        banc="banc_cerveaux.py",
+        imite="« if reponse » comme seul test, l'etat d'avant : « @@@@ » d'un "
+              "agent est rendu au decodeur alors que la machine suivante repond",
+        rougit="le charabia rendu par un agent n'est plus pris pour une reponse",
+        editions=[("serveur.py", brut(
+            "            forme_ = forme_degeneree(reponse)",
+            '            forme_ = "" if reponse else "vide"'))]),
+    dict(
+        nom="la route ne porte plus les mises de cote",
+        banc="banc_cerveaux.py",
+        imite="la mise de cote tenue en memoire, et la console muette : on "
+              "cherche pourquoi le PC ne pense plus",
+        rougit="et les mises de cote en cours, avec leur fin",
+        editions=[("serveur.py", brut(
+            '            "quarantaines": sorted(',
+            '            "quarantaines_": sorted('))]),
+    dict(
+        nom="la console ne montre plus les mises de cote",
+        banc="banc_cerveaux.py",
+        imite="la page qui ne lit pas le champ : le serveur sait, "
+              "l'administrateur non",
+        rougit="la console montre aussi ce qui est mis de cote",
+        editions=[("web/admin.html", brut(
+            "  const deCote = deg.quarantaines || [];",
+            "  const deCote = [];"))]),
+]
+
+# ── Le plafond du jour par famille (ronde 5, 5 novembre 2026) ─────────
+# « 50 detourages et 5 videos par jour » : acces.py le valide et le garde,
+# serveur.py le compte sur le disque et le garde a l'entree (moteur impose)
+# comme apres l'analyse, la page, /admin, /api/v1/moi et decrire_cle disent
+# ce qui reste, le contrat le decrit. Chacune jouee rouge par
+# jouer_mutations.py QUOTAS_FAMILLES.
+QUOTAS_FAMILLES = [
+    dict(
+        nom="un plafond de famille hors bornes est accepte",
+        banc="banc_acces.py",
+        imite="la borne oubliee dans la validation : « video: -1 » ou un "
+              "million passent, et la cle nait avec un plafond qui n'en est pas un",
+        rougit="« par_jour_familles » refuse ce qui n'est pas un objet",
+        editions=[("acces.py", brut(
+            "                or not 0 <= n <= PAR_JOUR_MAX):",
+            "                or False):"))]),
+    dict(
+        nom="des plafonds de famille abimes se lisent comme aucun",
+        banc="banc_acces.py",
+        imite="le chargement qui ne relit pas le champ : un fichier abime "
+              "rouvre les cinquante videos qu'on avait bornees a cinq",
+        rougit="rendent le fichier illisible : un plafond casse",
+        editions=[("acces.py", brut(
+            '                        and _plafonds_lisibles(x.get("par_jour_familles"))):',
+            "                        ):"))]),
+    dict(
+        nom="un plafond de famille a zero reste dans la fiche",
+        banc="banc_acces.py",
+        imite="la case laissee a 0 gardee telle quelle : « audio: 0 » se lit "
+              "comme un plafond de zero rendu, dans un ordre qui change",
+        rougit="les plafonds sont gardes dans l'ordre d'OPERATIONS, un zero n'en est pas un",
+        editions=[("acces.py", brut(
+            "    return {f: plafonds[f] for f in OPERATIONS if plafonds.get(f)}",
+            "    return dict(plafonds)"))]),
+    dict(
+        nom="la fiche publique tait les plafonds de famille",
+        banc="banc_acces.py",
+        imite="le champ ajoute a la fiche du disque et oublie dans la liste "
+              "blanche : le programme ne sait pas ce qui le bornera",
+        rougit="la fiche publique porte exactement les quinze champs du contrat",
+        editions=[("acces.py", brut(
+            '            "par_jour_familles": dict(fiche.get("par_jour_familles") or {}),' + chr(10),
+            ""))]),
+    dict(
+        nom="la fiche publique rend les plafonds de la cle elle-meme",
+        banc="banc_acces.py",
+        imite="l'objet de la fiche rendu sans copie : la page ou le serveur "
+              "qui le modifie change le plafond de la cle",
+        rougit="modifier la fiche publique ne touche pas les plafonds de la cle",
+        editions=[("acces.py", brut(
+            '            "par_jour_familles": dict(fiche.get("par_jour_familles") or {}),',
+            '            "par_jour_familles": fiche.get("par_jour_familles") or {},'))]),
+    dict(
+        nom="la route de creation oublie les plafonds de famille",
+        banc="banc_pilotage.py",
+        imite="le champ ajoute au magasin et a la page, oublie dans la route : "
+              "chaque cle nait sans plafond de famille, quoi qu'on ait coche",
+        rougit="POST /api/compte/acces transmet « par_jour_familles » a la cle",
+        editions=[("serveur.py", brut(
+            '                          operations=d.get("operations"),' + chr(10)
+            + '                          par_jour_familles=d.get("par_jour_familles"))',
+            '                          operations=d.get("operations"))'))]),
+    dict(
+        nom="l'entree ne garde pas le plafond de la famille",
+        banc="banc_pilotage.py",
+        imite="le plafond lu nulle part a l'entree : la sixieme video imposee "
+              "part en file, et le refus n'arrive jamais",
+        rougit="un moteur impose d'une famille a son plafond rend 429",
+        editions=[("serveur.py", brut(
+            '            if _lances_par_famille(fiche["id"]).get(famille_, 0) + rendus_famille > plafond_:',
+            "            if False:"))]),
+    dict(
+        nom="l'entree compte une demande a variantes pour un rendu",
+        banc="banc_pilotage.py",
+        imite="le plafond de famille lu avant l'eventail, comme celui du jour "
+              "l'etait : quatre images passent sous un plafond de trois",
+        rougit="deux variantes, puis deux de plus sur un plafond de trois",
+        editions=[("serveur.py", brut(
+            '        rendus_famille = _rendus_de(type_, v["variantes"])',
+            "        rendus_famille = 1"))]),
+    dict(
+        nom="quatre variantes d'une video comptent quatre videos",
+        banc="banc_pilotage.py",
+        imite="les variantes comptees partout : une video ne se tire qu'une "
+              "fois, et une cle d'une video par jour est refusee pour rien",
+        rougit="quatre « variantes » d'une video n'en font qu'une",
+        editions=[("serveur.py", brut(
+            "    return variantes if type_ in VARIANTES_POSSIBLE else 1",
+            "    return variantes"))]),
+    dict(
+        nom="plus de rendus que le plafond de famille annonce un delai",
+        banc="banc_pilotage.py",
+        imite="Retry-After sur un refus qu'aucune attente ne levera : n8n "
+              "reessaie a minuit, et chaque nuit, pour toujours",
+        rougit="quatre variantes sur un plafond de trois : 429 sans Retry-After",
+        editions=[("serveur.py", brut(
+            "                             jamais=rendus_famille > plafond_," + chr(10),
+            ""))]),
+    dict(
+        nom="le plafond de famille conseille trente secondes",
+        banc="banc_pilotage.py",
+        imite="le code neuf oublie dans reessayer_dans : le workflow reessaie "
+              "toutes les trente secondes jusqu'a minuit",
+        rougit="et le plafond d'une famille dit de reessayer a minuit",
+        editions=[("serveur.py", brut(
+            '    if code in ("cle_plafond_jour", "cle_plafond_famille"):',
+            '    if code in ("cle_plafond_jour",):'))]),
+    dict(
+        nom="l'entree ne compte pas la famille du moteur impose",
+        banc="banc_pilotage.py",
+        imite="la garde sans le compte : chaque video imposee passe sous un "
+              "plafond qui reste a zero",
+        rougit="le compte de la famille suit les rendus lances",
+        editions=[("serveur.py", brut(
+            "        _noter_famille(conv, famille_comptee, rendus_famille, maintenant_)",
+            "        pass"))]),
+    dict(
+        nom="la marque ne dit pas la famille comptee a l'entree",
+        banc="banc_pilotage.py",
+        imite="executer() qui ne sait pas que l'entree a compte : une video "
+              "imposee compte deux fois, a l'entree puis apres l'analyse",
+        rougit="la marque de la tache, et son entree de file, disent la famille deja comptee",
+        editions=[("serveur.py", brut(
+            '              "famille_comptee": famille_comptee}',
+            '              "famille_comptee": None}'))]),
+    dict(
+        nom="la marque ne porte pas les plafonds de famille",
+        banc="banc_pilotage.py",
+        imite="les plafonds lus a l'entree et perdus en route : executer() "
+              "ne les voit pas, et une demande sans moteur impose passe toujours",
+        rougit="la marque de la tache, et son entree de file, disent la famille deja comptee",
+        editions=[("serveur.py", brut(
+            '              "par_jour_familles": dict(plafonds),' + chr(10),
+            ""))]),
+    dict(
+        nom="executer ne garde pas le plafond de famille",
+        banc="banc_pilotage.py",
+        imite="la garde posee a l'entree seulement : sans moteur impose, la "
+              "sixieme video du jour part, enrichie et rendue",
+        rougit="la seconde video, que l'analyse a lue sans moteur impose",
+        editions=[("serveur.py", brut(
+            "        refus_fam = plafond_famille_refuse(tid, conv, plan, texte, variantes)",
+            "        refus_fam = None"))]),
+    dict(
+        nom="une demande deja comptee est recomptee apres l'analyse",
+        banc="banc_pilotage.py",
+        imite="la marque « famille_comptee » ignoree : une variante, ou une "
+              "video imposee, compte une seconde fois et peut etre refusee",
+        rougit="une demande deja comptee",
+        editions=[("serveur.py", brut(
+            '    if not plafonds or marque.get("famille_comptee"):',
+            "    if not plafonds:"))]),
+    dict(
+        nom="l'entree de file ne garde pas la famille comptee",
+        banc="banc_pilotage.py",
+        imite="la marque posee sur la tache seule : reprendre_file() en refait "
+              "une copie, et un redemarrage recompte la demande",
+        rougit="la marque de la tache ET celle de son entree de file",
+        editions=[("serveur.py", brut(
+            '    for m in (marque, (EN_FILE.get(tid) or {}).get("api")):',
+            "    for m in (marque,):"))]),
+    dict(
+        nom="le refus tardif du plafond de famille n'est pas suivi",
+        banc="banc_pilotage.py",
+        imite="le code neuf oublie dans REFUS_TARDIFS : le proprietaire ne "
+              "voit pas pourquoi ses videos finissent en erreur",
+        rougit="le refus tardif du plafond de famille compte dans le suivi",
+        editions=[("serveur.py", brut(
+            'REFUS_TARDIFS = frozenset(("cle_operation_interdite", "cle_plafond_famille",',
+            'REFUS_TARDIFS = frozenset(("cle_operation_interdite", "cle_plafond_famillx",'))]),
+    dict(
+        nom="la famille se lit dans l'intention et non dans le moteur",
+        banc="banc_pilotage.py",
+        imite="type_effectif reecrit au lieu d'etre repris : une intention "
+              "« image » rendue par wan5b passe sous le plafond des videos",
+        rougit="la famille se juge sur le moteur du plan",
+        editions=[("serveur.py", brut(
+            '    type_ = type_effectif(plan, texte, image=tache.get("image"))',
+            '    type_ = plan.get("intention")'))]),
+    dict(
+        nom="executer compte une demande a variantes pour un rendu",
+        banc="banc_pilotage.py",
+        imite="les variantes oubliees apres l'analyse : quatre images passent "
+              "sous un plafond de trois",
+        rougit="apres l'analyse aussi, les variantes comptent",
+        editions=[("serveur.py", brut(
+            "    rendus = _rendus_de(type_, variantes)",
+            "    rendus = 1"))]),
+    dict(
+        nom="le compte de la famille garde les rendus d'hier",
+        banc="banc_pilotage.py",
+        imite="le jour oublie dans le compte : la cle reste fermee le "
+              "lendemain par les videos de la veille",
+        rougit="un rendu d'hier et des entrees abimees ne comptent pas",
+        editions=[("serveur.py", brut(
+            "                    and isinstance(e[0], (int, float)) and e[0] >= minuit",
+            "                    and isinstance(e[0], (int, float))"))]),
+    dict(
+        nom="GET /api/v1/moi ne dit pas ce qui reste par famille",
+        banc="banc_pilotage.py",
+        imite="le plafond annonce sans le compteur : l'assistant apprend sa "
+              "sixieme video par un rendu en erreur",
+        rougit="GET /api/v1/moi dit ce qui reste a chaque famille bornee",
+        editions=[("serveur.py", brut(
+            '        "par_famille": par_famille_de(fiche),' + chr(10),
+            ""))]),
+    dict(
+        nom="ce qui reste a une famille est son plafond",
+        banc="banc_pilotage.py",
+        imite="le reste qui ne retire pas ce qui est fait : « reste 2 » sur "
+              "une famille deja fermee",
+        rougit="GET /api/v1/moi dit ce qui reste a chaque famille bornee",
+        editions=[("serveur.py", brut(
+            '                "reste": max(0, p - faits.get(f, 0))}',
+            '                "reste": p}'))]),
+    dict(
+        nom="la liste du proprietaire ne dit pas les familles",
+        banc="banc_pilotage.py",
+        imite="le compteur ajoute a /api/v1/moi et oublie dans la liste de la page",
+        rougit="la liste du proprietaire et /admin disent ce qui reste",
+        editions=[("serveur.py", brut(
+            "                 par_famille=par_famille_de(f)," + chr(10)
+            + "                 # Ses refus du jour",
+            "                 # Ses refus du jour"))]),
+    dict(
+        nom="l'administration ne dit pas les familles",
+        banc="banc_pilotage.py",
+        imite="le compteur ajoute a une liste et oublie dans l'autre",
+        rougit="la liste du proprietaire et /admin disent ce qui reste",
+        editions=[("serveur.py", brut(
+            "                         par_famille=par_famille_de(f)," + chr(10)
+            + '                         suivi=ACCES.suivi(f["id"])))',
+            '                         suivi=ACCES.suivi(f["id"])))'))]),
+    dict(
+        nom="decrire_cle tait les familles dans son texte",
+        banc="banc_pilotage.py",
+        imite="le champ structure rempli et la phrase oubliee : l'assistant "
+              "qui ne lit que le texte ne sait pas ce qui reste",
+        rougit="decrire_cle le dit aussi, en texte",
+        editions=[("serveur.py", brut(
+            '        for f, x in corps["par_famille"].items()',
+            "        for f, x in {}.items()"))]),
+    dict(
+        nom="la page n'envoie pas les plafonds de famille",
+        banc="banc_page.py",
+        imite="les cases posees et jamais lues : la cle nait sans plafond de "
+              "famille, sans un mot",
+        rougit="la page envoie chaque reglage que creer() accepte",
+        editions=[("web/index.html", brut(
+            "                                 x => x.value)," + chr(10)
+            + "                               par_jour_familles: plafonds }) });",
+            "                                 x => x.value) }) });"))]),
+    dict(
+        nom="les cases de plafond par famille changent de nom",
+        banc="banc_page.py",
+        imite="un nom pose et un autre relu : l'objet envoye est vide, la cle "
+              "n'a aucun plafond de famille",
+        rougit="les cases « plafond par famille » sont relues sous leur propre nom",
+        editions=[("web/index.html", brut(
+            '      const n = nombreBorne("plafond_famille", 0, b.par_jour, 0);',
+            '      const n = nombreBorne("plafond", 0, b.par_jour, 0);'))]),
+    dict(
+        nom="la fiche de la page tait les plafonds de famille",
+        banc="banc_page.py",
+        imite="le compteur servi par la route et jamais affiche : le "
+              "proprietaire ne voit pas que ses videos sont epuisees",
+        rougit="la fiche de la cle, dans la page et dans /admin, dit chaque plafond de famille",
+        editions=[("web/index.html", brut(
+            "        ...Object.entries(c.par_famille || {}).map(([f, x]) =>",
+            "        ...Object.entries({}).map(([f, x]) =>"))]),
+    dict(
+        nom="/admin tait les plafonds de famille",
+        banc="banc_page.py",
+        imite="la page du proprietaire a jour, la console d'administration non",
+        rougit="la fiche de la cle, dans la page et dans /admin, dit chaque plafond de famille",
+        editions=[("web/admin.html", brut(
+            "${Object.entries(c.par_famille || {}).map(([f, x]) =>",
+            "${Object.entries({}).map(([f, x]) =>"))]),
+    dict(
+        nom="le contrat ne connait pas le code du plafond de famille",
+        banc="banc_contrat.py",
+        imite="le code neuf rendu par serveur.py et absent de REFUS : un "
+              "client genere ne sait pas s'y brancher",
+        rougit="chaque code que serveur.py rend est dans le contrat",
+        editions=[("contrat.py", brut(
+            '    "cle_plafond_famille": (429, ',
+            '    "cle_plafond_famillx": (429, '))]),
+    dict(
+        nom="le contrat tait les plafonds de famille de la cle",
+        banc="banc_contrat.py",
+        imite="le champ ajoute a la fiche publique et oublie dans le schema Cle",
+        rougit="Cle : les champs du contrat sont ceux de la fiche publique",
+        editions=[("contrat.py", brut(
+            '            "par_jour_familles": {',
+            '            "par_jour_familles_": {'))]),
+    dict(
+        nom="le contrat tait ce qui reste par famille",
+        banc="banc_contrat.py",
+        imite="le champ ajoute a GET /api/v1/moi et oublie dans le schema Moi",
+        rougit="Moi : les champs du contrat sont ceux de GET /api/v1/moi",
+        editions=[("contrat.py", brut(
+            '                "par_famille": {',
+            '                "par_famille_": {'))]),
+    dict(
+        nom="la reponse Freine oublie le plafond de famille",
+        banc="banc_contrat.py",
+        imite="le 429 neuf decrit dans la table et pas dans la reponse qui "
+              "annonce Retry-After",
+        rougit="la reponse « Freine » nomme chaque code rendu en 429",
+        editions=[("contrat.py", brut(
+            '                                          "cle_plafond_famille.",',
+            '                                          ".",'))]),
+    dict(
+        nom="le contrat annonce une famille de moins pour les plafonds",
+        banc="banc_contrat.py",
+        imite="la liste des familles recopiee a la main et derivee : un "
+              "client genere refuse « lecture »",
+        rougit="les familles de « par_jour_familles » sont celles d'acces.OPERATIONS",
+        editions=[("contrat.py", brut(
+            '                "propertyNames": {"enum": list(_acces.OPERATIONS)},',
+            '                "propertyNames": {"enum": list(_acces.OPERATIONS)[:-1]},'))]),
+    dict(
+        nom="le refus des plafonds de famille change de valeur en anglais",
+        banc="banc_traductions.py",
+        imite="une valeur renommee dans une seule langue : la phrase anglaise "
+              "garde ses accolades a l'ecran",
+        rougit="chaque traduction pose exactement les memes valeurs que le francais",
+        editions=[("traductions.py", brut(
+            "for each family among {familles}, a whole number from {bas} to {haut} (0 = no limit)",
+            "for each family among {familles}, a whole number from {bas} to {maxi} (0 = no limit)"))]),
+]
+
+# LA PORTE COMPATIBLE OPENAI (/openai/v1/), le 5 novembre 2026. Chaque
+# mutation imite une faute qu'un client OpenAI paierait : une erreur qu'il ne
+# sait pas lire, une image qu'il ne trouve pas, un rendu rejoue deux fois, une
+# cle qui ouvre plus que sa famille.
+API_OPENAI = [
+    dict(
+        nom="les refus du studio partent sans traduction OpenAI",
+        banc="banc_openai.py",
+        imite="format_openai qui ne convertit plus : Open WebUI lit "
+              "« error.message », recoit « erreur », et affiche Unknown error",
+        rougit="sans cle : 401 au format OpenAI, code « cle_requise »",
+        editions=[("serveur.py", brut(
+            "    corps = _corps_du_studio(rep_)" + chr(10) + "    if corps is None:",
+            "    corps = _corps_du_studio(rep_)" + chr(10) + "    if True:"))]),
+    dict(
+        nom="format_openai n'est pas branche",
+        banc="banc_openai.py",
+        imite="le middleware ecrit et jamais insere dans app()",
+        rougit="sans cle : 401 au format OpenAI, code « cle_requise »",
+        editions=[("serveur.py", brut(
+            "    a.middlewares.insert(1, format_openai)" + chr(10), ""))]),
+    dict(
+        nom="format_openai passe devant en_tetes_surs",
+        banc="banc_openai.py",
+        imite="insere en tete de liste : ses erreurs naissent hors "
+              "d'en_tetes_surs et partent sans nosniff ni anti-cadre",
+        rougit="et les en-tetes surs de toute reponse (format_openai est apres en_tetes_surs)",
+        editions=[("serveur.py", brut(
+            "    a.middlewares.insert(1, format_openai)",
+            "    a.middlewares.insert(0, format_openai)"))]),
+    dict(
+        nom="le 401 OpenAI perd WWW-Authenticate",
+        banc="banc_openai.py",
+        imite="la reponse traduite refaite a neuf, sans les en-tetes de "
+              "l'originale",
+        rougit="et le 401 garde WWW-Authenticate",
+        editions=[("serveur.py", brut(
+            "_ENTETES_GARDES = (\"WWW-Authenticate\", \"Retry-After\", ENTETE_EXPIRE, \"Allow\")",
+            "_ENTETES_GARDES = (\"Retry-After\", ENTETE_EXPIRE, \"Allow\")"))]),
+    dict(
+        nom="une exception sous /openai/v1/ sort en 500 nu",
+        banc="banc_openai.py",
+        imite="le filet qui n'attrape qu'une exception precise : le 500 texte "
+              "d'aiohttp, que le SDK rejoue — un second rendu",
+        rougit="une exception : 500 OpenAI « panne », sans rejeu, sans la trace",
+        editions=[("serveur.py", brut(
+            "    except Exception as e:" + chr(10)
+            + "        # Le SDK reessaierait le 500 nu d'aiohttp",
+            "    except ZeroDivisionError as e:" + chr(10)
+            + "        # Le SDK reessaierait le 500 nu d'aiohttp"))]),
+    dict(
+        nom="la cle ne vaut pas sur /openai/v1/",
+        banc="banc_openai.py",
+        imite="le prefixe oublie dans chemin_de_programme : toute cle est "
+              "refusee en cle_hors_perimetre sur la porte qu'on vient d'ouvrir",
+        rougit="un rendu fini : 200, « created » entier, une image",
+        editions=[("serveur.py", brut(
+            "            or chemin.startswith(PREFIXE_OPENAI))",
+            "            )"))]),
+    dict(
+        nom="exiger_compte ferme la porte OpenAI",
+        banc="banc_openai.py",
+        imite="la liste « libre » sans /openai/v1/ : un client sans cle recoit "
+              "le « connexion requise » de la page, sans code ni WWW-Authenticate",
+        rougit="sans cle : 401 au format OpenAI, code « cle_requise »",
+        editions=[("serveur.py", brut(
+            "    libre = libre or chemin.startswith(PREFIXE_OPENAI)" + chr(10), ""))]),
+    dict(
+        nom="une cle sans image cree des images",
+        banc="banc_openai.py",
+        imite="la famille de la route jamais verifiee : une cle de video "
+              "branchee dans Open WebUI fait tourner la carte",
+        rougit="une cle sans « image » est refusee en 403, rien en file",
+        editions=[("serveur.py", brut(
+            "    if _acces.operation_permise(ops, \"image\" if famille == \"image\" else \"edition\"):",
+            "    if True:"))]),
+    dict(
+        nom="les edits ne demandent que la famille image",
+        banc="banc_openai.py",
+        imite="la famille copiee de la route voisine : une cle « image » "
+              "retouche les photos qu'on lui envoie",
+        rougit="une cle « image » seule ne retouche pas : 403",
+        editions=[("serveur.py", brut(
+            "    refus_ = _permet_openai(fiche, \"retouche\", lg)",
+            "    refus_ = _permet_openai(fiche, \"image\", lg)"))]),
+    dict(
+        nom="la tache garde toutes les familles de la cle",
+        banc="banc_openai.py",
+        imite="la cle passee telle quelle a lancer_pour_programme : une "
+              "demande lue comme une video occupe la carte huit minutes pour "
+              "un client qui attend une image",
+        rougit="la marque de la tache est restreinte a « image », sous la cle qui l'a lancee",
+        editions=[("serveur.py", brut(
+            "        restreinte = dict(fiche, operations=[famille], _sans_question=True)",
+            "        restreinte = dict(fiche, _sans_question=True)"))]),
+    dict(
+        nom="n ne devient pas des variantes",
+        banc="banc_openai.py",
+        imite="le champ n lu et jamais transmis : n=3 rend une image",
+        rougit="n=3 : trois variantes en file, trois images rendues",
+        editions=[("serveur.py", brut(
+            "        demande[\"variantes\"] = n" + chr(10), ""))]),
+    dict(
+        nom="la taille la plus proche par la surface seule",
+        banc="banc_openai.py",
+        imite="un paysage 1536x1024 rendu en portrait 1080x1350, parce que "
+              "c'est la surface la plus proche",
+        rougit="size 1536x1024 devient la taille la plus proche, 1216x832",
+        editions=[("serveur.py", brut(
+            "        return (4 * abs(math.log((lar / hau) / (tl / th)))",
+            "        return (0 * abs(math.log((lar / hau) / (tl / th)))"))]),
+    dict(
+        nom="un modele inconnu est impose au studio",
+        banc="banc_openai.py",
+        imite="« model » passe tel quel en moteur : dall-e-3 et gpt-image-1, "
+              "les defauts des clients, finissent en moteur_inconnu",
+        rougit="un rendu fini : 200, « created » entier, une image",
+        editions=[("serveur.py", brut(
+            "    if modele in {m[\"cle\"] for m in _moteurs_openai(fiche, famille, lg)}:",
+            "    if modele:"))]),
+    dict(
+        nom="la liste des moteurs de la route ne filtre pas la famille",
+        banc="banc_openai.py",
+        imite="tous les moteurs presents de la cle, video comprise : un client "
+              "propose wan5b dans sa liste d'images",
+        rougit="les moteurs d'image et de retouche, et rien d'autre",
+        editions=[("serveur.py", brut(
+            "            and _acces.famille(_type_du_rendu(m[\"cle\"], joint)) == famille]",
+            "            ]"))]),
+    dict(
+        nom="comfystudio n'est plus en tete des modeles",
+        banc="banc_openai.py",
+        imite="la liste sans le choix du studio : un client qui prend le "
+              "premier impose un moteur au lieu de laisser choisir",
+        rougit="« comfystudio » (le choix du studio) en tete",
+        editions=[("serveur.py", brut(
+            "    vus = [MODELE_STUDIO]",
+            "    vus = []"))]),
+    dict(
+        nom="le base64 est fait d'octets bruts",
+        banc="banc_openai.py",
+        imite="l'encodage oublie : b64_json porte les octets lus en latin-1, "
+              "et le client decode une image cassee",
+        rougit="sans response_format, gpt-image-1 rend du base64 qui redonne les octets",
+        editions=[("serveur.py", brut(
+            "                item[\"b64_json\"] = base64.b64encode(octets).decode(\"ascii\")",
+            "                item[\"b64_json\"] = octets.decode(\"latin-1\")"))]),
+    dict(
+        nom="le base64 est lu sous le plafond de MCP",
+        banc="banc_openai.py",
+        imite="le plafond de Claude (3 Mio) applique a un client qui n'en a "
+              "pas : une image 1920x1080 part en lien",
+        rougit="le base64 est lu sous le plafond de la route, pas celui de MCP",
+        editions=[("serveur.py", brut(
+            "await _octets_de_sortie(*loc, plafond=IMAGE_OPENAI_MAX)",
+            "await _octets_de_sortie(*loc)"))]),
+    dict(
+        nom="url rend l'adresse qui exige la cle",
+        banc="banc_openai.py",
+        imite="l'url du fichier au lieu du lien signe : Open WebUI la suit "
+              "sans en-tete, et recoit un 401",
+        rougit="response_format url : un lien signe ABSOLU du studio",
+        editions=[("serveur.py", brut(
+            "            item[\"url\"] = f[\"lien\"] or f[\"url\"]",
+            "            item[\"url\"] = f[\"url\"]"))]),
+    dict(
+        nom="response_format vaut url par defaut pour tous",
+        banc="banc_openai.py",
+        imite="le defaut de dall-e pour tout le monde : un client ecrit pour "
+              "gpt-image ne pose pas le champ et attend du base64",
+        rougit="sans response_format, gpt-image-1 rend du base64 qui redonne les octets",
+        editions=[("serveur.py", brut(
+            "        fmt = \"url\" if modele.startswith(\"dall-e\") else \"b64_json\"",
+            "        fmt = \"url\""))]),
+    dict(
+        nom="stream est accepte et ignore",
+        banc="banc_openai.py",
+        imite="le client attend des evenements SSE, recoit un JSON au bout "
+              "de deux minutes",
+        rougit="stream: true est refuse en 400, rien en file",
+        editions=[("serveur.py", brut(
+            "    if d.get(\"stream\") in (True, \"true\", \"True\", \"1\"):",
+            "    if False:"))]),
+    dict(
+        nom="les 5xx de la route OpenAI se rejouent",
+        banc="banc_openai.py",
+        imite="X-Should-Retry oublie sur les pannes : le SDK rejoue un 504 "
+              "dont le rendu continue — deux images sur la carte",
+        rougit="un rendu qui tarde : 504 « delai_depasse », X-Should-Retry: false",
+        editions=[("serveur.py", brut(
+            "    if statut >= 500 or (statut == 429",
+            "    if (statut == 429"))]),
+    dict(
+        nom="le plafond du jour laisse le SDK rejouer",
+        banc="banc_openai.py",
+        imite="seul le 429 sans delai arrete le SDK : un plafond qui dure "
+              "jusqu'a minuit est rejoue deux fois, et compte deux refus",
+        rougit="et X-Should-Retry: false, le SDK ne rejouera pas des heures de plafond",
+        editions=[("serveur.py", brut(
+            "(apres is None or apres > REESSAI_SDK_MAX)",
+            "(apres is None)"))]),
+    dict(
+        nom="le 429 traduit perd son delai",
+        banc="banc_openai.py",
+        imite="« reessayer_dans » non relu : le client reessaie a l'aveugle",
+        rougit="avec Retry-After, et le SDK peut reessayer (delai court)",
+        editions=[("serveur.py", brut(
+            "                         apres=corps.get(\"reessayer_dans\"))",
+            "                         apres=None)"))]),
+    dict(
+        nom="les attentes pleines lancent quand meme",
+        banc="banc_openai.py",
+        imite="la borne des attentes lue apres le lancement : le rendu part, "
+              "attendre_rendu rend la main, et personne ne recoit l'image",
+        rougit="trop d'attentes pour la cle : 429 avant de lancer, rien en file",
+        editions=[("serveur.py", brut(
+            "    if ATTENTES.get(fiche[\"id\"], 0) >= ATTENTES_PAR_CLE:" + chr(10)
+            + "        # Au-dela des attentes permises",
+            "    if False:" + chr(10) + "        # Au-dela des attentes permises"))]),
+    dict(
+        nom="l'Idempotency-Key n'est pas retenue",
+        banc="banc_openai.py",
+        imite="le registre lu et jamais ecrit : chaque reessai est un rendu",
+        rougit="meme Idempotency-Key : un seul rendu, la meme reponse rejouee",
+        editions=[("serveur.py", brut(
+            "        if idem:" + chr(10)
+            + "            IDEMPOTENCE[(fiche[\"id\"], idem)] = (tid, time.time())",
+            "        if False:" + chr(10)
+            + "            IDEMPOTENCE[(fiche[\"id\"], idem)] = (tid, time.time())"))]),
+    dict(
+        nom="un rendu pas fini passe pour un rendu sans image",
+        banc="banc_openai.py",
+        imite="l'etat non final oublie : le client lit « aucune image » et "
+              "relance, alors que le rendu continue",
+        rougit="un rendu qui tarde : 504 « delai_depasse », X-Should-Retry: false",
+        editions=[("serveur.py", brut(
+            "    if etat not in ETATS_FINAUX:" + chr(10)
+            + "        # Le rendu continue",
+            "    if False:" + chr(10) + "        # Le rendu continue"))]),
+    dict(
+        nom="la question du studio se perd",
+        banc="banc_openai.py",
+        imite="l'etat « question » traite comme un rendu fini : le client "
+              "recoit « aucune image » au lieu de la question a laquelle repondre",
+        rougit="le studio pose une question : 400 « question », la question dans le message",
+        editions=[("serveur.py", brut(
+            "    if etat == \"question\":" + chr(10)
+            + "        # Un client OpenAI ne sait pas repondre",
+            "    if False:" + chr(10) + "        # Un client OpenAI ne sait pas repondre"))]),
+    dict(
+        nom="une video lue par l'analyse passe pour une panne",
+        banc="banc_openai.py",
+        imite="tout rendu en erreur en 500 : la faute de la demande devient "
+              "une panne du studio, sans param pour la corriger",
+        rougit="l'analyse lit une video : 400 « cle_operation_interdite », pas une panne",
+        editions=[("serveur.py", brut(
+            "        statut = (400 if code == \"cle_operation_interdite\"",
+            "        statut = (500 if code == \"cle_operation_interdite\""))]),
+    dict(
+        nom="le type de l'image des edits vient du nom seul",
+        banc="banc_openai.py",
+        imite="l'en-tete de la partie ignore : Open WebUI nomme ses fichiers "
+              "d'un UUID sans extension, et un JPEG est depose en .png",
+        rougit="l'image est deposee comme un envoi, en .jpg comme son en-tete le dit",
+        editions=[("serveur.py", brut(
+            "                type_ = (part.headers.get(\"Content-Type\") or \"\").split(\";\")[0]",
+            "                type_ = \"\""))]),
+    dict(
+        nom="image[] n'est pas lue",
+        banc="banc_openai.py",
+        imite="seul le champ « image » reconnu : le SDK et Open WebUI "
+              "envoient « image[] » pour une liste, et recoivent aucun_fichier",
+        rougit="« image[] » est lu aussi, et url rend un lien",
+        editions=[("serveur.py", brut(
+            "            if nom in (\"image\", \"image[]\") and image is None:",
+            "            if nom == \"image\" and image is None:"))]),
+    dict(
+        nom="l'attente OpenAI egale celle du SDK",
+        banc="banc_contrat.py",
+        imite="ATTENDRE_MAX repris tel quel : le SDK openai coupe a 600 s, "
+              "juste avant la reponse, et rejoue — une seconde image",
+        rougit="l'attente synchrone reste sous le delai du SDK openai (600 s)",
+        editions=[("serveur.py", brut(
+            "ATTENDRE_OPENAI = 540",
+            "ATTENDRE_OPENAI = ATTENDRE_MAX"))]),
+    dict(
+        nom="un code propre a OpenAI manque au contrat",
+        banc="banc_contrat.py",
+        imite="un code ajoute dans serveur.py sans sa ligne dans contrat.py : "
+              "un client genere ne le connait pas",
+        rougit="chaque code rendu par les routes OpenAI est dans le contrat",
+        editions=[("contrat.py", brut(
+            "    \"sans_image\": (500, \"Le rendu a abouti sans produire d'image.\"),",
+            ""))]),
+    dict(
+        nom="le contrat OpenAI oublie un champ lu",
+        banc="banc_contrat.py",
+        imite="« quality » lu par la route et absent du schema : un outil qui "
+              "importe le contrat ne le propose pas",
+        rougit="OpenAIDemandeImages : les champs du contrat sont ceux que la route lit",
+        editions=[("contrat.py", brut(
+            "                \"quality\": {\"type\": \"string\", \"enum\": list(QUALITES_OPENAI),",
+            "                \"qualite\": {\"type\": \"string\", \"enum\": list(QUALITES_OPENAI),"))]),
+    dict(
+        nom="les routes OpenAI hors du releve du contrat",
+        banc="banc_contrat.py",
+        imite="une route /openai/v1/ ajoutee au routeur sans description",
+        rougit="chaque route du routeur est decrite dans le contrat",
+        editions=[("contrat.py", brut(
+            "        PREFIXE_OPENAI + \"models\": {\"get\": {",
+            "        PREFIXE_OPENAI + \"modeles\": {\"get\": {"))]),
+]
+
+
+# UN CLIENT QUI NE SAIT PAS REPONDRE (5 novembre 2026) : la route compatible
+# OpenAI ne doit jamais finir en question.
+SANS_QUESTION = [
+    dict(
+        nom="executer questionne un client qui ne sait pas repondre",
+        banc="banc_pilotage.py",
+        imite="la marque posee et jamais lue : « un chat » revient a Open WebUI "
+              "en 400 « question »",
+        rougit="une tache « sans_question » n'est pas questionnee",
+        editions=[("serveur.py", brut(
+            "            if qs and ((TACHES.get(tid) or {}).get(\"api\") or {}).get(\"sans_question\"):",
+            "            if False:"))]),
+    dict(
+        nom="la route OpenAI ne demande pas l'execution sans question",
+        banc="banc_openai.py",
+        imite="la restriction de famille posee, l'autre oubliee : la route "
+              "lance comme /api/v1/rendus",
+        rougit="la tache lancee par la route porte « sans_question »",
+        editions=[("serveur.py", brut(
+            "        restreinte = dict(fiche, operations=[famille], _sans_question=True)",
+            "        restreinte = dict(fiche, operations=[famille])"))]),
+    dict(
+        nom="lancer_pour_programme perd la demande sans question",
+        banc="banc_openai.py",
+        imite="la fiche porte le drapeau, la marque de la tache ne le recopie "
+              "pas : executer() ne le voit jamais",
+        rougit="la tache lancee par la route porte « sans_question »",
+        editions=[("serveur.py", brut(
+            "    if fiche.get(\"_sans_question\"):",
+            "    if False:"))]),
+]
+
+# ──────────────────────────────────────────────────────────────────────
+#  Ronde 6 : l'en-tete compact — neuf commandes ramenees a une ligne
+# ──────────────────────────────────────────────────────────────────────
+# Le menu du compte regroupe ce qui faisait cinq lignes d'en-tete a 375 px.
+# Chaque mutation imite une facon realiste de rater ce deplacement : une
+# commande perdue en route, un menu muet pour un lecteur d'ecran, un clavier
+# qui ne rend pas le focus, une regle d'affichage doublee, une feuille de
+# style qui replie de nouveau la ligne.
+INTERFACE_ENTETE = [
+    dict(
+        nom="un lien de l'en-tete change d'id en passant dans le menu",
+        banc="banc_page.py",
+        imite="#lienDemarrage renomme pendant le deplacement : peindreCompte() "
+              "ne le trouve plus, et le lien « à faire » ne s'affiche jamais",
+        rougit="chaque commande d'avant existe encore dans l'en-tete, sous le "
+               "meme id, et le lien « source » avec elle",
+        editions=[("web/index.html", brut(
+            'id="lienDemarrage" role="menuitem"',
+            'id="lienPremiereFois" role="menuitem"'))]),
+    dict(
+        nom="la mediatheque tombe dans le menu du compte",
+        banc="banc_page.py",
+        imite="le bouton le plus utilise range avec les reglages du mois : "
+              "deux gestes au lieu d'un, a chaque visite",
+        rougit="la ligne garde l'etat des moteurs et la mediatheque ; double "
+               "facteur, cles, admin, a faire, source et la langue passent "
+               "dans le menu",
+        editions=[("web/index.html", brut(
+            '    <button type="button" class="lien-admin" id="ouvrirMedia"' + chr(10)
+            + '            data-t-title="page.media.ouvrir.title" data-t="page.media.nom"'
+            + chr(10) + '            title="tout ce que tu as produit">médiathèque</button>'
+            + chr(10), "")),
+                  ("web/index.html", brut(
+            '    <span class="compte" id="compte" role="none"></span>',
+            '    <button type="button" class="lien-admin" id="ouvrirMedia"'
+            ' data-t="page.media.nom">médiathèque</button>' + chr(10)
+            + '    <span class="compte" id="compte" role="none"></span>'))]),
+    dict(
+        nom="le bouton du compte ne dit plus qu'il ouvre un menu",
+        banc="banc_page.py",
+        imite="aria-haspopup oublie : un lecteur d'ecran annonce « bouton, "
+              "hogun » et rien ne dit qu'il y a un menu derriere",
+        rougit="le bouton du compte porte aria-haspopup=menu, aria-expanded et "
+               "aria-controls vers le role=menu, qui le nomme en retour ; le "
+               "panneau nait ferme",
+        editions=[("web/index.html", brut(
+            'aria-haspopup="menu" aria-expanded="false"',
+            'aria-expanded="false"'))]),
+    dict(
+        nom="le lien source perd son role dans le menu",
+        banc="banc_page.py",
+        imite="un lien range dans le role=menu sans role=menuitem : les "
+              "fleches le sautent, et l'AGPL n'est plus atteignable au clavier",
+        rougit="les entrees du menu sont des menuitem, et « sortir » vient en "
+               "dernier, sous un role=separator",
+        editions=[("web/index.html", brut(
+            '<a class="source" role="menuitem" href=',
+            '<a class="source" href='))]),
+    dict(
+        nom="sortir n'est plus separe du reste",
+        banc="banc_page.py",
+        imite="le trait retire : « sortir » colle a « source », et un pouce "
+              "qui vise l'un deconnecte",
+        rougit="les entrees du menu sont des menuitem, et « sortir » vient en "
+               "dernier, sous un role=separator",
+        editions=[("web/index.html", brut(
+            '        <div class="separe-compte" id="separeCompte" role="separator" hidden></div>'
+            + chr(10), ""))]),
+    dict(
+        nom="le menu montre le lien admin a tout le monde",
+        banc="banc_page.py",
+        imite="une seconde regle d'affichage posee par le rangement : le lien "
+              "« admin » apparait pour un compte ordinaire, et rend 403",
+        rougit="« admin » et « a faire » suivent les memes regles qu'avant : "
+               "une seule ecriture chacun, caches sans compte, montres sur "
+               "« admin » et « demarrage »",
+        editions=[("web/index.html", brut(
+            '  $("#separeCompte").hidden = !sortir;',
+            '  $("#separeCompte").hidden = !sortir;' + chr(10)
+            + '  $("#lienAdmin").style.display = "";'))]),
+    dict(
+        nom="sortir reste en tete du menu apres la connexion",
+        banc="banc_page.py",
+        imite="l'appel au rangement oublie dans la branche connectee : "
+              "« sortir » au-dessus d'« admin », et les boutons sans role",
+        rougit="peindreCompte() range ses boutons dans le menu par ses deux "
+               "branches, et le rangement leur donne le role menuitem",
+        editions=[("web/index.html", brut(
+            "    rangerMenuCompte(d, qui, sortir);   // ronde 6 : en-tete compact"
+            + chr(10), ""))]),
+    dict(
+        nom="Echap ferme le menu sans rendre le focus",
+        banc="banc_page.py",
+        imite="le focus perdu a la fermeture : au clavier on repart du haut "
+              "de la page",
+        rougit="le menu se mene au clavier : fleches, Debut, Fin, Echap qui "
+               "rend le focus au bouton, aria-expanded tenu, entrees cachees "
+               "sautees",
+        editions=[("web/index.html", brut(
+            "    e.preventDefault();" + chr(10) + "    fermerMenuCompte(true);",
+            "    e.preventDefault();" + chr(10) + "    fermerMenuCompte(false);"))]),
+    dict(
+        nom="les fleches se posent sur les entrees cachees",
+        banc="banc_page.py",
+        imite="le filtre des entrees visibles retire : pour un non-admin, une "
+              "fleche sur deux met le focus sur « admin », cache",
+        rougit="le menu se mene au clavier : fleches, Debut, Fin, Echap qui "
+               "rend le focus au bouton, aria-expanded tenu, entrees cachees "
+               "sautees",
+        editions=[("web/index.html", brut(
+            "    .filter(el => el.getClientRects().length > 0);",
+            ";"))]),
+    dict(
+        nom="le menu reste ouvert au clic dehors",
+        banc="banc_page.py",
+        imite="la fermeture au clic dehors oubliee : sur telephone le panneau "
+              "couvre la conversation jusqu'a ce qu'on retrouve le bouton",
+        rougit="un clic hors du menu le referme",
+        editions=[("web/index.html", brut(
+            '  if (!e.target.closest("#menuCompte")) fermerMenuCompte(false);',
+            '  if (!e.target.closest("#menuCompte")) return;'))]),
+    dict(
+        nom="l'en-tete se replie de nouveau",
+        banc="banc_page.py",
+        imite="la regle de 820 px reprend le dessus : cinq lignes d'en-tete "
+              "sur telephone, le defaut d'origine",
+        rougit="la feuille tient l'en-tete sur une ligne, cache le panneau "
+               "ferme, l'etale sous 640 px et montre le focus",
+        editions=[("web/index.html", brut(
+            "body > header{flex-wrap:nowrap}",
+            "body > header{flex-wrap:wrap}"))]),
+    dict(
+        nom="le panneau ferme reste affiche",
+        banc="banc_page.py",
+        imite="« display:flex » sans sa regle « [hidden] » : le menu ne se "
+              "ferme plus jamais",
+        rougit="la feuille tient l'en-tete sur une ligne, cache le panneau "
+               "ferme, l'etale sous 640 px et montre le focus",
+        editions=[("web/index.html", brut(
+            ".panneau-compte[hidden]{display:none}",
+            ".panneau-compte.cache{display:none}"))]),
+    dict(
+        nom="le panneau reste ancre au bouton sur telephone",
+        banc="banc_page.py",
+        imite="pas de pleine largeur sous 640 px : le panneau de 220 px sort "
+              "de l'ecran a gauche quand le nom est court",
+        rougit="la feuille tient l'en-tete sur une ligne, cache le panneau "
+               "ferme, l'etale sous 640 px et montre le focus",
+        editions=[("web/index.html", brut(
+            "  .panneau-compte{top:100%;left:0;right:0;max-width:none;min-width:0;",
+            "  .panneau-compte{top:100%;max-width:none;min-width:0;"))]),
+]
+
+# ── ronde 6 : la saisie — coller, le clavier, prevenir a la fin ───────
+# Chaque mutation imite la facon la plus probable de casser une promesse de la
+# saisie SANS que la page leve d'erreur : elle s'affiche, le champ marche,
+# simplement pas comme on croit.
+INTERFACE_SAISIE = [
+    dict(
+        nom="le collage televerse lui-meme",
+        banc="banc_page.py",
+        imite="le collage ecrit son propre fetch, a cote du selecteur : il "
+              "divergera des plafonds et du message de refus",
+        rougit="un seul endroit televerse une piece jointe",
+        editions=[("web/index.html", brut(
+            "  e.preventDefault();" + chr(10) + "  joindreCommeSelecteur(f);",
+            "  e.preventDefault();" + chr(10)
+            + "  const fd = new FormData(); fd.append(\"f\", f);" + chr(10)
+            + "  fetch(\"/api/televerser\", { method: \"POST\", body: fd });"))]),
+    dict(
+        nom="le pont ne declenche plus change",
+        banc="banc_page.py",
+        imite="le fichier pose dans #img sans l'evenement : rien ne "
+              "televerse, l'apercu ne vient jamais",
+        rougit="une image collee passe par le selecteur",
+        editions=[("web/index.html", brut(
+            "    $(\"#img\").dispatchEvent(new Event(\"change\"));" + chr(10), ""))]),
+    dict(
+        nom="un collage de texte devient une image",
+        banc="banc_page.py",
+        imite="le texte brut n'est plus lu : coller des cellules de tableur "
+              "joint leur capture au lieu de coller la phrase",
+        rougit="un collage qui porte du texte reste un collage de texte",
+        editions=[("web/index.html", brut(
+            "  if (!cd || (brut && !adresseSeule)) return;",
+            "  if (!cd) return;"))]),
+    dict(
+        nom="une phrase qui commence par http devient une image",
+        banc="banc_page.py",
+        imite="l'exception de l'adresse seule elargie : « https://… et la "
+              "suite », colle d'une page avec son image, part en piece jointe",
+        rougit="l'exception de l'adresse seule admet une phrase",
+        editions=[("web/index.html", brut(
+            "  const adresseSeule = brut.startsWith(\"http\") && !brut.includes(\" \")",
+            "  const adresseSeule = brut.startsWith(\"http\") && true"))]),
+    dict(
+        nom="le depot ne rejoint pas le selecteur",
+        banc="banc_page.py",
+        imite="le fichier depose est confisque (preventDefault) puis oublie : "
+              "le navigateur ne l'ouvre plus, le studio non plus",
+        rougit="et un fichier depose prend le meme pont",
+        editions=[("web/index.html", brut(
+            "  if (f && !$(\"#txt\").disabled) joindreCommeSelecteur(f);",
+            "  if (f && !$(\"#txt\").disabled) $(\"#alerte\").textContent = f.name;"))]),
+    dict(
+        nom="ctrl+entree sans garde de saisie composee",
+        banc="banc_page.py",
+        imite="le garde isComposing oublie : en japonais, valider un mot de "
+              "l'IME envoie une demande a moitie ecrite",
+        rougit="Ctrl/Cmd+Entree envoie par la fleche",
+        editions=[("web/index.html", brut(
+            "  if (e.isComposing || e.keyCode === 229) return;" + chr(10), ""))]),
+    dict(
+        nom="entree seule envoie",
+        banc="banc_page.py",
+        imite="le geste des messageries recopie : Entree envoie, et le "
+              "prompt sur plusieurs lignes part a la premiere",
+        rougit="le titre de la fleche promet Ctrl+Entree",
+        editions=[("web/index.html", brut(
+            "  if (e.key === \"Enter\" && (e.ctrlKey || e.metaKey)) {",
+            "  if (e.key === \"Enter\" && !e.shiftKey) {"))]),
+    dict(
+        nom="la permission demandee au chargement",
+        banc="banc_page.py",
+        imite="la demande posee au demarrage du script, « pour etre pret » : "
+              "la fenetre s'ouvre a la premiere visite et se refuse par reflexe",
+        rougit="la permission de notifier ne se demande qu'au clic sur la case",
+        editions=[("web/index.html", brut(
+            "const CLE_PREVENIR = \"prevenirFin\";",
+            "const CLE_PREVENIR = \"prevenirFin\";" + chr(10)
+            + "if (\"Notification\" in window) Notification.requestPermission();"))]),
+    dict(
+        nom="un await avant la demande de permission",
+        banc="banc_page.py",
+        imite="la case attend d'abord autre chose : le clic n'est plus un "
+              "geste, et le navigateur refuse sans fenetre",
+        rougit="et dans le geste meme, avant que rien ne soit attendu",
+        editions=[("web/index.html", brut(
+            "    try { localStorage.setItem(CLE_PREVENIR, voulu ? \"1\" : \"0\"); }",
+            "    await reglageEnVol;" + chr(10)
+            + "    try { localStorage.setItem(CLE_PREVENIR, voulu ? \"1\" : \"0\"); }"))]),
+    dict(
+        nom="la case rangee avec les reglages de conversation",
+        banc="banc_page.py",
+        imite="« prevenir » ajoute aux deux tables, inverses l'une de "
+              "l'autre : le cas du 31 aout passe, et la case poste une cle "
+              "que le serveur jette",
+        rougit="la case des notifications reste hors de MENU_REGLAGE",
+        editions=[
+            ("web/index.html", brut(
+                "priorite: \"#priorite\", taille: \"#taille\" };",
+                "priorite: \"#priorite\", taille: \"#taille\", prevenir: \"#prevenir\" };")),
+            ("web/index.html", brut(
+                "\"#priorite\": \"priorite\", \"#taille\": \"taille\" };",
+                "\"#priorite\": \"priorite\", \"#taille\": \"taille\", \"#prevenir\": \"prevenir\" };"))]),
+    dict(
+        nom="la fin d'un rendu ne s'annonce plus",
+        banc="banc_page.py",
+        imite="une seule accroche gardee, celle de la question : les rendus "
+              "finis ou rates se taisent",
+        rougit="suivre() annonce la fin d'une question ET celle d'un rendu",
+        editions=[("web/index.html", brut(
+            "        annoncerFin(t, cid);   // ronde 6 : onglet cache, titre et notification"
+            + chr(10) + "        // Le compte d'appels distants",
+            "        // Le compte d'appels distants"))]),
+    dict(
+        nom="l'annonce parle onglet visible",
+        banc="banc_page.py",
+        imite="le garde document.hidden oublie : une notification pour un "
+              "rendu qu'on regarde finir",
+        rougit="l'annonce se tait onglet visible",
+        editions=[("web/index.html", brut(
+            "  if (!document.hidden) return;" + chr(10) + "  const grave", "  const grave"))]),
+    dict(
+        nom="la notification part sans la case",
+        banc="banc_page.py",
+        imite="seule la permission est lue : une permission donnee pour un "
+              "autre usage fait notifier sans que la case soit cochee",
+        rougit="l'annonce se tait onglet visible, et ne notifie que voulue et permise",
+        editions=[("web/index.html", brut(
+            "  if (!prevenirVoulu() || !(\"Notification\" in window)",
+            "  if (!(\"Notification\" in window)"))]),
+    dict(
+        nom="le clic de la notification reste sur la conversation ouverte",
+        banc="banc_page.py",
+        imite="le clic ramene l'onglet mais pas la conversation du rendu, "
+              "fini ailleurs que la ou l'on etait",
+        rougit="cliquer la notification ramene sur l'onglet et sur la conversation",
+        editions=[("web/index.html", brut(
+            "      if (cid && cid !== convActive) ouvrir(cid);" + chr(10), ""))]),
+    dict(
+        nom="le titre garde sa marque au retour",
+        banc="banc_page.py",
+        imite="la marque calculee sans etre reposee : l'onglet dit « fini » "
+              "pour toujours",
+        rougit="revenir sur l'onglet efface la marque du titre",
+        editions=[("web/index.html", brut(
+            "  document.title = document.title.replace(/^(",
+            "  const _titre = document.title.replace(/^("))]),
+    dict(
+        nom="le champ vide mesure son invite",
+        banc="banc_page.py",
+        imite="ajuster() mesure toujours : un champ vide reste haut de "
+              "l'invite que certains navigateurs comptent dans scrollHeight",
+        rougit="un champ vide reprend la hauteur de repos du CSS",
+        editions=[("web/index.html", brut(
+            "  if (!t.value) { t.style.height = \"\"; return; }" + chr(10), ""))]),
+]
+
+# ══ RONDE 6 : LE STUDIO INSTALLABLE, ET L'AVANT / APRES D'UNE RETOUCHE ═══
+INTERFACE_APPLI = [
+    dict(nom="le manifeste ferme sans compte",
+         banc="banc_fichiers.py",
+         imite="la liste des adresses libres oubliee : Chrome demande le "
+               "manifeste sans cookie, recoit 401, et le studio ne "
+               "s'installe jamais en connexion obligatoire",
+         rougit="le manifeste et les icones de l'appli s'ouvrent sans compte",
+         editions=[("serveur.py", brut(
+             "    libre = libre or chemin in _appli.CHEMINS_LIBRES" + chr(10), ""))]),
+    dict(nom="les icones ouvertes par prefixe",
+         banc="banc_fichiers.py",
+         imite="« /icones/ » ouvert en prefixe, plus court a ecrire : tout ce "
+               "qu'on y ajoutera s'ouvrira sans compte",
+         rougit="et leurs voisines restent fermees",
+         editions=[("serveur.py", brut(
+             "    libre = libre or chemin in _appli.CHEMINS_LIBRES",
+             "    libre = libre or chemin.startswith(\"/icones/\") "
+             "or chemin in _appli.CHEMINS_LIBRES"))]),
+    dict(nom="le disque des entrees ouvert sans verifier le proprietaire",
+         banc="banc_fichiers.py",
+         imite="la lecture sur disque qui se contente de la liste "
+               "d'autorisation : une sortie a moi homonyme ouvre la piece "
+               "jointe du voisin",
+         rougit="une SORTIE a moi qui porte le nom d'une piece jointe du voisin",
+         editions=[("serveur.py", brut(
+             "if genre == \"input\" and not sous and ENTREES.get(nom) == qui(req):",
+             "if genre == \"input\" and not sous:"))]),
+    dict(nom="les entrees repartent par le relais de ComfyUI",
+         banc="banc_fichiers.py",
+         imite="l'etat d'avant : sur le studio sans carte, le relais n'a "
+               "personne au bout et l'original d'une retouche ne s'affiche pas",
+         rougit="je le relis par /api/fichier?type=input",
+         editions=[("serveur.py", brut(
+             "if genre == \"input\" and not sous and ENTREES.get(nom) == qui(req):",
+             "if False and genre == \"input\" and not sous and ENTREES.get(nom) == qui(req):"))]),
+    dict(nom="un nom d'icone inconnu servi vide",
+         banc="banc_fichiers.py",
+         imite="la garde de la liste retiree : icone() rend None et la route "
+               "repond 200 sans corps au lieu de 404",
+         rougit="et un nom d'icone inconnu rend 404",
+         editions=[("serveur.py", brut(
+             "    if nom not in _appli.ICONES:" + chr(10)
+             + "        return web.json_response({\"erreur\": \"inconnue\"}, status=404)" + chr(10)
+             + "    octets = await",
+             "    octets = await"))]),
+    dict(nom="le manifeste servi en JSON ordinaire",
+         banc="banc_fichiers.py",
+         imite="json_response sans son type : application/json au lieu du "
+               "type que la specification du manifeste nomme",
+         rougit="/manifest.webmanifest rend un manifeste lisible",
+         editions=[("serveur.py", brut(
+             "                             content_type=\"application/manifest+json\")",
+             "                             content_type=\"application/json\")"))]),
+    dict(nom="api_etat ne dit plus le type du tour",
+         banc="banc_fichiers.py",
+         imite="le type laisse sur le tour : une retouche finie sous les yeux "
+               "n'a son avant / apres qu'au rechargement",
+         rougit="/api/etat dit le TYPE du tour et son ENTREE",
+         editions=[("serveur.py", brut(
+             "    etat[\"type\"] = tour_.get(\"type\")" + chr(10), ""))]),
+    dict(nom="la sortie reprise n'est plus notee",
+         banc="banc_page.py",
+         imite="« retouche-la » sans piece jointe : la page ne sait pas quelle "
+               "image etait l'original et la retouche n'a pas de curseur",
+         rougit="la page lit entree, reprise et type",
+         editions=[("serveur.py", brut(
+             "            TACHES[tid][\"reprise\"] = dict(conv[\"derniere_sortie\"])" + chr(10),
+             ""))]),
+    dict(nom="le dessin de l'icone deborde du cercle sur",
+         banc="banc_page.py",
+         imite="un anneau agrandi pour « mieux se voir » : Android le coupe "
+               "net dans une icone maskable ronde",
+         rougit="chaque icone est un PNG valide a sa taille",
+         editions=[("appli.py", brut(
+             "r_ext, r_int, r_point = 0.30 * cote,",
+             "r_ext, r_int, r_point = 0.44 * cote,"))]),
+    dict(nom="le manifeste sans icone maskable",
+         banc="banc_page.py",
+         imite="toutes les icones declarees « any » : Android pose l'icone "
+               "sur un disque blanc",
+         rougit="le manifeste remplit les criteres d'installation",
+         editions=[("appli.py", brut(
+             "\"purpose\": \"maskable\" if plein else \"any\"}",
+             "\"purpose\": \"any\"}"))]),
+    dict(nom="la page lie un manifeste qui n'existe pas",
+         banc="banc_page.py",
+         imite="le nom de fichier usuel recopie d'un tutoriel, alors que le "
+               "serveur sert /manifest.webmanifest",
+         rougit="la page lie le manifeste, l'icone d'onglet et l'apple-touch-icon",
+         editions=[("web/index.html", brut(
+             "<link rel=\"manifest\" href=\"/manifest.webmanifest\">",
+             "<link rel=\"manifest\" href=\"/manifest.json\">"))]),
+    dict(nom="le pied de page sous la barre d'accueil",
+         banc="banc_page.py",
+         imite="la zone sure oubliee : en plein ecran sur iPhone, la fleche "
+               "d'envoi passe sous la barre d'accueil",
+         rougit="en plein ecran sur iPhone, le pied de page s'ecarte",
+         editions=[("web/index.html", brut(
+             "footer{padding-bottom:env(safe-area-inset-bottom,0px)}" + chr(10), ""))]),
+    dict(nom="un service worker enregistre en passant",
+         banc="banc_page.py",
+         imite="le service worker « pour l'installation » ajoute sans "
+               "decision : un cache d'origine partage entre les comptes",
+         rougit="aucune page n'enregistre de service worker",
+         editions=[("web/index.html", brut(
+             "const TYPES_RETOUCHE = [",
+             "navigator.serviceWorker.register(\"/sw.js\");" + chr(10)
+             + "const TYPES_RETOUCHE = ["))]),
+    dict(nom="un type de retouche mal orthographie",
+         banc="banc_page.py",
+         imite="« retouche_fond » d'un seul cote : la retouche du fond n'a "
+               "jamais son curseur, sans que rien ne le dise",
+         rougit="les types de retouche que la page reconnait",
+         editions=[("web/index.html", brut(
+             "const TYPES_RETOUCHE = [\"edition\", \"retoucher_zone\", \"retoucher_fond\",",
+             "const TYPES_RETOUCHE = [\"edition\", \"retoucher_zone\", \"retouche_fond\","))]),
+    dict(nom="la comparaison posee avant que l'original soit charge",
+         banc="banc_page.py",
+         imite="le curseur pose tout de suite : un original purge (404) "
+               "laisse un curseur qui ne devoile rien",
+         rougit="rien ne change dans la bulle avant que l'original soit CHARGE",
+         editions=[("web/index.html", brut(
+             "  avant.onload = () => {",
+             "  (() => {")),
+                   ("web/index.html", brut(
+             "    boite.after(regle);" + chr(10) + "  };" + chr(10),
+             "    boite.after(regle);" + chr(10) + "  })();" + chr(10)))]),
+    dict(nom="garnirReponse n'appelle plus l'avant / apres",
+         banc="banc_page.py",
+         imite="le crochet perdu a la fusion des quatre pieces de la ronde 6",
+         rougit="garnirReponse pose l'avant / apres",
+         editions=[("web/index.html", brut(
+             "  avantApres(sortie, t);   // ronde 6 : l'original d'une retouche, s'il est a moi" + chr(10),
+             ""))]),
+    dict(nom="l'executable oublie l'ecran de premiere mise en route",
+         banc="banc_conteneur.py",
+         imite="l'etat du 5 novembre 2026 : /demarrage servi par serveur.py, "
+               "absent de la spec, en erreur dans l'executable",
+         rougit="chaque page que serveur.py sert est embarquee par la spec",
+         editions=[("paquet/comfystudio.spec", brut(
+             "    _f(\"web/demarrage.html\", \"web\")," + chr(10), ""))]),
+]
+
+# ──────────────────────────────────────────────────────────────────────
+#  ronde 6 : la mediatheque — le fichier disparu, la visionneuse, retoucher
+# ──────────────────────────────────────────────────────────────────────
+_GRILLE_SRC = "    if (el.tagName !== \"DIV\" && !MEDIA_ABSENTS.has(url(f))) el.src = url(f);"
+INTERFACE_MEDIA = [
+    dict(
+        nom="la grille ne veille plus sur ses vignettes",
+        banc="banc_page.py",
+        imite="la carte reconstruite sans l'appel : le fichier purge redevient "
+              "une image cassee, telecharger et plein ecran vivants",
+        rougit="chaque vignette (grille, fil, visionneuse) veille sur sa disparition",
+        editions=[("web/index.html", brut(
+            "    veillerAbsence(el, actions, f);" + chr(10), ""))]),
+    dict(
+        nom="le fil ne veille plus sur ses vignettes",
+        banc="banc_page.py",
+        imite="la grille corrigee, le fil oublie : meme code de vignette, "
+              "deux traitements",
+        rougit="chaque vignette (grille, fil, visionneuse) veille sur sa disparition",
+        editions=[("web/index.html", brut(
+            "    if (el.tagName !== \"A\") veillerAbsence(el, sortie.lastChild, f);"
+            + chr(10), ""))]),
+    dict(
+        nom="la grille redemande les fichiers deja connus absents",
+        banc="banc_page.py",
+        imite="le garde retire de la source : chaque lettre tapee dans la "
+              "recherche repeint la grille et redemande chaque fichier disparu",
+        rougit="aucune ne redemande un fichier deja connu absent",
+        editions=[("web/index.html", brut(
+            _GRILLE_SRC, "    if (el.tagName !== \"DIV\") el.src = url(f);"))]),
+    dict(
+        nom="l'ecouteur d'erreur n'est plus once",
+        banc="banc_page.py",
+        imite="un ecouteur permanent : chaque nouvel echec du meme element "
+              "relance la verification",
+        rougit="un fichier disparu se verifie une fois, et se retient",
+        editions=[("web/index.html", brut(
+            "    poserAbsence(el, zone, f);" + chr(10) + "  }, { once: true });",
+            "    poserAbsence(el, zone, f);" + chr(10) + "  });"))]),
+    dict(
+        nom="le plein ecran du fil n'est plus marque",
+        banc="banc_page.py",
+        imite="actionsSortie reecrit sans data-geste : sur un fichier disparu "
+              "du fil, plein ecran reste cliquable et ouvre une vue vide",
+        rougit="les gestes que l'absence coupe sont ceux que la grille",
+        editions=[("web/index.html", brut(
+            "    gros.dataset.geste = \"plein\";       // ronde 6 : veillerAbsence() le retrouve"
+            + chr(10), ""))]),
+    dict(
+        nom="le lien de telechargement d'un fichier disparu reste vivant",
+        banc="banc_page.py",
+        imite="aria-disabled pose sans retirer l'adresse : le lien se suit "
+              "encore et telecharge un JSON d'erreur",
+        rougit="le fichier disparu coupe le telechargement et garde la demande",
+        editions=[("web/index.html", brut(
+            "    a.removeAttribute(\"href\");" + chr(10), ""))]),
+    dict(
+        nom="le bouton plein ecran de la grille oublie la liste",
+        banc="banc_page.py",
+        imite="la vue ouverte par le bouton n'a ni fleches ni compteur, celle "
+              "ouverte par l'image si",
+        rougit="la visionneuse de la grille circule dans la liste filtree affichee",
+        editions=[("web/index.html", brut(
+            "      gros.onclick = () => plein(f, liste);",
+            "      gros.onclick = () => plein(f);"))]),
+    dict(
+        nom="la visionneuse n'ecoute plus les fleches",
+        banc="banc_page.py",
+        imite="les touches mal nommees (« Left », l'ancien nom d'Edge) : les "
+              "boutons marchent, le clavier non",
+        rougit="la visionneuse : fleches, Echap, focus piege",
+        editions=[("web/index.html", brut(
+            "(e.key === \"ArrowLeft\" || e.key === \"ArrowRight\") && suite.length > 1",
+            "(e.key === \"Left\" || e.key === \"Right\") && suite.length > 1"))]),
+    dict(
+        nom="le focus s'echappe de la visionneuse",
+        banc="banc_page.py",
+        imite="Tab non piege : le clavier repart sur la grille cachee sous la "
+              "visionneuse",
+        rougit="la visionneuse : fleches, Echap, focus piege",
+        editions=[("web/index.html", brut(
+            "    } else if (e.key === \"Tab\") pieger(voile, e);" + chr(10),
+            "    }" + chr(10)))]),
+    dict(
+        nom="le focus ne revient pas au bouton d'origine",
+        banc="banc_page.py",
+        imite="la vue fermee laisse le focus sur le corps de la page : le "
+              "clavier repart du haut a chaque image regardee",
+        rougit="la visionneuse : fleches, Echap, focus piege",
+        editions=[("web/index.html", brut(
+            "      origine.focus();", "      void origine;"))]),
+    dict(
+        nom="le balayage au doigt n'est plus branche",
+        banc="banc_page.py",
+        imite="balayer() ecrite et jamais appelee : sur telephone, seules les "
+              "petites fleches du bas changent de piece",
+        rougit="la visionneuse : fleches, Echap, focus piege",
+        editions=[("web/index.html", brut(
+            "  if (suite.length > 1) balayer(voile, montrer);" + chr(10), ""))]),
+    dict(
+        nom="la visionneuse a sa propre copie de la reprise",
+        banc="banc_page.py",
+        imite="« retoucher » recode a cote : la seconde copie oublie l'apercu, "
+              "puis la regle de propriete au premier refactor",
+        rougit="« retoucher » et « reprendre » passent par une seule reprise",
+        editions=[("web/index.html", brut(
+            "      b.disabled = true; b.textContent = \"…\";" + chr(10)
+            + "      try { await joindreSortie(f); }",
+            "      b.disabled = true; b.textContent = \"…\";" + chr(10)
+            + "      try { await fetch(\"/api/reprendre\", { method: \"POST\" }); }"))]),
+    dict(
+        nom="un administrateur reprend l'image d'un autre a son nom",
+        banc="banc_page.py",
+        imite="/api/reprendre aligne sur /api/fichier : l'elargissement "
+              "administrateur, legitime pour regarder, recopie l'image d'un "
+              "autre compte dans le cache d'entree au nom de l'admin",
+        rougit="/api/reprendre ne rend une sortie qu'a son proprietaire",
+        editions=[("serveur.py", brut(
+            "    if noeud(ident) is None or (ident, sous, nom) not in mes_fichiers(pid):"
+            + chr(10) + "        return web.json_response({\"erreur\": T(\"erreur.fichier_introuvable\", lg)},",
+            "    permis = tous_les_fichiers() if est_admin(req) else mes_fichiers(pid)"
+            + chr(10) + "    if noeud(ident) is None or (ident, sous, nom) not in permis:"
+            + chr(10) + "        return web.json_response({\"erreur\": T(\"erreur.fichier_introuvable\", lg)},"))]),
+    dict(
+        nom="les images de la grille se chargent toutes a l'ouverture",
+        banc="banc_page.py",
+        imite="loading=lazy perdu dans une reecriture de la ligne : six cents "
+              "relais vers les machines d'un coup",
+        rougit="les images de la grille se chargent a l'approche",
+        editions=[("web/index.html", brut(
+            "el = document.createElement(\"img\"); el.loading = \"lazy\"; el.alt = f.demande;",
+            "el = document.createElement(\"img\"); el.alt = f.demande;"))]),
+]
+
+
+# L'IMAGE JOINTE ET SA CONSIGNE (5 novembre 2026) : « mets-lui un chapeau »
+# avec le chat joint rendait une femme au chapeau.
+RETOUCHE_JOINTE = [
+    dict(
+        nom="la consigne adressee a l'image jointe n'est pas lue",
+        banc="banc_multilingue.py",
+        imite="la regle posee et jamais consultee : le modele de langage dit "
+              "image, klein4b dessine une autre scene",
+        rougit="image jointe + « mets-lui un chapeau » : retouche",
+        editions=[("serveur.py", brut(
+            "            and _RETOUCHE_JOINTE.search(texte or \"\")",
+            "            and False"))]),
+    dict(
+        nom="une video jointe passe pour une image a retoucher",
+        banc="banc_multilingue.py",
+        imite="« a_une_image » lu comme un booleen : il porte la famille, et "
+              "une video jointe partait au moteur d'edition d'image",
+        rougit="une video jointe n'est pas une image a retoucher",
+        editions=[("serveur.py", brut(
+            "    if (a_une_image == \"image\" and plan[\"intention\"] == \"image\"",
+            "    if (a_une_image and plan[\"intention\"] == \"image\""))]),
+    dict(
+        nom="les pronoms de la retouche sont oublies",
+        banc="banc_multilingue.py",
+        imite="« mets-y » seul, comme dans _REPRISE : « mets-lui » — le cas "
+              "mesure — ne mord pas",
+        rougit="image jointe + « mets-lui un chapeau » : retouche",
+        editions=[("serveur.py", brut(
+            "    r\"(lui|leur|la|le|les|y)\\b|\"",
+            "    r\"(y)\\b|\""))]),
+    dict(
+        nom="la consigne anglaise n'est pas reconnue",
+        banc="banc_multilingue.py",
+        imite="la page parle quatre langues, la regle une seule",
+        rougit="en anglais et sans accent aussi",
+        editions=[("serveur.py", brut(
+            "    r\"\\b(put|add|give|remove|erase|delete|change|replace|turn|make (it|him|her|them))\\b\",",
+            "    r\"\\b(zzzz)\\b\","))]),
+    dict(
+        nom="la retouche decidee par le code garde la scene du modele",
+        banc="banc_multilingue.py",
+        imite="la bascule en retouche sans changer le prompt : le moteur "
+              "d'edition peint le champ de ble decrit pour une image neuve",
+        rougit="la retouche decidee par le code part avec la phrase de l'utilisateur",
+        editions=[("serveur.py", brut(
+            "    if consigne:" + chr(10) + "        plan[\"prompt\"] = consigne",
+            "    if False:" + chr(10) + "        plan[\"prompt\"] = consigne"))]),
+    dict(
+        nom="la reprise d'une sortie garde la scene du modele",
+        banc="banc_multilingue.py",
+        imite="la consigne posee pour l'image jointe seulement, pas pour « la "
+              "meme mais plus sombre »",
+        rougit="et la reprise d'une sortie precedente aussi",
+        editions=[("serveur.py", brut(
+            "        plan[\"raison\"] = \"reprise de l'image precedente detectee\"" + chr(10)
+            + "        consigne_de_retouche(plan, texte)",
+            "        plan[\"raison\"] = \"reprise de l'image precedente detectee\""))]),
+]
+
+
+# L'ADMINISTRATEUR ET SES PIECES JOINTES (5 novembre 2026) : l'avant / apres
+# d'une retouche restait vide pour un administrateur.
+ADMIN_ENTREES = [
+    dict(
+        nom="l'administrateur ne relit pas sa propre piece jointe",
+        banc="banc_fichiers.py",
+        imite="tous_les_fichiers() seul pour l'administrateur : les sorties de "
+              "tout le monde, mais pas ses propres entrees",
+        rougit="un ADMINISTRATEUR relit sa propre piece jointe",
+        editions=[("serveur.py", brut(
+            "    permis = ((tous_les_fichiers() | mes_fichiers(qui(req))) if est_admin(req)",
+            "    permis = ((tous_les_fichiers()) if est_admin(req)"))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -13456,7 +15037,8 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + CODES_FICHIERS + IDEMPOTENCE_DISQUE + EXPIRATION
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
-             + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES)
+             + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES
+             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

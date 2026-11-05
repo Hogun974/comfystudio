@@ -624,6 +624,13 @@ jobs:
       - name: Le pilotage par programme, cles, rappels et MCP de bout en bout
         run: python banc_pilotage.py
 
+      # La porte compatible OpenAI (/openai/v1/), par de vraies requetes HTTP
+      # sur le vrai routeur, sur 127.0.0.1 : ce qu'Open WebUI, LibreChat ou un
+      # SDK openai postent et lisent — l'erreur « error », le base64, le lien
+      # signe, n, size, model ignore, les 429 et quand ne pas rejouer.
+      - name: La porte compatible OpenAI parle le format d'OpenAI sous les gardes du studio
+        run: python banc_openai.py
+
       # Les deux workflows n8n du depot sont ce qu'on importe sans le relire :
       # une faute y est copiee dans chaque maison qui les branche. Le banc les
       # confronte au contrat de contrat.py, pas a une liste recopiee — chaque

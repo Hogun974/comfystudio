@@ -50,9 +50,17 @@ def _f(nom, dest="."):
 
 
 DONNEES = [
-    # Les deux pages servies par FileResponse(ICI/web/...), lignes 4239 et 5076.
+    # Les pages servies par FileResponse(ICI/web/...). Pas de numero de ligne :
+    # ceux qu'il y avait ici dataient de 4 000 lignes. Et web/demarrage.html
+    # y manquait encore le 5 novembre 2026 — /demarrage, l'ecran d'une
+    # installation neuve, ne pouvait pas s'ouvrir dans l'executable.
+    # banc_conteneur.py confronte desormais cette liste aux pages que
+    # serveur.py sert. Le manifeste et les icones de l'appli installable ne
+    # sont PAS des fichiers : appli.py les fabrique, et l'analyse des imports
+    # l'emporte comme les autres modules.
     _f("web/index.html", "web"),
     _f("web/admin.html", "web"),
+    _f("web/demarrage.html", "web"),
     # Le classifieur d'intention, lu par aiguilleur.charger() au demarrage.
     # Absent, le studio marche encore mais tout passe par le modele de langage.
     #

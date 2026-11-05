@@ -117,7 +117,9 @@ curl -s -X POST "$STUDIO/api/compte/acces/92d11256/renouveler" \
 
 La liste du propriétaire dit aussi, pour chaque clé, ce qu'elle a **lancé
 aujourd'hui** (`aujourdhui`) et ce qu'elle a **en cours** (`en_cours`) : où
-elle en est de ses plafonds avant le 429.
+elle en est de ses plafonds avant le 429 — et, pour chaque famille qui a son
+[plafond du jour](#un-plafond-par-famille), ce qu'elle a lancé et ce qui reste
+(`par_famille`).
 
 Elle dit enfin ce qui est **arrivé** à la clé aujourd'hui, dans `suivi` :
 
@@ -130,7 +132,8 @@ Elle dit enfin ce qui est **arrivé** à la clé aujourd'hui, dans `suivi` :
 
 - `refus` : les refus du jour, **par code** — ceux de l'entrée (le 429 d'une
   file pleine, le 403 d'une opération fermée, un champ illisible…) et ceux qui
-  tombent après l'analyse (`cle_operation_interdite`, `refus_mineurs` sur le
+  tombent après l'analyse (`cle_operation_interdite`, `cle_plafond_famille`,
+  `refus_mineurs` sur le
   prompt réécrit). Une machine muette ou une carte trop petite ne comptent
   pas : ce n'est pas la clé qui est refusée, c'est le studio qui manque.
 - `echecs` : les requêtes du jour qui portaient **l'identifiant de cette clé
@@ -197,6 +200,48 @@ d'image de la maison, lui, ne lit pas l'image jointe : il reste `image`.
 `GET /api/v1/moteurs` ne montre à la clé que les moteurs qu'elle peut lancer :
 un assistant qui choisit dans cette liste n'y trouve pas un refus.
 
+#### Un plafond par famille
+
+Un détourage prend deux secondes de carte, une vidéo huit minutes : un seul
+`par_jour` assez large pour cinquante détourages laisse passer cinquante
+vidéos. À la création, donne un plafond du jour **famille par famille** — dans
+la page, une case par famille (0 : aucun) ; sans la page,
+`"par_jour_familles"`, un objet des mêmes familles vers un nombre de rendus :
+
+```json
+{"nom": "détourage du salon", "par_jour": 0,
+ "par_jour_familles": {"detourer": 50, "video": 5}}
+```
+
+**Absent ou vide : rien de plus que `par_jour`.** Les deux s'appliquent :
+`par_jour` compte tous les rendus de la clé, `par_jour_familles` ceux d'une
+famille. Une famille sans chiffre n'a que `par_jour`. Les variantes comptent
+là où elles existent : quatre variantes d'une image sont quatre images ; une
+vidéo ou une retouche ne se tire pas en variantes et compte une fois.
+Compté sur le disque, de minuit à minuit à
+l'heure du studio, comme `par_jour` ; il survit à un renouvellement, et ne se
+change pas : d'autres plafonds, c'est une autre clé.
+
+La garde tient aux **deux mêmes endroits** que les opérations :
+
+- **Avec un `moteur` imposé**, sa famille est connue : refusé tout de suite en
+  **429 `cle_plafond_famille`**, avec `Retry-After` jusqu'à minuit — sans
+  `reessayer_dans` quand les variantes demandées dépassent le plafond lui-même :
+  attendre n'y changera rien.
+- **Sans moteur**, la famille n'est sue qu'après l'analyse : le rendu finit en
+  **`erreur`** avec `erreur.code` = `cle_plafond_famille`, **avant**
+  l'enrichissement et toute minute de carte. Il a compté dans `par_jour` (la
+  demande était entrée), pas dans le plafond de sa famille. Le refus compte
+  dans le `suivi` de la clé.
+
+`GET /api/v1/moi` (et l'outil MCP `decrire_cle`) dit **ce qui reste** à chaque
+famille bornée, dans `par_famille` :
+
+```json
+"par_famille": {"detourer": {"aujourdhui": 12, "plafond": 50, "reste": 38},
+                "video": {"aujourdhui": 5, "plafond": 5, "reste": 0}}
+```
+
 ## Révoquer, et ce qui éteint une clé
 
 **Révoquer ne demande que la session**, pas le mot de passe. Fermer une porte
@@ -236,7 +281,8 @@ par code et les secrets faux présentés sous son identifiant — jamais la clé
 
 ## Les quatre règles
 
-1. **La clé ne vaut que sur `/api/v1/` et `/mcp`.** Présentée ailleurs, elle est
+1. **La clé ne vaut que sur `/api/v1/`, `/mcp` et `/openai/v1/`** (la porte
+   [compatible OpenAI](#brancher-open-webui-librechat-ou-un-sdk-openai)). Présentée ailleurs, elle est
    **refusée en 403** (`cle_hors_perimetre`) plutôt qu'ignorée : ignorée, elle
    laisserait croire à celui qui l'essaie sur `/api/generer` qu'elle marche,
    jusqu'au jour où un cookie oublié dans le même client la ferait passer pour
@@ -529,8 +575,8 @@ curl -s "$STUDIO/api/v1/moi" -H "Authorization: Bearer $CLE"
          "apercu": "cs_92d11256_…", "cree": 1793757278.8, "vu": 1793757278.8,
          "nuage": false, "hotes": ["n8n.maison:5678"], "en_file": 4,
          "par_jour": 0, "generation": 0, "expire": null,
-         "ancienne_jusqu": null, "operations": []},
- "en_cours": 0, "aujourdhui": 0, "attendre_max": 600}
+         "ancienne_jusqu": null, "operations": [], "par_jour_familles": {}},
+ "en_cours": 0, "aujourdhui": 0, "par_famille": {}, "attendre_max": 600}
 ```
 
 C'est la route à appeler pour vérifier qu'une clé marche, avant de lancer quoi
@@ -567,11 +613,16 @@ pendant 24 heures.
   chaque redémarrage n'en serait pas un. **Les variantes comptent** : quatre
   variantes sont quatre rendus, pour `par_jour` comme pour `en_file` (code
   **429** `cle_file_variantes` quand elles dépasseraient `en_file`).
+- **`par_jour_familles`** — le même plafond, [famille par
+  famille](#un-plafond-par-famille) (« 50 détourages et 5 vidéos »), en plus
+  de `par_jour`. Au-delà : **429** `cle_plafond_famille`, ou un rendu en
+  `erreur` de ce code quand c'est l'analyse qui a lu la famille.
 
 **Chaque 429 dit quand réessayer** : l'en-tête **`Retry-After`** (en secondes)
 et le même nombre dans `reessayer_dans` du corps, pour un client qui ne lit que
-le JSON. Il est **exact** pour le freinage (`trop_d_essais`) et pour le
-plafond du jour (jusqu'à minuit, heure du studio) ; pour une file pleine, le
+le JSON. Il est **exact** pour le freinage (`trop_d_essais`) et pour les
+plafonds du jour, de la clé ou d'une famille (jusqu'à minuit, heure du
+studio) ; pour une file pleine, le
 studio ne sait pas quand un rendu finira — de deux secondes à huit minutes — et
 conseille **30 s** : le [rappel](#les-rappels) reste le bon outil. **Pas de
 délai du tout** quand attendre ne servirait à rien — plus de variantes que le
@@ -617,7 +668,7 @@ traduite ; le code continue de marcher.
 | `cle_requise` | 401 | aucune clé sur une route qui en exige une |
 | `cle_refusee` | 401 | clé inconnue, révoquée, ou éteinte (mot de passe, second facteur) — ne pas réessayer, en refaire une |
 | `cle_expiree` | 401 | clé passée sa [date de fin](#une-date-de-fin) — ne pas réessayer, en refaire une |
-| `cle_hors_perimetre` | 403 | une clé présentée hors de `/api/v1` et `/mcp` |
+| `cle_hors_perimetre` | 403 | une clé présentée hors de `/api/v1`, `/openai/v1` et `/mcp` |
 | `trop_d_essais` | 429 | trop de clés refusées depuis cette adresse ; attendre |
 | `corps_illisible` | 400 | le corps n'est pas un objet JSON |
 | `attendre_bornes` | 400 | `attendre` hors de 0 à 600 |
@@ -625,6 +676,7 @@ traduite ; le code continue de marcher.
 | `cle_file_pleine` | 429 | plafond `en_file` atteint |
 | `cle_file_variantes` | 429 | les `variantes` dépasseraient `en_file` ; sans `reessayer_dans` quand elles dépassent le plafond lui-même |
 | `cle_plafond_jour` | 429 | plafond `par_jour` atteint |
+| `cle_plafond_famille` | 429 | le moteur imposé est d'une famille qui a atteint [son plafond du jour](#un-plafond-par-famille) ; sans `reessayer_dans` quand les variantes dépassent le plafond lui-même. Sans moteur imposé : rendu en `erreur` de même code |
 | `champ_illisible` | 400 | un champ n'a pas la forme attendue (la phrase le nomme) |
 | `rappel_refuse` | 400 | adresse de rappel refusée ; la phrase dit pourquoi : `hote`, `schema`, `identifiants`, `illisible` |
 | `image_illisible` | 400 | `image_base64` n'est pas du base64 |
@@ -1021,7 +1073,7 @@ Un assistant IA — Claude Code, Claude Desktop, un agent n8n — sait appeler d
 | `annuler_rendu` | Retire un rendu de la file, ou l'interrompt. |
 | `lister_rendus` | Les derniers rendus de cette clé — pour retrouver ce qui a été fait tout à l'heure. |
 | `lister_moteurs` | Les moteurs que cette clé peut demander, avec ce qu'ils font. |
-| `decrire_cle` | Ce que cette clé permet, **avant d'essayer** : opérations, nuage, rendus en file et plafond du jour (et où elle en est), date de fin. Les mêmes champs que `GET /api/v1/moi`. |
+| `decrire_cle` | Ce que cette clé permet, **avant d'essayer** : opérations, nuage, rendus en file, plafond du jour et celui de chaque famille (et ce qui reste), date de fin. Les mêmes champs que `GET /api/v1/moi`. |
 
 **Un outil attend 45 secondes par défaut**, et non dix minutes : le SDK MCP
 TypeScript — celui de Claude Desktop et de la plupart des clients — annule une
@@ -1086,6 +1138,96 @@ curl -s "$STUDIO/mcp" -H "Authorization: Bearer $CLE" \
 - Pas de session (`MCP-Session-Id`), pas de lot JSON-RPC, ni ressources, ni
   prompts : des outils seulement.
 
+## Brancher Open WebUI, LibreChat ou un SDK OpenAI
+
+Beaucoup d'outils savent parler à « une API d'images OpenAI » dès qu'on leur
+donne **une adresse de base et une clé**. Le studio leur ouvre cette porte :
+
+| À renseigner | Valeur |
+|---|---|
+| Base URL | `http://STUDIO:8199/openai/v1` |
+| Clé (API key) | une clé d'accès du studio, `cs_…` — avec la famille « créer une image » (et « retoucher une image » pour les retouches) |
+| Modèle | `comfystudio` (le studio choisit), ou un moteur de `GET /openai/v1/models` |
+
+Les images sortent **des cartes de la maison**, sous les règles de la clé :
+mêmes plafonds (`en_file`, `par_jour`), même droit au nuage, même garde-fou,
+mêmes familles d'opérations — ce n'est pas une porte à côté, c'est la même
+porte avec un autre accent. Trois routes :
+
+- `POST /openai/v1/images/generations` — créer des images (famille « image ») ;
+- `POST /openai/v1/images/edits` — retoucher une image envoyée en
+  `multipart/form-data` (famille « retouche ») ;
+- `GET /openai/v1/models` — la liste que les clients affichent.
+
+**Open WebUI** : *Réglages d'administration > Images*, moteur « OpenAI »,
+*OpenAI API Base URL* `http://STUDIO:8199/openai/v1`, la clé dans *OpenAI API
+Key*, modèle `comfystudio`. Open WebUI demande du `b64_json` ; il recopie
+l'image chez lui.
+
+**LibreChat** : son outil d'images OpenAI se règle dans le `.env` —
+`IMAGE_GEN_OAI_BASEURL=http://STUDIO:8199/openai/v1`,
+`IMAGE_GEN_OAI_API_KEY=cs_…`, et `IMAGE_GEN_OAI_MODEL=comfystudio` (relu dans
+son `.env.example` le 5 novembre 2026). Le même outil sert les retouches, par
+`/images/edits`.
+
+**Un SDK openai** (Python, mais le SDK Node prend les mêmes deux réglages) :
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://STUDIO:8199/openai/v1", api_key="cs_…")
+image = client.images.generate(model="comfystudio", prompt="un phare dans la brume",
+                               size="1536x1024", response_format="b64_json")
+```
+
+**n8n** : le nœud *OpenAI* avec un credential dont la *Base URL* est la même ;
+ou le nœud *HTTP Request* en `POST` sur `…/openai/v1/images/generations`, le
+credential *Header Auth* déjà fait pour `/api/v1`.
+
+**Ce que deviennent les champs d'OpenAI :**
+
+| Champ | Ce que le studio en fait |
+|---|---|
+| `prompt` | la demande, analysée comme une demande de la page, dans sa langue |
+| `model` | un moteur d'image du studio s'il existe (`klein4b`, `flux1`…) ; tout autre nom — `dall-e-3`, `gpt-image-1`, `comfystudio` — est **ignoré** : le studio choisit |
+| `n` | autant de variantes, de 1 à 4 ; chacune compte dans `en_file` et `par_jour`. Ignoré pour une retouche (une seule) |
+| `size` | ramenée à la taille du studio la plus proche, **le cadrage d'abord** : `1536x1024` → `1216x832`, `1024x1536` → `832x1216`, `1024x1792` → `768x1344`, `512x512` → `1024x1024` ; `auto` laisse choisir. Ignorée pour une retouche |
+| `response_format` | `b64_json` : l'image en base64 (au-delà de 16 Mio, un lien à la place) ; `url` : un **lien signé absolu**, valable 24 h, sans en-tête. Sans le champ : `url` pour un modèle `dall-e-*`, `b64_json` sinon — comme chez OpenAI |
+| `quality` | `low` → rapide ; `high`, `hd` → soigné ; le reste, défaut |
+| `style`, `user`, `background`, `moderation`, `output_format`… | acceptés, ignorés |
+| `stream` | `true` est refusé : le studio ne diffuse pas d'images partielles |
+| `mask` (edits) | lu et écarté : aucun moteur d'ici ne prend un masque OpenAI |
+
+`revised_prompt` porte le prompt que le studio a réellement rendu — après
+analyse, enrichissement et traduction.
+
+**C'est synchrone** : la réponse attend la fin du rendu, **540 s au plus** —
+sous les 600 s après lesquelles le SDK openai coupe, puis **réessaie**, ce qui
+aurait lancé une seconde image. Au-delà, un 504 `delai_depasse` dont le
+message donne l'identifiant du rendu : il continue, il se retrouve dans la
+page ou par `GET /api/v1/rendus/{id}`. `Idempotency-Key` vaut ici comme sur
+`/api/v1/rendus` (même registre). **Le studio ne pose pas de question à
+ces clients** : Open WebUI ou un SDK n'ont aucune façon d'y répondre, et « un
+chat » leur revenait en erreur. Là où la page demanderait une précision, il
+rend sa meilleure lecture de la demande. Le 400 `question` ne reste qu'en filet,
+pour un rendu repris d'avant cette règle.
+
+**Les erreurs sont au format d'OpenAI**, `{"error": {"message", "type",
+"param", "code"}}`, avec le statut qui va : 401 sans clé ou avec une clé
+refusée, 403 pour une clé sans la famille de la route, 429 sur un plafond (avec
+`Retry-After`), 400 sur un champ faux (`param` le nomme). `code` reste **le
+code stable du studio** (`cle_file_pleine`, `refus_mineurs`…) : le tableau des
+refus ci-dessus vaut, plus six codes propres à cette porte (`flux_refuse`,
+`attentes_pleines`, `delai_depasse`, `question`, `sans_image`, `panne`),
+décrits dans le contrat OpenAPI. **`X-Should-Retry: false`** accompagne tout ce
+que le SDK ne doit pas rejouer de lui-même : un 5xx (le rendu est peut-être
+déjà parti), un 429 sans délai, ou dont le délai dépasse une minute — le
+plafond du jour ne se lève pas en huit secondes.
+
+**Ce que cette porte ne fait pas** : le chat (`/chat/completions`), les
+variations (`/images/variations`), le flux, l'image par URL ; une retouche ne
+prend que la première image envoyée. Et la sécurité est celle de `/api/v1` :
+**HTTP en clair** — derrière un reverse proxy TLS dès qu'on sort de la maison.
+
 ## Ce qui est gardé comme dans la page, et ce qui est propre aux programmes
 
 **Comme dans la page** — une demande venue d'un programme passe par la même
@@ -1123,7 +1265,8 @@ l'origine et l'intégrité, pas la confidentialité.
 ## Le contrat OpenAPI
 
 `GET /api/v1/openapi.json`, **sans clé**, rend un document **OpenAPI 3.1** qui
-décrit chaque route de `/api/v1`, `/mcp`, les schémas `Rendu`, `Fichier`,
+décrit chaque route de `/api/v1`, `/mcp`, les trois routes compatibles OpenAI
+(`/openai/v1`, avec leurs schémas `OpenAI*` à part), les schémas `Rendu`, `Fichier`,
 `Refus`, chaque code de refus avec son statut, et le rappel comme webhook. Il
 porte l'adresse du studio telle que tu l'as jointe. C'est ce qu'un assistant IA
 ou un outil qui importe une API (Postman, un générateur de client) sait lire.

@@ -162,7 +162,7 @@ try:
     dit(f is not None and f["id"] == ident and f["compte"] == "jordan",
         "la vraie cle rend sa fiche", str(f and f["nom"]))
     # « generation » n'est plus interdite ici : elle est publique depuis que
-    # la page doit dire quelles cles se sont eteintes (voir les quatorze champs).
+    # la page doit dire quelles cles se sont eteintes (voir les quinze champs).
     dit(f is not None and "empreinte" not in f and "secret_rappel" not in f,
         "reconnaitre rend une fiche publique sans empreinte ni secret",
         ", ".join(sorted(f or {})))
@@ -263,14 +263,16 @@ try:
         f"{len(publiques)} fiches relues")
     dit(a.secret_rappel(ident) == secret and a.secret_rappel("zzzzzzzz") is None,
         "secret_rappel() le rend a qui doit signer, et rien pour un inconnu")
-    # ONZE CHAMPS, dont « generation » : un entier, pas un secret, mais le seul
-    # moyen pour la page de dire qu'une cle s'est eteinte avec le changement
-    # de mot de passe au lieu de la montrer vivante.
+    # QUINZE CHAMPS, dont « generation » : un entier, pas un secret, mais le
+    # seul moyen pour la page de dire qu'une cle s'est eteinte avec le
+    # changement de mot de passe au lieu de la montrer vivante. Le quinzieme,
+    # « par_jour_familles », est un droit comme « operations » : le programme
+    # doit pouvoir le lire.
     dit(set(r["fiche"]) == {"id", "compte", "nom", "apercu", "cree", "vu",
                             "nuage", "hotes", "en_file", "par_jour",
                             "generation", "expire", "ancienne_jusqu",
-                            "operations"},
-        "la fiche publique porte exactement les quatorze champs du contrat",
+                            "operations", "par_jour_familles"},
+        "la fiche publique porte exactement les quinze champs du contrat",
         ", ".join(sorted(r["fiche"])))
     dit(r["fiche"]["apercu"] == f"cs_{ident}_…",
         "l'apercu ne montre rien du secret", r["fiche"]["apercu"])
@@ -840,6 +842,81 @@ try:
             f"une liste abimee ({abimee!r}) rend le fichier illisible : une "
             f"restriction cassee ne se lit pas comme « tout »")
 
+    # ══════════════════════════════════════════════════════════════════
+    #  LE PLAFOND DU JOUR PAR FAMILLE. « 50 detourages et 5 videos » : un
+    #  objet de familles vers des rendus ; vide, rien de plus que par_jour.
+    # ══════════════════════════════════════════════════════════════════
+    print("\n  ── plafonds par famille ──")
+    pf = os.path.join(dossier, "familles.json")
+    fa = acces.Acces(pf)
+    f_rien = fa.creer("jordan", "sans plafond de famille", 0)
+    dit(f_rien["fiche"]["par_jour_familles"] == {}
+        and fa.fiches[f_rien["fiche"]["id"]]["par_jour_familles"] == {},
+        "sans « par_jour_familles », aucun plafond de famille : objet vide, sur "
+        "la fiche et au fichier", repr(f_rien["fiche"]["par_jour_familles"]))
+    f_det = fa.creer("jordan", "detourage borne", 0, par_jour=200,
+                     par_jour_familles={"video": 5, "detourer": 50, "audio": 0})
+    dit(f_det["fiche"]["par_jour_familles"] == {"video": 5, "detourer": 50}
+        and list(f_det["fiche"]["par_jour_familles"]) == ["video", "detourer"]
+        and f_det["fiche"]["par_jour"] == 200,
+        "les plafonds sont gardes dans l'ordre d'OPERATIONS, un zero n'en est "
+        "pas un, et par_jour reste a cote",
+        repr(f_det["fiche"]["par_jour_familles"]))
+    mauvais_pf = {"une liste": [["video", 5]], "une chaine": "video=5",
+                  "une famille inconnue": {"peindre": 3},
+                  "un type du catalogue": {"video_image": 3},
+                  "un booleen": {"video": True}, "un negatif": {"video": -1},
+                  "au-dela de la borne": {"video": acces.PAR_JOUR_MAX + 1},
+                  "un nombre a virgule": {"video": 2.5},
+                  "un nombre en texte": {"video": "5"}}
+    passes_pf = [quoi for quoi, v in mauvais_pf.items()
+                 if leve(fa.creer, "jordan", "y", 0, par_jour_familles=v) is None]
+    dit(not passes_pf, "« par_jour_familles » refuse ce qui n'est pas un objet "
+        "de familles vers des entiers bornes",
+        ", ".join(passes_pf) or f"{len(mauvais_pf)} formes refusees")
+    try:
+        fa.creer("jordan", "y", 0, par_jour_familles={"video": -1})
+        cle_pf = None
+    except acces.ErreurAcces as e:
+        cle_pf = e.cle
+    dit(cle_pf == "erreur.acces_par_jour_familles"
+        and not [f for f in fa.fiches.values() if f["nom"] == "y"],
+        "le refus nomme sa phrase, et n'ecrit aucune cle", str(cle_pf))
+    dit(fa.creer("jordan", "borne pile", 0,
+                 par_jour_familles={"video": acces.PAR_JOUR_MAX})["fiche"]
+        ["par_jour_familles"] == {"video": acces.PAR_JOUR_MAX},
+        "temoin : la borne elle-meme passe")
+    pub_f = fa.fiche(f_det["fiche"]["id"])
+    pub_f["par_jour_familles"]["video"] = 999
+    dit(fa.fiches[f_det["fiche"]["id"]]["par_jour_familles"]["video"] == 5,
+        "modifier la fiche publique ne touche pas les plafonds de la cle")
+    rn_f = fa.renouveler(f_det["fiche"]["id"], compte="jordan", maintenant=T0 + 5)
+    dit(rn_f["fiche"]["par_jour_familles"] == {"video": 5, "detourer": 50},
+        "renouvelee, la cle garde ses plafonds par famille",
+        repr(rn_f["fiche"]["par_jour_familles"]))
+    fa2 = acces.Acces(pf)
+    dit(not fa2.illisible
+        and fa2.fiche(f_det["fiche"]["id"])["par_jour_familles"] == {"video": 5, "detourer": 50},
+        "relus du disque, les plafonds tiennent")
+    brut_pf = json.loads(brut_du_disque(pf))
+    for x in brut_pf:
+        x.pop("par_jour_familles", None)
+    with open(pf, "w", encoding="utf-8") as fh:
+        json.dump(brut_pf, fh)
+    fa3 = acces.Acces(pf)
+    dit(not fa3.illisible and fa3.fiche(f_det["fiche"]["id"])["par_jour_familles"] == {},
+        "une fiche ecrite avant ce champ se relit, sans plafond de famille")
+    for abime in ({"video": "cinq"}, {"peindre": 5}, ["video"], {"video": True},
+                  {"video": -3}):
+        for x in brut_pf:
+            x["par_jour_familles"] = abime
+        with open(pf, "w", encoding="utf-8") as fh:
+            json.dump(brut_pf, fh)
+        fa4 = acces.Acces(pf)
+        dit(fa4.illisible and not fa4.fiches,
+            f"des plafonds abimes ({abime!r}) rendent le fichier illisible : un "
+            f"plafond casse ne se lit pas comme « aucun »")
+
     print("\n  ── le suivi : refus du jour et secrets faux ──")
     ps = os.path.join(dossier, "suivi.json")
     su = acces.Acces(ps)
@@ -880,7 +957,7 @@ try:
         "relu du disque, le suivi est le meme : un redemarrage ne l'efface pas",
         repr(relu_s.suivi(i_s, maintenant=T0 + 700)))
     dit(set(su.fiche(i_s)) == set(rs["fiche"]) and "suivi" not in su.fiche(i_s),
-        "le suivi n'entre pas dans la fiche publique : elle garde ses quatorze champs")
+        "le suivi n'entre pas dans la fiche publique : elle garde ses quinze champs")
     # Le lendemain : les compteurs repartent, les instants restent.
     demain = T0 + 86400
     su.noter_refus(i_s, "cle_file_pleine", maintenant=demain)

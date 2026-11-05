@@ -15,8 +15,9 @@ CE QU'IL GARDE, DANS L'ORDRE DES DEGATS :
      pose par megarde sur POST /api/v1/rendus dirait a un client qu'il peut
      lancer des rendus sans cle — et un client genere ne poserait plus
      l'en-tete.
-  2. LES ROUTES. Chaque route que S.app() enregistre sous /api/v1/ (et /mcp)
-     est decrite, avec sa methode ; chaque chemin decrit existe dans le
+  2. LES ROUTES. Chaque route que S.app() enregistre sous /api/v1/ (et /mcp,
+     et /openai/v1/ dont les champs, les codes et les bornes ont leur propre
+     section) est decrite, avec sa methode ; chaque chemin decrit existe dans le
      routeur. GET /api/v1/openapi.json est EXIGE : c'est par elle que le
      document est servi.
   3. LES REFUS. Chaque code que serveur.py peut rendre (releve dans son TEXTE :
@@ -162,7 +163,9 @@ try:
         chemin = r.resource.canonical if r.resource else ""
         if r.method == "HEAD":
             continue
-        if chemin.startswith(S.PREFIXE_PROGRAMME) or chemin == S.CHEMIN_MCP:
+        # /openai/v1/ AUSSI : la cle y vaut, le contrat doit les decrire.
+        if (chemin.startswith(S.PREFIXE_PROGRAMME) or chemin == S.CHEMIN_MCP
+                or chemin.startswith(S.PREFIXE_OPENAI)):
             # « * » sur /mcp : la route repond 405 a tout sauf POST, et c'est
             # POST que le contrat decrit.
             ROUTEUR.add((chemin, "post" if r.method == "*" else r.method.lower()))
@@ -410,6 +413,85 @@ try:
         f"{sorted(lus_reponse)}")
 
     # ══════════════════════════════════════════════════════════════════
+    # LA COMPATIBILITE OPENAI, dans sa propre forme : des champs lus, des
+    # codes rendus et des bornes recopiees, confrontes comme le reste.
+    print("\n  ── la compatibilite OpenAI ──")
+    dit((C.PREFIXE_OPENAI, C.ATTENDRE_OPENAI, C.FORMATS_OPENAI, C.MODELE_STUDIO)
+        == (S.PREFIXE_OPENAI, S.ATTENDRE_OPENAI, S.FORMATS_OPENAI, S.MODELE_STUDIO),
+        "le prefixe, l'attente, les formats et le modele du studio sont ceux de serveur.py")
+    dit(set(C.QUALITES_OPENAI) == set(S.QUALITES_OPENAI),
+        "les qualites decrites sont celles que serveur.py traduit",
+        f"{sorted(set(C.QUALITES_OPENAI) ^ set(S.QUALITES_OPENAI)) or 'egales'}")
+    # SOUS LES 600 s DU SDK openai : au-dela, il coupe le premier et rejoue.
+    dit(0 < S.ATTENDRE_OPENAI < 600 and S.ATTENDRE_OPENAI <= S.ATTENDRE_MAX,
+        "l'attente synchrone reste sous le delai du SDK openai (600 s)",
+        f"{S.ATTENDRE_OPENAI} s")
+    lus_openai = set(re.findall(r'\bd\.get\("([a-z_]+)"', inspect.getsource(S._demande_openai)))
+    dit(len(lus_openai) >= 5 and lus_openai == proprietes(DOC, "OpenAIDemandeImages"),
+        "OpenAIDemandeImages : les champs du contrat sont ceux que la route lit",
+        f"en trop {sorted(proprietes(DOC, 'OpenAIDemandeImages') - lus_openai)}, "
+        f"non decrits {sorted(lus_openai - proprietes(DOC, 'OpenAIDemandeImages'))}")
+    debut_o = TEXTE.find("# ── compatibilite OpenAI")
+    fin_o = TEXTE.find("# ── la gestion des cles, par leur proprietaire", debut_o)
+    BLOC_O = TEXTE[debut_o:fin_o] if 0 <= debut_o < fin_o else ""
+    dit(len(BLOC_O) > 5000, "temoin : le bloc « compatibilite OpenAI » est trouve",
+        f"{len(BLOC_O)} caracteres")
+    # (statut, code) de chaque erreur_openai( : le code litteral qui suit le
+    # statut dans le meme appel — l'appel suivant borne la recherche.
+    RENDUS_O = set()
+    morceaux = re.split(r"(?<![_\w])erreur_openai\(", BLOC_O)[1:]
+    for m_o in morceaux:
+        st_o = re.match(r"\s*(\d{3})", m_o)
+        co_o = re.search(r'code="([a-z_]+)"', m_o)
+        if st_o and co_o:
+            RENDUS_O.add((co_o.group(1), int(st_o.group(1))))
+    TOUS_O = dict(C.REFUS, **C.REFUS_COMMUNS, **C.CODES_OPENAI)
+    dit(len(RENDUS_O) >= 8, "temoin : le releve trouve les codes des routes OpenAI",
+        f"{len(RENDUS_O)} codes")
+    inconnus_o = sorted(c for c, _ in RENDUS_O if c not in TOUS_O)
+    dit(not inconnus_o, "chaque code rendu par les routes OpenAI est dans le contrat",
+        ", ".join(inconnus_o) or "tous")
+    morts_o = sorted(set(C.CODES_OPENAI) - {c for c, _ in RENDUS_O})
+    dit(not morts_o, "chaque code propre a OpenAI du contrat est rendu par serveur.py",
+        ", ".join(morts_o) or "tous")
+    faux_o = sorted(f"{c} : {s} contre {C.CODES_OPENAI[c][0]}" for c, s in RENDUS_O
+                    if c in C.CODES_OPENAI and C.CODES_OPENAI[c][0] != s)
+    dit(not faux_o, "chaque code propre a OpenAI a le meme statut des deux cotes",
+        " ; ".join(faux_o) or "tous")
+    doubles_o = sorted(set(C.CODES_OPENAI) & (set(C.REFUS) | set(C.REFUS_COMMUNS)))
+    dit(not doubles_o, "aucun code propre a OpenAI n'est aussi un code de Refus",
+        ", ".join(doubles_o) or "aucun")
+    texte_err = json.dumps(DOC["components"]["schemas"]["OpenAIErreur"], ensure_ascii=False)
+    dit(all(f"`{c}`" in texte_err for c in C.CODES_OPENAI),
+        "chaque code propre a OpenAI apparait dans la description de OpenAIErreur")
+    rep_o = json.loads(S.erreur_openai(429, "x", code="c", param="p", apres=5).text)
+    err_props = set(DOC["components"]["schemas"]["OpenAIErreur"]["properties"]["error"]
+                    ["properties"])
+    dit(set(rep_o) == {"error"} and set(rep_o["error"]) == err_props,
+        "OpenAIErreur : les champs du contrat sont ceux d'erreur_openai",
+        f"{sorted(rep_o.get('error') or {})}")
+    types_o = {S._type_openai(s) for s in (400, 401, 403, 404, 409, 413, 422, 429, 500, 504)}
+    enum_types = set(DOC["components"]["schemas"]["OpenAIErreur"]["properties"]["error"]
+                     ["properties"]["type"]["enum"])
+    dit(types_o == enum_types, "l'enum de error.type est ce que _type_openai rend",
+        f"{sorted(types_o ^ enum_types) or 'egal'}")
+    item_o = set(re.findall(r'item\["([a-z_0-9]+)"\]', inspect.getsource(S._reponse_openai)))
+    item_doc = set(DOC["components"]["schemas"]["OpenAIImages"]["properties"]["data"]
+                   ["items"]["properties"])
+    dit(item_o == item_doc and {"b64_json", "url", "revised_prompt"} <= item_o,
+        "OpenAIImages : les champs d'une image sont ceux que la route pose",
+        f"{sorted(item_o)}")
+    S.ACCES = acces_
+    modeles_o = json.loads(S.asyncio.run(S.api_openai_modeles(
+        Req(par_cle=fiche, compte="banc", pid="b" * 32))).text)
+    props_m = set(DOC["components"]["schemas"]["OpenAIModeles"]["properties"]["data"]
+                  ["items"]["properties"])
+    dit(set(modeles_o) == proprietes(DOC, "OpenAIModeles")
+        and modeles_o.get("data") and all(set(m) == props_m for m in modeles_o["data"]),
+        "OpenAIModeles : les champs du contrat sont ceux de GET /openai/v1/models",
+        f"{sorted(modeles_o)}")
+
+    # ══════════════════════════════════════════════════════════════════
     print("\n  ── les bornes, recopiees de serveur.py ──")
     dit(C.ETATS == S.ETATS_PROGRAMME, "les etats du contrat sont ETATS_PROGRAMME",
         str(C.ETATS))
@@ -452,6 +534,13 @@ try:
     dit(ops_ == list(S._acces.OPERATIONS),
         "les familles d'« operations » sont celles d'acces.OPERATIONS, dans l'ordre",
         repr(ops_))
+    # Les plafonds par famille : les memes familles, la meme borne que
+    # « par_jour » — acces.py les refuserait sinon a la creation.
+    pjf_ = DOC["components"]["schemas"]["Cle"]["properties"].get("par_jour_familles") or {}
+    dit(((pjf_.get("propertyNames") or {}).get("enum") == list(S._acces.OPERATIONS)
+         and (pjf_.get("additionalProperties") or {}).get("maximum") == S._acces.PAR_JOUR_MAX),
+        "les familles de « par_jour_familles » sont celles d'acces.OPERATIONS, "
+        "bornees a PAR_JOUR_MAX", repr(pjf_.get("propertyNames")))
     types_ = ((DOC["components"]["schemas"]["DemandeRendu"]["properties"]
                .get("image_type") or {}).get("enum"))
     dit(types_ and sorted(types_) == sorted(S.TYPES_IMAGE),

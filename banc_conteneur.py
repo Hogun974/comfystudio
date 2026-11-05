@@ -256,6 +256,42 @@ dit(not _oublies,
     ", ".join(_oublies) + " — dans la spec, pas dans le Dockerfile"
     if _oublies else f"{len(_embarques)} corpus des deux cotes")
 
+# ET CHAQUE PAGE QUE LE STUDIO SERT, L'EXECUTABLE L'EMPORTE. Le Dockerfile
+# copie web/ en entier ; la spec nomme ses pages une par une, et le
+# 5 novembre 2026 web/demarrage.html n'y etait pas — l'ecran d'une
+# installation neuve rendait une erreur dans l'executable, et rien ne l'avait
+# dit. Les pages se lisent dans serveur.py, la ou il les sert
+# (« os.path.join(ICI, "web", "x.html") »), jamais dans une liste ecrite ici.
+_pages = set(re.findall(r'os\.path\.join\(ICI,\s*"web",\s*"([a-z_]+\.html)"\)',
+                        SRV))
+_pages_embarquees = set(re.findall(r'_f\("web/([a-z_]+\.html)"', _spec))
+_pages_oubliees = sorted(_pages - _pages_embarquees)
+# LE PLANCHER : trois pages servies aujourd'hui. Un releve tombe a zero rendrait
+# la difference vide, et le cas vert de rien.
+dit(len(_pages) >= 3 and not _pages_oubliees
+    and any("web/" in m or m == "web/" for m in _copies),
+    "chaque page que serveur.py sert est embarquee par la spec ET copiee "
+    "dans l'image",
+    ", ".join(_pages_oubliees) + " — servie(s), absente(s) de la spec"
+    if _pages_oubliees else ", ".join(sorted(_pages)))
+
+# LE STUDIO INSTALLABLE N'AJOUTE AUCUN FICHIER A EMPORTER, et ce cas dit
+# pourquoi c'est vrai : le manifeste et les icones sont fabriques par
+# appli.py, un module que serveur.py importe — donc dans FICHIERS, donc copie
+# par « COPY *.py » (cas ci-dessus) et suivi par l'analyse de PyInstaller. Le
+# jour ou quelqu'un poserait un manifeste ou un PNG dans web/, la spec devrait
+# le nommer : ce cas rougit pour le rappeler.
+_statiques = sorted(n for n in os.listdir(os.path.join(ICI, "web"))
+                    if not n.endswith(".html")) \
+    if os.path.isdir(os.path.join(ICI, "web")) else []
+_statiques_oublies = [n for n in _statiques
+                      if f'_f("web/{n}"' not in _spec]
+dit("appli.py" in FICHIERS and not _statiques_oublies,
+    "le manifeste et les icones viennent d'appli.py, suivi comme module ; "
+    "aucun fichier de web/ n'echappe a la spec",
+    ", ".join(_statiques_oublies) + " — dans web/, absent(s) de la spec"
+    if _statiques_oublies else "appli.py suivi, web/ ne porte que des pages")
+
 # AUCUN prefixe de nom, les DEUX sortes de guillemets, et « os.getenv » autant
 # que « os.environ.get ». Chacune de ces trois largesses ferme une mutation qui
 # passait au vert.

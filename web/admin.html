@@ -824,7 +824,8 @@ async function rafraichirAcces() {
       <td class="detail">${c.nuage ? "autorisé" : "non"}${(c.operations || []).length
           ? "<br>seulement : " + c.operations.map(ech).join(", ") : ""}</td>
       <td class="detail">${(c.hotes || []).map(ech).join("<br>") || "—"}</td>
-      <td class="detail">${ech(c.en_cours)} / ${ech(c.en_file)}<br><span title="lancés aujourd’hui / plafond du jour">${ech(c.aujourdhui || 0)} / ${c.par_jour ? ech(c.par_jour) : "∞"} auj.</span></td>
+      <td class="detail">${ech(c.en_cours)} / ${ech(c.en_file)}<br><span title="lancés aujourd’hui / plafond du jour">${ech(c.aujourdhui || 0)} / ${c.par_jour ? ech(c.par_jour) : "∞"} auj.</span>${Object.entries(c.par_famille || {}).map(([f, x]) =>
+          `<br><span title="${ech(f)} lancés aujourd’hui / plafond du jour de cette famille — reste ${ech(x.reste)}">${ech(f)} ${ech(x.aujourdhui || 0)} / ${ech(x.plafond)}</span>`).join("")}</td>
       <td class="detail">${suivi}</td>
       <td class="detail">${c.active ? (c.expire ? "active, jusqu’au " + ech(dateCourte(c.expire)) : "active")
           + (c.ancienne_jusqu && c.ancienne_jusqu * 1000 > Date.now()
@@ -1115,19 +1116,32 @@ async function rafraichir() {
      sache. Le serveur le décharge et retente ; ici, on le voit. */
   const deg = d.modeles_degeneres || {};
   const derniers = deg.derniers || [];
-  $("#langueDegenere").innerHTML = !deg.total ? "" : `
+  /* Le 5 novembre 2026, le déchargement n'a pas suffi : le même modèle, frais,
+     recommençait. Celui qui dégénère deux fois dans la fenêtre est mis de côté ;
+     on montre lesquels, et jusqu'à quand. */
+  const deCote = deg.quarantaines || [];
+  $("#langueDegenere").innerHTML = !deg.total && !deCote.length ? "" : `
     <div class="carte" style="border-color:var(--rouge)">
       <h2 style="margin-top:0">réponses dégénérées d'un modèle de langage</h2>
       <p class="aide">${ech(deg.total)} depuis le démarrage. Un modèle résident
-        a répondu sans erreur, mais vide ou par un même caractère répété. Le
+        a répondu vide, ou par un même caractère répété. Le
         studio le décharge — une fois par machine et par modèle toutes les
         ${ech(Math.round((deg.fenetre || 600) / 60))} minutes — puis retente
-        l'appel. Si cela revient, regarde la mémoire de la carte, ou mets
+        l'appel. S'il recommence dans ce délai, il est mis de côté
+        ${ech(Math.round((deg.quarantaine || 900) / 60))} minutes : les appels
+        vont à la machine suivante, puis un seul appel d'essai le remet en
+        service. Si cela revient, regarde la mémoire de la carte, ou mets
         Ollama à jour.</p>
+      ${deCote.map(q =>
+        `<div class="pli-ligne"><b>mis de côté : ${ech(q.modele)} — sur ${ech(q.machine)}</b>
+           <div class="pli-val mono">depuis ${ech(q.debut)} · jusqu'à ${ech(q.fin)} ·
+             ${q.essai ? "essai en cours" : q.reste ? "encore " + ech(Math.ceil(q.reste / 60)) + " min"
+                                          : "prochain appel : essai"}
+             ${q.fois > 1 ? " · mis de côté " + ech(q.fois) + " fois de suite" : ""}</div></div>`).join("")}
       ${derniers.map(x =>
         `<div class="pli-ligne"><b>${ech(x.modele)} — sur ${ech(x.machine)}</b>
            <div class="pli-val mono">${ech(x.heure)} · ${ech(x.forme)} ·
-             ${x.decharge ? "déchargé" : "non déchargé"} · ${ech(x.issue)}</div></div>`).join("")}
+             ${x.decharge ? "déchargé" : "non déchargé"} · ${ech(x.issue)}${x.quarantaine ? " · mis de côté" : ""}</div></div>`).join("")}
     </div>`;
 }
 

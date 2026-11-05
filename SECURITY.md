@@ -63,14 +63,20 @@ pourrait pas afficher le formulaire de connexion), les routes de session, les
 routes d'administration et `/demarrage` — qui vérifient elles-mêmes le jeton, et
 dont la fermeture condamnerait le seul moyen d'entrer sur une installation
 neuve —, les routes des machines à agent (`/api/noeud/*`, authentifiées par
-leur jeton), les routes des programmes (`/api/v1/*` et `/mcp`), qui exigent
+leur jeton), les routes des programmes (`/api/v1/*`, `/mcp` et la porte
+compatible OpenAI `/openai/v1/*`), qui exigent
 elles-mêmes une **clé d'accès** et répondent un 401 qu'un programme sait lire
 (voir [plus bas](#les-clés-daccès-des-programmes)) — dont `/api/v1/lien/*`, qui
 se lit sans en-tête parce que le lien est lui-même une **capacité signée**, et
 `/api/v1/openapi.json`, la description de l'API, sans rien de propre à
 l'installation que son adresse —, et une lecture sans effet ni secret :
 `/api/textes`, le dictionnaire de la page, sans quoi l'écran de connexion
-resterait français.
+resterait français ; et le manifeste du studio installable
+(`/manifest.webmanifest`) avec ses cinq icônes (`/icones/appli-*.png`), en
+adresses exactes et non en préfixe, que le navigateur demande **sans cookie** —
+un nom, trois couleurs, un dessin. Aucun service worker n'est enregistré : un
+cache d'origine partagerait ce qu'un compte a vu avec le suivant sur le même
+appareil.
 (`/api/fournisseurs`, ouverte elle aussi, disait à un inconnu quelles modalités
 partaient chez un tiers ; aucune page ne la lisait, elle a été retirée le
 6 septembre 2026.)
@@ -384,8 +390,8 @@ qu'elle n'ouvre pas.
 - **Comparée en temps constant, et sans dire si l'identifiant existe** :
   l'empreinte est calculée et comparée même quand l'identifiant ne désigne
   aucune clé, pour que le chronomètre ne sépare pas « inconnue » de « fausse ».
-- **Seulement sur `/api/v1/*` et `/mcp`.** Présentée ailleurs, elle est
-  refusée en 403 plutôt qu'ignorée. Elle ne vaut **jamais administration** —
+- **Seulement sur `/api/v1/*`, `/mcp` et `/openai/v1/*`.** Présentée ailleurs,
+  elle est refusée en 403 plutôt qu'ignorée. Elle ne vaut **jamais administration** —
   `admin_ok()` et `est_admin()` la refusent, même posée sur le compte `admin` —
   et ne voit que les rendus qu'**elle** a demandés : ni la médiathèque de son
   compte, ni les rendus d'une autre de ses clés. Réciproquement, une session de
@@ -429,7 +435,9 @@ qu'elle n'ouvre pas.
   clé**. La table vit en mémoire, comme l'autre.
 - **Bornée** : vingt clés par compte, `en_file` rendus en cours à la fois (4 par
   défaut, 20 au plus, variantes comprises), `par_jour` facultatif, compté sur
-  le disque, variantes comprises ; huit attentes ouvertes à la fois, qui
+  le disque, variantes comprises, et `par_jour_familles` pour borner une
+  famille à part (« 5 vidéos par jour ») — une clé volée ne prend pas la carte
+  pour la nuit ; huit attentes ouvertes à la fois, qui
   s'arrêtent dès que la clé est révoquée ; cinq cents conversations ouvertes.
 - **Le type d'une image envoyée en base64 vient d'une liste** (`png`, `jpg`,
   `webp`), jamais du client : il devient l'extension du fichier écrit, et un
@@ -477,6 +485,36 @@ serveur** sur un réseau de maison. Elle est fermée ainsi :
 Le studio ne va **jamais** chercher une image à une adresse donnée par un
 programme : ce serait la même requête forgée, par une autre porte.
 
+**La porte compatible OpenAI** (`/openai/v1/images/generations`,
+`/openai/v1/images/edits`, `/openai/v1/models`) existe pour qu'Open WebUI,
+LibreChat ou un SDK openai se branchent avec une clé du studio. Ce n'est pas une
+voie de plus pour la clé, c'est **la même** sous un autre format : même
+middleware d'identité, même frein, même `lancer_pour_programme` (plafonds,
+nuage, garde-fou des mineurs avant la file, validation de la page), même
+registre d'idempotence. Ce qu'elle ajoute, et comment c'est tenu :
+
+- **La famille de la route est exigée, puis imposée** : une clé sans « image »
+  est refusée en 403 sur `generations`, sans « retouche » sur `edits` ; et la
+  tâche lancée porte une liste d'opérations **réduite à cette famille**, même
+  pour une clé qui permet tout — une demande que l'analyse lit comme une vidéo
+  est arrêtée avant toute minute de carte, au lieu d'occuper une machine huit
+  minutes pour un client qui attend une image.
+- **Un formulaire multipart borné** (`edits`) : il se lit en flux, hors de
+  `client_max_size` ; l'image est coupée au plafond de sa famille (32 Mio)
+  pendant la lecture, un champ texte à 64 Kio, et le formulaire à 32 champs.
+  Le type de l'image vient de la même liste fermée que le base64, jamais du
+  nom de fichier tel quel ; le masque est lu et jeté.
+- **Une attente synchrone bornée** (540 s), comptée dans les huit attentes par
+  clé — et refusée en 429 **avant** de lancer quand elles sont prises, sinon le
+  rendu partirait sans que personne n'en reçoive l'image.
+- **Aucune trace dans les réponses** : une exception sous `/openai/v1/` rend un
+  500 au format d'OpenAI avec une phrase fixe ; la trace reste dans le journal.
+  Et `X-Should-Retry: false` sur tout 5xx : le SDK openai rejoue les 5xx de
+  lui-même, et un rejeu après un lancement serait un second rendu facturé en
+  temps de carte.
+- Les images rendues en `url` sont les **liens signés** de toujours
+  (`/api/v1/lien/*`), et meurent avec la clé.
+
 **Ce que ça ne protège pas** : le transit — une clé passe en clair sur HTTP,
 comme un cookie de session ; une clé volée, qui lance des rendus sur la carte
 dans les limites de ses plafonds jusqu'à sa révocation ; l'hôte, qui lit les
@@ -499,7 +537,7 @@ dans le journal de la tâche.
 
 | | |
 |---|---|
-| Protégé | mots de passe (scrypt + sel), second facteur TOTP au choix de chacun, sessions (HMAC, révoquées par la génération du compte), cookie d'administration dérivé du jeton et non le jeton, cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, en-têtes anti-cadre et anti-devinette de type, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt, dépôts d'agent liés au travail confié, clés d'accès des programmes (empreintes sha256, créées avec mot de passe et second facteur, limitées à `/api/v1` et `/mcp`, jamais administration, éteintes par la génération du compte, liens signés et rappels compris), rappels signés vers des hôtes déclarés seulement, sans redirection suivie |
+| Protégé | mots de passe (scrypt + sel), second facteur TOTP au choix de chacun, sessions (HMAC, révoquées par la génération du compte), cookie d'administration dérivé du jeton et non le jeton, cookies `HttpOnly` + `SameSite=Lax`, vérification de l'`Origin`, en-têtes anti-cadre et anti-devinette de type, jetons comparés en temps constant, clés d'API jamais renvoyées par l'API, secrets hors du dépôt, dépôts d'agent liés au travail confié, clés d'accès des programmes (empreintes sha256, créées avec mot de passe et second facteur, limitées à `/api/v1`, `/mcp` et `/openai/v1`, jamais administration, éteintes par la génération du compte, liens signés et rappels compris), rappels signés vers des hôtes déclarés seulement, sans redirection suivie |
 | **Pas** protégé | le transit (HTTP simple, cookies sans `Secure`, clés d'accès comprises), les secrets au repos (JSON en clair, secrets TOTP et secrets de rappel compris), la déconnexion d'un seul appareil qui ne ferme pas les autres, l'hameçonnage en temps réel, l'hôte lui-même, la mise à jour automatique des agents (voir ci-dessous) |
 
 ### Ce qui reste ouvert : la mise à jour automatique des agents
