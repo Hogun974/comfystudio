@@ -24,6 +24,10 @@ CE QUE CE BANC GARDE, DANS L'ORDRE DES DEGATS :
   8. LA DATE DE DERNIER USAGE, ecrite au plus une fois par dix minutes et par
      cle — sinon un n8n qui interroge chaque seconde reecrit le fichier chaque
      seconde.
+  9. LE SUIVI : les refus du jour par code et les secrets faux presentes sous
+     l'identifiant d'une cle — comptes sans garder le secret essaye, remis a
+     zero a minuit, bornes, ecrits sans l'etre a chaque refus, et perdus sans
+     fermer les cles quand ils sont abimes.
 
     python banc_acces.py
 
@@ -835,6 +839,129 @@ try:
         dit(op4.illisible and not op4.fiches,
             f"une liste abimee ({abimee!r}) rend le fichier illisible : une "
             f"restriction cassee ne se lit pas comme « tout »")
+
+    print("\n  ── le suivi : refus du jour et secrets faux ──")
+    ps = os.path.join(dossier, "suivi.json")
+    su = acces.Acces(ps)
+    rs = su.creer("jordan", "suivie", 0, maintenant=T0)
+    k_s, i_s = rs["cle"], rs["fiche"]["id"]
+    ecrits = []
+    vraie_sauver_s = su.sauver
+
+    def compte_sauver():
+        ecrits.append(1)
+        return vraie_sauver_s()
+
+    su.sauver = compte_sauver
+    for code_, dt in (("cle_file_pleine", 1), ("cle_file_pleine", 2),
+                      ("cle_operation_interdite", 3)):
+        su.noter_refus(i_s, code_, maintenant=T0 + dt)
+    s1 = su.suivi(i_s, maintenant=T0 + 4)
+    dit(s1["refus"] == {"cle_file_pleine": 2, "cle_operation_interdite": 1}
+        and s1["refus_total"] == 3 and s1["dernier_code"] == "cle_operation_interdite"
+        and s1["dernier_refus"] == T0 + 3,
+        "noter_refus compte par code, avec le total et le dernier", repr(s1))
+    for i in range(10):
+        su.noter_refus(i_s, "cle_plafond_jour", maintenant=T0 + 10 + i)
+    dit(len(ecrits) == 1,
+        "treize refus en dix minutes : une seule ecriture du fichier (la premiere)",
+        f"{len(ecrits)} ecriture(s)")
+    su.noter_refus(i_s, "cle_plafond_jour", maintenant=T0 + acces.SUIVI_ECRIT_TOUTES + 1)
+    dit(len(ecrits) == 2, "dix minutes apres, la suivante ecrit", f"{len(ecrits)} ecriture(s)")
+    su.noter_refus(i_s, "cle_plafond_jour", maintenant=T0 + acces.SUIVI_ECRIT_TOUTES + 2)
+    dit(su.vider_suivi(maintenant=T0 + acces.SUIVI_ECRIT_TOUTES + 3) is True
+        and len(ecrits) == 3 and su.vider_suivi() is False,
+        "vider_suivi ecrit ce qui reste, puis plus rien quand rien n'a change",
+        f"{len(ecrits)} ecriture(s)")
+    su.sauver = vraie_sauver_s
+    relu_s = acces.Acces(ps)
+    dit(relu_s.suivi(i_s, maintenant=T0 + 700) == su.suivi(i_s, maintenant=T0 + 700)
+        and relu_s.suivi(i_s, maintenant=T0 + 700)["refus"]["cle_plafond_jour"] == 12,
+        "relu du disque, le suivi est le meme : un redemarrage ne l'efface pas",
+        repr(relu_s.suivi(i_s, maintenant=T0 + 700)))
+    dit(set(su.fiche(i_s)) == set(rs["fiche"]) and "suivi" not in su.fiche(i_s),
+        "le suivi n'entre pas dans la fiche publique : elle garde ses quatorze champs")
+    # Le lendemain : les compteurs repartent, les instants restent.
+    demain = T0 + 86400
+    su.noter_refus(i_s, "cle_file_pleine", maintenant=demain)
+    s2 = su.suivi(i_s, maintenant=demain + 1)
+    dit(s2["refus"] == {"cle_file_pleine": 1} and s2["refus_total"] == 1,
+        "les compteurs repartent a zero le lendemain", repr(s2["refus"]))
+    s3 = su.suivi(i_s, maintenant=demain + 86400)
+    dit(s3["refus"] == {} and s3["echecs"] == 0 and s3["dernier_refus"] == demain,
+        "un jour sans refus : rien a compter, mais l'heure du dernier reste",
+        repr(s3))
+    # Les codes : la forme d'un mot du dictionnaire, et une borne.
+    su.noter_refus(i_s, "Pas un code !", maintenant=demain + 2)
+    su.noter_refus(i_s, None, maintenant=demain + 3)
+    dit(su.suivi(i_s, maintenant=demain + 4)["refus"].get("autre") == 2,
+        "un code hors forme est compte « autre »",
+        repr(su.suivi(i_s, maintenant=demain + 4)["refus"]))
+    for i in range(60):
+        su.noter_refus(i_s, f"code_{i}", maintenant=demain + 10 + i)
+    r_ = su.suivi(i_s, maintenant=demain + 100)["refus"]
+    dit(len(r_) <= acces.SUIVI_CODES_MAX and r_.get("autre", 0) > 2
+        and r_.get("cle_file_pleine") == 1,
+        "soixante codes neufs : la fiche reste bornee, le surplus va dans « autre », "
+        "les premiers restent", f"{len(r_)} codes")
+    su.noter_refus("zzzzzzzz", "cle_file_pleine")
+    su.noter_refus(None, "cle_file_pleine")
+    dit(su.suivi("zzzzzzzz") is None and su.suivi(None) is None,
+        "une cle inconnue : rien a noter, rien a lire, et rien ne leve")
+
+    # Les secrets faux : comptes sous la cle, et seulement quand c'est le secret.
+    sf = acces.Acces(os.path.join(dossier, "secrets.json"))
+    rf = sf.creer("jordan", "essayee", 0, maintenant=T0)
+    k_f, i_f = rf["cle"], rf["fiche"]["id"]
+    faux_f = k_f[:-1] + ("A" if k_f[-1] != "A" else "B")
+    sf.reconnaitre(faux_f, generation_de, maintenant=T0 + 1)
+    sf.reconnaitre(faux_f, generation_de, maintenant=T0 + 2)
+    e1 = sf.suivi(i_f, maintenant=T0 + 3)
+    dit(e1["echecs"] == 2 and e1["dernier_echec"] == T0 + 2,
+        "un secret faux sur l'identifiant d'une cle existante est compte sous elle",
+        repr(e1))
+    autre_ident = ("0" if i_f[0] != "0" else "1") + i_f[1:]
+    sf.reconnaitre(f"cs_{autre_ident}_{k_f.split('_', 2)[2]}", generation_de,
+                   maintenant=T0 + 4)
+    sf.reconnaitre(k_f, generation_de, maintenant=T0 + 5)
+    sf.reconnaitre("pas une cle", generation_de, maintenant=T0 + 5)
+    dit(sf.suivi(i_f, maintenant=T0 + 6)["echecs"] == 2,
+        "la cle juste, un identifiant inconnu, une cle hors forme : rien de compte")
+    GENS["juste_eteinte"] = 0
+    rj = sf.creer("juste_eteinte", "eteinte", 0, maintenant=T0)
+    GENS["juste_eteinte"] = 1
+    re_ = sf.creer("jordan", "courte", 0, expire_jours=1, maintenant=T0)
+    rr = sf.creer("jordan", "renouvelee", 0, maintenant=T0)
+    rn_ = sf.renouveler(rr["fiche"]["id"], grace=100, maintenant=T0 + 10)
+    sf.reconnaitre(rj["cle"], generation_de, maintenant=T0 + 11)
+    sf.reconnaitre(re_["cle"], generation_de, maintenant=T0 + 2 * 86400)
+    sf.reconnaitre(rr["cle"], generation_de, maintenant=T0 + 50)
+    dit(sf.suivi(rj["fiche"]["id"], maintenant=T0 + 12)["echecs"] == 0
+        and sf.suivi(re_["fiche"]["id"], maintenant=T0 + 2 * 86400)["echecs"] == 0
+        and sf.suivi(rr["fiche"]["id"], maintenant=T0 + 51)["echecs"] == 0,
+        "une cle juste mais eteinte, expiree, ou l'ancien secret dans sa grace : "
+        "ce n'est pas un secret faux")
+    sf.reconnaitre(rr["cle"], generation_de, maintenant=T0 + 200)
+    dit(sf.suivi(rr["fiche"]["id"], maintenant=T0 + 201)["echecs"] == 1
+        and rn_["cle"] != rr["cle"],
+        "l'ancien secret apres sa grace, si : une copie restee dans un vieux workflow")
+    sf.vider_suivi(maintenant=T0 + 300)
+    brut_f = brut_du_disque(sf.chemin)
+    dit(faux_f not in brut_f and acces.empreinte_de(faux_f) not in brut_f
+        and faux_f.split("_", 2)[2] not in brut_f,
+        "rien du secret essaye ne va sur le disque : ni lui, ni son empreinte")
+
+    # Un suivi abime se perd ; il ne ferme pas les cles.
+    brut_s = json.loads(brut_du_disque(ps))
+    for x in brut_s:
+        x["suivi"] = {"jour": "x", "refus": ["pas", "un", "dict"], "echecs": "trois"}
+    with open(ps, "w", encoding="utf-8") as fh:
+        json.dump(brut_s, fh)
+    abime = acces.Acces(ps)
+    dit(not abime.illisible and abime.reconnaitre(k_s, generation_de) is not None
+        and "suivi" not in abime.fiches[i_s]
+        and abime.suivi(i_s)["refus"] == {} and abime.suivi(i_s)["echecs"] == 0,
+        "un suivi abime se perd sans rendre le fichier illisible : la cle marche")
 finally:
     shutil.rmtree(dossier, ignore_errors=True)
 

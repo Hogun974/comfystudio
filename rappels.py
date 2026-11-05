@@ -79,6 +79,12 @@ TOLERANCE = 300
 # premier part tout de suite ; les suivants laissent a un n8n qui redemarre
 # (une trentaine de secondes sur un petit serveur) le temps de revenir. Au-dela,
 # le recepteur est en panne pour de bon et le programme interrogera le rendu.
+# LA COURSE AU WAIT DE n8n (voir _PASSAGERS) tient aussi dedans : entre la
+# reponse du studio au POST du rendu et l'execution posee « waiting » sur le
+# disque de n8n, il n'y a que le noeud Wait et une ecriture — quelques
+# secondes au plus en general (estimation, pas une mesure), que l'essai de
+# 5 s couvre ; ceux de 30 et 120 s couvrent un n8n charge. Un essai de plus,
+# plus tot, ne ferait gagner que quelques secondes de reveil.
 DELAIS = (0, 5, 30, 120)
 
 # Dix secondes : un noeud Webhook de n8n repond des reception (« Respond
@@ -91,7 +97,22 @@ DELAI_REPONSE = 10
 # en toutes lettres ; un 5xx dit qu'il a casse, pas qu'il refuse. Tout autre
 # 4xx est un refus raisonne — mauvaise signature, URL perimee — et insister ne
 # le changera pas.
-_PASSAGERS = (408, 425, 429)
+#
+# 409, PARCE QUE C'EST LE « PAS ENCORE » DE n8n. L'URL de reprise d'un noeud
+# Wait ($execution.resumeUrl) existe des le debut de l'execution, avant que
+# celle-ci ait ATTEINT le Wait : un rendu qui finit dans cet intervalle trouve
+# une execution encore « running », et n8n repond 409 « is running already »
+# (packages/cli/src/webhooks/waiting-webhooks.ts, branche master lue le
+# 5 novembre 2026 ; ConflictError vaut 409). Classe en refus, le rappel etait
+# perdu au premier essai et le workflow dormait jusqu'a son delai. Le meme 409
+# dit aussi « deja finie » — n8n ne les distingue que dans le texte du message,
+# qu'on ne lit pas : c'est une phrase, pas un contrat (celle de « finished
+# already » perd meme un guillemet sur master). Le prix de l'ambiguite
+# est trois POST de trop en deux minutes et demie vers une execution finie, que
+# n8n refuse sans rien executer ; celui de l'autre choix est un rappel perdu.
+# Les vrais definitifs de n8n restent des refus : 404 (execution inconnue, ou
+# Wait sans webhook pour cette methode) et 401 (jeton de reprise invalide).
+_PASSAGERS = (408, 409, 425, 429)
 
 # LES CARACTERES SUR LESQUELS DEUX LECTEURS D'URL DIVERGENT. urlsplit et le
 # client HTTP (yarl, sous aiohttp) ne decoupent pas forcement pareil une URL qui
@@ -292,7 +313,10 @@ def _raison_du_statut(statut):
         # fera pas changer.
         return True, "redirection"
     if statut in _PASSAGERS:
-        return False, "recepteur occupe"
+        # 409 a sa raison : dans le journal du studio, « conflit apres 4
+        # essai(s) » dit a l'operateur que n8n n'attendait pas (Wait jamais
+        # atteint, ou execution deja finie), pas qu'il etait surcharge.
+        return False, "conflit" if statut == 409 else "recepteur occupe"
     if statut >= 500:
         return False, "erreur du recepteur"
     return True, "refuse par le recepteur"

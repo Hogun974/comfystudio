@@ -119,6 +119,35 @@ La liste du propriétaire dit aussi, pour chaque clé, ce qu'elle a **lancé
 aujourd'hui** (`aujourdhui`) et ce qu'elle a **en cours** (`en_cours`) : où
 elle en est de ses plafonds avant le 429.
 
+Elle dit enfin ce qui est **arrivé** à la clé aujourd'hui, dans `suivi` :
+
+```json
+"suivi": {"refus": {"cle_file_pleine": 3, "cle_operation_interdite": 1},
+          "refus_total": 4, "dernier_refus": 1793757278.8,
+          "dernier_code": "cle_operation_interdite",
+          "echecs": 0, "dernier_echec": null}
+```
+
+- `refus` : les refus du jour, **par code** — ceux de l'entrée (le 429 d'une
+  file pleine, le 403 d'une opération fermée, un champ illisible…) et ceux qui
+  tombent après l'analyse (`cle_operation_interdite`, `refus_mineurs` sur le
+  prompt réécrit). Une machine muette ou une carte trop petite ne comptent
+  pas : ce n'est pas la clé qui est refusée, c'est le studio qui manque.
+- `echecs` : les requêtes du jour qui portaient **l'identifiant de cette clé
+  avec un secret faux** — une clé mal recopiée, un ancien secret après sa
+  grâce, ou une clé volée à moitié (l'identifiant est public : il est dans
+  chaque lien signé). Le studio compte, il ne garde rien de ce qui a été
+  essayé. Un chiffre qui monte sans que tu reconnaisses l'erreur : renouvelle
+  la clé en coupant l'ancien secret. L'adresse d'où viennent les essais est
+  dans le journal du studio (« secrets faux pour la clé … depuis … »).
+- Les compteurs repartent à zéro à minuit ; `dernier_refus` et `dernier_echec`
+  passent la nuit. Ils sont écrits sur le disque au plus toutes les dix
+  minutes et à l'arrêt du studio : un redémarrage ne les efface pas, une
+  coupure de courant en perd au plus dix minutes.
+
+`suivi` ne sort que vers le propriétaire et vers `/admin`, jamais par
+`GET /api/v1/moi` : c'est ce qui est arrivé à la clé, pas ce qu'elle permet.
+
 ### Ce que la clé peut faire
 
 Une clé branchée sur un workflow de détourage n'a aucune raison de pouvoir
@@ -157,6 +186,14 @@ d'avance ce qu'il va faire :
   plafond du jour : la demande était entrée. Une question du studio, elle,
   passe toujours.
 
+**Une image jointe à un moteur d'image du nuage est une retouche.** Nano
+Banana reçoit la photo avec le texte et la rend modifiée : sur une clé `image`
+sans `retouche`, `"moteur": "nanobanana"` avec une image est refusé en 403
+comme une retouche, et sans image il passe — c'est une image neuve. Quand c'est
+le studio qui choisit le nuage tout seul, l'image d'une clé sans `retouche` ne
+part pas chez le fournisseur : il rend une image neuve, le fil le dit. Un moteur
+d'image de la maison, lui, ne lit pas l'image jointe : il reste `image`.
+
 `GET /api/v1/moteurs` ne montre à la clé que les moteurs qu'elle peut lancer :
 un assistant qui choisit dans cette liste n'y trouve pas un refus.
 
@@ -194,7 +231,8 @@ plus — précisément ce que le changement devait fermer.
 d'accès » de `/admin`, routes `GET /api/admin/acces` et `DELETE
 /api/admin/acces/{id}`), mais **il ne peut pas en créer** pour un autre : il
 faudrait son mot de passe et son téléphone. Il voit le nom, le compte, la date
-de dernier usage et le nombre de rendus en cours de chacune — jamais la clé.
+de dernier usage, le nombre de rendus en cours de chacune, ses refus du jour
+par code et les secrets faux présentés sous son identifiant — jamais la clé.
 
 ## Les quatre règles
 
@@ -748,9 +786,22 @@ lourd après avoir répondu.
 | Réponse du récepteur | Ce que fait le studio |
 |---|---|
 | 2xx | livré, terminé |
-| 408, 425, 429, 5xx, délai dépassé, injoignable | nouvel essai |
+| 408, 409, 425, 429, 5xx, délai dépassé, injoignable | nouvel essai |
 | 3xx | **abandonne** : une redirection n'est jamais suivie |
 | tout autre 4xx | abandonne : un refus raisonné (mauvaise signature, URL périmée) ne changera pas en insistant |
+
+**409 est réessayé à cause de n8n.** L'adresse de reprise d'un nœud Wait existe
+dès le début de l'exécution, avant que celle-ci ait *atteint* le Wait. Un rendu
+qui finit dans cet intervalle trouve une exécution encore en cours, et n8n
+répond **409** (« is running already ») — c'est son « pas encore ». Le même 409
+veut aussi dire « exécution déjà finie », et n8n ne les distingue que par le
+texte du message : le studio réessaie donc tout 409, quitte à envoyer trois
+POST de trop à une exécution terminée, que n8n refuse sans rien exécuter. Les
+vrais refus de n8n — **404** (exécution inconnue, ou Wait qui n'attend pas
+cette méthode) et **401** (jeton de reprise invalide) — arrêtent les essais.
+Corollaire pour ton propre récepteur : **un doublon reconnu sur
+`X-ComfyStudio-Livraison` se répond en 2xx**, pas en 409, sinon le studio
+insiste deux minutes et demie pour rien.
 
 Le **journal du studio** — pas le fil du rendu, que la clé relit — dit ce qui
 s'est passé : `rappel livre a n8n.maison (1 essai(s))`, ou `rappel non livre a
@@ -922,6 +973,11 @@ l'adresse lue dans le rappel.
    Time* (une heure, par exemple) : un rappel peut se perdre (voir [Ce qui n'est
    pas fait](#ce-qui-nest-pas-fait)), et une exécution ne doit pas dormir pour
    toujours. Au réveil par le délai, lis le rendu par `GET /api/v1/rendus/{id}`.
+   **Place le Wait juste après le POST.** Un rendu très court peut finir avant
+   que l'exécution soit arrivée au Wait : n8n répond alors 409 au rappel, et le
+   studio réessaie après 5 s, 30 s et 120 s ([Les essais](#les-essais)). Un
+   nœud lent entre les deux allonge cette fenêtre ; au-delà de deux minutes et
+   demie, c'est la limite d'attente et la relecture qui prennent le relais.
 3. Un **Switch** sur `{{ $json.body.evenement }}`, puis le téléchargement de
    `http://STUDIO:8199/api/v1/rendus/{{ $('Demander le rendu').first().json.id }}/fichiers/0`
    — l'adresse du studio écrite, l'`id` du POST. **Ne fais pas suivre au
@@ -954,7 +1010,7 @@ se reprend plus tard ; `cle_refusee` jamais.
 ## Assistants IA par MCP
 
 Un assistant IA — Claude Code, Claude Desktop, un agent n8n — sait appeler des
-**outils**. Le studio en sert six, par le protocole MCP, à l'adresse
+**outils**. Le studio en sert sept, par le protocole MCP, à l'adresse
 **`/mcp`**, avec la même clé dans le même en-tête.
 
 | Outil | Rôle |
@@ -965,6 +1021,7 @@ Un assistant IA — Claude Code, Claude Desktop, un agent n8n — sait appeler d
 | `annuler_rendu` | Retire un rendu de la file, ou l'interrompt. |
 | `lister_rendus` | Les derniers rendus de cette clé — pour retrouver ce qui a été fait tout à l'heure. |
 | `lister_moteurs` | Les moteurs que cette clé peut demander, avec ce qu'ils font. |
+| `decrire_cle` | Ce que cette clé permet, **avant d'essayer** : opérations, nuage, rendus en file et plafond du jour (et où elle en est), date de fin. Les mêmes champs que `GET /api/v1/moi`. |
 
 **Un outil attend 45 secondes par défaut**, et non dix minutes : le SDK MCP
 TypeScript — celui de Claude Desktop et de la plupart des clients — annule une
@@ -1001,7 +1058,7 @@ projet Claude Code, et la plupart des clients qui acceptent le transport HTTP :
 versions de n8n qui n'offrent que « SSE » ne conviennent pas : le studio n'a
 pas de flux SSE), et
 l'authentification par en-tête — *Header Auth*, le même credential que plus
-haut. L'agent voit les six outils et choisit seul.
+haut. L'agent voit les sept outils et choisit seul.
 
 Pour vérifier à la main :
 

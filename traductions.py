@@ -1683,6 +1683,32 @@ TEXTES = {
     "page.acces.usage": {
         "fr": "aujourd'hui : {aujourdhui} lancé(s), {en_cours} en cours",
         "en": "today: {aujourdhui} launched, {en_cours} in progress"},
+    # Les codes restent ceux de l'API (« cle_file_pleine ») : c'est le mot que
+    # le programme a recu, celui qu'on cherche dans l'execution n8n.
+    "page.acces.refus_jour": {
+        "fr": ["{n} demande refusée aujourd'hui ({detail}), la dernière le {date}",
+               "{n} demandes refusées aujourd'hui ({detail}), la dernière le {date}"],
+        "en": ["{n} refusal today ({detail}), the last one {date}",
+               "{n} refusals today ({detail}), the last one {date}"]},
+    "page.acces.echecs": {
+        "fr": ["{n} secret faux présenté aujourd'hui avec l'identifiant de "
+               "cette clé, le dernier le {date} : une clé mal recopiée, un "
+               "ancien secret, ou quelqu'un qui essaie la tienne. Si tu ne "
+               "reconnais pas l'erreur, renouvelle-la en coupant l'ancien "
+               "secret.",
+               "{n} secrets faux présentés aujourd'hui avec l'identifiant de "
+               "cette clé, le dernier le {date} : une clé mal recopiée, un "
+               "ancien secret, ou quelqu'un qui essaie la tienne. Si tu ne "
+               "reconnais pas l'erreur, renouvelle-la en coupant l'ancien "
+               "secret."],
+        "en": ["{n} wrong secret presented today with this key's identifier, "
+               "the last one {date}: a mistyped key, an old secret, or "
+               "someone trying yours. If you don't recognise the mistake, "
+               "renew it and cut off the old secret.",
+               "{n} wrong secrets presented today with this key's identifier, "
+               "the last one {date}: a mistyped key, an old secret, or "
+               "someone trying yours. If you don't recognise the mistake, "
+               "renew it and cut off the old secret."]},
     "page.acces.renouveler": {
         "fr": "renouveler",
         "en": "renew"},

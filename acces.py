@@ -204,6 +204,30 @@ def expiree(fiche, maintenant=None):
 # cinq minutes » suffit a reconnaitre une cle morte d'une cle vivante.
 VU_ECRIT_TOUTES = 600
 
+# LE SUIVI D'UNE CLE : ses refus du jour, par code, et les secrets faux
+# presentes sous son identifiant. C'est ce que le proprietaire regarde quand un
+# workflow « ne marche plus » — refuse pour plafond, pour une operation qu'on
+# lui a fermee — ou quand quelqu'un essaie une cle qui n'est pas la sienne.
+#
+# SUR LE DISQUE, MAIS PAS A CHAQUE REQUETE. Un compteur qui repartirait a zero
+# a chaque redemarrage mentirait au moment exact ou l'on s'en sert : on
+# redemarre le studio APRES l'ennui, et « 0 refus aujourd'hui » effacerait les
+# deux cents du matin. Mais ce n'est pas un plafond : rien n'est refuse sur sa
+# foi, et en perdre quelques minutes ne rouvre rien. Il s'ecrit donc avec la
+# meme retenue que « vu » — au plus une fois par dix minutes pour tout le
+# magasin, et a l'arret propre du studio (vider_suivi) : un n8n refuse en
+# boucle dix fois par seconde ne reecrit pas le fichier dix fois par seconde,
+# et une coupure de courant perd au plus dix minutes de comptes.
+SUIVI_ECRIT_TOUTES = VU_ECRIT_TOUTES
+
+# Un code est un mot du dictionnaire sans sa famille (« cle_file_pleine ») ;
+# autre chose devient « autre ». Vingt-quatre codes distincts par jour au plus :
+# le dictionnaire en a une quarantaine de possibles pour un lancement, et une
+# cle n'en rencontre jamais plus d'une poignee. La borne est la pour qu'un
+# code fabrique ne fasse pas grossir la fiche sans fin.
+SUIVI_CODES_MAX = 24
+_CODE_SUIVI = re.compile(r"[a-z0-9_]{1,48}")
+
 # Un nom DNS complet ne depasse pas 253 caracteres (RFC 1035, 2.3.4) ; une
 # etiquette, 63. Au-dela, ce n'est pas un hote, c'est un texte colle.
 _HOTE_MAX = 253
@@ -318,6 +342,29 @@ def _entier(valeur, bas, haut, quoi, cle=""):
     return valeur
 
 
+def _jour(quand):
+    """La date du studio, heure locale : le meme minuit que le plafond par_jour."""
+    return time.strftime("%Y-%m-%d", time.localtime(quand))
+
+
+def _instant(v):
+    return v is None or (isinstance(v, (int, float)) and not isinstance(v, bool))
+
+
+def _suivi_valide(s):
+    """Le suivi relu du disque a la forme attendue."""
+    return (isinstance(s, dict) and isinstance(s.get("jour"), str)
+            and isinstance(s.get("refus"), dict)
+            and len(s["refus"]) <= SUIVI_CODES_MAX
+            and all(isinstance(k, str) and isinstance(n, int)
+                    and not isinstance(n, bool) and n >= 0
+                    for k, n in s["refus"].items())
+            and isinstance(s.get("echecs"), int) and not isinstance(s["echecs"], bool)
+            and s["echecs"] >= 0
+            and _instant(s.get("dernier_refus")) and _instant(s.get("dernier_echec"))
+            and (s.get("dernier_code") is None or isinstance(s["dernier_code"], str)))
+
+
 def _ancienne_valable(fiche, empreinte, quand):
     """L'empreinte presentee est celle d'avant un renouvellement, encore dans
     sa grace. Compare toujours, meme sans fiche ni ancien secret."""
@@ -338,6 +385,10 @@ class Acces:
         # mesure l'intervalle de VU_ECRIT_TOUTES, pas a la valeur en memoire
         # qui avance a chaque requete.
         self._vu_ecrit = {}
+        # Le suivi a change depuis la derniere ecriture, et quand elle a eu
+        # lieu : voir SUIVI_ECRIT_TOUTES.
+        self._suivi_sale = False
+        self._suivi_ecrit = float("-inf")
         self.charger()
 
     # ── disque ───────────────────────────────────────────────────────────
@@ -345,6 +396,7 @@ class Acces:
         """Relit le fichier. Absent : magasin vide. Illisible : magasin vide ET
         verrouille en ecriture — voir sauver()."""
         self.fiches, self._vu_ecrit, self.illisible = {}, {}, False
+        self._suivi_sale = False
         try:
             with open(self.chemin, encoding="utf-8") as f:
                 brut = json.load(f)
@@ -399,6 +451,13 @@ class Acces:
             if f.get("empreinte_ancienne") and (f.get("ancienne_jusqu") or 0) <= maintenant:
                 f.pop("empreinte_ancienne", None)
                 f.pop("ancienne_jusqu", None)
+            # UN SUIVI ABIME SE PERD, IL NE REND PAS LE FICHIER ILLISIBLE. A
+            # l'inverse d'« operations », ce n'est pas un droit : c'est une
+            # observation. Lui sacrifier toutes les cles du studio pour un
+            # compteur casse serait payer tres cher un chiffre qu'on refait
+            # demain matin.
+            if "suivi" in f and not _suivi_valide(f["suivi"]):
+                f.pop("suivi", None)
         self.fiches = fiches
         for ident, f in fiches.items():
             if f.get("vu") is not None:
@@ -428,6 +487,9 @@ class Acces:
             # milieu laisserait sinon un fichier a moitie ecrit, c'est-a-dire
             # illisible, c'est-a-dire toutes les cles mortes au redemarrage.
             os.replace(tmp, self.chemin)
+            # Toute ecriture emporte le suivi avec le reste : celle de « vu »
+            # comme celle d'une cle neuve.
+            self._suivi_sale = False
         except BaseException:
             try:
                 os.remove(tmp)
@@ -570,6 +632,16 @@ class Acces:
         # comparaison de plus ne coute rien.
         if _ancienne_valable(fiche, empreinte, quand):
             juste = True
+        if fiche is not None and not juste:
+            # L'IDENTIFIANT D'UNE CLE QUI EXISTE, ET UN SECRET FAUX : une cle
+            # mal recopiee, un ancien secret apres sa grace, ou une cle volee
+            # a moitie — l'identifiant est public, il est dans chaque lien
+            # signe. On compte, on ne garde RIEN de ce qui a ete essaye : ni le
+            # secret, ni son empreinte. Une cle juste mais eteinte ou expiree
+            # n'arrive pas ici : son secret est bon, c'est la date ou la
+            # generation qui la ferment, et l'appeler « secret faux » enverrait
+            # chercher un voleur qui n'existe pas.
+            self._noter_echec(fiche, quand)
         if fiche is None or not juste:
             return None
         # LA GENERATION DU COMPTE. Changer son mot de passe, armer ou desarmer
@@ -704,6 +776,90 @@ class Acces:
             # appelant qui la modifie ne touche pas la fiche.
             "operations": list(fiche.get("operations") or []),
         }
+
+    # ── le suivi ─────────────────────────────────────────────────────────
+    def _suivi_du_jour(self, fiche, quand):
+        """Le suivi de la fiche pour le jour de « quand », remis a zero s'il
+        datait d'un autre jour. Les instants du dernier refus et du dernier
+        echec, eux, passent minuit : « dernier secret faux : mardi » reste
+        vrai mercredi."""
+        s = fiche.get("suivi")
+        jour = _jour(quand)
+        if not isinstance(s, dict) or s.get("jour") != jour:
+            s = s if isinstance(s, dict) else {}
+            s = {"jour": jour, "refus": {}, "echecs": 0,
+                 "dernier_refus": s.get("dernier_refus"),
+                 "dernier_code": s.get("dernier_code"),
+                 "dernier_echec": s.get("dernier_echec")}
+            fiche["suivi"] = s
+        return s
+
+    def _ecrire_suivi(self, quand):
+        if quand - self._suivi_ecrit >= SUIVI_ECRIT_TOUTES:
+            self.vider_suivi(quand)
+
+    def vider_suivi(self, maintenant=None):
+        """Ecrit le suivi s'il a change. Rend True si une ecriture a eu lieu.
+        Ne leve jamais : un compteur non ecrit ne doit casser ni une requete,
+        ni l'arret du studio."""
+        if not self._suivi_sale or self.illisible:
+            return False
+        self._suivi_ecrit = time.time() if maintenant is None else maintenant
+        try:
+            self.sauver()
+        except (OSError, ErreurAcces) as e:
+            print(f"cles d'acces : suivi non ecrit ({e})", flush=True)
+            return False
+        return True
+
+    def noter_refus(self, ident, code, maintenant=None):
+        """Un refus de plus pour la cle « ident », sous ce code. Ne leve jamais.
+
+        Le serveur appelle ici pour les refus d'entree comme pour les refus
+        tardifs (un rendu qui finit en « erreur » parce que l'analyse a lu une
+        operation que la cle ne permet pas) : le proprietaire n'a pas a savoir
+        a quel moment le studio a dit non pour savoir qu'il l'a dit."""
+        f = self.fiches.get(ident) if isinstance(ident, str) else None
+        if f is None:
+            return
+        quand = time.time() if maintenant is None else maintenant
+        code = code if isinstance(code, str) and _CODE_SUIVI.fullmatch(code) else "autre"
+        s = self._suivi_du_jour(f, quand)
+        if code not in s["refus"] and len(s["refus"]) >= SUIVI_CODES_MAX - 1:
+            # La derniere place est pour « autre » : un code neuf au-dela ne
+            # chasse pas ceux qu'on a deja comptes.
+            code = "autre"
+        s["refus"][code] = s["refus"].get(code, 0) + 1
+        s["dernier_refus"], s["dernier_code"] = quand, code
+        self._suivi_sale = True
+        self._ecrire_suivi(quand)
+
+    def _noter_echec(self, fiche, quand):
+        s = self._suivi_du_jour(fiche, quand)
+        s["echecs"] += 1
+        s["dernier_echec"] = quand
+        self._suivi_sale = True
+        self._ecrire_suivi(quand)
+
+    def suivi(self, ident, maintenant=None):
+        """Le suivi du jour de cette cle, ou None si elle n'existe pas.
+
+        A part de publique() : ce n'est pas ce que la cle PERMET, c'est ce qui
+        lui est arrive. La fiche publique reste ce que le contrat promet a un
+        programme ; le suivi ne sort que vers son proprietaire et vers
+        l'administration. Une copie : l'appelant peut la modifier."""
+        f = self.fiches.get(ident) if isinstance(ident, str) else None
+        if f is None:
+            return None
+        quand = time.time() if maintenant is None else maintenant
+        s = f.get("suivi") if isinstance(f.get("suivi"), dict) else {}
+        du_jour = s.get("jour") == _jour(quand)
+        refus = dict(s.get("refus") or {}) if du_jour else {}
+        return {"refus": refus, "refus_total": sum(refus.values()),
+                "dernier_refus": s.get("dernier_refus"),
+                "dernier_code": s.get("dernier_code"),
+                "echecs": (s.get("echecs") or 0) if du_jour else 0,
+                "dernier_echec": s.get("dernier_echec")}
 
     def liste(self, compte=None):
         """Fiches publiques, de la plus ancienne a la plus recente."""

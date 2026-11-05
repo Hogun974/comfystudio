@@ -37,7 +37,7 @@ CE QU'IL GARDE, DANS L'ORDRE DES DEGATS :
      reprendre_file() et recopiee par lancer_variantes().
   9. Les rappels : livres une fois, signes du secret de la cle, jamais pour
      une cle revoquee ni pour un rendu pas fini.
- 10. MCP : le transport, les six outils, les refus sans exception.
+ 10. MCP : le transport, les sept outils, les refus sans exception.
  11. La retention : seules les conversations de PROGRAMME vieilles de trente
      jours se ferment.
  12. Deux gardes relues dans le texte : garde_fou apres traduire() dans
@@ -106,7 +106,8 @@ RAPPEL_OK = "http://n8n.maison:5678/webhook/3f1c-banc"
 REFUS_MINEUR = "a child in a sexual pose"     # un des REFUS de banc_adulte.py
 ILLISIBLE = object()
 OUTILS_MCP = {"generer_rendu", "etat_rendu", "repondre_question",
-              "annuler_rendu", "lister_rendus", "lister_moteurs"}
+              "annuler_rendu", "lister_rendus", "lister_moteurs",
+              "decrire_cle"}
 
 
 class Transport:
@@ -1627,7 +1628,7 @@ async def s_mcp():
         "une notification rend 202 sans corps", f"HTTP {st}")
     st, c, _r = await mcp(K_N8N, rpc("tools/list"))
     noms = {o.get("name") for o in ((c or {}).get("result") or {}).get("tools") or []}
-    dit(noms == OUTILS_MCP, "tools/list rend les six outils", repr(sorted(noms)))
+    dit(noms == OUTILS_MCP, "tools/list rend les sept outils", repr(sorted(noms)))
     st, c, _r = await mcp(K_N8N, rpc("tools/call", {"name": "lister_moteurs", "arguments": {}}))
     contenu = ((c or {}).get("result") or {}).get("content") or [{}]
     dit(contenu[0].get("type") == "text" and "klein4b" in contenu[0].get("text", ""),
@@ -2349,6 +2350,48 @@ async def s_operations():
         "temoin : une cle sans liste lance la video", f"HTTP {st}")
     vider_file()
 
+    # ── LE NUAGE RETOUCHE CE QU'ON LUI JOINT ─────────────────────────────
+    # nanobanana est un moteur « image », mais produire_distant lui envoie
+    # l'image jointe : il la modifie. Une cle « image » avec le nuage ne doit
+    # pas s'en servir pour faire retoucher une photo.
+    nuage_img = nouvelle_cle("lou", "images au nuage", operations=["image"],
+                             nuage=True)
+    k_nimg = nuage_img["cle"]
+    garde_nb = S.CLES.get("nanobanana")
+    S.CLES["nanobanana"] = {"cle": "cle-de-banc"}
+    try:
+        avant, entrees = etat_des_registres(), len(S.ENTREES)
+        st, c, _r = await lancer(k_nimg, {"demande": "mets-lui un chapeau",
+                                          "moteur": "nanobanana",
+                                          "image_base64": PNG_FACTICE})
+        dit(st == 403 and code(c) == "cle_operation_interdite"
+            and "retouche" in (c or {}).get("erreur", "")
+            and rien_de_plus(avant) and len(S.ENTREES) == entrees,
+            "nanobanana avec une image jointe sur une cle d'images rend 403 "
+            "« retouche », et l'image deposee est oubliee",
+            f"HTTP {st} {code(c)} {(c or {}).get('erreur', '')}")
+        st, c, _r = await lancer(k_nimg, {"demande": "un chat au chapeau",
+                                          "moteur": "nanobanana"})
+        dit(st == 202,
+            "temoin : nanobanana sans image sur la meme cle passe — c'est une "
+            "image neuve", f"HTTP {st} {code(c)}")
+        vider_file()
+        retouche_nuage = nouvelle_cle("lou", "retouches au nuage",
+                                      operations=["retouche"], nuage=True)
+        st, c, _r = await lancer(retouche_nuage["cle"],
+                                 {"demande": "mets-lui un chapeau",
+                                  "moteur": "nanobanana",
+                                  "image_base64": PNG_FACTICE})
+        dit(st == 202,
+            "temoin : la meme demande passe sur une cle de retouche",
+            f"HTTP {st} {code(c)}")
+        vider_file()
+    finally:
+        if garde_nb is None:
+            S.CLES.pop("nanobanana", None)
+        else:
+            S.CLES["nanobanana"] = garde_nb
+
     # ── LA LISTE DES MOTEURS ne montre que ce que la cle permet ─────────
     _st, c1, _r = await appel(Req("/api/v1/moteurs", cle=k_img), S.api_v1_moteurs)
     _st, c2, _r = await appel(Req("/api/v1/moteurs", cle=K_N8N), S.api_v1_moteurs)
@@ -2458,8 +2501,76 @@ async def s_operations():
             and appels["enrichir"] == 0,
             "executer() arrete la retouche qui deviendrait une image neuve, avant "
             "l'enrichissement", f"{(r4['erreur'] or {}).get('code')} {appels}")
+
+        # Le moteur du nuage choisi par l'analyse, image jointe : une retouche.
+        def tache_imagee(ops):
+            tid_ = tache_de(ops)
+            S.TACHES[tid_]["image"] = "studio_banc_nuage.png"
+            return tid_
+        nb = {"intention": "image", "modele": "nanobanana"}
+        dit(S.operation_refusee(tache_imagee(["image"]), nb) is not None
+            and S.operation_refusee(tache_imagee(["retouche"]), nb) is None
+            and S.operation_refusee(tache_de(["image"]), nb) is None
+            and S.operation_refusee(tache_imagee(["image"]),
+                                    {"intention": "image", "modele": "klein4b"}) is None,
+            "apres l'analyse, nanobanana avec une image jointe est une retouche ; "
+            "sans image, ou avec un moteur local, une image")
     finally:
         S.aiguiller, S.enrichir, S.soumettre_robuste = garde
+
+    # ── AU DEPART VERS LE NUAGE : le moteur que les preferences choisissent
+    # n'a ete vu par aucune garde. L'image jointe ne part pas avec une cle
+    # qui ne retouche pas.
+    vues = []
+
+    async def faux_produire(loin, plan, texte, entree, intention, tid, conv):
+        vues.append(entree)
+        raise S.fournisseurs.EchecFournisseur("le banc ne rend rien")
+
+    async def plan_image(texte, tid, conv, img_b64, **_k):
+        return {"intention": "image", "modele": "klein4b", "prompt": "a cat",
+                "raison": "banc", "parametres": {}, "largeur": 1024,
+                "hauteur": 1024}
+
+    async def rendre_plan(plan, *_a, **_k):
+        return plan
+
+    async def saine(*_a, **_k):
+        return "saine"
+
+    nom_img = "studio_banc_nuage.png"
+    with open(os.path.join(S.DOSSIER_ENTREE, nom_img), "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+    garde2 = (S.aiguiller, S.enrichir, S.traduire, S.soumettre_robuste,
+              S.choix_distant, S.moteur_distant_pret, S.image_adulte,
+              S.produire_distant)
+    S.aiguiller, S.enrichir, S.traduire = plan_image, rendre_plan, rendre_plan
+    S.soumettre_robuste = faux_soumettre
+    S.choix_distant = lambda *a, **k: "nanobanana"
+    S.moteur_distant_pret = lambda cle: True
+    S.image_adulte, S.produire_distant = saine, faux_produire
+    try:
+        async def au_nuage(ops):
+            tid_, conv_ = poser_rendu(F_N8N, "en cours")
+            S.TACHES[tid_]["api"].update(operations=list(ops), nuage=True)
+            S.TACHES[tid_]["image"] = nom_img
+            del vues[:]
+            await S.executer(tid_, "un chat avec un chapeau", conv_, image=nom_img)
+            return list(vues)
+        seule = await au_nuage(["image"])
+        avec = await au_nuage(["image", "retouche"])
+        dit(seule == [None] and avec == [nom_img],
+            "le nuage choisi par les preferences ne recoit pas l'image jointe "
+            "d'une cle qui ne retouche pas ; une cle de retouche l'envoie",
+            f"{seule} / {avec}")
+    finally:
+        (S.aiguiller, S.enrichir, S.traduire, S.soumettre_robuste,
+         S.choix_distant, S.moteur_distant_pret, S.image_adulte,
+         S.produire_distant) = garde2
+        try:
+            os.remove(os.path.join(S.DOSSIER_ENTREE, nom_img))
+        except OSError:
+            pass
 
     # ── LE CODE D'UNE PANNE est sa raison, pas son enveloppe ─────────────
     cas = [
@@ -2477,6 +2588,174 @@ async def s_operations():
     dit(not faux,
         "« erreur.code » d'un rendu dit la raison imbriquee (refus_mineurs), "
         "« echec » pour une exception nue", "; ".join(faux) or f"{len(cas)} cas")
+
+
+async def s_suivi():
+    """Le suivi d'une cle : ses refus du jour par code, a l'entree comme apres
+    l'analyse, et les secrets faux presentes sous son identifiant. Montre au
+    proprietaire et a l'administration, jamais au programme ; ecrit sur le
+    disque sans l'etre a chaque requete."""
+    remise_a_zero()
+    S.COMPTES.creer("ines", MDP)
+    res = nouvelle_cle("ines", "suivi du banc", operations=["image"], en_file=1)
+    k, ident = res["cle"], res["fiche"]["id"]
+
+    def refus_de(ident_=None):
+        return (S.ACCES.suivi(ident_ or ident) or {}).get("refus") or {}
+
+    # ── A L'ENTREE : chaque chemin de refus, pas seulement « refus » ────
+    ecritures = []
+    vraie_sauver = S.ACCES.sauver
+
+    def note_sauver():
+        ecritures.append(1)
+        return vraie_sauver()
+
+    S.ACCES.sauver = note_sauver
+    try:
+        st1, c1, _r = await lancer(k, {"demande": "un renard", "moteur": "wan5b"})
+        st2, c2, _r = await lancer(k, {"demande": ""})
+        st3, c3, _r = await lancer(k, {"demande": REFUS_MINEUR})
+        st4, c4, _r = await lancer(k, {"demande": "un renard", "moteur": "wan5b"})
+    finally:
+        S.ACCES.sauver = vraie_sauver
+    dit((st1, code(c1)) == (403, "cle_operation_interdite")
+        and refus_de().get("cle_operation_interdite") == 2,
+        "un refus a l'entree est compte sous la cle, par son code",
+        f"HTTP {st1} {code(c1)} -> {refus_de()}")
+    dit(code(c2) == "demande_vide" and refus_de().get("demande_vide") == 1
+        and code(c3) == "refus_mineurs" and refus_de().get("refus_mineurs") == 1,
+        "et ceux qui ne passent pas par « refus » aussi (valider_demande), comme le garde-fou",
+        repr(refus_de()))
+    s_ = S.ACCES.suivi(ident)
+    dit(s_["refus_total"] == 4 and s_["dernier_code"] == "cle_operation_interdite"
+        and s_["dernier_refus"] and time.time() - s_["dernier_refus"] < 60,
+        "le total du jour, le dernier code et l'heure du dernier refus", repr(s_))
+    dit(len(ecritures) <= 1,
+        "quatre refus d'affilee : au plus une ecriture du fichier des cles",
+        f"{len(ecritures)} ecriture(s)")
+    st, c, _r = await lancer(k, {"demande": "un renard"})
+    tid_ok = (c or {}).get("id")
+    st_p, c_p, _r = await lancer(k, {"demande": "un autre renard"})
+    dit(st == 202 and code(c_p) == "cle_file_pleine"
+        and refus_de().get("cle_file_pleine") == 1 and S.ACCES.suivi(ident)["refus_total"] == 5,
+        "temoin : un lancement accepte ne compte pas, la file pleine si",
+        f"HTTP {st} puis {code(c_p)}")
+    if tid_ok:
+        S.TACHES.pop(tid_ok, None)
+    vider_file()
+
+    # ── APRES L'ANALYSE : le refus tardif, et seulement lui ─────────────
+    plan_du_banc = {}
+
+    async def faux_aiguiller(texte, tid, conv, img_b64, **_k):
+        return dict(plan_du_banc)
+
+    async def faux_enrichir(plan, texte, tid):
+        raise RuntimeError("arret du banc apres la garde des operations")
+
+    async def faux_soumettre(*_a, **_k):
+        raise RuntimeError("le banc ne rend rien")
+
+    garde = (S.aiguiller, S.enrichir, S.soumettre_robuste)
+    S.aiguiller, S.enrichir, S.soumettre_robuste = faux_aiguiller, faux_enrichir, faux_soumettre
+    fiche = fiche_de(k)
+    try:
+        async def executer_pour(plan):
+            plan_du_banc.clear()
+            plan_du_banc.update(plan)
+            tid, conv = poser_rendu(fiche, "en cours")
+            S.TACHES[tid]["api"]["operations"] = ["image"]
+            await S.executer(tid, "un renard qui court dans la neige", conv)
+            return S.rendu_public(tid, conv, S.TACHES[tid], None, "", "fr")
+
+        avant = dict(refus_de())
+        r = await executer_pour({"intention": "video", "modele": "wan5b",
+                                 "prompt": "a fox running", "raison": "banc",
+                                 "parametres": {}})
+        dit((r["erreur"] or {}).get("code") == "cle_operation_interdite"
+            and refus_de().get("cle_operation_interdite") == avant.get("cle_operation_interdite", 0) + 1,
+            "un refus tardif (l'analyse a lu « video ») est compte sous la cle",
+            f"{(r['erreur'] or {}).get('code')} {refus_de()}")
+        avant = dict(refus_de())
+        r = await executer_pour({"intention": "image", "modele": "klein4b",
+                                 "prompt": "a fox", "raison": "banc", "parametres": {},
+                                 "largeur": 1024, "hauteur": 1024})
+        dit(r["etat"] == "erreur" and refus_de() == avant,
+            "une panne qui n'est pas un refus (« echec ») n'est pas comptee sous la cle",
+            f"{(r['erreur'] or {}).get('code')} {refus_de()}")
+        # La page n'a pas de cle : rien a compter, et rien ne doit lever.
+        S.noter_refus_tardif(uuid.uuid4().hex)
+    finally:
+        S.aiguiller, S.enrichir, S.soumettre_robuste = garde
+
+    # ── LES SECRETS FAUX ────────────────────────────────────────────────
+    S.ECHECS_CLES.clear()
+    st, _c, _r = await appel(Req("/api/v1/moi", cle=cle_fausse(k)), S.api_v1_moi)
+    s_ = S.ACCES.suivi(ident)
+    dit(st == 401 and s_["echecs"] == 1 and s_["dernier_echec"],
+        "l'identifiant d'une cle existante avec un secret faux : un echec compte sous elle",
+        f"HTTP {st} {s_['echecs']}")
+    inconnu = "cs_" + ("0" if ident[0] != "0" else "1") + ident[1:] + k[11:]
+    await appel(Req("/api/v1/moi", cle=inconnu), S.api_v1_moi)
+    st, c_moi, _r = await appel(Req("/api/v1/moi", cle=k), S.api_v1_moi)
+    dit(st == 200 and S.ACCES.suivi(ident)["echecs"] == 1,
+        "temoin : la bonne cle et un identifiant inconnu ne comptent rien",
+        f"HTTP {st} {S.ACCES.suivi(ident)['echecs']}")
+    disque = brut_du_fichier(S.ACCES.chemin)
+    dit(cle_fausse(k) not in disque and acces.empreinte_de(cle_fausse(k)) not in disque,
+        "le secret essaye ne va jamais sur le disque, ni son empreinte")
+    S.ECHECS_CLES.clear()
+
+    # ── QUI LE VOIT ─────────────────────────────────────────────────────
+    dit("suivi" not in (c_moi or {}) and "suivi" not in ((c_moi or {}).get("cle") or {}),
+        "GET /api/v1/moi ne montre pas le suivi : c'est ce qui est arrive a la "
+        "cle, pas ce qu'elle permet", repr(sorted(c_moi or {})))
+    st, c, _r = await appel(Req("/api/compte/acces",
+                                cookies={"studio_compte": S.COMPTES.jeton("ines")}),
+                            S.api_mes_acces)
+    mienne = next((x for x in (c or {}).get("cles") or [] if x.get("id") == ident), {})
+    dit(st == 200 and (mienne.get("suivi") or {}).get("echecs") == 1
+        and (mienne.get("suivi") or {}).get("refus", {}).get("cle_file_pleine") == 1,
+        "la liste du proprietaire porte le suivi de chaque cle",
+        f"HTTP {st} {mienne.get('suivi')}")
+    st, c, _r = await appel(Req("/api/admin/acces", entetes={"X-Admin": JETON_ADMIN}),
+                            S.api_admin_acces)
+    vue = next((x for x in (c or {}).get("cles") or [] if x.get("id") == ident), {})
+    dit(st == 200 and (vue.get("suivi") or {}) == S.ACCES.suivi(ident),
+        "la console d'administration aussi", f"HTTP {st} {vue.get('suivi')}")
+
+    # ── LE DISQUE : a l'arret propre, et relu au demarrage ──────────────
+    await S.vider_suivi_des_cles()
+    relu = acces.Acces(S.ACCES.chemin)
+    dit((relu.suivi(ident) or {}).get("refus") == refus_de()
+        and (relu.suivi(ident) or {}).get("echecs") == 1,
+        "a l'arret, le suivi est ecrit : un redemarrage ne l'efface pas",
+        repr(relu.suivi(ident)))
+    dit(S.vider_suivi_des_cles in S.app().on_cleanup,
+        "et l'arret du studio l'appelle bien")
+
+    # ── L'OUTIL MCP decrire_cle ─────────────────────────────────────────
+    st, c, _r = await mcp(k, rpc("tools/call", {"name": "decrire_cle", "arguments": {}}))
+    res_ = (c or {}).get("result") or {}
+    sc = res_.get("structuredContent") or {}
+    texte_ = ((res_.get("content") or [{}])[0]).get("text", "")
+    _st, c_moi, _r = await appel(Req("/api/v1/moi", cle=k), S.api_v1_moi)
+    # « vu » avance d'une requete a l'autre : c'est la seule difference permise.
+    sans_vu = lambda d: dict(d, cle=dict(d.get("cle") or {}, vu=None))  # noqa: E731
+    dit(st == 200 and not res_.get("isError") and sc and c_moi
+        and sans_vu(sc) == sans_vu(c_moi),
+        "decrire_cle rend les champs de GET /api/v1/moi",
+        f"{sorted(sc)} contre {sorted(c_moi or {})}")
+    dit("operations permises : image" in texte_ and "en file en meme temps : 0 sur 1" in texte_
+        and "nuage : non" in texte_,
+        "et le dit en texte : les operations, le nuage, la file", texte_[:80])
+    S.ACCES.revoquer(ident)
+
+
+def brut_du_fichier(chemin):
+    with open(chemin, encoding="utf-8") as f:
+        return f.read()
 
 
 async def principal():
@@ -2498,7 +2777,8 @@ async def principal():
             ("14. retrouver ses rendus, et essayer son rappel", s_liste),
             ("15. les humains d'abord dans la file", s_humains_dabord),
             ("16. un rappel en cours survit a un redemarrage", s_rappels_persistants),
-            ("17. ce que la cle peut faire", s_operations)):
+            ("17. ce que la cle peut faire", s_operations),
+            ("18. le suivi des cles", s_suivi)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

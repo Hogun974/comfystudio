@@ -498,6 +498,18 @@ try:
                   ["application/json"]["schema"])
     dit(resoudre(C.document(), evenements.get("$ref", "")) is not None,
         "le rappel est decrit comme un webhook OpenAPI 3.1")
+    # LA POLITIQUE D'ESSAIS DECRITE EST CELLE DE rappels.py : un integrateur
+    # qui lit « 409 arrete les essais » croirait perdu le rappel que n8n
+    # refuse parce que son execution n'a pas encore atteint le Wait.
+    import rappels as _R
+    # LA LISTE QUI SUIT « réessayé sur », et non tout le texte : la phrase
+    # qui explique le 409 de n8n le nomme aussi, et masquait une liste fausse.
+    _desc = C.document()["webhooks"]["rendu"]["post"]["description"]
+    _liste = re.search(r"réessayé sur ((?:\d{3}, )+)5xx", _desc)
+    _lus = [int(x) for x in re.findall(r"\d{3}", _liste.group(1))] if _liste else []
+    dit(409 in _R._PASSAGERS and _lus == list(_R._PASSAGERS),
+        "la description du rappel nomme chaque statut re-essaye, 409 compris",
+        f"lus {_lus}, attendus {list(_R._PASSAGERS)}")
 finally:
     shutil.rmtree(DONNEES, ignore_errors=True)
 

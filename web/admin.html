@@ -181,6 +181,7 @@ td .detail{display:block;max-width:34ch}
       <tbody id="liste"></tbody>
     </table></div>
     <div id="languePanne"></div>
+    <div id="langueDegenere"></div>
     <div class="carte">
       <h2 style="margin-top:0">pause</h2>
       <p class="aide">Une machine en pause continue de s'annoncer et reste à
@@ -355,7 +356,7 @@ td .detail{display:block;max-width:34ch}
         mot de passe ou de second facteur de son compte : elle ne vaut plus
         rien, et son propriétaire doit en créer une autre.</p>
       <div class="tableau"><table>
-        <thead><tr><th>compte</th><th>nom</th><th>aperçu</th><th>créée</th><th>vue</th><th>nuage</th><th>hôtes de rappel</th><th>en cours</th><th>état</th><th></th></tr></thead>
+        <thead><tr><th>compte</th><th>nom</th><th>aperçu</th><th>créée</th><th>vue</th><th>nuage</th><th>hôtes de rappel</th><th>en cours</th><th>refus du jour</th><th>état</th><th></th></tr></thead>
         <tbody id="listeAcces"></tbody>
       </table></div>
       <div class="alerte" id="alerteAcces"></div>
@@ -794,13 +795,26 @@ async function rafraichirAcces() {
   const corps = $("#listeAcces");
   corps.innerHTML = "";
   if (!d.cles.length) {
-    corps.innerHTML = '<tr><td colspan="10" class="detail">aucune clé '
+    corps.innerHTML = '<tr><td colspan="11" class="detail">aucune clé '
       + 'd’accès — aucun programme ne peut demander de rendu</td></tr>';
   }
   for (const c of d.cles) {
     const tr = document.createElement("tr");
     const vue = c.vu == null ? null
       : Math.max(0, Math.round(Date.now() / 1000 - c.vu));
+    /* Les refus du jour par code — ceux de l'entree et ceux d'apres
+       l'analyse —, puis les secrets faux presentes sous l'identifiant de la
+       cle : une cle mal recopiee, ou volee a moitie. L'adresse des essais
+       est dans le journal du studio. */
+    const s = c.suivi || {};
+    const refus = Object.entries(s.refus || {}).sort((a, b) => b[1] - a[1])
+      .map(([code, n]) => `<code>${ech(code)}</code> ×${ech(n)}`);
+    const suivi = (refus.length
+        ? refus.join("<br>") + `<br><span title="dernier refus">dernier : ${ech(dateCourte(s.dernier_refus))}</span>`
+        : "—")
+      + (s.echecs
+        ? `<br><b title="requêtes du jour portant l’identifiant de cette clé avec un secret faux">${ech(s.echecs)} secret${s.echecs > 1 ? "s" : ""} faux</b>, dernier : ${ech(dateCourte(s.dernier_echec))}`
+        : s.dernier_echec ? `<br><span title="dernier secret faux, avant aujourd’hui">secret faux le ${ech(dateCourte(s.dernier_echec))}</span>` : "");
     tr.innerHTML = `
       <td><b>${ech(c.compte)}</b></td>
       <td>${ech(c.nom)}</td>
@@ -811,6 +825,7 @@ async function rafraichirAcces() {
           ? "<br>seulement : " + c.operations.map(ech).join(", ") : ""}</td>
       <td class="detail">${(c.hotes || []).map(ech).join("<br>") || "—"}</td>
       <td class="detail">${ech(c.en_cours)} / ${ech(c.en_file)}<br><span title="lancés aujourd’hui / plafond du jour">${ech(c.aujourdhui || 0)} / ${c.par_jour ? ech(c.par_jour) : "∞"} auj.</span></td>
+      <td class="detail">${suivi}</td>
       <td class="detail">${c.active ? (c.expire ? "active, jusqu’au " + ech(dateCourte(c.expire)) : "active")
           + (c.ancienne_jusqu && c.ancienne_jusqu * 1000 > Date.now()
              ? "<br>renouvelée — l’ancien secret vaut jusqu’au " + ech(dateCourte(c.ancienne_jusqu)) : "")
@@ -1093,6 +1108,26 @@ async function rafraichir() {
       ${casses.map(([nom, pourquoi]) =>
         `<div class="pli-ligne"><b>${ech(nom)}</b>
            <div class="pli-val mono">${ech(pourquoi)}</div></div>`).join("")}
+    </div>`;
+  /* Le mal d'à côté, plus silencieux encore : le modèle se charge, répond
+     200 sans erreur, et rend du vide ou « @@@@@@ ». Le 4 novembre 2026, le
+     studio est retombé sur l'aiguillage par mots-clés sans que personne le
+     sache. Le serveur le décharge et retente ; ici, on le voit. */
+  const deg = d.modeles_degeneres || {};
+  const derniers = deg.derniers || [];
+  $("#langueDegenere").innerHTML = !deg.total ? "" : `
+    <div class="carte" style="border-color:var(--rouge)">
+      <h2 style="margin-top:0">réponses dégénérées d'un modèle de langage</h2>
+      <p class="aide">${ech(deg.total)} depuis le démarrage. Un modèle résident
+        a répondu sans erreur, mais vide ou par un même caractère répété. Le
+        studio le décharge — une fois par machine et par modèle toutes les
+        ${ech(Math.round((deg.fenetre || 600) / 60))} minutes — puis retente
+        l'appel. Si cela revient, regarde la mémoire de la carte, ou mets
+        Ollama à jour.</p>
+      ${derniers.map(x =>
+        `<div class="pli-ligne"><b>${ech(x.modele)} — sur ${ech(x.machine)}</b>
+           <div class="pli-val mono">${ech(x.heure)} · ${ech(x.forme)} ·
+             ${x.decharge ? "déchargé" : "non déchargé"} · ${ech(x.issue)}</div></div>`).join("")}
     </div>`;
 }
 

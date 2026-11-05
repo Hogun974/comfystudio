@@ -725,6 +725,320 @@ async def main():
         "et le plus gros voyant de meme", S.modele_vision_de(PC))
     poser()
 
+    await degeneres()
+
+
+async def degeneres():
+    """Un modele resident qui repond 200, sans erreur, et RIEN.
+
+    Mesure du 4 novembre 2026 : qwen2.5vl sur l'Ollama du PC a rendu des
+    reponses vides pendant un essai ; le plan est retombe sur l'aiguillage par
+    mots-cles sans un mot, et personne n'a decharge le modele — ce qui seul le
+    repare. Ici, deux faux : _ollama_local rend ce que le scenario dit, et la
+    session HTTP — celle du VRAI liberer_modele_a — note chaque dechargement
+    sans rien envoyer.
+    """
+    print("\n  ── un modele qui repond sans rien dire ──")
+    poser()
+    # Mesures fraiches : relever_placement rend la main sans sonder personne.
+    S._PLACEMENT[PC] = {"part": 1.0, "quand": S.time.time()}
+    S._PLACEMENT[NAS] = {"part": 1.0, "quand": S.time.time()}
+    S._DECHARGE_DEGENERE.clear()
+    S.DEGENERESCENCES.clear()
+    S._DEGENERES_TOTAL[0] = 0
+    appels, decharges = [], []
+    scenario = {}
+    refus = {"leve": False}
+
+    async def faux_local(corps, url=None, secondes=900):
+        appels.append((url, corps.get("model")))
+        file_ = scenario.get(url) or ["{}"]
+        rep_ = file_.pop(0) if len(file_) > 1 else file_[0]
+        if callable(rep_):
+            return rep_(corps, url)
+        return rep_
+
+    class FausseReponse:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FausseSession:
+        def __init__(self, *a, **k):
+            pass
+
+        def post(self, url, json=None):
+            if refus["leve"]:
+                raise RuntimeError("injoignable")
+            decharges.append((url, (json or {}).get("model"),
+                              (json or {}).get("keep_alive")))
+            return FausseReponse()
+
+        def get(self, url):
+            raise RuntimeError(f"aucune sonde attendue ici : {url}")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    def fil(tid):
+        return [e["msg"] for e in (S.TACHES.get(tid) or {}).get("etapes", [])]
+
+    vrai_local = S._ollama_local
+    vraie_session = S.aiohttp.ClientSession
+    S._ollama_local = faux_local
+    S.aiohttp.ClientSession = FausseSession
+    tids = []
+    try:
+        # ── LE VIDE SANS ERREUR : decharger, puis retenter AU MEME ENDROIT ──
+        tid = "banc-degen-vide"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = ["", "{}"]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        modele_pc = appels[0][1] if appels else None
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC, PC],
+            "une reponse VIDE sans erreur est retentee une fois, au meme "
+            "endroit, et c'est la reprise qui est rendue",
+            f"{rendu!r}, essais={[a[0] for a in appels]}")
+        dit(decharges == [(f"{PC}/api/generate", modele_pc, 0)],
+            "et entre les deux, CE modele est decharge A CETTE adresse "
+            "(keep_alive 0)", str(decharges))
+        dit(any("reponse vide" in l and "decharge" in l for l in fil(tid)),
+            "le fil de la demande le dit : reponse vide, modele decharge",
+            " | ".join(fil(tid))[-200:])
+        r_ = S.releve_degenerescences()
+        dit(r_["total"] == 1 and r_["derniers"]
+            and r_["derniers"][0]["issue"] == "reparee"
+            and r_["derniers"][0]["machine"] == "PC (RTX 2080 Ti)"
+            and r_["derniers"][0]["decharge"] is True,
+            "et la console en garde la trace : machine, modele, reparee",
+            str(r_["derniers"][:1]))
+
+        # ── LA MEME PANNE DANS LA FENETRE : pas de second dechargement ──
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-fenetre"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [""]
+        scenario[NAS] = ["{}"]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        dit(not decharges,
+            "dans la fenetre, le meme modele a la meme adresse n'est PAS "
+            "decharge une seconde fois : on ne martele pas", str(decharges))
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC, NAS],
+            "et la reprise part sur l'AUTRE machine, qui repond",
+            f"{rendu!r}, essais={[a[0] for a in appels]}")
+        dit(any("deja decharge" in l for l in fil(tid))
+            and S.releve_degenerescences()["derniers"][0]["issue"]
+            == "repondue par NAS ZimaOS",
+            "le fil dit pourquoi, et la console dit qui a repondu",
+            str(S.releve_degenerescences()["derniers"][:1]))
+
+        # ── L'AUTRE MACHINE DEGENERE AUSSI : reparee, mais pas retentee ──
+        # Le modele du PC est toujours dans la fenetre : la reprise part sur
+        # le NAS, qui rend lui aussi du charabia. Il est decharge — le
+        # prochain appel le trouvera repare —, et l'appel s'arrete la.
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-deux"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [""]
+        scenario[NAS] = ["#" * 4 + "%" * 30]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit([a[0] for a in appels] == [PC, NAS] and rendu == "####" + "%" * 30
+            and [d_[0] for d_ in decharges] == [f"{NAS}/api/generate"],
+            "quand la reprise ailleurs degenere aussi, ce second modele est "
+            "decharge mais l'appel n'est PAS retente une deuxieme fois",
+            f"essais={[a[0] for a in appels]}, dechargements={decharges}")
+
+        # ── L'AUTRE MACHINE NE REPOND PAS : la reponse d'origine revient ──
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-muet"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+
+        def muet(corps, url):
+            raise RuntimeError("connexion refusee")
+
+        scenario[PC] = [""]
+        scenario[NAS] = [muet]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == "" and [a[0] for a in appels] == [PC, NAS]
+            and not S.TACHES[tid].get("cerveau_lent")
+            and any("rendue telle quelle" in l for l in fil(tid)),
+            "si la machine de reprise ne repond pas, l'appel rend le \"\" "
+            "d'origine — pas une exception que l'appelant n'attend pas",
+            f"{rendu!r}, essais={[a[0] for a in appels]}")
+
+        # ── LE CHARABIA : la meme reparation, et UNE seule reprise ──────
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-charabia"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = ['{"intention": "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@'
+                        '@@@@@@@@@@@']
+        scenario[NAS] = ["{}"]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(len(decharges) == 1 and [a[0] for a in appels] == [PC, PC],
+            "une repetition du meme caractere est reconnue, dechargee, et "
+            "retentee UNE fois — pas une troisieme",
+            f"dechargements={len(decharges)}, essais={[a[0] for a in appels]}")
+        dit(rendu.startswith('{"intention": "@@@@')
+            and S.releve_degenerescences()["derniers"][0]["issue"]
+            == "toujours degeneree",
+            "toujours degeneree apres la reprise : la reponse est rendue "
+            "TELLE QUELLE, sans exception, et la console le dit", repr(rendu[:30]))
+
+        # ── UN MODELE QUI NE SE CHARGE PAS n'est pas un modele degenere ──
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-erreur"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+
+        def casse(corps, url):
+            S._ecarter_modele(corps.get("model"), "error loading model", url)
+            return ""
+
+        scenario[PC] = [casse]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        dit(rendu == "" and not decharges and [a[0] for a in appels] == [PC],
+            "vide AVEC un champ « error » : l'ecart existant s'en charge, ni "
+            "dechargement ni reprise", f"{rendu!r}, {decharges}, "
+                                       f"{[a[0] for a in appels]}")
+        S.MODELES_CASSES.clear()
+
+        # ── UNE MACHINE PASSEE EN PAUSE : on ne lui decharge rien ───────
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-pause"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+
+        def puis_pause(corps, url):
+            S.REGISTRE["pc"]["pause"] = 1.0
+            return ""
+
+        scenario[PC] = [puis_pause]
+        scenario[NAS] = ["{}"]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        dit(not decharges and rendu == "{}"
+            and [a[0] for a in appels] == [PC, NAS],
+            "une machine passee en pause n'est pas dechargee : la reprise va "
+            "ailleurs", f"{decharges}, {rendu!r}, {[a[0] for a in appels]}")
+        S.REGISTRE["pc"]["pause"] = None
+
+        # ── SEULE, ET LE DECHARGEMENT NE PART PAS : rien ne change ──────
+        # Un appelant qui lit "" comme « pas de reponse » doit le lire encore :
+        # ni exception, ni detour de plusieurs minutes par l'agent.
+        S._DECHARGE_DEGENERE.clear()
+        S.REGISTRE["zima"]["pause"] = 1.0
+        S._CERVEAUX[NAS]["quand"] = S.time.time()
+        del appels[:]
+        del decharges[:]
+        refus["leve"] = True
+        tid = "banc-degen-seul"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [""]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == "" and [a[0] for a in appels] == [PC]
+            and any("n'a pas abouti" in l for l in fil(tid)),
+            "seule et sans dechargement possible, la machine rend son \"\" "
+            "comme avant — sans exception, sans reprise au meme modele "
+            "corrompu, et le fil le dit", f"{rendu!r}, {[a[0] for a in appels]}")
+        refus["leve"] = False
+        S.REGISTRE["zima"]["pause"] = None
+
+        # ── CE QUI N'EST PAS DEGENERE ───────────────────────────────────
+        dit(all(not S.forme_degeneree(t) for t in (
+                "Prix : 10000 euros...", "refrain\n----------------\ncouplet",
+                '{"intention": "image", "prompt": "a cat"}',
+                "========================")),
+            "« 10000 », « ... » ou une ligne de tirets restent du texte")
+        dit(S.forme_degeneree("  \n ") == "vide"
+            and S.forme_degeneree("a photo.addTab{@@@@@@@@@@@@@@@@@@")
+            == "repetition",
+            "les blancs seuls sont du vide, et « {@@@@… » du charabia")
+        dit(not S.latin("a photo of a cat @@@@"),
+            "la traduction garde sa regle a quatre caracteres")
+
+        # ── BORNE EN MEMOIRE ────────────────────────────────────────────
+        S._DECHARGE_DEGENERE.clear()
+        S._DECHARGE_DEGENERE[("http://vieux:11434", "x")] = S.time.time() - 9999
+        # Des adresses CONNUES du decor : une adresse neuve ferait rafraichir
+        # son inventaire par cerveau(), donc partir sur le reseau.
+        for i in range(40):
+            await S.reparer_degenere((PC, NAS)[i % 2], f"m{i}", "vide",
+                                     None, f"m{i}")
+        dit(len(S.DEGENERESCENCES) <= 20
+            and len(S.releve_degenerescences()["derniers"]) <= 20
+            and S.releve_degenerescences()["total"] >= 40,
+            "la trace est bornee : vingt dernieres, et un compte",
+            f"{len(S.DEGENERESCENCES)} gardees, total "
+            f"{S.releve_degenerescences()['total']}")
+        dit(("http://vieux:11434", "x") not in S._DECHARGE_DEGENERE,
+            "et la fenetre oublie ce qui en est sorti")
+    finally:
+        S._ollama_local = vrai_local
+        S.aiohttp.ClientSession = vraie_session
+        S._PLACEMENT.clear()
+        for t_ in tids:
+            S.TACHES.pop(t_, None)
+
+    # ── LA CONSOLE LE MONTRE ────────────────────────────────────────────
+    vrai_ok = S.admin_ok
+    S.admin_ok = lambda req: True
+    try:
+        rep = await S.api_admin_noeuds(None)
+        d = S.json.loads(rep.text)
+    except Exception as e:
+        d = {"erreur": f"{type(e).__name__} : {e}"}
+    finally:
+        S.admin_ok = vrai_ok
+    deg = d.get("modeles_degeneres") or {}
+    dit(deg.get("total", 0) >= 1 and deg.get("derniers")
+        and {"machine", "modele", "forme", "issue", "heure"}
+        <= set(deg["derniers"][0]),
+        "/api/admin/noeuds porte le releve des reponses degenerees",
+        str(d.get("erreur") or (deg.get("derniers") or [None])[0]))
+    try:
+        page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "web", "admin.html"), encoding="utf-8").read()
+    except OSError:
+        page = ""
+    dit('id="langueDegenere"' in page and "d.modeles_degeneres" in page
+        and "x.issue" in page,
+        "et la console d'administration l'affiche",
+        "web/admin.html absent" if not page else "")
+    poser()
+
 asyncio.run(main())
 print(f"\n  {len([o for o in ok if o])} verifications passees, {len(rate)} echouees")
 for r in rate:

@@ -21,7 +21,7 @@ CE QUE CE BANC GARDE, DANS L'ORDRE DES DEGATS :
      n'atteint la cible.
   4. L'ANNULATION. Un livrer() qui avale asyncio.CancelledError empeche le
      studio de s'arreter pendant deux minutes et demie.
-  5. LA POLITIQUE D'ESSAIS : ce qui re-essaie (5xx, 408, 425, 429, delai,
+  5. LA POLITIQUE D'ESSAIS : ce qui re-essaie (5xx, 408, 409, 425, 429, delai,
      reseau) et ce qui arrete (2xx, 3xx, les autres 4xx), avec les attentes
      DELAIS demandees dans l'ordre, et un horodatage NEUF a chaque essai.
   6. LE CORPS CANONIQUE : memes octets quel que soit l'ordre des cles, UTF-8
@@ -291,6 +291,10 @@ async def _recepteur(request):
         return web.Response(status=200 if bon else 401)
     if chemin == "/panne-puis-ok":
         return web.Response(status=500 if COMPTE[chemin] == 1 else 200)
+    if chemin == "/pas-encore-puis-ok":
+        # LE n8n DE LA COURSE AU WAIT : l'execution tourne encore (409 « is
+        # running already »), puis s'endort sur son Wait et accepte.
+        return web.Response(status=409 if COMPTE[chemin] == 1 else 200)
     if chemin == "/muet":
         await asyncio.sleep(MUET)
         return web.Response(status=200)
@@ -403,7 +407,18 @@ async def _livraisons_sur(session, base):
         "les deux essais portent le MEME identifiant de livraison",
         " / ".join(e.get(R.ENTETE_LIVRAISON, "?") for e in _deux))
 
-    for statut in (500, 502, 503, 408, 425, 429):
+    COMPTE.pop("/pas-encore-puis-ok", None)
+    r, j = await _jouer(session, base, "/pas-encore-puis-ok")
+    dit(r == {"livre": True, "essais": 2, "statut": 200, "raison": "livre"}
+        and j == list(R.DELAIS[:2]),
+        "409 puis 200 (n8n pas encore au Wait, puis endormi) -> livre au "
+        "deuxieme essai, apres DELAIS[1]", repr(r) + " " + repr(j))
+    COMPTE.pop("/statut/409", None)
+    r, _ = await _jouer(session, base, "/statut/409")
+    dit(r["raison"] == "conflit" and r["essais"] == 4,
+        "409 epuise -> raison conflit, pas recepteur occupe", repr(r))
+
+    for statut in (500, 502, 503, 408, 409, 425, 429):
         COMPTE.pop(f"/statut/{statut}", None)
         r, j = await _jouer(session, base, f"/statut/{statut}")
         dit(r["essais"] == 4 and not r["livre"] and r["statut"] == statut

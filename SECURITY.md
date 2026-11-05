@@ -417,7 +417,9 @@ qu'elle n'ouvre pas.
   le modèle de langage et toute minute de carte. Un type de moteur sans famille connue
   est **fermé** à une clé restreinte, et une liste abîmée sur le disque rend
   le fichier des clés illisible plutôt que de se lire comme « tout ». Vide, la
-  liste veut dire tout : c'est le défaut.
+  liste veut dire tout : c'est le défaut. Une image jointe à un moteur d'image
+  du nuage compte comme une retouche — le fournisseur la modifie — et l'image
+  d'une clé sans `retouche` ne part jamais chez lui.
 - **Vérifiée avant d'être freinée** : une bonne clé passe toujours. Après trois
   secrets faux pour une même clé depuis une adresse, l'attente double (1 s, 2,
   4… plafonnée à 30), dans une **table à part** de celle des mots de passe — des

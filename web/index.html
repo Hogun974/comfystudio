@@ -2725,6 +2725,7 @@ function formulaireAcces() {
       }));
       tete.append(droite);
       const hotes = c.hotes || [];
+      const s = c.suivi || {};
       const faits = document.createElement("div");
       faits.className = "dit";
       faits.textContent = [
@@ -2740,6 +2741,14 @@ function formulaireAcces() {
         // Ou l'on en est, a cote des plafonds qui suivent.
         T("page.acces.usage", { aujourdhui: c.aujourdhui || 0,
                                 en_cours: c.en_cours || 0 }),
+        // Les refus du jour, par code : rien quand il n'y en a pas, c'est le
+        // cas courant. Les codes sont ceux que le programme a lus.
+        s.refus_total
+          ? T("page.acces.refus_jour", {
+              n: s.refus_total, date: date(s.dernier_refus),
+              detail: Object.entries(s.refus || {}).sort((a, b) => b[1] - a[1])
+                .map(([code, n]) => code + " ×" + n).join(", ") })
+          : null,
         // Rien quand elle peut tout : c'est le cas courant, et une ligne de
         // plus sur chaque cle ne dirait rien.
         (c.operations || []).length
@@ -2754,6 +2763,10 @@ function formulaireAcces() {
                      : T("page.acces.sans_rappel"),
       ].filter(Boolean).join(" · ");
       li.append(tete, faits);
+      // LES SECRETS FAUX EN AVERTISSEMENT, et non dans la ligne des faits :
+      // c'est le seul chiffre de la fiche qui demande peut-etre un geste.
+      if (s.echecs) li.append(dire("page.acces.echecs", "avertit",
+                                   { n: s.echecs, date: date(s.dernier_echec) }));
       // LA RAISON, ET PAS SEULEMENT LE MOT. « eteinte » seul laisse croire a
       // une panne du studio ; la cause est un geste du proprietaire — il a
       // change son mot de passe ou son second facteur, et cela a ferme toutes

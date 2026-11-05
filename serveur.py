@@ -3327,6 +3327,13 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # carte simplement lente a charger. L'ecriture garde ses neuf cents
     # secondes, l'analyse a les siennes.
     ecriture = (corps.get("model") or "") == MODELE_POUR_ECRIRE
+    # UNE REPRISE PAR APPEL, pas une par adresse : la trace de la premiere
+    # reponse degeneree, et cette reponse elle-meme. Elle est rendue telle
+    # quelle si rien de mieux ne vient — c'est ce que l'appelant recevait avant,
+    # et ceux qui lisent "" comme « pas de reponse » doivent continuer de le
+    # lire, et non decouvrir une exception.
+    reprise_ = None
+    degenere_ = None
     for rang_, (url, ident) in enumerate(cerveaux):
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
         delai = ANALYSE_DELAI
@@ -3402,6 +3409,42 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             delai = ((300 if reste_ else 900) if ici.get("images")
                      else 900 if ecriture else ANALYSE_DELAI)
             rendu = await _ollama_local(ici, url, delai)
+            modele_ici = ici.get("model") or ""
+            # Vide AVEC un champ « error », c'est un modele qui ne se charge
+            # pas : _ollama_local l'a deja ecarte, et le decharger n'y peut
+            # rien. Seul le vide sans erreur — ou le charabia — se repare.
+            forme_ = ("" if _casse_ici(url, modele_ici)
+                      else forme_degeneree(rendu))
+            if forme_:
+                trace_ = await reparer_degenere(url, modele_ici, forme_, tid,
+                                                titre_ol)
+                if reprise_ is not None:
+                    # La reprise a deja eu lieu ailleurs : celle-ci ne se
+                    # retente pas, et la reponse est rendue comme avant.
+                    reprise_["issue"] = "toujours degeneree"
+                elif trace_["decharge"]:
+                    reprise_ = trace_
+                    degenere_ = rendu
+                    reprise_["issue"] = "reprise sans reponse"
+                    rendu = await _ollama_local(ici, url, delai)
+                    reprise_["issue"] = ("toujours degeneree"
+                                         if forme_degeneree(rendu) else "reparee")
+                    journal(tid, f"{titre_ol} : apres dechargement, "
+                                 + ("toujours rien d'utilisable — la reponse "
+                                    "est rendue telle quelle"
+                                    if reprise_["issue"] != "reparee"
+                                    else "la reponse est revenue"))
+                elif reste_:
+                    # Pas de dechargement ici — machine en pause, deja decharge
+                    # dans la fenetre, ou Ollama a refuse. Une autre machine
+                    # peut repondre : c'est la reprise.
+                    reprise_ = trace_
+                    reprise_["issue"] = "retentee ailleurs"
+                    degenere_ = rendu
+                    journal(tid, f"{titre_ol} : on reessaie ailleurs")
+                    continue
+            elif reprise_ is not None and reprise_["issue"] == "retentee ailleurs":
+                reprise_["issue"] = f"repondue par {titre_ol}"
             # OU CET OLLAMA A MIS LE MODELE. Ici et pas ailleurs : le modele
             # est encore charge, et l'appel vient de reussir — sonder une
             # adresse qui vient d'echouer n'apprendrait rien.
@@ -3436,6 +3479,17 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
         finally:
             if verrou_ol is not None:
                 verrou_ol.release()
+    # LA REPRISE N'A RIEN DONNE DE MIEUX. Un modele a pourtant repondu, mal :
+    # c'est cette reponse que l'appel rendait avant de savoir la reconnaitre,
+    # et on la rend encore, plutot qu'une exception ou un detour de plusieurs
+    # minutes par l'agent d'une machine. La demande n'est pas marquee « cerveau
+    # lent » non plus : la lenteur n'est pas ce qui s'est passe.
+    if degenere_ is not None:
+        if reprise_["issue"] == "retentee ailleurs":
+            reprise_["issue"] = "aucune reponse ailleurs"
+        journal(tid, "aucune autre reponse — la reponse degeneree est rendue "
+                     "telle quelle")
+        return degenere_
     # PERSONNE N'A REPONDU, et au moins un a depasse l'echeance : cette
     # demande fera le reste sans modele. C'est ici, apres la boucle, que la
     # marque a un sens — pas dans le « except » d'une adresse parmi trois.
@@ -3959,18 +4013,111 @@ async def liberer_modele(tid):
 
 
 async def liberer_modele_a(url, modele):
-    """Le dechargement lui-meme, a une adresse precise."""
+    """Le dechargement lui-meme, a une adresse precise.
+
+    Rend vrai si Ollama l'a accepte. Les fins de rafale l'ignorent ; la
+    reparation d'un modele degenere en a besoin : retenter au meme endroit
+    apres un dechargement qui n'est pas parti, c'est reposer la question au
+    meme modele corrompu.
+    """
     ident = cerveau(url).get("noeud")
     if ident and (noeud(ident) or {}).get("pause"):
         # Une machine en pause n'a rien de chaud a nous : on ne s'y adresse plus.
-        return
+        return False
     try:
         to = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=to) as s:
-            await s.post(f"{url}/api/generate",
-                         json={"model": modele, "prompt": "", "keep_alive": 0})
+            async with s.post(f"{url}/api/generate",
+                              json={"model": modele, "prompt": "",
+                                    "keep_alive": 0}) as r:
+                return r.status < 400
     except Exception:
-        pass
+        return False
+
+
+# ══ UN MODELE RESIDENT QUI REPOND SANS RIEN DIRE ═══════════════════════
+# UN 200 SANS « error » N'EST PAS UNE REPONSE. Mesure du 4 novembre 2026 :
+# pendant un essai, qwen2.5vl sur l'Ollama du PC a rendu des reponses VIDES,
+# appel apres appel, sans le moindre champ d'erreur. Le plan est retombe sur
+# l'aiguillage par mots-cles sans que le fil le dise, et personne n'a decharge
+# le modele — ce qui seul le repare : un modele resident corrompu le reste tant
+# qu'il reste charge, et celui qu'une rafale garde CHAUD (_CHAUD) le reste le
+# plus longtemps. Le meme mal a deja pris la forme « @@@@@@ » (28 aout 2026,
+# voir latin()).
+#
+# UNE FOIS PAR (adresse, modele) ET PAR FENETRE. Decharger est sans danger —
+# le studio le fait a chaque fin de rafale — mais dix appels qui echouent
+# ensemble ne doivent pas faire dix dechargements, ni recharger dix fois dix-huit
+# gigaoctets : passe le premier, le modele vient d'etre decharge, et s'il
+# degenere encore, un deuxieme dechargement n'y changera rien.
+FENETRE_DEGENERE = 600
+# (adresse, modele) -> instant du dernier dechargement. Purge a chaque ecriture :
+# il ne garde que la fenetre en cours.
+_DECHARGE_DEGENERE = {}
+# Ce que la console montre : les dernieres seulement, et le compte depuis le
+# demarrage. Une liste qui grossit a chaque appel rate finit par peser plus que
+# ce qu'elle apprend.
+DEGENERESCENCES = collections.deque(maxlen=20)
+_DEGENERES_TOTAL = [0]
+
+
+def forme_degeneree(rendu):
+    """« vide », « repetition », ou "" pour une reponse qui en est une."""
+    t = (rendu or "").strip()
+    if not t:
+        return "vide"
+    if _REPETITION_LONGUE.search(t):
+        return "repetition"
+    return ""
+
+
+async def reparer_degenere(url, modele, forme, tid, titre):
+    """Consigne une reponse degeneree, et decharge le modele si c'est permis.
+
+    Rend la trace consignee ; « decharge » y dit si le dechargement est parti,
+    seule condition pour retenter au meme endroit.
+    """
+    maintenant = time.time()
+    for cle_, quand_ in list(_DECHARGE_DEGENERE.items()):
+        if maintenant - quand_ >= FENETRE_DEGENERE:
+            del _DECHARGE_DEGENERE[cle_]
+    trace = {"quand": maintenant, "machine": titre, "modele": modele,
+             "forme": forme, "decharge": False, "issue": "pas retentee"}
+    DEGENERESCENCES.append(trace)
+    _DEGENERES_TOTAL[0] += 1
+    quoi = ("une reponse vide" if forme == "vide"
+            else "du charabia (un meme caractere repete)")
+    ident = cerveau(url).get("noeud")
+    if ident and (noeud(ident) or {}).get("pause"):
+        # Son proprietaire s'en sert : on ne lui decharge rien, meme casse.
+        journal(tid, f"{modele} sur {titre} a rendu {quoi} sans erreur — "
+                     f"machine en pause, on n'y touche pas")
+        return trace
+    if (url, modele) in _DECHARGE_DEGENERE:
+        journal(tid, f"{modele} sur {titre} a rendu {quoi} sans erreur — deja "
+                     f"decharge il y a "
+                     f"{maintenant - _DECHARGE_DEGENERE[(url, modele)]:.0f} s, "
+                     f"on ne le decharge pas encore")
+        return trace
+    # POSEE AVANT L'ATTENTE : deux appels qui degenerent ensemble verraient
+    # sinon tous deux la place libre, et dechargeraient deux fois.
+    _DECHARGE_DEGENERE[(url, modele)] = maintenant
+    # Les entrees de _CHAUD qui nomment ce modele restent : la fin de leur
+    # rafale dechargera ce que la reprise aura recharge, comme prevu.
+    trace["decharge"] = await liberer_modele_a(url, modele)
+    journal(tid, f"{modele} sur {titre} a rendu {quoi} sans erreur — "
+                 + ("modele decharge pour le reparer" if trace["decharge"]
+                    else "le dechargement n'a pas abouti"))
+    return trace
+
+
+def releve_degenerescences():
+    """Pour la console : le compte, et les dernieres, la plus recente d'abord."""
+    return {"total": _DEGENERES_TOTAL[0],
+            "fenetre": FENETRE_DEGENERE,
+            "derniers": [dict(x, heure=time.strftime("%d/%m %H:%M:%S",
+                                                     time.localtime(x["quand"])))
+                         for x in reversed(DEGENERESCENCES)]}
 
 
 SYS_TRADUCTION = """Tu traduis du francais vers l'anglais. Tu ne fais que cela.
@@ -4048,6 +4195,12 @@ def replier_sur_multilingue(plan, tid, cause):
     return appliquer_parametres(plan)
 
 _REPETITION = re.compile(r"(.)\1{3,}")
+# LA MEME SIGNATURE, A LA MESURE D'UNE REPONSE LIBRE. Quatre fois le meme
+# caractere condamne une traduction de vingt mots, ou rien de tel n'a sa place ;
+# dans un plan, une description ou des paroles, « 10000 », « ... » ou une ligne
+# de tirets sont du texte. Seize fois de suite, hors blancs et separateurs, ce
+# n'en est plus : « {@@@@@@@@@@@@@@ » en est un, mesure du 28 aout 2026.
+_REPETITION_LONGUE = re.compile(r"([^\s\-=_.*#~])\1{15,}")
 
 def latin(t):
     """Une traduction anglaise s'ecrit en alphabet latin.
@@ -10297,8 +10450,19 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # juge d'abord (voir image_adulte) ; adulte, ou jugement illisible, elle
         # reste ici. Sans aucun modele de vision joignable — un studio sans
         # carte, tout au nuage —, elle part comme avant, mais le fil le dit.
-        if loin and image:
-            verdict = await image_adulte(image, tid)
+        # UNE CLE QUI NE RETOUCHE PAS N'ENVOIE PAS SON IMAGE AU NUAGE. Le
+        # moteur distant peut etre choisi ICI, par les preferences du nuage et
+        # non par la demande : operation_refusee ne l'a pas vu. L'image jointe
+        # reste a la maison et le fournisseur rend une image neuve — ce que la
+        # famille « image » promet. La page, elle, garde la retouche guidee.
+        image_loin = image
+        if (loin and image and MOTEURS_DISTANTS[loin]["type"] == "image"
+                and not retouche_permise(tid)):
+            journal(tid, "cette cle d'acces ne permet pas la retouche : l'image "
+                         "jointe ne part pas chez le fournisseur")
+            image_loin = None
+        if loin and image_loin:
+            verdict = await image_adulte(image_loin, tid)
             if verdict != "saine" and verdict != "non jugee":
                 journal(tid, "image jointe jugee adulte par la vision locale : "
                              "elle ne sort pas de la maison")
@@ -10318,7 +10482,7 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # muet impossible a diagnostiquer autrement qu'en lisant le code.
             journal(tid, f"confie a {MOTEURS_DISTANTS[loin]['titre']}…")
             try:
-                sorties = await produire_distant(loin, plan, texte, image,
+                sorties = await produire_distant(loin, plan, texte, image_loin,
                                                  intention, tid, conv)
             except fournisseurs.EchecFournisseur as e:
                 journal(tid, f"{MOTEURS_DISTANTS[loin]['titre']} indisponible "
@@ -10996,6 +11160,8 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         journal(tid, f"ERREUR : {e}", etat="erreur",
                 **marque_panne("panne.echec",
                                quoi=getattr(e, "marque", None) or str(e)))
+        # Apres la marque : c'est elle qui dit le code.
+        noter_refus_tardif(tid)
 
 # ══════════════════════════════ routes ═════════════════════════════════
 @web.middleware
@@ -14799,6 +14965,10 @@ async def api_admin_noeuds(req):
                                   + ((noeud(cerveau(u).get('noeud')) or {})
                                      .get("titre") or u): p
                                   for (u, nom), p in MODELES_CASSES.items()},
+                              # LE MAL D'A COTE, ET IL SE TAISAIT ENCORE PLUS :
+                              # un modele qui se charge, repond 200, et rend du
+                              # vide. Le 4 novembre 2026, personne ne l'a vu.
+                              "modeles_degeneres": releve_degenerescences(),
                               # LA SECONDE PLACE OU LIRE L'IDENTIFIANT, et la
                               # seule qui reste quand la console de demarrage a
                               # ete refermee — c'est le cas de l'executable
@@ -15913,6 +16083,14 @@ def charger_acces():
                             hashlib.sha256).hexdigest()
 
 
+async def vider_suivi_des_cles(_app=None):
+    """A l'arret propre : les refus et les secrets faux pas encore ecrits.
+    Le suivi ne s'ecrit qu'une fois par dix minutes (acces.SUIVI_ECRIT_TOUTES) ;
+    sans cette ligne, chaque redemarrage voulu en perdrait jusqu'a dix."""
+    if ACCES:
+        ACCES.vider_suivi()
+
+
 def chemin_de_programme(chemin):
     return chemin.startswith(PREFIXE_PROGRAMME) or chemin == CHEMIN_MCP
 
@@ -16463,6 +16641,29 @@ def _type_de_moteur(cle):
     return (CATALOGUE.get(cle) or MOTEURS_DISTANTS.get(cle) or {}).get("type")
 
 
+def _type_du_rendu(cle, image):
+    """Le type de ce que ce moteur va FAIRE de la demande, image jointe comprise.
+
+    UN MOTEUR D'IMAGE DU NUAGE RETOUCHE CE QU'ON LUI JOINT. produire_distant
+    envoie l'image jointe avec le texte, et nanobanana rend l'image modifiee :
+    une cle « image » qui joignait une photo se la faisait retoucher chez le
+    fournisseur — releve a la fin de la ronde du 4 novembre 2026. Un moteur
+    d'image LOCAL ne lit pas l'image jointe (seule la reference du « meme
+    personnage » entre, et elle fait bien une image neuve) : il reste image.
+    """
+    type_ = _type_de_moteur(cle)
+    if image and type_ == "image" and cle in MOTEURS_DISTANTS:
+        return "edition"
+    return type_
+
+
+def retouche_permise(tid):
+    """La cle de cette tache permet-elle de retoucher ? Vrai pour la page."""
+    marque = (TACHES.get(tid) or {}).get("api") if tid else None
+    return _acces.operation_permise((marque or {}).get("operations") or [],
+                                    "edition")
+
+
 def _nom_operation(type_):
     """La famille d'un type, dans le mot de l'API ; le type brut quand il n'a
     pas de famille — mieux qu'un mot invente. Le mot de l'API et non sa
@@ -16476,7 +16677,7 @@ def _noms_operations(ops):
     return ", ".join(ops)
 
 
-def type_effectif(plan, texte=""):
+def type_effectif(plan, texte="", image=None):
     """Ce que la demande va REELLEMENT faire, vu juste apres l'analyse.
 
     Deux exceptions a « le type du moteur d'abord », toutes deux trouvees par
@@ -16491,13 +16692,16 @@ def type_effectif(plan, texte=""):
       dans executer() (veut_meme_personnage). La regle est reprise ICI, et
       non apres la bascule : la garde reste avant l'enrichissement, et une
       cle « retouche » ne se fait pas generer une image neuve.
+
+    Et UN MOTEUR D'IMAGE DU NUAGE AVEC UNE IMAGE JOINTE est une retouche :
+    voir _type_du_rendu.
     """
     intention = plan.get("intention")
     if intention == "lecture":
         return "lecture"
     if intention == "edition" and texte and veut_meme_personnage(texte):
         return "image"
-    return _type_de_moteur(plan.get("modele")) or intention
+    return _type_du_rendu(plan.get("modele"), image) or intention
 
 
 def operation_refusee(tid, plan, texte=""):
@@ -16511,11 +16715,12 @@ def operation_refusee(tid, plan, texte=""):
     Une demande de la page n'a pas de marque : jamais refusee ici. Une marque
     d'avant ce champ non plus — une cle d'avant ne connaissait que « tout ».
     """
-    marque = (TACHES.get(tid) or {}).get("api") if tid else None
+    tache = (TACHES.get(tid) or {}) if tid else {}
+    marque = tache.get("api")
     ops = (marque or {}).get("operations") or []
     if not ops:
         return None
-    type_ = type_effectif(plan, texte)
+    type_ = type_effectif(plan, texte, tache.get("image"))
     if _acces.operation_permise(ops, type_):
         return None
     return panne_de("panne.cle_operation_interdite",
@@ -16572,6 +16777,46 @@ def _deposer_octets(pid, extension, octets, lg):
     return nom, None
 
 
+def _suivre_les_refus(lancer):
+    """Chaque refus de lancement, compte sous sa cle (acces.noter_refus).
+
+    A LA SORTIE ET NON DANS CHAQUE GARDE. lancer_pour_programme refuse par sa
+    fonction « refus », mais aussi par la reponse de valider_demande, par celle
+    de _deposer_octets, et par le refus du garde-fou qui parle du genre : un
+    appel pose dans « refus » seule aurait laisse dehors ces trois chemins, et
+    le suivant qu'on ajoutera. Le code est celui du corps, celui que le
+    programme a lu."""
+    @functools.wraps(lancer)
+    async def suivi(req, fiche, d, lg):
+        statut, corps = await lancer(req, fiche, d, lg)
+        if statut >= 400 and ACCES:
+            ACCES.noter_refus(fiche["id"], (corps or {}).get("code"))
+        return statut, corps
+    return suivi
+
+
+# LES REFUS TARDIFS QUE LE SUIVI COMPTE : ceux que l'entree aurait rendus si
+# elle avait su — l'operation que l'analyse a lue et que la cle ne permet pas,
+# le prompt reecrit qui tombe sous le garde-fou. Une machine muette ou une carte
+# trop petite finissent aussi en « erreur », mais ce ne sont pas des refus de
+# la cle : les compter sous elle ferait chercher au proprietaire la faute de
+# son programme dans une panne du studio.
+REFUS_TARDIFS = frozenset(("cle_operation_interdite", "refus_mineurs"))
+
+
+def noter_refus_tardif(tid):
+    """Compte sous sa cle le refus qui vient de clore la tache « tid », si
+    c'en est un. Rien pour une demande de la page, ni pour une annulation."""
+    t = TACHES.get(tid) or {}
+    marque = t.get("api")
+    if not marque or not ACCES or t.get("annulee"):
+        return
+    code = _code_de_panne(t.get(MARQUE_PANNE))
+    if code in REFUS_TARDIFS:
+        ACCES.noter_refus(marque.get("cle"), code)
+
+
+@_suivre_les_refus
 async def lancer_pour_programme(req, fiche, d, lg):
     """Valide et met en file la demande d'un programme. Rend (statut, corps).
 
@@ -16699,7 +16944,7 @@ async def lancer_pour_programme(req, fiche, d, lg):
     # apres elle (operation_refusee).
     ops = fiche.get("operations") or []
     if d.get("moteur") is not None and v["modele"]:
-        type_ = _type_de_moteur(v["modele"])
+        type_ = _type_du_rendu(v["modele"], v.get("image"))
         if not _acces.operation_permise(ops, type_):
             oublier_image()
             return refus("erreur.cle_operation_interdite", 403,
@@ -17169,13 +17414,20 @@ async def api_v1_moteurs(req, fiche):
                               "variantes_max": VARIANTES_MAX})
 
 
-@pour_programme
-async def api_v1_moi(req, fiche):
-    return web.json_response({
+def description_de_cle(req, fiche):
+    """Ce que la cle permet et ou elle en est : le corps de GET /api/v1/moi,
+    et le contenu structure de l'outil MCP decrire_cle. Une fonction pour les
+    deux, pour qu'un champ ajoute a l'un le soit a l'autre."""
+    return {
         "compte": req.get("compte"), "cle": fiche,
         "en_cours": _en_cours_de_cle(fiche["id"]),
         "aujourdhui": _lances_aujourdhui(fiche["id"]),
-        "attendre_max": ATTENDRE_MAX})
+        "attendre_max": ATTENDRE_MAX}
+
+
+@pour_programme
+async def api_v1_moi(req, fiche):
+    return web.json_response(description_de_cle(req, fiche))
 
 
 # ── les rappels ──────────────────────────────────────────────────────────
@@ -17381,7 +17633,9 @@ INSTRUCTIONS_MCP = (
     "l'utilisateur et transmets sa reponse avec repondre_question. "
     "lister_moteurs donne les moteurs disponibles quand l'utilisateur en veut "
     "un precis (agrandir, detourer, une video…). lister_rendus retrouve ce qui "
-    "a deja ete fait avec cette cle.")
+    "a deja ete fait avec cette cle. decrire_cle dit ce que la cle permet "
+    "(operations, nuage, plafonds) : appelle-le avant une demande qu'elle "
+    "pourrait refuser.")
 
 _SCHEMA_ATTENDRE = {"type": "integer", "minimum": 0, "maximum": ATTENDRE_MAX,
                     "description": "Secondes a attendre la fin avant de rendre "
@@ -17564,6 +17818,31 @@ async def _outil_moteurs(arguments, ctx):
     return {"content": [_mcp.texte(texte_)], "structuredContent": {"moteurs": liste}}
 
 
+async def _outil_decrire(arguments, ctx):
+    """Ce que la cle permet, AVANT d'essayer. Un assistant qui ne le sait pas
+    l'apprend par le refus — une video demandee a une cle de detourage, une
+    cinquieme demande sur une file de quatre — et en conclut trop souvent que
+    le studio est en panne. Les memes champs que GET /api/v1/moi."""
+    req, fiche = ctx["req"], ctx["fiche"]
+    corps = description_de_cle(req, fiche)
+    cle = corps["cle"]
+    ops = cle.get("operations") or []
+    lignes = [
+        f"cle « {cle['nom']} » du compte {corps['compte']}",
+        "operations permises : " + (", ".join(ops) if ops else
+                                    "toutes (" + ", ".join(_acces.OPERATIONS) + ")"),
+        "moteurs du nuage : " + ("permis" if cle.get("nuage") else
+                                 "non — les rendus restent sur les machines de la maison"),
+        f"en file en meme temps : {corps['en_cours']} sur {cle['en_file']}",
+        (f"rendus aujourd'hui : {corps['aujourdhui']} sur {cle['par_jour']} "
+         f"(remise a zero a minuit, heure du studio)" if cle.get("par_jour")
+         else f"rendus aujourd'hui : {corps['aujourdhui']}, sans plafond"),
+        ("expire le " + _horodatage(cle["expire"]) if cle.get("expire")
+         else "sans date de fin"),
+    ]
+    return {"content": [_mcp.texte("\n".join(lignes))], "structuredContent": corps}
+
+
 def outils_mcp():
     _id = {"type": "string", "description": "L'identifiant rendu par generer_rendu."}
     return [
@@ -17635,6 +17914,13 @@ def outils_mcp():
             "Les moteurs que cette cle peut demander, avec ce qu'ils font.",
             {"type": "object", "additionalProperties": False, "properties": {}},
             _outil_moteurs),
+        _mcp.outil(
+            "decrire_cle", "Decrire la cle",
+            "Ce que cette cle permet avant d'essayer : les operations "
+            "permises, le nuage, les rendus en file et le plafond du jour "
+            "(et ou l'on en est), la date de fin.",
+            {"type": "object", "additionalProperties": False, "properties": {}},
+            _outil_decrire),
     ]
 
 
@@ -17698,7 +17984,11 @@ async def api_mes_acces(req):
     cles = [dict(f, active=f.get("generation") == gen and not _acces.expiree(f),
                  expiree=_acces.expiree(f),
                  en_cours=_en_cours_de_cle(f["id"]),
-                 aujourdhui=_lances_aujourdhui(f["id"]))
+                 aujourdhui=_lances_aujourdhui(f["id"]),
+                 # Ses refus du jour et les secrets faux presentes sous son
+                 # identifiant : le proprietaire est le premier a devoir
+                 # apprendre qu'on essaie sa cle.
+                 suivi=ACCES.suivi(f["id"]))
             for f in (ACCES.liste(nom) if ACCES else [])]
     return web.json_response({
         "cles": cles, "mfa": bool(COMPTES.mfa_arme(nom)),
@@ -17862,7 +18152,8 @@ async def api_admin_acces(req):
                          and not _acces.expiree(f),
                          expiree=_acces.expiree(f),
                          en_cours=_en_cours_de_cle(f["id"]),
-                         aujourdhui=_lances_aujourdhui(f["id"])))
+                         aujourdhui=_lances_aujourdhui(f["id"]),
+                         suivi=ACCES.suivi(f["id"])))
     return web.json_response({"cles": cles})
 
 
@@ -17979,6 +18270,7 @@ def app():
     a.router.add_delete("/api/admin/acces/{ident}", api_admin_acces_revoquer)
     a.on_startup.append(demarrer_file)
     a.on_cleanup.append(arreter_file)
+    a.on_cleanup.append(vider_suivi_des_cles)
     return a
 
 if __name__ == "__main__":

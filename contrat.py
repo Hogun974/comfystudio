@@ -67,7 +67,8 @@ TAILLES = ("1024x1024", "1080x1350", "1216x832", "1280x720", "1600x900",
 PRIORITES = ("brouillon", "rapide", "soigne")
 TYPES_FICHIER = ("image", "video", "audio", "objet3d", "autre")
 OUTILS_MCP = ("generer_rendu", "etat_rendu", "repondre_question",
-              "annuler_rendu", "lister_rendus", "lister_moteurs")
+              "annuler_rendu", "lister_rendus", "lister_moteurs",
+              "decrire_cle")
 
 # ── Les refus qui portent un code ───────────────────────────────────────
 # Le code est la cle de traductions.py sans sa famille (refus_programme). Il
@@ -683,7 +684,8 @@ def _chemins():
                 f"secondes, {ATTENDRE_MCP} par défaut), etat_rendu (suit un "
                 "rendu), repondre_question (répond à l'état « question »), "
                 "annuler_rendu, lister_rendus (retrouve les rendus de la "
-                "clé), lister_moteurs. tools/list fait foi."),
+                "clé), lister_moteurs, decrire_cle (ce que la clé permet, "
+                "les mêmes champs que GET /api/v1/moi). tools/list fait foi."),
             "parameters": [_ref("parameters", "McpVersion")],
             "requestBody": {"required": True,
                             "content": _json(_ref("schemas", "JsonRpc"))},
@@ -712,14 +714,19 @@ def _rappel():
          "schema": {"type": "string"}},
     ]
     essais = ", ".join(str(d) for d in _rappels.DELAIS)
+    # LUS DANS rappels.py, comme les delais : une liste recopiee ici aurait
+    # garde l'ancienne politique a l'ajout du 409 de n8n (5 novembre 2026).
+    passagers = ", ".join(str(s) for s in _rappels._PASSAGERS)
     return {"rendu": {"post": {
         "operationId": "rappelRendu",
         "summary": "Le studio prévient l'URL « rappel » qu'un rendu est fini",
         "description": (
             f"Un POST à la fin du rendu (fini, erreur, question, annule). "
-            f"Attentes avant chaque essai : {essais} s ; réessayé sur 408, "
-            f"425, 429, 5xx, délai ({_rappels.DELAI_REPONSE} s) ou "
-            f"injoignable ; jamais de redirection suivie. Inscrit sur le "
+            f"Attentes avant chaque essai : {essais} s ; réessayé sur "
+            f"{passagers}, 5xx, délai ({_rappels.DELAI_REPONSE} s) ou "
+            f"injoignable — 409 compris, la réponse de n8n à une exécution "
+            f"qui n'a pas encore atteint son nœud Wait ; tout autre 4xx "
+            f"arrête les essais ; jamais de redirection suivie. Inscrit sur le "
             f"disque dès son premier essai : un studio qui redémarre "
             f"pendant les essais reprend la livraison."),
         "parameters": entetes,

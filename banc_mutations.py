@@ -547,7 +547,10 @@ BESOINS = {
                       "paquet/construire_windows.bat"],
     # Le banc importe serveur.py, donc tout ce que serveur.py importe.
     "banc_repartition.py": ["banc_repartition.py"] + fichiers_du_conteneur()[1:],
-    "banc_cerveaux.py": ["banc_cerveaux.py"] + fichiers_du_conteneur()[1:],
+    # web/admin.html : le banc verifie que la console affiche les reponses
+    # degenerees d'un modele, et non seulement que la route les porte.
+    "banc_cerveaux.py": (["banc_cerveaux.py", "web/admin.html"]
+                         + fichiers_du_conteneur()[1:]),
     # banc_variantes.py relit web/index.html pour DEUX noms de champ, depuis
     # que le releve de la phrase du journal (RE_DEVIS) a laisse la place a la
     # lecture d'un champ : MARQUE_DEVIS et MARQUE_ARRET_DIFFERE. Sans cette
@@ -10793,8 +10796,8 @@ RAPPELS = [
               "perd au premier pic de n8n.",
         rougit="429 -> re-essai",
         editions=[("rappels.py", brut(
-            "_PASSAGERS = (408, 425, 429)",
-            "_PASSAGERS = (408, 425)"))]),
+            "_PASSAGERS = (408, 409, 425, 429)",
+            "_PASSAGERS = (408, 409, 425)"))]),
     dict(
         nom="tout 4xx est re-essaye",
         banc="banc_rappels.py",
@@ -11942,7 +11945,7 @@ LISTE_ESSAI = [
         banc="banc_pilotage.py",
         imite="un assistant ne peut plus repondre a « ce que j'ai fait tout a "
               "l'heure »",
-        rougit="tools/list rend les six outils",
+        rougit="tools/list rend les sept outils",
         editions=[("serveur.py", brut(
             '            "lister_rendus", "Lister les rendus",',
             '            "lister_rendus_cache", "Lister les rendus",'))]),
@@ -12528,10 +12531,9 @@ USAGE_CLES = [
         rougit="disent ce que la cle a lance aujourd'hui",
         editions=[("serveur.py", brut(
             '                 en_cours=_en_cours_de_cle(f["id"]),' + chr(10)
-            + '                 aujourdhui=_lances_aujourdhui(f["id"]))' + chr(10)
-            + "            for f in (ACCES.liste(nom) if ACCES else [])]",
-            "                 )" + chr(10)
-            + "            for f in (ACCES.liste(nom) if ACCES else [])]"))]),
+            + '                 aujourdhui=_lances_aujourdhui(f["id"]),' + chr(10)
+            + "                 # Ses refus du jour",
+            "                 # Ses refus du jour"))]),
     dict(
         nom="l'administration ne dit pas les lancements du jour",
         banc="banc_pilotage.py",
@@ -12539,8 +12541,8 @@ USAGE_CLES = [
         rougit="disent ce que la cle a lance aujourd'hui",
         editions=[("serveur.py", brut(
             '                         en_cours=_en_cours_de_cle(f["id"]),' + chr(10)
-            + '                         aujourdhui=_lances_aujourdhui(f["id"])))',
-            '                         en_cours=_en_cours_de_cle(f["id"])))'))]),
+            + '                         aujourdhui=_lances_aujourdhui(f["id"]),' + chr(10),
+            '                         en_cours=_en_cours_de_cle(f["id"]),' + chr(10)))]),
 ]
 
 
@@ -12984,6 +12986,464 @@ RELECTURE_OPERATIONS = [
 ]
 
 
+# LE NUAGE RETOUCHE CE QU'ON LUI JOINT (5 novembre 2026) : une cle « image »
+# avec le nuage faisait retoucher une photo par nanobanana.
+CLOUD_RETOUCHE = [
+    dict(
+        nom="le moteur d'image du nuage ignore l'image jointe",
+        banc="banc_pilotage.py",
+        imite="« nanobanana est de type image » lu dans le catalogue, sans voir "
+              "que produire_distant lui envoie la photo a modifier",
+        rougit="nanobanana avec une image jointe sur une cle d'images rend 403",
+        editions=[("serveur.py", brut(
+            "    if image and type_ == \"image\" and cle in MOTEURS_DISTANTS:",
+            "    if False:"))]),
+    dict(
+        nom="un moteur d'image local avec une image jointe devient une retouche",
+        banc="banc_pilotage.py",
+        imite="la regle du nuage etendue a tous les moteurs d'image : klein4b ne "
+              "lit pas l'image jointe, et la cle « image » est refusee a tort",
+        rougit="apres l'analyse, nanobanana avec une image jointe est une retouche",
+        editions=[("serveur.py", brut(
+            "    if image and type_ == \"image\" and cle in MOTEURS_DISTANTS:",
+            "    if image and type_ == \"image\":"))]),
+    dict(
+        nom="l'entree juge nanobanana sans son image",
+        banc="banc_pilotage.py",
+        imite="la garde d'entree garde l'ancien _type_de_moteur : la photo part "
+              "en file, et seule la garde tardive pourrait la rattraper",
+        rougit="nanobanana avec une image jointe sur une cle d'images rend 403",
+        editions=[("serveur.py", brut(
+            "        type_ = _type_du_rendu(v[\"modele\"], v.get(\"image\"))",
+            "        type_ = _type_de_moteur(v[\"modele\"])"))]),
+    dict(
+        nom="la garde apres l'analyse ne lit pas l'image de la tache",
+        banc="banc_pilotage.py",
+        imite="operation_refusee appelle type_effectif sans l'image : le plan "
+              "« image + nanobanana » passe pour une image neuve",
+        rougit="apres l'analyse, nanobanana avec une image jointe est une retouche",
+        editions=[("serveur.py", brut(
+            "    type_ = type_effectif(plan, texte, tache.get(\"image\"))",
+            "    type_ = type_effectif(plan, texte)"))]),
+    dict(
+        nom="le nuage des preferences recoit l'image d'une cle sans retouche",
+        banc="banc_pilotage.py",
+        imite="la garde ne voit que le moteur du plan ; celui que choix_distant "
+              "pose ensuite emporte la photo chez le fournisseur",
+        rougit="le nuage choisi par les preferences ne recoit pas l'image jointe",
+        editions=[("serveur.py", brut(
+            "                and not retouche_permise(tid)):",
+            "                and False):"))]),
+    dict(
+        nom="produire_distant recoit encore l'image d'origine",
+        banc="banc_pilotage.py",
+        imite="la decision prise et journalisee, mais l'appel garde l'ancienne "
+              "variable : le journal dit « ne part pas », l'image part",
+        rougit="le nuage choisi par les preferences ne recoit pas l'image jointe",
+        editions=[("serveur.py", brut(
+            "                sorties = await produire_distant(loin, plan, texte, image_loin,",
+            "                sorties = await produire_distant(loin, plan, texte, image,"))]),
+]
+
+# ──────────────────────────────────────────────────────────────────────
+#  banc_cerveaux.py — un modele resident qui repond 200, sans erreur, et rien
+# ──────────────────────────────────────────────────────────────────────
+# Mesure du 4 novembre 2026 : qwen2.5vl sur l'Ollama du PC a rendu des reponses
+# vides pendant un essai, le plan est retombe sur l'aiguillage par mots-cles
+# sans un mot, et personne n'a decharge le modele. Chaque mutation retire une
+# des quatre choses que le studio fait desormais — reconnaitre, decharger,
+# retenter une fois, le dire — ou l'une des bornes qui l'empechent de marteler
+# une machine ou de changer ce que ses appelants recoivent.
+OLLAMA_DEGENERE = [
+    dict(
+        nom="le vide sans erreur redevient une reponse",
+        banc="banc_cerveaux.py",
+        imite="l'etat du 4 novembre : un 200 vide passe pour une reponse, et "
+              "l'aiguillage par mots-cles prend le relais sans que personne "
+              "le sache",
+        rougit="une reponse VIDE sans erreur est retentee une fois",
+        editions=[("serveur.py", brut(
+            '        return "vide"' + chr(10), '        return ""' + chr(10)))]),
+    dict(
+        nom="le charabia d'un meme caractere n'est plus reconnu",
+        banc="banc_cerveaux.py",
+        imite="la detection qui ne regarde que le vide : « {@@@@@@… » passe "
+              "pour un plan et part au decodeur JSON",
+        rougit="une repetition du meme caractere est reconnue",
+        editions=[("serveur.py", brut(
+            "    if _REPETITION_LONGUE.search(t):",
+            "    if False:"))]),
+    dict(
+        nom="la regle des traductions appliquee a toute reponse",
+        banc="banc_cerveaux.py",
+        imite="la reutilisation trop directe de _REPETITION : quatre fois le "
+              "meme caractere condamne « 10000 » ou une ligne de tirets, et "
+              "chaque plan honnete serait decharge et retente",
+        rougit="« 10000 », « ... » ou une ligne de tirets restent du texte",
+        editions=[("serveur.py", brut(
+            '_REPETITION_LONGUE = re.compile(r"([^\\s\\-=_.*#~])\\1{15,}")',
+            "_REPETITION_LONGUE = _REPETITION"))]),
+    dict(
+        nom="la reprise part sans que le modele soit decharge",
+        banc="banc_cerveaux.py",
+        imite="retenter sans decharger : la meme question au meme modele "
+              "corrompu, qui rend le meme vide",
+        rougit="et entre les deux, CE modele est decharge A CETTE adresse",
+        editions=[("serveur.py", brut(
+            '    trace["decharge"] = await liberer_modele_a(url, modele)',
+            '    trace["decharge"] = True'))]),
+    dict(
+        nom="la fenetre ne retient plus le dechargement",
+        banc="banc_cerveaux.py",
+        imite="dix appels qui degenerent ensemble font dix dechargements, et "
+              "dix rechargements de plusieurs gigaoctets sur la meme carte",
+        rougit="dans la fenetre, le meme modele a la meme adresse n'est PAS "
+               "decharge une seconde fois",
+        editions=[("serveur.py", brut(
+            "    if (url, modele) in _DECHARGE_DEGENERE:",
+            "    if False:"))]),
+    dict(
+        nom="la fenetre ne purge plus ce qui en est sorti",
+        banc="banc_cerveaux.py",
+        imite="un dictionnaire qui grossit d'un modele a chaque panne, et un "
+              "modele decharge il y a une heure qui ne se repare plus jamais",
+        rougit="et la fenetre oublie ce qui en est sorti",
+        editions=[("serveur.py", brut(
+            "            del _DECHARGE_DEGENERE[cle_]",
+            "            pass"))]),
+    dict(
+        nom="le dechargement ne regarde plus la pause",
+        banc="banc_cerveaux.py",
+        imite="decharger le modele d'une machine dont le proprietaire joue : "
+              "ce que la pause interdit, au nom d'une reparation",
+        rougit="une machine passee en pause n'est pas dechargee",
+        editions=[("serveur.py", brut(
+            '    if ident and (noeud(ident) or {}).get("pause"):' + chr(10)
+            + "        # Son proprietaire",
+            "    if False:" + chr(10) + "        # Son proprietaire")),
+                  ("serveur.py", brut(
+            '    if ident and (noeud(ident) or {}).get("pause"):' + chr(10)
+            + "        # Une machine en pause n'a rien",
+            "    if False:" + chr(10)
+            + "        # Une machine en pause n'a rien"))]),
+    dict(
+        nom="on retente au meme endroit meme sans dechargement",
+        banc="banc_cerveaux.py",
+        imite="la reprise qui ne verifie pas que le dechargement est parti : "
+              "le meme modele corrompu, interroge deux fois",
+        rougit="seule et sans dechargement possible, la machine rend son",
+        editions=[("serveur.py", brut(
+            '                elif trace_["decharge"]:',
+            "                elif True:"))]),
+    dict(
+        nom="une seconde reprise apres la premiere",
+        banc="banc_cerveaux.py",
+        imite="la reprise comptee par adresse et non par appel : chaque "
+              "machine degeneree relance l'appel, et une demande en paie "
+              "autant de chargements",
+        rougit="mais l'appel n'est PAS retente une deuxieme fois",
+        editions=[("serveur.py", brut(
+            "                if reprise_ is not None:",
+            "                if False:"))]),
+    dict(
+        nom="la reponse degeneree devient une exception",
+        banc="banc_cerveaux.py",
+        imite="ce que la mission interdisait : un appelant qui lit \"\" comme "
+              "« pas de reponse » recoit une exception, ou attend des minutes "
+              "le detour par l'agent",
+        rougit="si la machine de reprise ne repond pas, l'appel rend le",
+        editions=[("serveur.py", brut(
+            "        return degenere_" + chr(10), "        pass" + chr(10)))]),
+    dict(
+        nom="le vide d'un modele qui ne se charge pas pris pour degenere",
+        banc="banc_cerveaux.py",
+        imite="decharger et retenter un modele qu'Ollama refuse de charger : "
+              "_ecarter_modele s'en occupe deja, et la reprise recharge pour "
+              "rien",
+        rougit="vide AVEC un champ « error »",
+        editions=[("serveur.py", brut(
+            '            forme_ = ("" if _casse_ici(url, modele_ici)',
+            '            forme_ = ("" if False'))]),
+    dict(
+        nom="le fil de la demande ne dit plus le dechargement",
+        banc="banc_cerveaux.py",
+        imite="la ligne qui ne part que sur la sortie du studio : la panne "
+              "reparee en silence, comme le 4 novembre elle restait en silence",
+        rougit="le fil de la demande le dit",
+        editions=[("serveur.py", brut(
+            chr(10) + '    journal(tid, f"{modele} sur {titre} a rendu {quoi} '
+            'sans erreur — "' + chr(10),
+            chr(10) + '    print(tid, f"{modele} sur {titre} a rendu {quoi} '
+            'sans erreur — "' + chr(10)))]),
+    dict(
+        nom="la trace de la console n'est plus bornee",
+        banc="banc_cerveaux.py",
+        imite="une liste qui grossit a chaque reponse ratee, pendant des mois",
+        rougit="la trace est bornee",
+        editions=[("serveur.py", brut(
+            "DEGENERESCENCES = collections.deque(maxlen=20)",
+            "DEGENERESCENCES = collections.deque()"))]),
+    dict(
+        nom="la route de la console ne porte plus le releve",
+        banc="banc_cerveaux.py",
+        imite="le releve tenu en memoire, et personne pour le lire",
+        rougit="/api/admin/noeuds porte le releve des reponses degenerees",
+        editions=[("serveur.py", brut(
+            '"modeles_degeneres": releve_degenerescences(),',
+            ""))]),
+    dict(
+        nom="la console ne montre plus les reponses degenerees",
+        banc="banc_cerveaux.py",
+        imite="la carte retiree de la page : le serveur sait, l'administrateur "
+              "non",
+        rougit="et la console d'administration l'affiche",
+        editions=[("web/admin.html", brut(
+            '<div id="langueDegenere"></div>', ""))]),
+]
+
+# ── La course au Wait de n8n (ronde 4, 5 novembre 2026) ─────────────
+# n8n repond 409 a l'URL de reprise d'une execution qui n'a pas encore atteint
+# son noeud Wait (packages/cli/src/webhooks/waiting-webhooks.ts) : le rappel
+# doit etre re-essaye, les vrais definitifs (401, 404) non.
+RAPPELS_COURSE = [
+    dict(
+        nom="409 redevient un refus definitif",
+        banc="banc_rappels.py",
+        imite="« tout 4xx est un refus raisonne », la regle d'avant : un rendu "
+              "qui finit avant que n8n soit au Wait perd son rappel au premier "
+              "essai, et le workflow dort jusqu'a son delai.",
+        rougit="409 puis 200 (n8n pas encore au Wait, puis endormi)",
+        editions=[("rappels.py", brut(
+            "_PASSAGERS = (408, 409, 425, 429)",
+            "_PASSAGERS = (408, 425, 429)"))]),
+    dict(
+        nom="404 de n8n re-essaye avec le 409",
+        banc="banc_rappels.py",
+        imite="elargir aux « codes de n8n » en bloc : une execution inconnue "
+              "ou un Wait sans webhook pour POST recoit quatre fois le meme "
+              "rappel, et insister ne la fera pas exister.",
+        rougit="404 -> arret apres un essai",
+        editions=[("rappels.py", brut(
+            "_PASSAGERS = (408, 409, 425, 429)",
+            "_PASSAGERS = (404, 408, 409, 425, 429)"))]),
+    dict(
+        nom="le 409 epuise se dit recepteur occupe",
+        banc="banc_rappels.py",
+        imite="ranger 409 avec 429 sous la meme raison : le journal dit « "
+              "recepteur occupe » quand n8n n'attendait pas, et l'operateur "
+              "cherche une surcharge qui n'existe pas.",
+        rougit="409 epuise -> raison conflit",
+        editions=[("rappels.py", brut(
+            '"conflit" if statut == 409 else "recepteur occupe"',
+            '"recepteur occupe"'))]),
+    dict(
+        nom="le contrat recopie l'ancienne liste des statuts re-essayes",
+        banc="banc_contrat.py",
+        imite="la liste ecrite a la main dans la description du webhook, "
+              "comme avant : elle garde « 408, 425, 429 » et un integrateur "
+              "croit que le 409 de n8n arrete les essais.",
+        rougit="la description du rappel nomme chaque statut re-essaye",
+        editions=[("contrat.py", brut(
+            "    passagers = \", \".join(str(s) for s in _rappels._PASSAGERS)",
+            "    passagers = \"408, 425, 429\""))]),
+]
+
+# ── Le suivi des cles : refus du jour, secrets faux, decrire_cle ────────
+# Ce qui est arrive a une cle, montre a son proprietaire et a /admin : les
+# refus du jour par code (a l'entree et apres l'analyse), les secrets faux
+# presentes sous son identifiant, ecrits sans l'etre a chaque requete. Et
+# l'outil MCP qui dit a un assistant ce que sa cle permet avant d'essayer.
+SUIVI_CLES = [
+    dict(
+        nom="un secret faux n'est pas compte",
+        banc="banc_acces.py",
+        imite="le compteur pose sur le chemin du serveur qu'on a oublie : une "
+              "cle qu'on essaie en boucle ne laisse aucune trace chez son "
+              "proprietaire",
+        rougit="un secret faux sur l'identifiant d'une cle existante est compte sous elle",
+        editions=[("acces.py", brut(
+            "            self._noter_echec(fiche, quand)",
+            "            pass"))]),
+    dict(
+        nom="toute reconnaissance d'une cle existante compte un echec",
+        banc="banc_acces.py",
+        imite="le test du secret oublie : chaque requete juste passe pour un "
+              "secret faux, et l'avertissement crie au voleur tous les jours",
+        rougit="la cle juste, un identifiant inconnu, une cle hors forme : rien de compte",
+        editions=[("acces.py", brut(
+            "        if fiche is not None and not juste:",
+            "        if fiche is not None:"))]),
+    dict(
+        nom="les compteurs du suivi ne repartent pas a minuit",
+        banc="banc_acces.py",
+        imite="un jour qu'on ne compare plus : les refus de la veille "
+              "s'ajoutent a ceux du jour sous la date d'hier",
+        rougit="les compteurs repartent a zero le lendemain",
+        editions=[("acces.py", brut(
+            "        if not isinstance(s, dict) or s.get(\"jour\") != jour:",
+            "        if not isinstance(s, dict):"))]),
+    dict(
+        nom="le suivi s'ecrit a chaque refus",
+        banc="banc_acces.py",
+        imite="la retenue oubliee : un n8n refuse dix fois par seconde "
+              "reecrit le fichier des cles dix fois par seconde",
+        rougit="treize refus en dix minutes : une seule ecriture du fichier",
+        editions=[("acces.py", brut(
+            "        if quand - self._suivi_ecrit >= SUIVI_ECRIT_TOUTES:",
+            "        if True:"))]),
+    dict(
+        nom="le suivi ne s'ecrit jamais",
+        banc="banc_acces.py",
+        imite="un compteur en memoire seulement : chaque redemarrage efface "
+              "les refus du matin, au moment ou l'on vient les lire",
+        rougit="relu du disque, le suivi est le meme",
+        editions=[("acces.py", brut(
+            "        if not self._suivi_sale or self.illisible:" + chr(10)
+            + "            return False",
+            "        if True:" + chr(10) + "            return False"))]),
+    dict(
+        nom="une ecriture ne nettoie pas le drapeau du suivi",
+        banc="banc_acces.py",
+        imite="le drapeau jamais remis : chaque arret reecrit le fichier pour "
+              "rien, et l'on ne sait plus ce qui reste a ecrire",
+        rougit="vider_suivi ecrit ce qui reste, puis plus rien",
+        editions=[("acces.py", brut(
+            "            self._suivi_sale = False" + chr(10)
+            + "        except BaseException:",
+            "        except BaseException:"))]),
+    dict(
+        nom="un suivi abime est garde tel quel",
+        banc="banc_acces.py",
+        imite="un compteur relu sans controle : la fiche porte une liste la ou "
+              "le code attend un dictionnaire",
+        rougit="un suivi abime se perd sans rendre le fichier illisible",
+        editions=[("acces.py", brut(
+            "            if \"suivi\" in f and not _suivi_valide(f[\"suivi\"]):",
+            "            if False:"))]),
+    dict(
+        nom="les codes du suivi sans borne",
+        banc="banc_acces.py",
+        imite="un code fabrique par requete fait grossir la fiche sans fin",
+        rougit="soixante codes neufs : la fiche reste bornee",
+        editions=[("acces.py", brut(
+            "        if code not in s[\"refus\"] and len(s[\"refus\"]) >= SUIVI_CODES_MAX - 1:",
+            "        if False:"))]),
+    dict(
+        nom="un code hors forme entre tel quel au suivi",
+        banc="banc_acces.py",
+        imite="le code recopie sans le lire : « None » et une phrase deviennent "
+              "des codes",
+        rougit="un code hors forme est compte « autre »",
+        editions=[("acces.py", brut(
+            "        code = code if isinstance(code, str) and _CODE_SUIVI.fullmatch(code) else \"autre\"",
+            "        code = str(code)"))]),
+    dict(
+        nom="les refus d'entree ne sont pas comptes",
+        banc="banc_pilotage.py",
+        imite="le decorateur retire en simplifiant : la fiche dit « 0 refus » "
+              "a un proprietaire dont le workflow prend des 429 depuis le matin",
+        rougit="un refus a l'entree est compte sous la cle, par son code",
+        editions=[("serveur.py", brut(
+            "@_suivre_les_refus" + chr(10) + "async def lancer_pour_programme",
+            "async def lancer_pour_programme"))]),
+    dict(
+        nom="le suivi pose dans refus seule",
+        banc="banc_pilotage.py",
+        imite="l'appel mis dans la fonction « refus » de lancer_pour_programme : "
+              "valider_demande, _deposer_octets et le refus du genre passent a cote",
+        rougit="et ceux qui ne passent pas par « refus » aussi",
+        editions=[("serveur.py", brut(
+            "@_suivre_les_refus" + chr(10) + "async def lancer_pour_programme",
+            "async def lancer_pour_programme")),
+                  ("serveur.py", brut(
+            "        code = cle.split(\".\", 1)[1]" + chr(10),
+            "        code = cle.split(\".\", 1)[1]" + chr(10)
+            + "        if ACCES:" + chr(10)
+            + "            ACCES.noter_refus(fiche[\"id\"], code)" + chr(10)))]),
+    dict(
+        nom="les refus tardifs ne sont pas comptes",
+        banc="banc_pilotage.py",
+        imite="seule l'entree compte : la cle de detourage a qui l'analyse "
+              "refuse une video montre une fiche sans refus",
+        rougit="un refus tardif (l'analyse a lu « video ») est compte sous la cle",
+        editions=[("serveur.py", brut(
+            "        # Apres la marque : c'est elle qui dit le code." + chr(10)
+            + "        noter_refus_tardif(tid)" + chr(10), ""))]),
+    dict(
+        nom="toute panne compte comme un refus de la cle",
+        banc="banc_pilotage.py",
+        imite="un ComfyUI muet compte sous la cle : le proprietaire cherche la "
+              "faute de son programme dans une panne du studio",
+        rougit="une panne qui n'est pas un refus (« echec ») n'est pas comptee",
+        editions=[("serveur.py", brut(
+            "    if code in REFUS_TARDIFS:",
+            "    if code:"))]),
+    dict(
+        nom="la liste du proprietaire sans le suivi",
+        banc="banc_pilotage.py",
+        imite="le champ oublie dans api_mes_acces : la page n'a rien a montrer",
+        rougit="la liste du proprietaire porte le suivi de chaque cle",
+        editions=[("serveur.py", brut(
+            "                 suivi=ACCES.suivi(f[\"id\"]))" + chr(10)
+            + "            for f in (ACCES.liste(nom)",
+            "                 )" + chr(10)
+            + "            for f in (ACCES.liste(nom)"))]),
+    dict(
+        nom="la console des cles sans le suivi",
+        banc="banc_pilotage.py",
+        imite="le champ oublie dans api_admin_acces : /admin ne voit pas la cle "
+              "qu'on essaie",
+        rougit="la console d'administration aussi",
+        editions=[("serveur.py", brut(
+            "                         suivi=ACCES.suivi(f[\"id\"])))",
+            "                         ))"))]),
+    dict(
+        nom="l'arret du studio n'ecrit pas le suivi",
+        banc="banc_pilotage.py",
+        imite="le crochet d'arret oublie dans app() : chaque redemarrage voulu "
+              "perd jusqu'a dix minutes de refus",
+        rougit="et l'arret du studio l'appelle bien",
+        editions=[("serveur.py", brut(
+            "    a.on_cleanup.append(vider_suivi_des_cles)" + chr(10), ""))]),
+    dict(
+        nom="le crochet d'arret du suivi ne fait rien",
+        banc="banc_pilotage.py",
+        imite="un crochet branche qui n'appelle pas le magasin",
+        rougit="a l'arret, le suivi est ecrit",
+        editions=[("serveur.py", brut(
+            "    if ACCES:" + chr(10) + "        ACCES.vider_suivi()",
+            "    pass"))]),
+    dict(
+        nom="l'outil decrire_cle disparait",
+        banc="banc_pilotage.py",
+        imite="un assistant n'apprend ce que sa cle permet qu'en se faisant "
+              "refuser",
+        rougit="tools/list rend les sept outils",
+        editions=[("serveur.py", brut(
+            "            \"decrire_cle\", \"Decrire la cle\",",
+            "            \"decrire_cle_cache\", \"Decrire la cle\","))]),
+    dict(
+        nom="decrire_cle ne rend que la fiche",
+        banc="banc_pilotage.py",
+        imite="l'outil rend la fiche sans les compteurs : l'assistant ne sait "
+              "pas qu'il a deja trois rendus en file sur quatre",
+        rougit="decrire_cle rend les champs de GET /api/v1/moi",
+        editions=[("serveur.py", brut(
+            "    return {\"content\": [_mcp.texte(\"\\n\".join(lignes))], \"structuredContent\": corps}",
+            "    return {\"content\": [_mcp.texte(\"\\n\".join(lignes))], \"structuredContent\": cle}"))]),
+    dict(
+        nom="la page ne dit pas les secrets faux",
+        banc="banc_page.py",
+        imite="l'avertissement retire de la fiche de la cle : le proprietaire "
+              "ne sait pas qu'on essaie la sienne",
+        rougit="et aucune cle « page. » ne dort au dictionnaire",
+        editions=[("web/index.html", brut(
+            "      if (s.echecs) li.append(dire(\"page.acces.echecs\", \"avertit\"," + chr(10)
+            + "                                   { n: s.echecs, date: date(s.dernier_echec) }));" + chr(10),
+            ""))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -12996,7 +13456,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + CODES_FICHIERS + IDEMPOTENCE_DISQUE + EXPIRATION
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
-             + CONTRAT_RELU + RELECTURE_OPERATIONS)
+             + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
