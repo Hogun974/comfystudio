@@ -13108,10 +13108,10 @@ OLLAMA_DEGENERE = [
         banc="banc_cerveaux.py",
         imite="dix appels qui degenerent ensemble font dix dechargements, et "
               "dix rechargements de plusieurs gigaoctets sur la meme carte",
-        rougit="dans la fenetre, le meme modele a la meme adresse n'est PAS "
-               "decharge une seconde fois",
+        rougit="deux appels partis ensemble qui degenerent ensemble : UN "
+               "dechargement",
         editions=[("serveur.py", brut(
-            "    if (url, modele) in _DECHARGE_DEGENERE:",
+            '    if deja and depuis is not None and deja["numero"] > depuis:',
             "    if False:"))]),
     dict(
         nom="la fenetre ne purge plus ce qui en est sorti",
@@ -13514,17 +13514,20 @@ QUARANTAINE_MODELES = [
     dict(
         nom="le seuil de la mise de cote ne se franchit jamais",
         banc="banc_cerveaux.py",
-        imite="la quarantaine ecrite et jamais declenchee : chaque analyse "
-              "repaie cinq a dix secondes sur le meme modele, toute la journee",
-        rougit="degenere encore APRES le dechargement",
+        imite="la quarantaine jamais declenchee la ou le studio ne decharge "
+              "pas : chaque analyse repaie son detour sur le meme modele, "
+              "toute la journee",
+        rougit="et une seconde fois sans dechargement dans la fenetre le met "
+               "de cote",
         editions=[("serveur.py", brut(
             "SEUIL_QUARANTAINE = 2", "SEUIL_QUARANTAINE = 99"))]),
     dict(
         nom="un seul echec met de cote",
         banc="banc_cerveaux.py",
-        imite="la quarantaine au premier vide : le modele resident corrompu du "
-              "4 novembre, que le dechargement reparait, perd quinze minutes",
-        rougit="une reponse VIDE sans erreur est retentee une fois",
+        imite="la quarantaine au premier vide sans dechargement : une machine "
+              "dont on ne peut pas vider le modele perd quinze minutes sur un "
+              "seul accroc",
+        rougit="ce quatrieme, sans dechargement, compte — une fois",
         editions=[("serveur.py", brut(
             "SEUIL_QUARANTAINE = 2", "SEUIL_QUARANTAINE = 1"))]),
     dict(
@@ -13535,7 +13538,7 @@ QUARANTAINE_MODELES = [
         rougit="degenere encore APRES le dechargement",
         editions=[("serveur.py", brut(
             '                        reprise_["quarantaine"] = _compter_degenere(' + chr(10)
-            + "                            url, modele_ici, titre_ol, tid)",
+            + "                            url, modele_ici, titre_ol, tid, tout_de_suite=True)",
             "                        pass"))]),
     dict(
         nom="la mise de cote attend la carte",
@@ -13581,8 +13584,8 @@ QUARANTAINE_MODELES = [
               "en quinze minutes : decharge, retente, rafale",
         rougit="l'essai degenere : PAS de reprise au meme endroit",
         editions=[("serveur.py", brut(
-            '    if not (q and q["essai"]) and len(vus) < SEUIL_QUARANTAINE:',
-            "    if len(vus) < SEUIL_QUARANTAINE:"))]),
+            '    if (not (tout_de_suite or q and q["essai"])',
+            "    if (not tout_de_suite"))]),
     dict(
         nom="un modele mis de cote est retente au meme endroit",
         banc="banc_cerveaux.py",
@@ -15651,6 +15654,111 @@ RELECTURE_HUIT = [
 ]
 
 
+# -- Un dechargement qui repare n'envoie pas au placard (ronde 9, 6 novembre 2026)
+# Mesure du jour : 9 dechargements, 9 reparations, et 4 nouveaux episodes pris
+# pour des dechargements rates — 4 mises de cote, 58 analyses aux mots-cles.
+# Jouees rouges par jouer_mutations.py REGLE_PLACARD.
+REGLE_PLACARD = [
+    dict(
+        nom="un dechargement repare compte quand meme",
+        banc="banc_cerveaux.py",
+        imite="l'ancienne regle : la degenerescence comptee avant de savoir si "
+              "le dechargement a repare, et le nouvel episode d'apres met de cote",
+        rougit="deux episodes repares dans la fenetre : aucune mise de cote",
+        editions=[("serveur.py", brut(
+            '                attend_ = (trace_["decharge"] and reprise_ is None',
+            "                attend_ = (False and reprise_ is None"))]),
+    dict(
+        nom="la limite de rafale ignoree",
+        banc="banc_cerveaux.py",
+        imite="un modele qui degenere en boucle decharge et recharge ses "
+              "gigaoctets a chaque appel, sans jamais etre mis de cote",
+        rougit="le quatrieme episode dans la fenetre n'est PAS decharge",
+        editions=[("serveur.py", brut(
+            '    if deja and len(deja["quand"]) >= DECHARGES_PAR_FENETRE:',
+            "    if False:"))]),
+    dict(
+        nom="un dechargement sans effet n'envoie plus au placard",
+        banc="banc_cerveaux.py",
+        imite="le cas du 5 novembre oublie : decharge, recharge, le meme « @ », "
+              "et l'echec ne compte qu'une fois — chaque analyse repaie dix "
+              "secondes sur lui",
+        rougit="degenere encore APRES le dechargement",
+        editions=[("serveur.py", brut(
+            "url, modele_ici, titre_ol, tid, tout_de_suite=True)",
+            "url, modele_ici, titre_ol, tid)"))]),
+    dict(
+        nom="le second dechargement interdit comme avant",
+        banc="banc_cerveaux.py",
+        imite="l'etat du 6 novembre : un dechargement par fenetre, et le "
+              "nouvel episode d'apres part au placard au lieu d'etre repare",
+        rougit="trois minutes apres un episode repare, un second : le modele "
+               "est decharge DE NOUVEAU",
+        editions=[("serveur.py", brut(
+            "DECHARGES_PAR_FENETRE = 3", "DECHARGES_PAR_FENETRE = 1"))]),
+    dict(
+        nom="la reprise tombee en panne ne compte pas",
+        banc="banc_cerveaux.py",
+        imite="un modele dont chaque reprise depasse son delai : decharge, "
+              "recharge, et jamais compte, jamais mis de cote",
+        rougit="decharge, puis la reprise tombe en panne",
+        editions=[("serveur.py", brut(
+            "                        # une degenerescence sans dechargement." + chr(10)
+            + '                        reprise_["quarantaine"] = _compter_degenere(' + chr(10)
+            + "                            url, modele_ici, titre_ol, tid)" + chr(10),
+            "                        # une degenerescence sans dechargement." + chr(10)))]),
+    dict(
+        nom="l'appel ne note pas le dechargement vu en partant",
+        banc="banc_cerveaux.py",
+        imite="deux appels en vol sur le meme modele corrompu : chacun le "
+              "decharge, et la carte recharge deux fois pour un episode",
+        rougit="par le vrai appel, deux appels en vol ensemble qui degenerent",
+        editions=[("serveur.py", brut(
+            "            vu_ = _DECHARGES_NUMERO[0]",
+            "            vu_ = None"))]),
+    dict(
+        nom="le numero du dechargement pose apres l'attente",
+        banc="banc_cerveaux.py",
+        imite="la place prise une fois le dechargement fini : le second appel "
+              "du meme episode la voit libre pendant l'attente, et decharge aussi",
+        rougit="deux appels partis ensemble qui degenerent ensemble : UN",
+        editions=[("serveur.py", brut(
+            "    _DECHARGES_NUMERO[0] += 1" + chr(10)
+            + '    deja["numero"] = _DECHARGES_NUMERO[0]' + chr(10),
+            '    deja["numero"] = _DECHARGES_NUMERO[0]' + chr(10))),
+                  ("serveur.py", brut(
+            '    trace["decharge"] = await liberer_modele_a(url, modele)' + chr(10),
+            '    trace["decharge"] = await liberer_modele_a(url, modele)' + chr(10)
+            + "    _DECHARGES_NUMERO[0] += 1" + chr(10)))]),
+    dict(
+        nom="la console ne compte plus les dechargements",
+        banc="banc_cerveaux.py",
+        imite="le plafond de la fenetre tenu en memoire, et l'administrateur "
+              "qui ne voit pas qu'un modele s'en approche",
+        rougit="et les dechargements de la fenetre",
+        editions=[("serveur.py", brut(
+            '            "decharges": sorted(',
+            '            "decharges_": sorted('))]),
+    dict(
+        nom="la console compte les dechargements sortis de la fenetre",
+        banc="banc_cerveaux.py",
+        imite="le releve lu sans la fenetre : un modele decharge il y a une "
+              "heure parait au plafond",
+        rougit="et les dechargements de la fenetre — pas ceux qui en sont sortis",
+        editions=[("serveur.py", brut(
+            '                     "fois": sum(maintenant - t < FENETRE_DEGENERE',
+            '                     "fois": sum(True'))]),
+    dict(
+        nom="la page ne montre plus les dechargements",
+        banc="banc_cerveaux.py",
+        imite="le serveur compte, la console se tait",
+        rougit="et combien de dechargements la fenetre a faits",
+        editions=[("web/admin.html", brut(
+            "  const decharges = deg.decharges || [];",
+            "  const decharges = [];"))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -15664,7 +15772,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
              + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES
-             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT)
+             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT + REGLE_PLACARD)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

@@ -3438,6 +3438,9 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                          for u, i in cerveaux[rang_ + 1:])
             delai = ((300 if reste_ else 900) if ici.get("images")
                      else 900 if ecriture else ANALYSE_DELAI)
+            # Le dechargement qui arriverait pendant cet appel serait celui
+            # de SON episode : noter ou l'on en est, apres l'attente de la carte.
+            vu_ = _DECHARGES_NUMERO[0]
             rendu, coupe_ = await _essai_ou_relance(ici, url, delai, titre_ol,
                                                     tid, relance_)
             modele_ici = ici.get("model") or ""
@@ -3448,9 +3451,16 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                       else coupe_ or forme_degeneree(rendu))
             if forme_:
                 trace_ = await reparer_degenere(url, modele_ici, forme_, tid,
-                                                titre_ol)
-                trace_["quarantaine"] = _compter_degenere(url, modele_ici,
-                                                          titre_ol, tid)
+                                                titre_ol, vu_)
+                # DECHARGE ET REPRIS ICI : c'est la reprise qui dira s'il
+                # compte — repare, il ne compte pas (6 novembre 2026). Sans
+                # reprise au meme endroit pour en juger, il compte maintenant.
+                attend_ = (trace_["decharge"] and reprise_ is None
+                           and not essai_
+                           and not en_quarantaine(url, modele_ici))
+                trace_["quarantaine"] = (
+                    None if attend_ else
+                    _compter_degenere(url, modele_ici, titre_ol, tid))
                 if reprise_ is not None:
                     # La reprise a deja eu lieu ailleurs : celle-ci ne se
                     # retente pas, et la reponse est rendue comme avant.
@@ -3474,16 +3484,25 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                     reprise_ = trace_
                     degenere_ = rendu
                     reprise_["issue"] = "reprise sans reponse"
-                    rendu, coupe_ = await _essai_ou_relance(
-                        ici, url, delai, titre_ol, tid, relance_)
+                    try:
+                        rendu, coupe_ = await _essai_ou_relance(
+                            ici, url, delai, titre_ol, tid, relance_)
+                    except Exception:
+                        # LA REPRISE N'A RIEN DIT (delai, panne) : on ne sait
+                        # pas si le dechargement a repare. Elle compte comme
+                        # une degenerescence sans dechargement.
+                        reprise_["quarantaine"] = _compter_degenere(
+                            url, modele_ici, titre_ol, tid)
+                        raise
                     encore_ = coupe_ or forme_degeneree(rendu)
                     reprise_["issue"] = ("toujours degeneree"
                                          if encore_ else "reparee")
                     if encore_:
                         # LE CAS DU 5 NOVEMBRE : decharge, recharge, et le meme
-                        # « @ ». C'est la seconde fois dans la fenetre.
+                        # « @ ». Le dechargement n'a pas repare : de cote tout
+                        # de suite, sans attendre un second echec.
                         reprise_["quarantaine"] = _compter_degenere(
-                            url, modele_ici, titre_ol, tid)
+                            url, modele_ici, titre_ol, tid, tout_de_suite=True)
                     journal(tid, f"{titre_ol} : apres dechargement, "
                                  + ("toujours rien d'utilisable — la reponse "
                                     "est rendue telle quelle"
@@ -3491,7 +3510,8 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                                     else "la reponse est revenue"))
                 elif reste_:
                     # Pas de dechargement ici — machine en pause, deja decharge
-                    # dans la fenetre, ou Ollama a refuse. Une autre machine
+                    # pour cet episode ou trop souvent dans la fenetre, ou
+                    # Ollama a refuse. Une autre machine
                     # peut repondre : c'est la reprise.
                     reprise_ = trace_
                     reprise_["issue"] = "retentee ailleurs"
@@ -4339,15 +4359,27 @@ async def liberer_modele_a(url, modele):
 # plus longtemps. Le meme mal a deja pris la forme « @@@@@@ » (28 aout 2026,
 # voir latin()).
 #
-# UNE FOIS PAR (adresse, modele) ET PAR FENETRE. Decharger est sans danger —
-# le studio le fait a chaque fin de rafale — mais dix appels qui echouent
-# ensemble ne doivent pas faire dix dechargements, ni recharger dix fois dix-huit
-# gigaoctets : passe le premier, le modele vient d'etre decharge, et s'il
-# degenere encore, un deuxieme dechargement n'y changera rien.
+# UNE FOIS PAR EPISODE, TROIS FOIS PAR (adresse, modele) ET PAR FENETRE.
+# Decharger est sans danger — le studio le fait a chaque fin de rafale — et il
+# repare : mesure du 6 novembre 2026, neuf dechargements, neuf reponses
+# revenues. Un modele peut donc se corrompre de nouveau quelques minutes plus
+# tard, et se reparer de nouveau. Mais dix appels qui echouent ENSEMBLE sont un
+# seul episode : ils ne doivent pas faire dix dechargements, ni recharger dix
+# fois dix-huit gigaoctets. Un appel parti avant le dernier dechargement a parle
+# au modele qu'on vient de vider : il ne le decharge pas une seconde fois.
+# Au-dela de trois dans la fenetre, ce n'est plus un episode, c'est une rafale :
+# on ne decharge plus, et la degenerescence compte vers la mise de cote.
 FENETRE_DEGENERE = 600
-# (adresse, modele) -> instant du dernier dechargement. Purge a chaque ecriture :
-# il ne garde que la fenetre en cours.
+DECHARGES_PAR_FENETRE = 3
+# (adresse, modele) -> {"machine", "modele", "quand": instants des
+# dechargements de la fenetre, "numero": celui du dernier}. Purge a chaque
+# ecriture : il ne garde que la fenetre en cours.
 _DECHARGE_DEGENERE = {}
+# Le numero du dernier dechargement, tous modeles confondus. Un appel note
+# celui qu'il voit en partant : un numero plus grand est un dechargement fait
+# PENDANT qu'il etait en vol. Un compteur et non une heure : deux instants pris
+# dans la meme milliseconde ne se departagent pas.
+_DECHARGES_NUMERO = [0]
 # Ce que la console montre : les dernieres seulement, et le compte depuis le
 # demarrage. Une liste qui grossit a chaque appel rate finit par peser plus que
 # ce qu'elle apprend.
@@ -4361,13 +4393,25 @@ _DEGENERES_TOTAL = [0]
 # analyse perdait cinq a dix secondes sur lui — decharger, recharger, retenter —
 # avant de passer ailleurs ou aux mots-cles.
 #
-# DEUX FOIS DANS LA FENETRE, et non « apres un dechargement ». Le premier
-# echec decharge quand c'est permis ; le second, dans les dix minutes, est donc
-# celui d'un modele que le dechargement n'a pas repare — le cas mesure. Mais la
-# meme regle vaut la ou le studio ne PEUT pas decharger : par l'agent d'une
-# machine, ou quand Ollama refuse le dechargement. Une regle qui demanderait un
-# dechargement reussi n'y mettrait jamais rien de cote. Deux appels simultanes
-# qui degenerent ensemble suffisent aussi : c'est deja une preuve.
+# UN DECHARGEMENT QUI REPARE N'ENVOIE PAS AU PLACARD. Mesure du 6 novembre
+# 2026 (studio d'essai sur l'Ollama 0.40.15 du PC) : 276 analyses, 13
+# degenerescences, 9 dechargements — et 9 fois la reponse est revenue, aucun
+# sans effet. Les 4 autres sont venues de 21 s a quelques minutes APRES un
+# dechargement qui avait repare : un NOUVEL episode, que l'ancienne regle
+# (« deux fois dans la fenetre ») prenait pour un dechargement rate. Quatre
+# mises de cote de quinze minutes, 58 analyses parties aux mots-cles — en
+# production au NAS, sur processeur, deux a cinq minutes chacune. Ce qui se
+# corrompt, c'est l'etat du modele charge (le cache du prompt, reutilise a
+# chaque appel ; le dechargement le vide), pas la demande : une reprise sans
+# dechargement, avec d'autres reglages de tirage, a reboucle. Donc :
+#  - DECHARGE ET REPARE : ne compte pas ;
+#  - DECHARGE, ET LA REPRISE AU MEME ENDROIT DEGENERE ENCORE : mis de cote TOUT
+#    DE SUITE — le cas du 5 novembre, le seul ou le dechargement a echoue ;
+#  - PAS DE DECHARGEMENT, OU PAS DE REPRISE POUR EN JUGER — machine en pause,
+#    agent d'une machine, Ollama qui refuse, rafale au-dela de
+#    DECHARGES_PAR_FENETRE, reprise deja faite ailleurs ou tombee en panne :
+#    DEUX FOIS DANS LA FENETRE. Une regle qui attendrait un dechargement rate
+#    n'y mettrait jamais rien de cote la ou le studio ne peut pas decharger.
 SEUIL_QUARANTAINE = 2
 # Quinze minutes : plus que la fenetre — une mise de cote qui finirait avant
 # qu'on ait oublie les echecs ne mettrait rien de cote —, assez court pour
@@ -4419,11 +4463,15 @@ def _lever_quarantaine(url, modele, tid, titre):
         journal(tid, f"{modele} sur {titre} repond de nouveau — remis en service")
 
 
-def _compter_degenere(url, modele, titre, tid):
+def _compter_degenere(url, modele, titre, tid, tout_de_suite=False):
     """Compte une degenerescence ; rend la fin de la mise de cote, ou None.
 
-    Un essai qui degenere remet de cote tout de suite, sans attendre un
-    second echec : la fenetre, plus courte que la mise de cote, a oublie ceux
+    On n'y vient PAS pour une degenerescence qu'un dechargement a reparee :
+    mesure du 6 novembre 2026, neuf sur neuf, et l'episode suivant n'en est
+    pas la suite. L'appelant attend donc la reprise pour savoir.
+    « tout_de_suite » : decharge, et la reprise degenere encore — la preuve,
+    sans attendre un second echec. Un essai qui degenere remet de cote tout de
+    suite de meme : la fenetre, plus courte que la mise de cote, a oublie ceux
     d'avant, et c'est precisement ce qu'on venait verifier.
     """
     maintenant = time.time()
@@ -4440,7 +4488,8 @@ def _compter_degenere(url, modele, titre, tid):
         # Deja de cote : un appel parti avant la mise de cote revient. On ne
         # prolonge pas, on ne le redit pas.
         return q["fin"]
-    if not (q and q["essai"]) and len(vus) < SEUIL_QUARANTAINE:
+    if (not (tout_de_suite or q and q["essai"])
+            and len(vus) < SEUIL_QUARANTAINE):
         return None
     fin = maintenant + QUARANTAINE_DEGENERE
     QUARANTAINES[cle] = {"debut": maintenant, "fin": fin, "machine": titre,
@@ -4468,15 +4517,18 @@ def forme_degeneree(rendu):
     return ""
 
 
-async def reparer_degenere(url, modele, forme, tid, titre):
+async def reparer_degenere(url, modele, forme, tid, titre, depuis=None):
     """Consigne une reponse degeneree, et decharge le modele si c'est permis.
 
     Rend la trace consignee ; « decharge » y dit si le dechargement est parti,
-    seule condition pour retenter au meme endroit.
+    seule condition pour retenter au meme endroit. « depuis » : le numero de
+    dechargement (_DECHARGES_NUMERO) que l'appel a vu en partant.
     """
     maintenant = time.time()
-    for cle_, quand_ in list(_DECHARGE_DEGENERE.items()):
-        if maintenant - quand_ >= FENETRE_DEGENERE:
+    for cle_, deja_ in list(_DECHARGE_DEGENERE.items()):
+        deja_["quand"][:] = [t for t in deja_["quand"]
+                             if maintenant - t < FENETRE_DEGENERE]
+        if not deja_["quand"]:
             del _DECHARGE_DEGENERE[cle_]
     trace = {"quand": maintenant, "machine": titre, "modele": modele,
              "forme": forme, "decharge": False, "issue": "pas retentee"}
@@ -4495,15 +4547,26 @@ async def reparer_degenere(url, modele, forme, tid, titre):
         journal(tid, f"{modele} sur {titre} a rendu {quoi} — "
                      f"machine en pause, on n'y touche pas")
         return trace
-    if (url, modele) in _DECHARGE_DEGENERE:
+    deja = _DECHARGE_DEGENERE.get((url, modele))
+    if deja and depuis is not None and deja["numero"] > depuis:
+        # LE MEME EPISODE : decharge pendant que cet appel etait en vol.
         journal(tid, f"{modele} sur {titre} a rendu {quoi} — deja "
-                     f"decharge il y a "
-                     f"{maintenant - _DECHARGE_DEGENERE[(url, modele)]:.0f} s, "
-                     f"on ne le decharge pas encore")
+                     f"decharge il y a {maintenant - deja['quand'][-1]:.0f} s, "
+                     f"pendant cet appel : on ne le decharge pas deux fois")
+        return trace
+    if deja and len(deja["quand"]) >= DECHARGES_PAR_FENETRE:
+        journal(tid, f"{modele} sur {titre} a rendu {quoi} — deja "
+                     f"decharge {len(deja['quand'])} fois en "
+                     f"{FENETRE_DEGENERE // 60} min : une rafale, on ne le "
+                     f"decharge plus, et cela compte")
         return trace
     # POSEE AVANT L'ATTENTE : deux appels qui degenerent ensemble verraient
     # sinon tous deux la place libre, et dechargeraient deux fois.
-    _DECHARGE_DEGENERE[(url, modele)] = maintenant
+    deja = _DECHARGE_DEGENERE.setdefault(
+        (url, modele), {"machine": titre, "modele": modele, "quand": []})
+    deja["quand"].append(maintenant)
+    _DECHARGES_NUMERO[0] += 1
+    deja["numero"] = _DECHARGES_NUMERO[0]
     # Les entrees de _CHAUD qui nomment ce modele restent : la fin de leur
     # rafale dechargera ce que la reprise aura recharge, comme prevu.
     trace["decharge"] = await liberer_modele_a(url, modele)
@@ -4576,6 +4639,18 @@ def releve_degenerescences():
             "derniers": [dict(x, heure=time.strftime("%d/%m %H:%M:%S",
                                                      time.localtime(x["quand"])))
                          for x in reversed(DEGENERESCENCES)],
+            # LES DECHARGEMENTS DE LA FENETRE, par machine et modele : au
+            # plafond, le suivant ne decharge plus et compte. Lu sans purger —
+            # la console ne change rien a ce qu'elle montre.
+            "decharges_max": DECHARGES_PAR_FENETRE,
+            "decharges": sorted(
+                (x for x in (
+                    {"machine": v_["machine"], "modele": v_["modele"],
+                     "fois": sum(maintenant - t < FENETRE_DEGENERE
+                                 for t in v_["quand"])}
+                    for v_ in list(_DECHARGE_DEGENERE.values()))
+                 if x["fois"]),
+                key=lambda x: -x["fois"]),
             # CE QUI EST DE COTE EN CE MOMENT, et jusqu'a quand. Une mise de
             # cote echue reste listee tant que son essai n'a pas conclu : le
             # modele n'est pas encore revenu, la console ne doit pas le dire.

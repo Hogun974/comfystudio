@@ -769,6 +769,13 @@ async def degeneres():
         S.QUARANTAINES.clear()
         S._VUS_DEGENERE.clear()
 
+    def plein(url, modele):
+        # Le plafond de la fenetre atteint : le prochain ne decharge plus.
+        S._DECHARGE_DEGENERE[(url, modele)] = {
+            "machine": "PC (RTX 2080 Ti)", "modele": modele,
+            "quand": [S.time.time()] * S.DECHARGES_PAR_FENETRE,
+            "numero": S._DECHARGES_NUMERO[0]}
+
     def coupe(corps, url):
         # Ce qu'Ollama 0.40.14 rend sans « format » quand le modele sort « @ »
         # des le premier jeton (journal du PC, 5 novembre 2026).
@@ -838,35 +845,88 @@ async def degeneres():
             "et la console en garde la trace : machine, modele, reparee",
             str(r_["derniers"][:1]))
 
-        # ── LA MEME PANNE DANS LA FENETRE : pas de second dechargement ──
+        dit((PC, modele_pc) not in S._VUS_DEGENERE and not S.QUARANTAINES,
+            "une degenerescence que le dechargement a reparee ne compte pas "
+            "vers la mise de cote", f"{S._VUS_DEGENERE}, {list(S.QUARANTAINES)}")
+
+        # ══ LE 6 NOVEMBRE : UN DECHARGEMENT QUI REPARE N'ENVOIE PAS AU PLACARD
+        # Neuf dechargements, neuf reparations ; les degenerescences suivantes,
+        # de 21 s a quelques minutes apres, etaient de NOUVEAUX episodes.
+        # ── un second episode, trois minutes plus tard : decharge encore ──
+        S._DECHARGE_DEGENERE[(PC, modele_pc)]["quand"][0] -= 180
         del appels[:]
         del decharges[:]
         tid = "banc-degen-fenetre"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = ["", "{}"]
+        scenario[NAS] = ["{}"]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC, PC]
+            and [d_[0] for d_ in decharges] == [f"{PC}/api/generate"],
+            "trois minutes apres un episode repare, un second : le modele est "
+            "decharge DE NOUVEAU, et la reprise au meme endroit repond",
+            f"{rendu!r}, essais={[a[0] for a in appels]}, "
+            f"dechargements={decharges}")
+        dit(not S.QUARANTAINES and (PC, modele_pc) not in S._VUS_DEGENERE,
+            "deux episodes repares dans la fenetre : aucune mise de cote",
+            f"{list(S.QUARANTAINES)}, {S._VUS_DEGENERE}")
+        r_ = S.releve_degenerescences()
+        dit(r_.get("decharges_max") == S.DECHARGES_PAR_FENETRE == 3
+            and [(x["machine"], x["modele"], x["fois"])
+                 for x in r_.get("decharges") or []]
+            == [("PC (RTX 2080 Ti)", modele_pc, 2)],
+            "la console compte les dechargements de la fenetre : 2/3",
+            str(r_.get("decharges")))
+
+        # ── la rafale : au-dela de trois dans la fenetre, plus de dechargement ──
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-troisieme"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = ["", "{}"]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        dit(rendu == "{}" and len(decharges) == 1 and not S.QUARANTAINES,
+            "un troisieme episode repare : decharge, toujours rien de cote",
+            f"{rendu!r}, {decharges}, {list(S.QUARANTAINES)}")
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-rafale"
         tids.append(tid)
         S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
         scenario[PC] = [""]
         scenario[NAS] = ["{}"]
         rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
         dit(not decharges,
-            "dans la fenetre, le meme modele a la meme adresse n'est PAS "
-            "decharge une seconde fois : on ne martele pas", str(decharges))
+            "le quatrieme episode dans la fenetre n'est PAS decharge : une "
+            "rafale, on ne martele pas", str(decharges))
         dit(rendu == "{}" and [a[0] for a in appels] == [PC, NAS],
             "et la reprise part sur l'AUTRE machine, qui repond",
             f"{rendu!r}, essais={[a[0] for a in appels]}")
-        dit(any("deja decharge" in l for l in fil(tid))
+        dit(any("deja decharge 3 fois" in l for l in fil(tid))
             and S.releve_degenerescences()["derniers"][0]["issue"]
             == "repondue par NAS ZimaOS",
             "le fil dit pourquoi, et la console dit qui a repondu",
             str(S.releve_degenerescences()["derniers"][:1]))
-        # Decharge au cas d'avant, il degenere de nouveau : c'est la seconde
-        # fois dans la fenetre, celle que le dechargement n'a pas reparee.
-        dit((PC, modele_pc) in S.QUARANTAINES
+        dit(len(S._VUS_DEGENERE.get((PC, modele_pc)) or []) == 1
+            and not S.QUARANTAINES,
+            "ce quatrieme, sans dechargement, compte — une fois : pas encore "
+            "de mise de cote", f"{S._VUS_DEGENERE}, {list(S.QUARANTAINES)}")
+        del appels[:]
+        del decharges[:]
+        tid = "banc-degen-rafale-deux"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = [""]
+        rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        dit(not decharges and (PC, modele_pc) in S.QUARANTAINES
             and any("mis de cote" in l for l in fil(tid)),
-            "et cette seconde fois dans la fenetre le met de cote",
-            str(list(S.QUARANTAINES)))
+            "et une seconde fois sans dechargement dans la fenetre le met de "
+            "cote", f"{decharges}, {list(S.QUARANTAINES)}")
 
         # ── L'AUTRE MACHINE DEGENERE AUSSI : reparee, mais pas retentee ──
-        # Le modele du PC est toujours dans la fenetre : la reprise part sur
+        # Le modele du PC est au plafond de la fenetre : la reprise part sur
         # le NAS, qui rend lui aussi du charabia. Il est decharge — le
         # prochain appel le trouvera repare —, et l'appel s'arrete la.
         del appels[:]
@@ -1002,8 +1062,118 @@ async def degeneres():
             "seule et sans dechargement possible, la machine rend son \"\" "
             "comme avant — sans exception, sans reprise au meme modele "
             "corrompu, et le fil le dit", f"{rendu!r}, {[a[0] for a in appels]}")
+        # Ollama refuse le dechargement : rien ne dira s'il aurait repare. La
+        # regle d'avant tient — deux fois dans la fenetre.
+        un_ = (PC, modele_pc) in S.QUARANTAINES
+        try:
+            await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception:
+            pass
+        dit(not un_ and (PC, modele_pc) in S.QUARANTAINES,
+            "dechargement refuse : la premiere fois ne met pas de cote, la "
+            "seconde dans la fenetre si", f"{un_}, {list(S.QUARANTAINES)}")
         refus["leve"] = False
         S.REGISTRE["zima"]["pause"] = None
+
+        # ── LE MEME EPISODE : deux appels qui degenerent ensemble ──────
+        # Partis avant le dechargement, ils ont parle au meme modele corrompu :
+        # UN dechargement. Un appel parti apres est un autre episode.
+        S._DECHARGE_DEGENERE.clear()
+        del decharges[:]
+        neuf()
+
+        class ReponseLente(FausseReponse):
+            async def __aenter__(self):
+                await asyncio.sleep(0.01)
+                return self
+
+        class SessionLente(FausseSession):
+            def post(self, url, json=None):
+                FausseSession.post(self, url, json)
+                return ReponseLente()
+
+        S.aiohttp.ClientSession = SessionLente
+        try:
+            avant_ = S._DECHARGES_NUMERO[0]
+            t1_, t2_ = await asyncio.gather(*(
+                S.reparer_degenere(PC, modele_pc, "vide", None,
+                                   "PC (RTX 2080 Ti)", avant_)
+                for _ in range(2)))
+            t3_ = await S.reparer_degenere(PC, modele_pc, "vide", None,
+                                           "PC (RTX 2080 Ti)",
+                                           S._DECHARGES_NUMERO[0])
+        finally:
+            S.aiohttp.ClientSession = FausseSession
+        dit(len(decharges) == 2 and t1_["decharge"] and not t2_["decharge"]
+            and t3_["decharge"],
+            "deux appels partis ensemble qui degenerent ensemble : UN "
+            "dechargement ; un appel parti apres lui en refait un",
+            f"{decharges}, {t1_['decharge']}/{t2_['decharge']}/{t3_['decharge']}")
+        # Et par le vrai appel. Le verrou de la carte range d'ordinaire les
+        # appels l'un apres l'autre ; sans lui — un Ollama que rien ne garde —
+        # deux appels y sont vraiment en vol ensemble.
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        neuf()
+
+        class SansVerrou:
+            def locked(self):
+                return False
+
+            async def acquire(self, prioritaire=False):
+                return True
+
+            def release(self):
+                pass
+
+        vrai_verrou_ = S.verrou_noeud
+        S.verrou_noeud = lambda ident: SansVerrou()
+
+        async def lent_vide(corps, url):
+            await asyncio.sleep(0.01)
+            return ""
+
+        scenario[PC] = [lent_vide, lent_vide, "{}"]
+        scenario[NAS] = ["{}"]
+        tid = "banc-degen-ensemble"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        try:
+            r_ = await asyncio.wait_for(asyncio.gather(*(
+                S._appeler_llm("x", None, None, True, None, 0.1, tid)
+                for _ in range(2)), return_exceptions=True), 5)
+        except Exception as e:
+            r_ = f"a leve {type(e).__name__}"
+        finally:
+            S.verrou_noeud = vrai_verrou_
+        dit(r_ == ["{}", "{}"] and len(decharges) == 1
+            and any("pendant cet appel" in l for l in fil(tid)),
+            "par le vrai appel, deux appels en vol ensemble qui degenerent : UN "
+            "dechargement, et le fil dit pourquoi pas le second",
+            f"{r_!r}, {decharges}, essais={[a[0] for a in appels]}")
+
+        # ── LA REPRISE TOMBE EN PANNE : on ne sait pas, cela compte ─────
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        neuf()
+        tid = "banc-degen-reprise-muette"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        scenario[PC] = ["", muet]
+        scenario[NAS] = ["{}"]
+        try:
+            rendu = await S._appeler_llm("x", None, None, True, None, 0.1, tid)
+        except Exception as e:
+            rendu = f"a leve {type(e).__name__}"
+        dit(rendu == "{}" and [a[0] for a in appels] == [PC, PC, NAS]
+            and len(decharges) == 1
+            and len(S._VUS_DEGENERE.get((PC, modele_pc)) or []) == 1
+            and not S.QUARANTAINES,
+            "decharge, puis la reprise tombe en panne : rien ne dit qu'il est "
+            "repare, la degenerescence compte (une fois), la suivante repond",
+            f"{rendu!r}, essais={[a[0] for a in appels]}, {S._VUS_DEGENERE}")
 
         # ══ LE 5 NOVEMBRE : LE DECHARGEMENT NE REPARE PAS ════════════════
         # ── la repetition COUPEE par Ollama (500) est une degenerescence ──
@@ -1214,7 +1384,7 @@ async def degeneres():
         # ── une machine mise de cote n'est pas un repli ─────────────────
         neuf()
         S._DECHARGE_DEGENERE.clear()
-        S._DECHARGE_DEGENERE[(PC, modele_pc)] = S.time.time()
+        plein(PC, modele_pc)
         # Le NAS ne prend pas le modele du PC : celui-ci deborde de sa carte.
         modele_nas = (S.corps_ici({"model": modele_pc, "prompt": "x"}, NAS)
                       or {}).get("model")
@@ -1647,7 +1817,9 @@ async def degeneres():
 
         # ── BORNE EN MEMOIRE ────────────────────────────────────────────
         S._DECHARGE_DEGENERE.clear()
-        S._DECHARGE_DEGENERE[("http://vieux:11434", "x")] = S.time.time() - 9999
+        S._DECHARGE_DEGENERE[("http://vieux:11434", "x")] = {
+            "machine": "vieux", "modele": "x",
+            "quand": [S.time.time() - 9999], "numero": 0}
         # Des adresses CONNUES du decor : une adresse neuve ferait rafraichir
         # son inventaire par cerveau(), donc partir sur le reseau.
         for i in range(40):
@@ -1688,6 +1860,10 @@ async def degeneres():
     S._VUS_DEGENERE.clear()
     for _ in range(S.SEUIL_QUARANTAINE):
         S._compter_degenere(PC, "qwen2.5vl:7b", "PC (RTX 2080 Ti)", None)
+    S._DECHARGE_DEGENERE.clear()
+    S._DECHARGE_DEGENERE[(PC, "qwen2.5vl:7b")] = {
+        "machine": "PC (RTX 2080 Ti)", "modele": "qwen2.5vl:7b",
+        "quand": [S.time.time() - 9999, S.time.time() - 60], "numero": 0}
     vrai_ok = S.admin_ok
     S.admin_ok = lambda req: True
     try:
@@ -1710,8 +1886,13 @@ async def degeneres():
         and 890 <= (q_.get("reste") or 0) <= 900
         and deg.get("quarantaine") == S.QUARANTAINE_DEGENERE,
         "et les mises de cote en cours, avec leur fin", str(q_))
+    dit([(x.get("machine"), x.get("fois")) for x in deg.get("decharges") or []]
+        == [("PC (RTX 2080 Ti)", 1)] and deg.get("decharges_max") == 3,
+        "et les dechargements de la fenetre — pas ceux qui en sont sortis",
+        str(deg.get("decharges")))
     S.QUARANTAINES.clear()
     S._VUS_DEGENERE.clear()
+    S._DECHARGE_DEGENERE.clear()
     try:
         page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "web", "admin.html"), encoding="utf-8").read()
@@ -1724,6 +1905,10 @@ async def degeneres():
     dit("deg.quarantaines" in page and "${ech(q.fin)}" in page
         and "${ech(q.machine)}" in page and "!deCote.length" in page,
         "la console montre aussi ce qui est mis de cote, et jusqu'a quand",
+        "web/admin.html absent" if not page else "")
+    dit("deg.decharges || []" in page and "${ech(x.fois)}/" in page
+        and "deg.decharges_max" in page,
+        "et combien de dechargements la fenetre a faits, sur combien",
         "web/admin.html absent" if not page else "")
     poser()
 

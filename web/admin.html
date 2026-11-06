@@ -1118,17 +1118,21 @@ async function rafraichir() {
   const deg = d.modeles_degeneres || {};
   const derniers = deg.derniers || [];
   /* Le 5 novembre 2026, le déchargement n'a pas suffi : le même modèle, frais,
-     recommençait. Celui qui dégénère deux fois dans la fenêtre est mis de côté ;
-     on montre lesquels, et jusqu'à quand. */
+     recommençait. Celui que le déchargement ne répare pas est mis de côté ;
+     on montre lesquels, et jusqu'à quand. Le 6 novembre, neuf déchargements
+     sur neuf avaient réparé : on montre aussi combien la fenêtre en a fait. */
   const deCote = deg.quarantaines || [];
+  const decharges = deg.decharges || [];
   $("#langueDegenere").innerHTML = !deg.total && !deCote.length ? "" : `
     <div class="carte" style="border-color:var(--rouge)">
       <h2 style="margin-top:0">réponses dégénérées d'un modèle de langage</h2>
       <p class="aide">${ech(deg.total)} depuis le démarrage. Un modèle résident
         a répondu vide, ou par un même caractère répété. Le
-        studio le décharge — une fois par machine et par modèle toutes les
-        ${ech(Math.round((deg.fenetre || 600) / 60))} minutes — puis retente
-        l'appel. S'il recommence dans ce délai, il est mis de côté
+        studio le décharge — jusqu'à ${ech(deg.decharges_max || 3)} fois par
+        machine et par modèle en ${ech(Math.round((deg.fenetre || 600) / 60))}
+        minutes — puis retente l'appel. S'il dégénère encore juste après le
+        déchargement, ou deux fois dans ce délai là où le studio ne peut pas le
+        décharger, il est mis de côté
         ${ech(Math.round((deg.quarantaine || 900) / 60))} minutes : les appels
         vont à la machine suivante, puis un seul appel d'essai le remet en
         service. Si cela revient, regarde la mémoire de la carte, ou mets
@@ -1139,6 +1143,10 @@ async function rafraichir() {
              ${q.essai ? "essai en cours" : q.reste ? "encore " + ech(Math.ceil(q.reste / 60)) + " min"
                                           : "prochain appel : essai"}
              ${q.fois > 1 ? " · mis de côté " + ech(q.fois) + " fois de suite" : ""}</div></div>`).join("")}
+      ${decharges.map(x =>
+        `<div class="pli-ligne"><b>${ech(x.modele)} — sur ${ech(x.machine)}</b>
+           <div class="pli-val mono">${ech(x.fois)}/${ech(deg.decharges_max || 3)} déchargements en
+             ${ech(Math.round((deg.fenetre || 600) / 60))} min</div></div>`).join("")}
       ${derniers.map(x =>
         `<div class="pli-ligne"><b>${ech(x.modele)} — sur ${ech(x.machine)}</b>
            <div class="pli-val mono">${ech(x.heure)} · ${ech(x.forme)} ·
