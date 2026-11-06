@@ -458,7 +458,7 @@
             {
               "id": "bfb7ea21-a985-507e-9972-8266a8493f8b",
               "leftValue": "={{ $runIndex }}",
-              "rightValue": 6,
+              "rightValue": 20,
               "operator": {
                 "type": "number",
                 "operation": "lt"
@@ -520,7 +520,7 @@
     },
     {
       "parameters": {
-        "errorMessage": "=Rendu {{ $json.body.id }} toujours « {{ $json.body.etat }} » après une demi-heure de relectures : relis-le plus tard, il n'est pas perdu."
+        "errorMessage": "=Rendu {{ $json.body.id }} toujours « {{ $json.body.etat }} » après vingt relectures (cinq minutes chacune en direct, moins d'une derrière un proxy) : relis-le plus tard, il n'est pas perdu."
       },
       "id": "ea776ce7-58b7-5e1a-8e39-b65c6c40cca9",
       "name": "Toujours pas fini",

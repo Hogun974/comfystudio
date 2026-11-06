@@ -2758,6 +2758,121 @@ dit(_api_rep is not None and "mes_fichiers" in _appels_rep
 dit(re.search(r'createElement\("img"\);\s*el\.loading\s*=\s*"lazy"', _grille6),
     "les images de la grille se chargent a l'approche (loading=lazy)")
 
+# ══ RONDE 8 : LA PAGE SAIT OU ELLE EST SERVIE ═══════════════════════════
+# Le meme studio en http et en https. En http, notifier et s'installer ne
+# marchent pas, et rien ne disait ou aller ; les cles d'acces ne disaient pas
+# quelle adresse coller. Ce qui suit tient les promesses de la page :
+#   - en contexte sur, rien ne change (le garde est la PREMIERE ligne) ;
+#   - le lien ne vise qu'une adresse https, et la MEME page ;
+#   - l'adresse vient de /api/compte, sous le nom que serveur.py y ecrit ;
+#   - les trois adresses a coller sont celles que serveur.py sert, et aucune
+#     ne porte la cle.
+# Ce qu'il ne voit PAS : l'affichage reel, ni un navigateur qui ouvrirait le
+# lien. Cela reste l'oeil, en http puis en https.
+print("\n  ── ronde 8 : l'adresse publique, et les adresses a coller ──")
+_HORS = _corps_de(CODE, "peindreHorsHttps")
+_LIEN = _corps_de(CODE, "lienHttps")
+_BRANCHER = _corps_de(CODE, "brancherUnOutil")
+_RETENIR = _corps_de(CODE, "retenirAdresse")
+_BASE8 = _corps_de(CODE, "baseDesOutils")
+_ACCES8 = _corps_de(CODE, "formulaireAcces")
+_COMPTE8 = _corps_de(CODE, "peindreCompte")
+
+# LES CLES : chacune en francais ET en anglais, non vide.
+_cles8 = sorted(c for c in TR.TEXTES if c.startswith("page.brancher."))
+_vides8 = [c for c in _cles8
+           if not all(str(TR.TEXTES[c].get(lg) or "").strip() for lg in ("fr", "en"))]
+dit(len(_cles8) >= 7 and not _vides8
+    and all(f'"{c}"' in CODE for c in _cles8),
+    "les textes « page.brancher.* » sont traduits (fr et en) et tous poses par "
+    "la page", ", ".join(_vides8) or f"{len(_cles8)} cles")
+
+# EN CONTEXTE SUR, RIEN NE CHANGE : le garde est la premiere instruction, et
+# c'est isSecureContext qu'il lit — pas location.protocol, qui dirait « http »
+# sur http://localhost, ou le navigateur notifie pourtant.
+dit(bool(re.match(r'\{\s*if\s*\(\s*window\.isSecureContext\s*\)\s*return;',
+                  _HORS or "")),
+    "en contexte sur, rien ne change : peindreHorsHttps() s'arrete a sa "
+    "premiere ligne sur window.isSecureContext",
+    "peindreHorsHttps() absente" if not _HORS else _HORS[:60].replace("\n", " "))
+
+# LES DEUX ELEMENTS TOUCHES, et ils existent dans le HTML : la phrase de la
+# case des notifications, et le panneau du menu ou va celle de l'installation.
+_ids8 = ("refusPrevenir", "panneauCompte")
+dit(all(f'$("#{i}")' in _HORS or f'"#{i} ' in _HORS for i in _ids8)
+    and all(re.search(r'\bid="' + i + r'"', PAGE) for i in _ids8)
+    and _HORS.count("lienHttps()") == 2,
+    "la case des notifications et la note d'installation recoivent chacune "
+    "leur lien, a cote de leur phrase",
+    f"{_HORS.count('lienHttps()')} lien(s) pose(s)")
+dit('"page.brancher.appli"' in _HORS,
+    "la note d'installation dit pourquoi, meme sans adresse connue (la phrase "
+    "seule)")
+
+# LE LIEN : vers la meme page — chemin, requete, ancre — sur l'adresse publique.
+dit(bool(re.search(r'\.href\s*=\s*ADRESSE_PUBLIQUE\s*\+\s*location\.pathname'
+                   r'\s*\+\s*location\.search\s*\+\s*location\.hash\s*;', _LIEN)),
+    "le lien vise la meme page a l'adresse publique : chemin, requete et ancre",
+    "" if _LIEN else "lienHttps() absente")
+# Et seulement vers une adresse https : la garde est RELUE et JOUEE sur des
+# adresses que le serveur accepte, pas cherchee mot pour mot. Le reste de la
+# forme (chemin, identifiants) est l'affaire de lire_adresse_publique(), que
+# banc_pilotage.py eprouve.
+_garde8 = re.search(r'if \(!ADRESSE_PUBLIQUE\.startsWith\("([^"]*)"\)\) return null;',
+                    _LIEN)
+_prefixe8 = _garde8.group(1) if _garde8 else None
+_oui8 = ("https://studio.lan.egaonoinu.re", "https://studio.maison:8443")
+_non8 = ("", "http://172.20.1.191:8199", "http://studio.maison")
+dit(_prefixe8 is not None and _LIEN.find(_garde8.group(0)) < _LIEN.find(".href")
+    and all(a.startswith(_prefixe8) for a in _oui8)
+    and not any(a.startswith(_prefixe8) for a in _non8),
+    "le lien n'est propose que vers une adresse https",
+    "garde introuvable" if _prefixe8 is None
+    else ", ".join(repr(a) for a in _non8 if a.startswith(_prefixe8)) or "garde jouee")
+
+# L'ADRESSE VIENT DE /api/compte, sous le nom que serveur.py y ecrit.
+_etat8 = next((n for n in ast.walk(ARBRE_SERVEUR)
+               if isinstance(n, ast.FunctionDef) and n.name == "_etat_compte"), None)
+_champs8 = {k.value for n in ast.walk(_etat8 or ast.Module(body=[]))
+            if isinstance(n, ast.Dict) for k in n.keys
+            if isinstance(k, ast.Constant)}
+_lu8 = re.search(r'd\s*&&\s*d\.(\w+)', _RETENIR or "")
+dit(_lu8 is not None and _lu8.group(1) in _champs8
+    and re.search(r'\}\s*catch\s*\(e\)\s*\{\s*return;\s*\}\s*retenirAdresse\(d\);',
+                  _COMPTE8)
+    and "peindreHorsHttps()" in _RETENIR and "PRET.then(peindreHorsHttps)" in CODE,
+    "l'adresse est lue dans /api/compte des sa reponse, sous le nom que "
+    "_etat_compte() ecrit, et les liens sont repeints",
+    f"lu {_lu8.group(1) if _lu8 else '?'} ; servi {sorted(_champs8)}")
+
+# LES TROIS ADRESSES A COLLER, celles que serveur.py sert, sur la meme base.
+def _constante8(nom):
+    for n in ARBRE_SERVEUR.body:
+        if isinstance(n, ast.Assign) and any(getattr(c, "id", "") == nom
+                                             for c in n.targets):
+            return getattr(n.value, "value", None)
+    return None
+
+
+_attendus8 = {str(_constante8("PREFIXE_PROGRAMME") or "?").rstrip("/"),
+              str(_constante8("PREFIXE_OPENAI") or "?").rstrip("/"),
+              str(_constante8("CHEMIN_MCP") or "?")}
+_colles8 = set(re.findall(r'copiable\("page\.brancher\.\w+",\s*base\s*\+\s*"([^"]+)"\)',
+                          _BRANCHER))
+dit(len(_attendus8) == 3 and _colles8 == _attendus8
+    and re.search(r'const base = baseDesOutils\(\);', _BRANCHER),
+    "« Brancher un outil » donne les trois bases que le serveur sert, sur la "
+    "meme base, chacune avec son bouton copier",
+    f"page {sorted(_colles8)}, serveur {sorted(_attendus8)}")
+dit(re.search(r'return\s+ADRESSE_PUBLIQUE\s*\|\|\s*location\.origin;', _BASE8)
+    and re.search(r'const origine = baseDesOutils\(\);', _ACCES8),
+    "la base est l'adresse publique si elle est connue, sinon location.origin — "
+    "pour la section ET pour les extraits de la cle neuve")
+dit("corps.append(...brancherUnOutil(copiable));" in _ACCES8
+    and not re.search(r'\bcle\b|secret', _BRANCHER),
+    "la section est dans le voile des cles d'acces, et ne porte aucun secret")
+
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)

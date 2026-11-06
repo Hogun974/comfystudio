@@ -177,6 +177,14 @@ def traiter(item, mode):
             if x["id"] == tid:
                 x["etat"] = "erreur"
         return
+    if mode == "plafond":
+        t["etat"] = "erreur"
+        t[S.MARQUE_PANNE] = S.panne_de("panne.cle_plafond_famille", famille="image",
+                                       plafond=1)
+        for x in conv["tours"]:
+            if x["id"] == tid:
+                x["etat"] = "erreur"
+        return
     if mode == "mp4":
         finir(tid, conv, [fichier(tid, ".mp4")], plan)
         return
@@ -496,6 +504,14 @@ async def s_issues(c):
         "l'analyse lit une video : 400 « cle_operation_interdite », pas une panne",
         f"HTTP {st} {corps}")
     remise_a_zero()
+    COMPORTEMENT["mode"] = "plafond"
+    st, corps, h = await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"})
+    ra = int(h.get("Retry-After") or 0)
+    dit(st == 429 and erreur(corps).get("code") == "cle_plafond_famille"
+        and abs(ra - S.secondes_avant_minuit()) <= 2 and h.get("X-Should-Retry") == "false",
+        "un plafond atteint apres l'analyse : 429 « cle_plafond_famille », Retry-After "
+        "jusqu'a minuit, sans rejeu du SDK", f"HTTP {st} {erreur(corps).get('code')} {ra}")
+    remise_a_zero()
     COMPORTEMENT["mode"] = "mp4"
     st, corps, h = await c.appel("POST", GEN, cle=TOUT, json_={"prompt": "un phare"})
     dit(st == 500 and erreur(corps).get("code") == "sans_image"
@@ -599,6 +615,10 @@ async def s_edits(c):
         repr(item.get("image")))
     dit(marque.get("operations") == ["retouche"],
         "la marque de la tache est restreinte a « retouche »", repr(marque.get("operations")))
+    dit(item.get("modele") == S.MOTEUR_RETOUCHE_OPENAI,
+        "sans modele choisi, la route des retouches impose le moteur d'edition : "
+        "« le ciel en rose » n'est plus laisse a l'analyse, qui y lisait une image",
+        repr(item.get("modele")))
     dit(item.get("variantes") == 1 and item.get("taille") is None,
         "n et size ne valent rien pour une retouche : une seule, a la taille d'origine",
         f"variantes={item.get('variantes')} taille={item.get('taille')}")

@@ -56,6 +56,7 @@ import contextlib
 import io
 import json
 import re
+import inspect
 import os
 import sys
 import tempfile
@@ -477,13 +478,42 @@ async def main():
         and "negatif" not in bascule,
         "la retouche decidee par le code part avec la phrase de l'utilisateur, "
         "pas la scene ecrite pour une image neuve", repr(bascule.get("prompt")))
+    # « refais-la », et non « la meme » : une demande courte avec « la meme »
+    # est un « meme personnage » pour veut_meme_personnage(), qu'executer()
+    # refait en image neuve — c'est le cas d'en dessous.
     reprise = S.normaliser({"intention": "image", "modele": "klein4b",
                             "prompt": "a dark forest at night", "raison": "banc"},
-                           "la meme mais plus sombre", False,
+                           "refais-la plus sombre", False,
                            {"derniere_sortie": {"nom": "x.png"}})
     dit(reprise["intention"] == "edition"
-        and reprise["prompt"] == "la meme mais plus sombre",
+        and reprise["prompt"] == "refais-la plus sombre",
         "et la reprise d'une sortie precedente aussi", repr(reprise.get("prompt")))
+    perso = S.normaliser({"intention": "image", "modele": "klein4b",
+                          "prompt": "a knight in armour in a dark forest",
+                          "negatif": "blurry", "raison": "banc"},
+                         "le meme personnage, en armure, dans une foret", False,
+                         {"derniere_sortie": {"nom": "x.png"}})
+    dit(perso["prompt"] == "a knight in armour in a dark forest"
+        and perso.get("negatif") == "blurry",
+        "mais la reprise du « meme personnage » garde la scene du modele : "
+        "executer() en refait une image neuve", repr(perso.get("prompt")))
+    plan_b = {"intention": "edition", "modele": "edition",
+              "prompt": "a straw hat, wheat field, blue sky", "negatif": "x"}
+    S.consigne_si_bascule(plan_b, "image", "mets-lui un chapeau de paille")
+    plan_e = {"intention": "edition", "modele": "edition", "prompt": "add a straw hat"}
+    S.consigne_si_bascule(plan_e, "edition", "mets-lui un chapeau de paille")
+    plan_p = {"intention": "edition", "modele": "edition", "prompt": "a knight at the beach"}
+    S.consigne_si_bascule(plan_p, "image", "le meme personnage a la plage")
+    dit(plan_b["prompt"] == "mets-lui un chapeau de paille" and "negatif" not in plan_b
+        and plan_e["prompt"] == "add a straw hat"
+        and plan_p["prompt"] == "a knight at the beach",
+        "un moteur d'edition IMPOSE sur une analyse « image » part avec la phrase "
+        "de l'utilisateur ; une analyse deja « edition » et le « meme personnage » "
+        "gardent leur prompt", f"{plan_b['prompt']!r} / {plan_e['prompt']!r} / {plan_p['prompt']!r}")
+    _src = inspect.getsource(S.executer)
+    dit("consigne_si_bascule(plan, avant_force, texte)" in _src,
+        "et executer() l'applique au moteur impose",
+        "appel absent d'executer()")
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

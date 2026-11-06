@@ -1393,6 +1393,245 @@ async def degeneres():
             "par le vrai appel, « done: false » sans reponse est decharge puis "
             "retente, et la reprise repond", f"{rendu!r}, {decharges}")
 
+        # ══ LA REPONSE DIT POURQUOI ELLE S'ARRETE (6 novembre 2026) ═══════
+        # Ollama dit « done_reason » et compte les jetons du prompt dans la
+        # reponse meme ; un 5xx inconnu est le plus souvent son moteur qui a
+        # plante (CUDA, 5 novembre) et qu'il relance en deux secondes. Tout
+        # passe ici par le VRAI _ollama_local, derriere une fausse session.
+        import contextlib as _ctx
+        import io as _io
+        print("\n  ── la reponse dit pourquoi elle s'arrete ──")
+        postes = []
+
+        class SessionCompte(SessionHTTP):
+            def post(self, url, json=None):
+                if not ((json or {}).get("keep_alive") == 0
+                        and not (json or {}).get("prompt")):
+                    postes.append(url.rsplit("/api/", 1)[0])
+                return SessionHTTP.post(self, url, json)
+
+        S.aiohttp.ClientSession = SessionCompte
+        coupe_json = '{"intention": "image", "prompt": "croute croustillante doree, cro'
+        long_ = {"response": coupe_json, "done": True, "done_reason": "length",
+                 "prompt_eval_count": 3900, "eval_count": 1024}
+        bon_ = {"response": "{}", "done": True, "done_reason": "stop",
+                "prompt_eval_count": 3900, "eval_count": 12}
+        cuda_ = ('{"error":"llama runner process has terminated: CUDA error: an '
+                 'illegal memory access was encountered\\n  current device: 0, in '
+                 'function ggml_backend_cuda_synchronize' + " x" * 200 + '"}')
+
+        async def direct(*reponses, format_="json"):
+            http[PC] = list(reponses)
+            S.MODELES_CASSES.clear()
+            corps_d = {"model": "qwen2.5vl:7b", "prompt": "x"}
+            if format_:
+                corps_d["format"] = format_
+            sortie_ = _io.StringIO()
+            try:
+                with _ctx.redirect_stdout(sortie_):
+                    return await vrai_local(corps_d, PC, 5), sortie_.getvalue()
+            except Exception as e:
+                return e, sortie_.getvalue()
+
+        r_, _ = await direct((200, long_))
+        dit(isinstance(r_, S.ReponseTronquee)
+            and isinstance(r_, S.ReponseDegeneree) and r_.rendu == coupe_json,
+            "done_reason « length » en JSON, objet inacheve : une reponse "
+            "coupee (ReponseDegeneree), qui garde son texte",
+            f"{type(r_).__name__}")
+        r_, _ = await direct((200, dict(long_, response='{"intention": "image"}'
+                                                      + "\n" * 40)))
+        dit(r_ == '{"intention": "image"}' + "\n" * 40,
+            "un objet ENTIER suivi de blancs jusqu'a la borne reste une reponse",
+            repr(r_)[:80])
+        r_, sortie_ = await direct((200, dict(long_, response="la la la, refrain")),
+                                   format_=None)
+        dit(r_ == "la la la, refrain" and "done_reason length" in sortie_,
+            "en texte libre, « length » se dit sur la sortie du studio mais la "
+            "reponse est rendue", f"{r_!r}, {sortie_.strip()[:100]}")
+        r_, sortie_ = await direct((500, cuda_))
+        plat_ = str(r_).split(" : ", 1)[-1]
+        dit(isinstance(r_, S.PlantageMoteur) and isinstance(r_, RuntimeError)
+            and not isinstance(r_, S.ReponseDegeneree)
+            and "illegal memory access" in plat_ and len(plat_) <= 160
+            and not S.MODELES_CASSES,
+            "un 500 inconnu (plantage CUDA) : PlantageMoteur, le corps borne a "
+            "160 caracteres, et le modele n'est pas ecarte",
+            f"{type(r_).__name__}, {len(plat_)} car., {S.MODELES_CASSES}")
+        ligne_ = [l for l in sortie_.splitlines() if "illegal memory access" in l]
+        dit(len(ligne_) == 1 and len(ligne_[0]) < 260,
+            "et la sortie du studio en garde le texte, sur une ligne bornee",
+            sortie_.strip()[:120])
+        S.MODELES_CASSES.clear()
+
+        async def bout(cas, pc, nas=None, json_mode=True):
+            """Un appel complet : rend (rendu, adresses appelees, fil)."""
+            neuf()
+            S._DECHARGE_DEGENERE.clear()
+            S.MODELES_CASSES.clear()
+            del decharges[:]
+            del postes[:]
+            http[PC] = list(pc)
+            http[NAS] = list(nas or [(200, bon_)])
+            tid_ = "banc-fin-" + cas
+            tids.append(tid_)
+            S.TACHES[tid_] = {"etapes": [], "etat": "en cours"}
+            S._ollama_local = vrai_local
+            try:
+                with _ctx.redirect_stdout(_io.StringIO()):
+                    rendu_ = await asyncio.wait_for(S._appeler_llm(
+                        "x", None, None, json_mode, None, 0.1, tid_), 10)
+            except Exception as e:
+                rendu_ = f"a leve {type(e).__name__}"
+            finally:
+                S._ollama_local = faux_local
+            return rendu_, list(postes), fil(tid_)
+
+        # ── done_reason length ──
+        S.CONTEXTE_VU.clear()
+        rendu, vus_, fil_ = await bout("longueur", [(200, long_), (200, bon_)])
+        der_ = S.releve_degenerescences()["derniers"][0]
+        dit(rendu == "{}" and vus_ == [PC, PC]
+            and [d_[0] for d_ in decharges] == [f"{PC}/api/generate"]
+            and der_["forme"] == "longueur" and der_["issue"] == "reparee",
+            "un JSON arrete a sa borne prend le chemin de la coupure : decharge, "
+            "retente au meme endroit, et la reprise repond",
+            f"{rendu!r}, {vus_}, {decharges}, {der_.get('forme')}/{der_.get('issue')}")
+        dit(any("done_reason length" in l for l in fil_),
+            "et le fil nomme la borne", " | ".join(fil_)[-160:])
+        rendu, vus_, _ = await bout("stop", [(200, dict(bon_, response='{"intention": "image"}'))])
+        dit(rendu == '{"intention": "image"}' and vus_ == [PC] and not decharges,
+            "temoin : « stop » ne repare rien", f"{rendu!r}, {vus_}, {decharges}")
+        total_ = S.releve_degenerescences()["total"]
+        rendu, vus_, _ = await bout("libre", [(200, dict(long_, response="refrain " * 50))],
+                                    json_mode=False)
+        dit(rendu == "refrain " * 50 and vus_ == [PC] and not decharges
+            and S.releve_degenerescences()["total"] == total_,
+            "en texte libre, une reponse arretee a sa borne n'est ni dechargee "
+            "ni retentee : une chanson peut etre longue",
+            f"{rendu[:20]!r}, {vus_}, {decharges}")
+        rendu, vus_, _ = await bout("toujours", [(200, long_)])
+        dit(rendu == coupe_json and vus_ == [PC, PC],
+            "coupee encore apres la reprise : le texte coupe est rendu, comme "
+            "avant — l'analyse le dira mal forme et en citera la fin",
+            f"{rendu!r}, {vus_}")
+
+        # ── le contexte de l'analyse ──
+        S.CONTEXTE_VU.clear()
+        await bout("ctx-un", [(200, bon_)])
+        c_ = S.releve_contexte()
+        l_ = (c_.get("analyses") or [{}])[0]
+        dit(c_.get("contexte") == S.CONTEXTE_LLM and l_.get("jetons") == 3900
+            and l_.get("machine") == "PC (RTX 2080 Ti)" and l_.get("modele")
+            and l_.get("presque_plein") is False and c_.get("presque_plein") is False,
+            "les jetons du prompt de l'analyse sont retenus par machine et "
+            "modele, avec le contexte annonce", str(c_)[:200])
+        await bout("ctx-plein", [(200, dict(bon_, prompt_eval_count=6200))])
+        await bout("ctx-cache", [(200, dict(bon_, prompt_eval_count=1200))])
+        c_ = S.releve_contexte()
+        l_ = (c_.get("analyses") or [{}])[0]
+        dit(S.SEUIL_CONTEXTE == 0.75 and l_.get("jetons") == 1200
+            and l_.get("plus_haut") == 6200 and l_.get("presque_plein") is True
+            and c_.get("presque_plein") is True,
+            "au-dela de 75 % du contexte, le drapeau « presque plein » se leve, "
+            "et un compte plus court (prompt en cache) ne le baisse pas",
+            str(l_))
+        S.CONTEXTE_VU.clear()
+        S.relever_contexte(PC, {"model": "m", "prompt": "x"},
+                           {"prompt_eval_count": 7000})
+        S.relever_contexte(PC, {"model": "m", "prompt": "x", "format": "json",
+                                "images": ["aW1n"]}, {"prompt_eval_count": 7000})
+        S.relever_contexte(PC, {"model": "m", "prompt": "x", "format": "json"}, {})
+        dit(not S.CONTEXTE_VU,
+            "ni le texte libre, ni une image, ni un compte absent n'entrent "
+            "dans le releve de l'analyse", str(S.CONTEXTE_VU))
+        for i in range(40):
+            S.relever_contexte((PC, NAS)[i % 2], {"model": f"m{i}", "format": "json"},
+                               {"prompt_eval_count": 100 + i})
+        dit(len(S.CONTEXTE_VU) == S.CONTEXTE_VU_MAX == 20,
+            "le releve du contexte est borne (vingt couples)", str(len(S.CONTEXTE_VU)))
+        S.CONTEXTE_VU.clear()
+        S.relever_contexte(PC, {"model": "qwen2.5vl:7b", "format": "json"},
+                           {"prompt_eval_count": 6500})
+        vrai_ok_ = S.admin_ok
+        S.admin_ok = lambda req: True
+        try:
+            d_ = S.json.loads((await S.api_admin_noeuds(None)).text)
+        except Exception as e:
+            d_ = {"erreur": f"{type(e).__name__} : {e}"}
+        finally:
+            S.admin_ok = vrai_ok_
+        c_ = d_.get("contexte_analyse") or {}
+        dit(c_.get("presque_plein") is True and c_.get("contexte") == S.CONTEXTE_LLM
+            and (c_.get("analyses") or [{}])[0].get("plus_haut") == 6500,
+            "/api/admin/noeuds porte le contexte de l'analyse et son drapeau",
+            str(d_.get("erreur") or c_)[:200])
+        S.CONTEXTE_VU.clear()
+        try:
+            page_ = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "web", "admin.html"), encoding="utf-8").read()
+        except OSError:
+            page_ = ""
+        dit('id="langueContexte"' in page_ and "d.contexte_analyse" in page_
+            and "ctx.presque_plein" in page_ and "${ech(c.plus_haut)}" in page_,
+            "la console montre le contexte de l'analyse, et le drapeau",
+            "web/admin.html absent" if not page_ else "")
+
+        # ── le plantage du moteur se retente sur place, une fois ──
+        dit(S.PAUSE_PLANTAGE == 3,
+            "la relance attend 3 s : Ollama relance son moteur en ~2 s",
+            str(S.PAUSE_PLANTAGE))
+        pause_ = S.PAUSE_PLANTAGE
+        S.PAUSE_PLANTAGE = 0.2
+        try:
+            t0_ = S.time.time()
+            rendu, vus_, fil_ = await bout("cuda", [(500, cuda_), (200, bon_)])
+            mis_ = S.time.time() - t0_
+            dit(rendu == "{}" and vus_ == [PC, PC] and mis_ >= 0.2
+                and not S.MODELES_CASSES,
+                "un 500 inconnu : une pause, puis une seconde tentative a la "
+                "MEME adresse, qui repond — pas le NAS sur processeur",
+                f"{rendu!r}, {vus_}, {mis_:.2f} s")
+            dit(any("a plante" in l and "illegal memory access" in l
+                    for l in fil_),
+                "et le fil de la demande garde le texte du plantage",
+                " | ".join(fil_)[-200:])
+            rendu, vus_, _ = await bout("cuda-deux", [(500, cuda_)])
+            dit(rendu == "{}" and vus_ == [PC, PC, NAS],
+                "replante apres sa relance : la machine suivante, comme avant — "
+                "jamais plus d'une reprise", f"{rendu!r}, {vus_}")
+            rendu, vus_, _ = await bout("cuda-partout", [(500, cuda_)],
+                                        nas=[(500, cuda_)])
+            dit(rendu.startswith("a leve") and vus_ == [PC, PC, NAS],
+                "une seule relance PAR APPEL : la machine suivante qui plante "
+                "n'en gagne pas une seconde", f"{rendu!r}, {vus_}")
+            rendu, vus_, fil_ = await bout(
+                "chargement", [(500, '{"error":"llama runner process has '
+                                     'terminated: error loading model"}')])
+            dit(rendu == "{}" and vus_ == [PC, NAS]
+                and (PC, "qwen2.5vl:7b") in S.MODELES_CASSES
+                and not any("a plante" in l for l in fil_),
+                "temoin : un 500 de chargement n'est PAS relance sur place, il "
+                "ecarte le modele comme avant", f"{rendu!r}, {vus_}, {S.MODELES_CASSES}")
+            rendu, vus_, fil_ = await bout(
+                "repetition", [(500, '{"error":"prediction aborted, token repeat '
+                                     'limit reached"}'), (200, bon_)])
+            dit(rendu == "{}" and vus_ == [PC, PC]
+                and [d_[0] for d_ in decharges] == [f"{PC}/api/generate"]
+                and S.releve_degenerescences()["derniers"][0]["forme"] == "coupee"
+                and not any("a plante" in l for l in fil_),
+                "temoin : une repetition coupee suit son chemin (decharger, "
+                "retenter), sans pause de plantage", f"{rendu!r}, {vus_}, {decharges}")
+            rendu, vus_, _ = await bout("absent", [(404, '{"error":"model not found"}')])
+            dit(rendu == "{}" and vus_ == [PC, NAS],
+                "temoin : un 404 n'est pas un plantage, la machine suivante",
+                f"{rendu!r}, {vus_}")
+        finally:
+            S.PAUSE_PLANTAGE = pause_
+            S.aiohttp.ClientSession = FausseSession
+            S.MODELES_CASSES.clear()
+            S.CONTEXTE_VU.clear()
+
         # ── CE QUI N'EST PAS DEGENERE ───────────────────────────────────
         dit(all(not S.forme_degeneree(t) for t in (
                 "Prix : 10000 euros...", "refrain\n----------------\ncouplet",

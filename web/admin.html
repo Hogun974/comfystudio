@@ -182,6 +182,7 @@ td .detail{display:block;max-width:34ch}
     </table></div>
     <div id="languePanne"></div>
     <div id="langueDegenere"></div>
+    <div id="langueContexte"></div>
     <div class="carte">
       <h2 style="margin-top:0">pause</h2>
       <p class="aide">Une machine en pause continue de s'annoncer et reste à
@@ -1143,6 +1144,18 @@ async function rafraichir() {
            <div class="pli-val mono">${ech(x.heure)} · ${ech(x.forme)} ·
              ${x.decharge ? "déchargé" : "non déchargé"} · ${ech(x.issue)}${x.quarantaine ? " · mis de côté" : ""}</div></div>`).join("")}
     </div>`;
+  /* Le gabarit de l'analyse grossit avec le catalogue. À 4096 jetons de
+     contexte, il en prenait ~3870 et les plans se coupaient (5 novembre
+     2026) ; ici, on le voit monter avant. Le plus haut compte vu, parce
+     qu'un prompt en partie en cache peut être compté en partie. */
+  const ctx = d.contexte_analyse || {};
+  const vus = ctx.analyses || [];
+  $("#langueContexte").innerHTML = !vus.length ? "" : `
+    <p class="aide"${ctx.presque_plein ? ' style="color:var(--rouge)"' : ""}>contexte de l'analyse :
+      ${vus.map(c => `${ech(c.plus_haut)} jetons sur ${ech(ctx.contexte)}
+        (${ech(Math.round(c.part * 100))} %) — ${ech(c.modele)} sur ${ech(c.machine)}`).join(" · ")}${ctx.presque_plein
+        ? ` — plus de ${ech(Math.round((ctx.seuil || 0.75) * 100))} % : les plans vont se couper, monte STUDIO_LLM_CONTEXTE`
+        : ""}</p>`;
 }
 
 $("#poserPause").onclick = async () => {

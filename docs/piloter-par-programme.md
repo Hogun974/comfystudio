@@ -379,6 +379,20 @@ Pourquoi 600 secondes et pas une heure : le nœud HTTP Request de n8n coupe à
 trois à huit minutes ([Mesures](mesures.md)). Au-delà, sonde ou prends le
 rappel : garder une connexion ouverte une heure n'est un service pour personne.
 
+**Derrière un reverse proxy, l'attente est bornée.** Un reverse proxy coupe une réponse qui tarde : 60 s pour un nginx laissé par
+défaut, 90 s pour le nginx-proxy-manager qui publie le studio en https. Un
+`attendre: 300` y finissait en **504 du proxy** — rien pour le client, et le
+rendu continuait sans lui. Le studio reconnaît donc une requête arrivée par un
+proxy (`X-Forwarded-For` ou `X-Forwarded-Proto`) et y borne l'attente à
+**55 s** (`STUDIO_ATTENTE_PROXY`, [Réglages](reglages.md)) — `attendre` de
+`GET /api/v1/rendus/{id}`, de `.../reponse` et des outils MCP compris. Au-delà,
+c'est la réponse d'une attente expirée, pas une erreur : 202 (ou 200) avec
+l'état courant, plus l'en-tête **`X-Attente-Bornee: 55`**. Relis le rendu
+ensuite. Une requête directe garde son `attendre` ; un client qui pose ces
+en-têtes lui-même ne fait que raccourcir sa propre attente. La recette n8n
+plus bas relit déjà, jusqu'à vingt fois : derrière un proxy, cela fait
+une vingtaine de minutes, de quoi finir une vidéo.
+
 Réponse : **202** tant que le rendu n'est pas dans un état final, **200** s'il
 l'est (fini dans le délai d'`attendre`), avec `Location: /api/v1/rendus/{id}`.
 Le corps a la même forme partout — réponse de l'API, corps du rappel, contenu
@@ -1149,6 +1163,13 @@ donne **une adresse de base et une clé**. Le studio leur ouvre cette porte :
 | Clé (API key) | une clé d'accès du studio, `cs_…` — avec la famille « créer une image » (et « retoucher une image » pour les retouches) |
 | Modèle | `comfystudio` (le studio choisit), ou un moteur de `GET /openai/v1/models` |
 
+La page les donne toutes faites : bouton **« clés d'accès »**, section
+**« Brancher un outil »**, un bouton « copier » pour chacune des trois bases —
+`/api/v1` (n8n, scripts), `/openai/v1` (cette porte-ci) et `/mcp` (Claude).
+Elles partent de `STUDIO_ADRESSE_PUBLIQUE` si elle est posée
+([Réglages](reglages.md)), sinon de l'adresse de la page ; aucune ne contient
+la clé.
+
 Les images sortent **des cartes de la maison**, sous les règles de la clé :
 mêmes plafonds (`en_file`, `par_jour`), même droit au nuage, même garde-fou,
 mêmes familles d'opérations — ce n'est pas une porte à côté, c'est la même
@@ -1188,7 +1209,7 @@ credential *Header Auth* déjà fait pour `/api/v1`.
 | Champ | Ce que le studio en fait |
 |---|---|
 | `prompt` | la demande, analysée comme une demande de la page, dans sa langue |
-| `model` | un moteur d'image du studio s'il existe (`klein4b`, `flux1`…) ; tout autre nom — `dall-e-3`, `gpt-image-1`, `comfystudio` — est **ignoré** : le studio choisit |
+| `model` | un moteur d'image du studio s'il existe (`klein4b`, `flux1`…) ; tout autre nom — `dall-e-3`, `gpt-image-1`, `comfystudio` — est **ignoré** : le studio choisit. Sur `/images/edits`, « le studio choisit » veut dire le moteur d'**édition** : la route ne laisse pas l'analyse décider, qui lisait « le ciel en rose » comme une image neuve |
 | `n` | autant de variantes, de 1 à 4 ; chacune compte dans `en_file` et `par_jour`. Ignoré pour une retouche (une seule) |
 | `size` | ramenée à la taille du studio la plus proche, **le cadrage d'abord** : `1536x1024` → `1216x832`, `1024x1536` → `832x1216`, `1024x1792` → `768x1344`, `512x512` → `1024x1024` ; `auto` laisse choisir. Ignorée pour une retouche |
 | `response_format` | `b64_json` : l'image en base64 (au-delà de 16 Mio, un lien à la place) ; `url` : un **lien signé absolu**, valable 24 h, sans en-tête. Sans le champ : `url` pour un modèle `dall-e-*`, `b64_json` sinon — comme chez OpenAI |

@@ -12881,9 +12881,9 @@ EXEMPLES_N8N = [
         rougit="[rendu] chaque boucle passe par un If borne sur $runIndex",
         editions=[("exemples/n8n-rendu-comfystudio.json", brut(
             '"leftValue": "={{ $runIndex }}",\n'
-            '              "rightValue": 6,',
+            '              "rightValue": 20,',
             '"leftValue": "={{ $json.body.position }}",\n'
-            '              "rightValue": 6,'))]),
+            '              "rightValue": 20,'))]),
     dict(
         nom="une cle d'acces collee dans la note",
         banc="banc_exemples.py",
@@ -13024,8 +13024,9 @@ CLOUD_RETOUCHE = [
               "en file, et seule la garde tardive pourrait la rattraper",
         rougit="nanobanana avec une image jointe sur une cle d'images rend 403",
         editions=[("serveur.py", brut(
-            "        type_ = _type_du_rendu(v[\"modele\"], v.get(\"image\"))",
-            "        type_ = _type_de_moteur(v[\"modele\"])"))]),
+            '    return type_effectif({"intention": _type_du_rendu(cle, image), "modele": cle},'
+            + chr(10) + '                         texte or "", image)',
+            "    return _type_de_moteur(cle)"))]),
     dict(
         nom="la garde apres l'analyse ne lit pas l'image de la tache",
         banc="banc_pilotage.py",
@@ -14135,7 +14136,7 @@ API_OPENAI = [
               "les defauts des clients, finissent en moteur_inconnu",
         rougit="un rendu fini : 200, « created » entier, une image",
         editions=[("serveur.py", brut(
-            "    if modele in {m[\"cle\"] for m in _moteurs_openai(fiche, famille, lg)}:",
+            "    if modele in moteurs_:",
             "    if modele:"))]),
     dict(
         nom="la liste des moteurs de la route ne filtre pas la famille",
@@ -15005,9 +15006,10 @@ RETOUCHE_JOINTE = [
               "meme mais plus sombre »",
         rougit="et la reprise d'une sortie precedente aussi",
         editions=[("serveur.py", brut(
-            "        plan[\"raison\"] = \"reprise de l'image precedente detectee\"" + chr(10)
-            + "        consigne_de_retouche(plan, texte)",
-            "        plan[\"raison\"] = \"reprise de l'image precedente detectee\""))]),
+            "        if not veut_meme_personnage(texte or \"\"):" + chr(10)
+            + "            consigne_de_retouche(plan, texte)",
+            "        if False:" + chr(10)
+            + "            consigne_de_retouche(plan, texte)"))]),
 ]
 
 
@@ -15157,6 +15159,498 @@ CONTEXTE_ANALYSE = [
 ]
 
 
+# ── L'attente bornee derriere un reverse proxy (ronde 8) ──────────────────
+ATTENTE_PROXY = [
+    dict(
+        nom="la borne du proxy ignoree",
+        banc="banc_pilotage.py",
+        imite="l'attente demandee tenue telle quelle derriere le NPM : un "
+              "« attendre: 300 » finit en 504 du proxy, n8n en erreur",
+        rougit="par un proxy, POST « attendre: 300 » rend la main a ATTENDRE_PROXY, "
+               "avec l'etat courant et non une erreur",
+        editions=[("serveur.py", brut(
+            "    if secondes and secondes > ATTENDRE_PROXY and (",
+            "    if False and secondes and secondes > ATTENDRE_PROXY and ("))]),
+    dict(
+        nom="la borne du proxy appliquee a tous",
+        banc="banc_pilotage.py",
+        imite="la detection du proxy oubliee : une requete directe perd "
+              "l'attente qu'elle demandait",
+        rougit="temoin : sans en-tete de proxy, ?attendre=3 attend ses trois secondes, "
+               "sans X-Attente-Bornee",
+        editions=[("serveur.py", brut(
+            '            req.headers.get("X-Forwarded-For") or req.headers.get("X-Forwarded-Proto")):',
+            "            True):"))]),
+    dict(
+        nom="l'en-tete X-Attente-Bornee jamais pose",
+        banc="banc_pilotage.py",
+        imite="la borne appliquee en silence : le client recoit un etat non "
+              "final au bout de 55 s sans savoir pourquoi",
+        rougit="et la reponse le dit : X-Attente-Bornee = ATTENDRE_PROXY",
+        editions=[("serveur.py", brut(
+            "        rep_.headers[ENTETE_ATTENTE_BORNEE] = str(req[\"attente_bornee\"])",
+            "        pass"))]),
+    dict(
+        nom="la borne du proxy allonge une attente plus courte",
+        banc="banc_pilotage.py",
+        imite="la comparaison oubliee : derriere un proxy, « attendre: 1 » "
+              "attend 55 s",
+        rougit="par un proxy, une attente deja plus courte que la borne n'est ni "
+               "allongee ni dite bornee",
+        editions=[("serveur.py", brut(
+            "    if secondes and secondes > ATTENDRE_PROXY and (",
+            "    if secondes and ("))]),
+    dict(
+        nom="X-Forwarded-Proto seul ne dit pas le proxy",
+        banc="banc_pilotage.py",
+        imite="un proxy qui ne pose que X-Forwarded-Proto (celui que "
+              "base_publique lit) passe pour une requete directe",
+        rougit="GET ?attendre=300 par un proxy (X-Forwarded-Proto seul) : bornee, et dit",
+        editions=[("serveur.py", brut(
+            '            req.headers.get("X-Forwarded-For") or req.headers.get("X-Forwarded-Proto")):',
+            '            req.headers.get("X-Forwarded-For")):'))]),
+    dict(
+        nom="l'outil etat_rendu attend sans borne derriere un proxy",
+        banc="banc_pilotage.py",
+        imite="la borne posee sur /api/v1 et oubliee dans l'outil MCP, que le "
+              "client peut faire attendre 600 s",
+        rougit="etat_rendu (attendre 300) par un proxy : bornee a ATTENDRE_PROXY, "
+               "l'etat courant, et X-Attente-Bornee",
+        editions=[("serveur.py", brut(
+            '    await attendre_rendu(arguments["id"], qui(req), fiche,' + chr(10)
+            + '                         attente_derriere_proxy(req, arguments.get("attendre", ATTENDRE_MCP)))',
+            '    await attendre_rendu(arguments["id"], qui(req), fiche,' + chr(10)
+            + '                         arguments.get("attendre", ATTENDRE_MCP))'))]),
+    dict(
+        nom="/mcp ne dit pas la borne",
+        banc="banc_pilotage.py",
+        imite="la reponse JSON-RPC rendue sans l'en-tete que pose la route REST",
+        rougit="etat_rendu (attendre 300) par un proxy : bornee a ATTENDRE_PROXY, "
+               "l'etat courant, et X-Attente-Bornee",
+        editions=[("serveur.py", brut(
+            "    return _dire_la_borne(req, web.json_response(reponse))",
+            "    return web.json_response(reponse)"))]),
+    dict(
+        nom="le contrat tait X-Attente-Bornee sur /mcp",
+        banc="banc_contrat.py",
+        imite="l'en-tete decrit sur /api/v1 et oublie sur /mcp : un client "
+              "genere ne le lit pas",
+        rougit="chaque reponse qui suit une attente declare l'en-tete X-Attente-Bornee",
+        editions=[("contrat.py", brut(
+            '                        "headers": _attente_bornee(),' + chr(10),
+            ""))]),
+]
+
+
+# ── La reponse dit pourquoi elle s'arrete (ronde 8, 6 novembre 2026) ──
+# Ollama rend « done_reason » et « prompt_eval_count » ; un 5xx inconnu est son
+# moteur qui a plante (CUDA, 5 novembre) et qu'il relance en deux secondes.
+# Chaque mutation retire une piece : lire la borne en JSON et seulement en
+# JSON, garder le texte coupe, retenir le contexte et lever le drapeau, le
+# montrer, relancer une fois sur place apres une pause, et le dire.
+FIN_DE_REPONSE = [
+    dict(
+        nom="done_reason length n'est plus lu",
+        banc="banc_cerveaux.py",
+        imite="l'etat d'avant : le plan coupe a sa borne passe pour une reponse, "
+              "et echoue plus loin en « reponse mal formee »",
+        rougit="un JSON arrete a sa borne prend le chemin de la coupure",
+        editions=[("serveur.py", brut(
+            '            if rep_.strip() and d.get("done_reason") == "length":',
+            "            if False:"))]),
+    dict(
+        nom="la borne coupe aussi le texte libre",
+        banc="banc_cerveaux.py",
+        imite="le test du mode oublie : des paroles de chanson longues pour de "
+              "bon sont dechargees et retentees",
+        rougit="en texte libre, une reponse arretee a sa borne n'est ni dechargee",
+        editions=[("serveur.py", brut(
+            '                if corps.get("format") and not _objet_entier(rep_):',
+            "                if not _objet_entier(rep_):"))]),
+    dict(
+        nom="un objet entier a sa borne est jete",
+        banc="banc_cerveaux.py",
+        imite="« length » cru sur parole : un plan complet suivi de blancs "
+              "jusqu'a la borne est decharge et retente",
+        rougit="un objet ENTIER suivi de blancs jusqu'a la borne reste une reponse",
+        editions=[("serveur.py", brut(
+            '                if corps.get("format") and not _objet_entier(rep_):',
+            '                if corps.get("format"):'))]),
+    dict(
+        nom="la reponse coupee est perdue",
+        banc="banc_cerveaux.py",
+        imite="la coupure rendue en \"\" comme celle d'Ollama : l'analyse ne "
+              "peut plus citer ce qui est revenu",
+        rougit="coupee encore apres la reprise : le texte coupe est rendu",
+        editions=[("serveur.py", brut(
+            '        return e.rendu, "longueur"',
+            '        return "", "longueur"'))]),
+    dict(
+        nom="la longueur se confond avec la repetition",
+        banc="banc_cerveaux.py",
+        imite="la coupure reconnue mais pas nommee : la console dit « token "
+              "repeat limit » d'un plan arrete a sa borne",
+        rougit="un JSON arrete a sa borne prend le chemin de la coupure",
+        editions=[("serveur.py", brut(
+            "    except ReponseTronquee as e:",
+            "    except ZeroDivisionError as e:"))]),
+    dict(
+        nom="le contexte de l'analyse n'est plus releve",
+        banc="banc_cerveaux.py",
+        imite="le compte d'Ollama jete comme avant : le gabarit approche du "
+              "contexte et personne ne le voit",
+        rougit="les jetons du prompt de l'analyse sont retenus",
+        editions=[("serveur.py", brut(
+            "            relever_contexte(url or OLLAMA, corps, d)" + chr(10),
+            ""))]),
+    dict(
+        nom="le releve compte aussi le texte libre",
+        banc="banc_cerveaux.py",
+        imite="tout appel releve : une chanson ou une image jointe passe pour "
+              "le gabarit de l'analyse",
+        rougit="ni le texte libre, ni une image",
+        editions=[("serveur.py", brut(
+            '    if (not corps.get("format") or corps.get("images")',
+            "    if (False"))]),
+    dict(
+        nom="le drapeau suit le dernier compte",
+        banc="banc_cerveaux.py",
+        imite="le dernier prompt_eval_count seul : un prompt en cache, compte "
+              "en partie, baisse le drapeau d'un gabarit qui deborde",
+        rougit="au-dela de 75 % du contexte, le drapeau",
+        editions=[("serveur.py", brut(
+            '                           v["plus_haut"] >= SEUIL_CONTEXTE * CONTEXTE_LLM,',
+            '                           v["jetons"] >= SEUIL_CONTEXTE * CONTEXTE_LLM,'))]),
+    dict(
+        nom="le drapeau attend le contexte plein",
+        banc="banc_cerveaux.py",
+        imite="le seuil a cent pour cent : le drapeau se leve quand les plans "
+              "sont deja coupes",
+        rougit="au-dela de 75 % du contexte, le drapeau",
+        editions=[("serveur.py", brut(
+            "SEUIL_CONTEXTE = 0.75", "SEUIL_CONTEXTE = 1.0"))]),
+    dict(
+        nom="le releve du contexte n'est pas borne",
+        banc="banc_cerveaux.py",
+        imite="un dictionnaire qui grossit d'une entree a chaque nom de modele",
+        rougit="le releve du contexte est borne",
+        editions=[("serveur.py", brut(
+            "    while len(CONTEXTE_VU) > CONTEXTE_VU_MAX:",
+            "    while False:"))]),
+    dict(
+        nom="la console ne porte plus le contexte",
+        banc="banc_cerveaux.py",
+        imite="le releve tenu en memoire, et personne pour le lire",
+        rougit="/api/admin/noeuds porte le contexte de l'analyse",
+        editions=[("serveur.py", brut(
+            '                              "contexte_analyse": releve_contexte(),' + chr(10),
+            ""))]),
+    dict(
+        nom="la page ne montre plus le contexte",
+        banc="banc_cerveaux.py",
+        imite="la ligne retiree de la console : le serveur sait, "
+              "l'administrateur non",
+        rougit="la console montre le contexte de l'analyse",
+        editions=[("web/admin.html", brut(
+            '    <div id="langueContexte"></div>' + chr(10), ""))]),
+    dict(
+        nom="un plantage du moteur part a la suivante",
+        banc="banc_cerveaux.py",
+        imite="l'etat du 5 novembre : le 500 CUDA pris pour une adresse en "
+              "panne, l'analyse part sur le processeur du NAS",
+        rougit="un 500 inconnu : une pause, puis une seconde tentative",
+        editions=[("serveur.py", brut(
+            "                elif r.status >= 500:",
+            "                elif False:"))]),
+    dict(
+        nom="la relance part sans attendre le moteur",
+        banc="banc_cerveaux.py",
+        imite="la relance immediate : elle tombe pendant qu'Ollama relance "
+              "llama-server, et replante",
+        rougit="un 500 inconnu : une pause, puis une seconde tentative",
+        editions=[("serveur.py", brut(
+            "        await asyncio.sleep(PAUSE_PLANTAGE)",
+            "        pass"))]),
+    dict(
+        nom="une relance par machine et non par appel",
+        banc="banc_cerveaux.py",
+        imite="le compte de relances oublie : chaque machine qui plante gagne "
+              "la sienne, et un parc malade double chaque appel",
+        rougit="une seule relance PAR APPEL",
+        editions=[("serveur.py", brut(
+            "        if relance:" + chr(10)
+            + '            journal(tid, f"{titre} : le moteur a plante de nouveau ({e})")',
+            "        if False:" + chr(10)
+            + '            journal(tid, f"{titre} : le moteur a plante de nouveau ({e})")'))]),
+    dict(
+        nom="toute erreur d'Ollama est relancee sur place",
+        banc="banc_cerveaux.py",
+        imite="la relance posee sur toute RuntimeError : un modele qui ne se "
+              "charge pas, ou absent, est redemande pour rien",
+        rougit="temoin : un 404 n'est pas un plantage",
+        editions=[("serveur.py", brut(
+            '                raise RuntimeError(f"ollama {r.status} : {brut_[:160]}")',
+            '                raise PlantageMoteur(f"ollama {r.status} : {brut_[:160]}")'))]),
+    dict(
+        nom="le texte du plantage reste hors du fil",
+        banc="banc_cerveaux.py",
+        imite="le nom de l'exception seul, comme avant : on ne saura jamais ce "
+              "que disait ce 500",
+        rougit="et le fil de la demande garde le texte du plantage",
+        editions=[("serveur.py", brut(
+            'f"{titre} : le moteur d\'Ollama a plante ({e}) — nouvel "',
+            'f"{titre} : le moteur d\'Ollama a plante — nouvel "'))]),
+    dict(
+        nom="le corps du plantage n'est pas borne",
+        banc="banc_cerveaux.py",
+        imite="le corps d'erreur recopie entier : une pile CUDA de trois cents "
+              "caracteres dans chaque ligne du fil",
+        rougit="le corps borne a 160 caracteres",
+        editions=[("serveur.py", brut(
+            '                    plat_ = " ".join(brut_.split())[:160]',
+            '                    plat_ = " ".join(brut_.split())'))]),
+    dict(
+        nom="le plantage se tait sur la sortie du studio",
+        banc="banc_cerveaux.py",
+        imite="le texte garde dans le fil d'une demande, et rien dans le "
+              "journal du conteneur, le seul qu'on relit",
+        rougit="et la sortie du studio en garde le texte",
+        editions=[("serveur.py", brut(
+            "                    print(f\"  [ollama] {corps.get('model')} sur {url or OLLAMA} : \"" + chr(10)
+            + '                          f"{r.status} — {plat_}", flush=True)' + chr(10),
+            ""))]),
+]
+
+
+# LA PAGE SAIT OU ELLE EST SERVIE (ronde 8, 6 novembre 2026) : le meme studio
+# en http et en https, une adresse publique validee par serveur.py, servie par
+# /api/compte, et dont la page tire un lien et les adresses a coller.
+PAGE_HTTPS = [
+    dict(
+        nom="l'adresse publique accepte tout schema",
+        banc="banc_pilotage.py",
+        imite="une adresse non validee : « javascript:… » ou « ftp:// » part dans "
+              "un lien de la page et dans les adresses a coller",
+        rougit="un schema inconnu est refuse",
+        editions=[("serveur.py", brut(
+            '    if schema not in ("http", "https"):' + chr(10)
+            + '        return "", (f"schema',
+            '    if False:' + chr(10)
+            + '        return "", (f"schema'))]),
+    dict(
+        nom="l'adresse publique garde son chemin",
+        banc="banc_pilotage.py",
+        imite="« https://studio.maison/studio » accepte : la page construirait "
+              ".../studio/mcp, que le studio ne sert pas",
+        rougit="une adresse avec un chemin est refusee",
+        editions=[("serveur.py", brut(
+            '    if morceaux.path not in ("", "/") or "?" in brut or "#" in brut:',
+            '    if False:'))]),
+    dict(
+        nom="l'adresse publique garde ses identifiants",
+        banc="banc_pilotage.py",
+        imite="« https://studio@ailleurs » accepte : le lien se lit studio et mene "
+              "ailleurs, et un mot de passe s'affiche dans la page",
+        rougit="des identifiants sont refuses",
+        editions=[("serveur.py", brut(
+            '        return "", "pas d\'identifiants dans l\'adresse (« nom:mot@ »)"',
+            '        pass'))]),
+    dict(
+        nom="une adresse publique vide passe pour une faute",
+        banc="banc_pilotage.py",
+        imite="la variable absente lue comme refusee : chaque demarrage annonce "
+              "une adresse « ignoree » que personne n'a posee",
+        rougit="vide = absente",
+        editions=[("serveur.py", brut(
+            '    if not brut:' + chr(10) + '        return "", ""' + chr(10)
+            + '    # Les caracteres sur lesquels deux lecteurs d\'URL divergent',
+            '    if not brut:' + chr(10) + '        return "", "vide"' + chr(10)
+            + '    # Les caracteres sur lesquels deux lecteurs d\'URL divergent'))]),
+    dict(
+        nom="/api/compte sert l'adresse publique brute",
+        banc="banc_pilotage.py",
+        imite="l'adresse NON VALIDEE servie a la page : la valeur du compose, "
+              "majuscules, chemin et identifiants compris",
+        rougit="/api/compte sert l'adresse publique, sans session",
+        editions=[("serveur.py", brut(
+            '            "adresse_publique": ADRESSE_PUBLIQUE}',
+            '            "adresse_publique": ADRESSE_PUBLIQUE_BRUTE}'))]),
+    dict(
+        nom="la page et le serveur ne nomment plus l'adresse pareil",
+        banc="banc_page.py",
+        imite="le champ renomme d'un seul cote : la page lit undefined, et le lien "
+              "ne vient jamais, sans une erreur",
+        rougit="l'adresse est lue dans /api/compte des sa reponse",
+        editions=[("serveur.py", brut(
+            '            "adresse_publique": ADRESSE_PUBLIQUE}',
+            '            "adresse": ADRESSE_PUBLIQUE}'))]),
+    dict(
+        nom="une adresse publique refusee se tait au demarrage",
+        banc="banc_pilotage.py",
+        imite="une faute de frappe dans le compose ne se voit que par un lien "
+              "qui ne vient pas",
+        rougit="une adresse refusee est dite au demarrage",
+        editions=[("serveur.py", brut(
+            '        print(f"  PUBLIQUE  : STUDIO_ADRESSE_PUBLIQUE ignoree — "' + chr(10)
+            + '              f"{REFUS_ADRESSE_PUBLIQUE}")',
+            '        pass'))]),
+    dict(
+        nom="la variable de l'adresse publique n'arrive pas au conteneur",
+        banc="banc_conteneur.py",
+        imite="la ligne oubliee dans le compose : posee dans .env, elle n'a aucun "
+              "effet en conteneur",
+        rougit="tout ce qui est lu arrive au conteneur par le compose",
+        editions=[("docker-compose.yml", brut(
+            '      STUDIO_ADRESSE_PUBLIQUE: "${STUDIO_ADRESSE_PUBLIQUE:-}"' + chr(10),
+            ''))]),
+    dict(
+        nom="le lien vers https perd le chemin",
+        banc="banc_page.py",
+        imite="le lien vers l'accueil : on quitte la page qu'on regardait, et "
+              "l'on doit la retrouver de l'autre cote",
+        rougit="le lien vise la meme page a l'adresse publique",
+        editions=[("web/index.html", brut(
+            '  a.href = ADRESSE_PUBLIQUE + location.pathname + location.search + location.hash;',
+            '  a.href = ADRESSE_PUBLIQUE + "/";'))]),
+    dict(
+        nom="l'explication http se montre meme en https",
+        banc="banc_page.py",
+        imite="la phrase « le navigateur ne le propose qu'en https » affichee a "
+              "qui est deja en https",
+        rougit="en contexte sur, rien ne change",
+        editions=[("web/index.html", brut(
+            '  if (window.isSecureContext) return;' + chr(10)
+            + '  // La case des notifications porte deja sa phrase',
+            '  // La case des notifications porte deja sa phrase'))]),
+    dict(
+        nom="le lien est propose vers une adresse http",
+        banc="banc_page.py",
+        imite="un lien de http vers http : il promet les notifications et ne "
+              "les donne pas",
+        rougit="le lien n'est propose que vers une adresse https",
+        editions=[("web/index.html", brut(
+            '  if (!ADRESSE_PUBLIQUE.startsWith("https://")) return null;',
+            '  if (!ADRESSE_PUBLIQUE.startsWith("http")) return null;'))]),
+    dict(
+        nom="une des trois adresses a coller manque",
+        banc="banc_page.py",
+        imite="« Brancher un outil » sans /mcp : Claude reste sans adresse a coller",
+        rougit="« Brancher un outil » donne les trois bases que le serveur sert",
+        editions=[("web/index.html", brut(
+            '          ...copiable("page.brancher.openai", base + "/openai/v1"),' + chr(10)
+            + '          ...copiable("page.brancher.mcp", base + "/mcp")];',
+            '          ...copiable("page.brancher.openai", base + "/openai/v1")];'))]),
+    dict(
+        nom="les adresses a coller ignorent l'adresse publique",
+        banc="banc_page.py",
+        imite="location.origin seul : ouvert en http sur l'IP, on colle dans "
+              "Claude une adresse que seul le reseau de la maison atteint",
+        rougit="la base est l'adresse publique si elle est connue",
+        editions=[("web/index.html", brut(
+            '  return ADRESSE_PUBLIQUE || location.origin;',
+            '  return location.origin;'))]),
+    dict(
+        nom="la page ne retient plus l'adresse de /api/compte",
+        banc="banc_page.py",
+        imite="l'accroche perdue dans peindreCompte() : l'adresse est servie et "
+              "jamais lue, ni lien ni adresse publique",
+        rougit="l'adresse est lue dans /api/compte des sa reponse",
+        editions=[("web/index.html", brut(
+            '  retenirAdresse(d);   // ronde 8 : l\'adresse publique, et ce qui en depend' + chr(10),
+            ''))]),
+]
+
+
+# LA RELECTURE DU 6 NOVEMBRE 2026 : six defauts des rondes 5 a 7, chacun
+# prouve par un essai avant d'etre corrige.
+RELECTURE_HUIT = [
+    dict(
+        nom="l'entree juge le moteur seul",
+        banc="banc_pilotage.py",
+        imite="le « meme personnage » compte en retouche a l'entree, puis "
+              "executer() rend une image que le plafond des images ne voit pas",
+        rougit="compte en IMAGE a l'entree",
+        editions=[("serveur.py", brut(
+            '        type_ = _type_a_l_entree(v["modele"], v.get("image"), d.get("demande"))',
+            '        type_ = _type_du_rendu(v["modele"], v.get("image"))'))]),
+    dict(
+        nom="le type a l'entree oublie le meme personnage",
+        banc="banc_pilotage.py",
+        imite="une aide qui ne reprend que le type du moteur : la regle de "
+              "type_effectif n'y entre pas",
+        rougit="compte en IMAGE a l'entree",
+        editions=[("serveur.py", brut(
+            '    return type_effectif({"intention": _type_du_rendu(cle, image), "modele": cle},'
+            + chr(10) + '                         texte or "", image)',
+            '    return _type_du_rendu(cle, image)'))]),
+    dict(
+        nom="la route des retouches laisse l'analyse decider",
+        banc="banc_openai.py",
+        imite="aucun moteur impose sur /images/edits : « le ciel en rose » "
+              "reste une image, refusee a une cle qui permet tout",
+        rougit="la route des retouches impose le moteur d'edition",
+        editions=[("serveur.py", brut(
+            '    elif famille == "retouche" and MOTEUR_RETOUCHE_OPENAI in moteurs_:',
+            '    elif False:'))]),
+    dict(
+        nom="l'enrichissement rate questionne le client muet",
+        banc="banc_pilotage.py",
+        imite="la seconde question d'executer() sans la garde sans_question : "
+              "Open WebUI recoit un 400 « question »",
+        rougit="l'enrichissement rate ne questionne pas une tache « sans_question »",
+        editions=[("serveur.py", brut(
+            '        if plan.get("enrichissement_rate") and not _deja_demande(conv) and not sans_q_:',
+            '        if plan.get("enrichissement_rate") and not _deja_demande(conv):'))]),
+    dict(
+        nom="la reprise du meme personnage perd sa scene",
+        banc="banc_multilingue.py",
+        imite="la consigne posee pour toute reprise : l'image neuve du « meme "
+              "personnage » part avec la phrase brute pour seul prompt",
+        rougit="la reprise du « meme personnage » garde la scene du modele",
+        editions=[("serveur.py", brut(
+            '        if not veut_meme_personnage(texte or ""):' + chr(10)
+            + '            consigne_de_retouche(plan, texte)',
+            '        if True:' + chr(10)
+            + '            consigne_de_retouche(plan, texte)'))]),
+    dict(
+        nom="la bascule ecrase aussi une analyse deja en retouche",
+        banc="banc_multilingue.py",
+        imite="la consigne posee sans regarder l'intention d'avant : la "
+              "consigne que le modele avait ecrite pour l'edition est perdue",
+        rougit="un moteur d'edition IMPOSE sur une analyse « image »",
+        editions=[("serveur.py", brut(
+            '    if (avant != "edition" and plan.get("intention") == "edition"',
+            '    if (plan.get("intention") == "edition"'))]),
+    dict(
+        nom="le moteur impose garde la scene du modele",
+        banc="banc_multilingue.py",
+        imite="executer() sans la bascule : un moteur d'edition choisi sur une "
+              "analyse « image » peint la scene a la place de la photo",
+        rougit="et executer() l'applique au moteur impose",
+        editions=[("serveur.py", brut(
+            '            consigne_si_bascule(plan, avant_force, texte)' + chr(10),
+            ''))]),
+    dict(
+        nom="un plafond sur /openai/v1 redevient une panne",
+        banc="banc_openai.py",
+        imite="le 500 « server_error » d'avant : Open WebUI affiche une panne "
+              "au lieu d'une limite atteinte",
+        rougit="un plafond atteint apres l'analyse : 429",
+        editions=[("serveur.py", brut(
+            '                  else 429 if plafond_ else 500)',
+            '                  else 500)'))]),
+    dict(
+        nom="le plafond sur /openai/v1 ne dit pas quand reessayer",
+        banc="banc_openai.py",
+        imite="un 429 sans Retry-After : le SDK rejoue aussitot, et le client "
+              "ne sait pas que c'est jusqu'a minuit",
+        rougit="un plafond atteint apres l'analyse : 429",
+        editions=[("serveur.py", brut(
+            '                             apres=secondes_avant_minuit() if plafond_ else None)',
+            '                             apres=None)'))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -15170,7 +15664,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
              + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES
-             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE)
+             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

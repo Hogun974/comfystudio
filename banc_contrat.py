@@ -512,6 +512,29 @@ try:
         "chaque « attendre » du contrat est borne a ATTENDRE_MAX",
         ", ".join(fausses) or f"{len(bornes)} champs")
     dit(C.ATTENDRE_MCP == S.ATTENDRE_MCP, "ATTENDRE_MCP est celui de serveur.py")
+    # L'ATTENTE BORNEE DERRIERE UN PROXY. Chaque reponse qui peut suivre une
+    # attente — creer, lire, repondre, /mcp — doit declarer l'en-tete qui dit
+    # qu'elle a ete raccourcie : sinon un client genere ne le lit pas, et prend
+    # l'etat non final rendu au bout de 55 s pour une panne.
+    dit(C.ATTENDRE_PROXY == S.ATTENDRE_PROXY
+        and C.ENTETE_ATTENTE_BORNEE == S.ENTETE_ATTENTE_BORNEE,
+        "ATTENDRE_PROXY et le nom de son en-tete sont ceux de serveur.py",
+        f"{C.ATTENDRE_PROXY} {C.ENTETE_ATTENTE_BORNEE} contre "
+        f"{S.ATTENDRE_PROXY} {S.ENTETE_ATTENTE_BORNEE}")
+    sans_borne = []
+    for chemin, methode, statut in (("/api/v1/rendus", "post", "202"),
+                                    ("/api/v1/rendus", "post", "200"),
+                                    ("/api/v1/rendus/{tid}", "get", "200"),
+                                    ("/api/v1/rendus/{tid}/reponse", "post", "202"),
+                                    ("/mcp", "post", "200")):
+        rep_ = DOC["paths"][chemin][methode]["responses"].get(statut) or {}
+        if "$ref" in rep_:
+            rep_ = resoudre(DOC, rep_["$ref"]) or {}
+        if S.ENTETE_ATTENTE_BORNEE not in (rep_.get("headers") or {}):
+            sans_borne.append(f"{methode.upper()} {chemin} {statut}")
+    dit(not sans_borne,
+        "chaque reponse qui suit une attente declare l'en-tete X-Attente-Bornee",
+        ", ".join(sans_borne) or "toutes")
     dit(C.LIEN_DUREE == S.LIEN_DUREE, "LIEN_DUREE est celui de serveur.py")
     dit((C.IDEMPOTENCE_DUREE, C.IDEMPOTENCE_LONGUEUR)
         == (S.IDEMPOTENCE_DUREE, S.IDEMPOTENCE_LONGUEUR),

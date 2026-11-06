@@ -29,6 +29,7 @@ set OLLAMA_URL=http://localhost:11434
 | `STUDIO_HOTE` | `127.0.0.1` | `0.0.0.0` ouvre au réseau local |
 | `STUDIO_PORT` | `8199` | le port d'écoute |
 | `STUDIO_PORT_HOTE` | *le port d'écoute* | le port **publié** quand il diffère de celui d'écoute — posé par Compose, sert aux commandes affichées à l'écran |
+| `STUDIO_ATTENTE_PROXY` | `55` | secondes, au plus, qu'une requête de programme arrivée **par un reverse proxy** (`X-Forwarded-For` ou `X-Forwarded-Proto`) attend un rendu, quoi que demande `attendre` : sous les 60 s d'un nginx laissé par défaut et les 90 s du nginx-proxy-manager, qui couperaient sinon en 504. La réponse rend alors l'état courant, avec l'en-tête `X-Attente-Bornee`. Une requête directe garde son `attendre`. `0` : aucune attente derrière un proxy — voir [Piloter par programme](piloter-par-programme.md#demander-un-rendu--post-apiv1rendus) |
 
 ## Modèles de langage
 
@@ -70,6 +71,7 @@ Voir [Clés d'API](cles-api.md).
 | Variable | Défaut | |
 |---|---|---|
 | `STUDIO_AUTH` | `obligatoire` | `libre` supprime la connexion — quiconque atteint le port peut alors tout faire, clés comprises |
+| `STUDIO_ADRESSE_PUBLIQUE` | *(absent)* | l'adresse du studio derrière un reverse proxy TLS, schéma et nom seulement : `https://studio.maison`, sans chemin ni identifiants. Ouverte en http, la page y propose un lien là où le navigateur refuse (notifications, installation comme application), et les adresses à coller dans un outil (*clés d'accès › Brancher un outil*) partent d'elle. Mal formée, elle est ignorée et la bannière de démarrage dit pourquoi |
 | `STUDIO_ADMIN_MDP` | *(tiré au sort)* | mot de passe du compte `admin`, posé avant le premier démarrage |
 | `STUDIO_ADMIN` | *(tiré au sort et conservé)* | le jeton de `/admin`. En imposer un à la main est possible ; rien n'en contrôle la longueur, et un jeton court se force — la porte freine à partir du troisième essai, l'attente doublant à chaque échec, mais cela reste un mauvais choix |
 

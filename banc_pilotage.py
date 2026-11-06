@@ -76,6 +76,9 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 DOSSIER = tempfile.mkdtemp(prefix="banc_pilotage_")
 os.environ["STUDIO_DONNEES"] = DOSSIER
 os.environ["STUDIO_AUTH"] = "obligatoire"
+# L'adresse publique en forme brute — majuscules, « / » final — pour eprouver
+# la lecture ET la normalisation (section 20).
+os.environ["STUDIO_ADRESSE_PUBLIQUE"] = "HTTPS://Studio.Banc.TEST/"
 # LE DOSSIER D'ENTREE DE COMFYUI, ET LE SIEN SEULEMENT. Sans ces deux lignes le
 # studio vise le ComfyUI voisin du depot : l'image en base64 du cas 5 serait
 # ecrite dans son vrai dossier input, et purger_entrees() y ferait le menage.
@@ -1158,6 +1161,26 @@ async def lire_rendu(cle, tid):
                        S.api_v1_rendu)
 
 
+# Ce que pose le nginx-proxy-manager de production devant le studio.
+PAR_LE_PROXY = {"X-Forwarded-For": "172.20.1.12", "X-Forwarded-Proto": "https"}
+
+
+async def chronometre(appel_, plafond=8):
+    """(statut, corps, reponse, secondes). PLAFONNE : si la borne du proxy
+    saute, une attente de 300 s ne doit pas tenir le banc cinq minutes — elle
+    est coupee, et rendue comme un echec (statut None)."""
+    debut = time.monotonic()
+    try:
+        st, c, r = await asyncio.wait_for(appel_, plafond)
+    except asyncio.TimeoutError:
+        return None, None, None, float(plafond)
+    return st, c, r, time.monotonic() - debut
+
+
+def borne_lue(r):
+    return r.headers.get("X-Attente-Bornee") if r is not None else "(pas de reponse)"
+
+
 async def s_lire():
     remise_a_zero()
     tid, _conv = poser_rendu(F_N8N, "en cours")
@@ -1250,6 +1273,50 @@ async def s_lire():
     duree = time.monotonic() - debut
     dit(st == 200 and (c or {}).get("etat") == "fini" and duree < 3,
         "?attendre=5 rend la main des que le rendu est fini", f"{(c or {}).get('etat')} en {duree:.1f} s")
+
+    # DERRIERE UN PROXY, L'ATTENTE EST BORNEE. Le NPM de production coupe a
+    # 90 s : un « attendre: 300 » y finissait en 504, le client sans rien.
+    # ATTENDRE_PROXY ramene a une seconde : le banc ne dure pas 55 s.
+    vrai_proxy = S.ATTENDRE_PROXY
+    S.ATTENDRE_PROXY = 1
+    try:
+        # Une cle neuve : celle de n8n a deja sa file pleine des rendus poses
+        # plus haut, et un 429 ne mesurerait rien.
+        k_proxy = nouvelle_cle("jordan", "derriere le proxy", nuage=False)["cle"]
+        st, c, r, duree = await chronometre(lancer(k_proxy, {"demande": "un chat", "attendre": 300},
+                                                   entetes=PAR_LE_PROXY))
+        dit(st == 202 and (c or {}).get("etat") not in S.ETATS_FINAUX and duree < 3,
+            "par un proxy, POST « attendre: 300 » rend la main a ATTENDRE_PROXY, "
+            "avec l'etat courant et non une erreur",
+            f"HTTP {st} {(c or {}).get('etat')} en {duree:.1f} s")
+        dit(borne_lue(r) == "1",
+            "et la reponse le dit : X-Attente-Bornee = ATTENDRE_PROXY", repr(borne_lue(r)))
+        vider_file()
+        tid_p, _conv = poser_rendu(F_N8N, "en cours")
+        st, c, r, duree = await chronometre(appel(
+            Req(f"/api/v1/rendus/{tid_p}", cle=K_N8N, match={"tid": tid_p},
+                requete={"attendre": "300"}, entetes={"X-Forwarded-Proto": "https"}),
+            S.api_v1_rendu))
+        dit(st == 200 and (c or {}).get("etat") == "en_cours" and duree < 3
+            and borne_lue(r) == "1",
+            "GET ?attendre=300 par un proxy (X-Forwarded-Proto seul) : bornee, et dit",
+            f"HTTP {st} en {duree:.1f} s, en-tete {borne_lue(r)!r}")
+        st, c, r, duree = await chronometre(appel(
+            Req(f"/api/v1/rendus/{tid_p}", cle=K_N8N, match={"tid": tid_p},
+                requete={"attendre": "3"}), S.api_v1_rendu))
+        dit(st == 200 and duree >= 2.9 and borne_lue(r) is None,
+            "temoin : sans en-tete de proxy, ?attendre=3 attend ses trois secondes, sans "
+            "X-Attente-Bornee", f"HTTP {st} en {duree:.1f} s, en-tete {borne_lue(r)!r}")
+        S.ATTENDRE_PROXY = 2
+        st, c, r, duree = await chronometre(appel(
+            Req(f"/api/v1/rendus/{tid_p}", cle=K_N8N, match={"tid": tid_p},
+                requete={"attendre": "1"}, entetes={"X-Forwarded-For": "172.20.1.12"}),
+            S.api_v1_rendu))
+        dit(st == 200 and 0.9 <= duree < 1.8 and borne_lue(r) is None,
+            "par un proxy, une attente deja plus courte que la borne n'est ni allongee "
+            "ni dite bornee", f"HTTP {st} en {duree:.1f} s, en-tete {borne_lue(r)!r}")
+    finally:
+        S.ATTENDRE_PROXY = vrai_proxy
 
     # Les groupes de variantes.
     conv = conv_de_programme(F_N8N)
@@ -1694,6 +1761,37 @@ async def s_mcp():
     res = (c or {}).get("result") or {}
     dit(st == 200 and res.get("isError") is True and "error" not in (c or {}),
         "etat_rendu sur le rendu d'une autre cle : isError, sans exception", f"HTTP {st}")
+
+    # L'OUTIL ATTEND AUSSI, et le client peut demander jusqu'a ATTENDRE_MAX :
+    # derriere le proxy, la meme borne, dite par le meme en-tete.
+    vrai_proxy = S.ATTENDRE_PROXY
+    S.ATTENDRE_PROXY = 1
+    try:
+        tid_p, _conv = poser_rendu(F_N8N, "en cours")
+
+        def etat_par(attendre, entetes):
+            return appel(Req("/mcp", "POST", cle=K_N8N, corps=rpc(
+                "tools/call", {"name": "etat_rendu",
+                               "arguments": {"id": tid_p, "attendre": attendre}}),
+                entetes=dict({"MCP-Protocol-Version": "2025-06-18"}, **entetes)), S.api_mcp)
+
+        st, c, r, duree = await chronometre(etat_par(300, PAR_LE_PROXY))
+        sc = ((c or {}).get("result") or {}).get("structuredContent") or {}
+        dit(st == 200 and sc.get("etat") == "en_cours" and duree < 3 and borne_lue(r) == "1",
+            "etat_rendu (attendre 300) par un proxy : bornee a ATTENDRE_PROXY, l'etat "
+            "courant, et X-Attente-Bornee", f"HTTP {st} {sc.get('etat')} en {duree:.1f} s, "
+                                            f"en-tete {borne_lue(r)!r}")
+        st, c, r, duree = await chronometre(etat_par(3, {}))
+        dit(st == 200 and duree >= 2.9 and borne_lue(r) is None,
+            "temoin : etat_rendu (attendre 3) sans proxy attend ses trois secondes",
+            f"HTTP {st} en {duree:.1f} s, en-tete {borne_lue(r)!r}")
+        S.ATTENDRE_PROXY = 2
+        st, c, r, duree = await chronometre(etat_par(1, PAR_LE_PROXY))
+        dit(st == 200 and 0.9 <= duree < 1.8 and borne_lue(r) is None,
+            "etat_rendu (attendre 1) par un proxy : deja sous la borne, inchange",
+            f"HTTP {st} en {duree:.1f} s, en-tete {borne_lue(r)!r}")
+    finally:
+        S.ATTENDRE_PROXY = vrai_proxy
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -2519,6 +2617,36 @@ async def s_operations():
             return S.TACHES[tid_].get("etat"), appels["enrichir"]
         avec_q = await questionner(False)
         sans_q = await questionner(True)
+        # L'ENRICHISSEMENT RATE pose SA question, plus bas dans executer() :
+        # elle aussi epargne le client qui ne sait pas repondre (relecture du
+        # 6 novembre 2026).
+        async def enrichi_rate(plan, texte, tid):
+            return dict(plan, enrichissement_rate=True)
+
+        async def traduit(plan, tid):
+            return plan
+
+        garde_e = (S.enrichir, S.traduire)
+        S.enrichir, S.traduire = enrichi_rate, traduit
+        try:
+            async def rate_(sans):
+                plan_du_banc.clear()
+                plan_du_banc.update({"intention": "image", "modele": "klein4b",
+                                     "prompt": "a cat", "raison": "banc", "parametres": {},
+                                     "largeur": 1024, "hauteur": 1024})
+                tid_, conv_ = poser_rendu(F_N8N, "en cours")
+                if sans:
+                    S.TACHES[tid_]["api"]["sans_question"] = True
+                await S.executer(tid_, "un chat", conv_)
+                return S.TACHES[tid_].get("etat")
+            avec_e = await rate_(False)
+            sans_e = await rate_(True)
+        finally:
+            S.enrichir, S.traduire = garde_e
+        dit(avec_e == "question" and sans_e != "question",
+            "l'enrichissement rate ne questionne pas une tache « sans_question » "
+            "(temoin : sans la marque, la question part)",
+            f"avec {avec_e}, sans {sans_e}")
         dit(avec_q == ("question", 0) and sans_q[0] != "question" and sans_q[1] == 1,
             "une tache « sans_question » n'est pas questionnee : executer() rend "
             "sa meilleure lecture (temoin : sans la marque, la question part)",
@@ -2837,6 +2965,28 @@ async def s_plafonds_famille():
         "comptee : executer() ne la recomptera pas", repr(marque_v))
     vider_file()
 
+    # ── LE « MEME PERSONNAGE » A L'ENTREE (relecture du 6 novembre 2026) ──
+    # « edition » + une image + « le meme personnage » est une image neuve
+    # dans executer() : l'entree la compte en image, sinon une cle a une image
+    # et vingt retouches par jour faisait vingt images.
+    st_p, c_p, _r = await appel(Req("/api/compte/acces", "POST", cookies=biscuit,
+                                    corps={"mdp": MDP, "nom": "une image par jour",
+                                           "par_jour_familles": {"image": 1}}),
+                                S.api_creer_acces)
+    k_p = (c_p or {}).get("cle")
+    st_a, c_a, _r = await lancer(k_p, {"demande": "un renard", "moteur": "klein4b"})
+    st_m, c_m, _r = await lancer(k_p, {"demande": "le meme personnage sur une plage",
+                                       "moteur": "edition", "image_base64": PNG_FACTICE})
+    st_t, c_t, _r = await lancer(k_p, {"demande": "plus de bleu dans le ciel",
+                                       "moteur": "edition", "image_base64": PNG_FACTICE})
+    dit(st_p == 201 and st_a == 202 and st_m == 429 and code(c_m) == "cle_plafond_famille"
+        and st_t == 202,
+        "une retouche du « meme personnage » a moteur impose compte en IMAGE a "
+        "l'entree, et le plafond des images l'arrete (temoin : une vraie retouche passe)",
+        f"cle {st_p}, image {st_a} {code(c_a)}, meme personnage {st_m} {code(c_m)}, "
+        f"retouche {st_t} {code(c_t)}")
+    vider_file()
+
     # LES VARIANTES COMPTENT, et plus de variantes que le plafond lui-meme
     # n'annonce aucun delai : minuit n'y changera rien.
     k_var = nouvelle_cle("noe", "trois images", par_jour_familles={"image": 3},
@@ -3034,6 +3184,82 @@ async def s_plafonds_famille():
         S.aiguiller, S.enrichir, S.soumettre_robuste = garde
         S.EN_FILE.clear()
 
+# ══════════════════════════════════════════════════════════════════════
+#  20. L'adresse publique (ronde 8)
+# ══════════════════════════════════════════════════════════════════════
+# STUDIO_ADRESSE_PUBLIQUE part dans un lien que la page propose de cliquer et
+# dans les adresses qu'on colle dans n8n ou Claude : une valeur mal formee
+# doit etre IGNOREE, pas reparee, et /api/compte — la route que la page lit
+# au chargement, sans session — doit la servir telle que validee.
+async def s_adresse_publique():
+    lire = S.lire_adresse_publique
+    # La variable est posee en tete de ce banc, avant l'import : c'est la
+    # lecture de l'environnement qui est eprouvee ici, pas une affectation.
+    dit(S.ADRESSE_PUBLIQUE == "https://studio.banc.test"
+        and S.REFUS_ADRESSE_PUBLIQUE == "",
+        "la variable est lue au chargement, normalisee (minuscules, « / » final "
+        "retire)", repr(S.ADRESSE_PUBLIQUE))
+    dit(lire("https://studio.lan.egaonoinu.re")
+        == ("https://studio.lan.egaonoinu.re", ""),
+        "une adresse https est acceptee telle quelle")
+    dit(lire("https://studio.maison:8443/") == ("https://studio.maison:8443", "")
+        and lire("http://172.20.1.191:8199") == ("http://172.20.1.191:8199", ""),
+        "un port est garde, et http est accepte (il sert aux adresses a coller)")
+    for brut_, quoi in (("", "vide"), ("   ", "des espaces seuls"),
+                        (None, "None")):
+        dit(lire(brut_) == ("", ""),
+            f"vide = absente : {quoi} ne donne ni adresse ni refus",
+            repr(lire(brut_)))
+
+    def refusee(brut_):
+        adresse, refus = lire(brut_)
+        return adresse == "" and bool(refus), refus
+
+    for brut_ in ("ftp://studio.maison", "javascript:alert(1)",
+                  "studio.maison", "file:///etc/passwd"):
+        vrai, refus = refusee(brut_)
+        dit(vrai, f"un schema inconnu est refuse : {brut_!r}", refus)
+    for brut_ in ("https://studio.maison/studio", "https://studio.maison/mcp",
+                  "https://studio.maison/?a=1", "https://studio.maison/#x"):
+        vrai, refus = refusee(brut_)
+        dit(vrai, f"une adresse avec un chemin est refusee : {brut_!r}", refus)
+    for brut_ in ("https://moi:mdp@studio.maison", "https://studio.maison@ailleurs",
+                  "https://@studio.maison"):
+        vrai, refus = refusee(brut_)
+        dit(vrai, f"des identifiants sont refuses : {brut_!r}", refus)
+    for brut_ in ("https://studio maison", "https://studio.maison:99999",
+                  "https://studio.maison\\x", "https://"):
+        vrai, refus = refusee(brut_)
+        dit(vrai, f"une adresse illisible ou sans machine est refusee : {brut_!r}",
+            refus)
+
+    # LA ROUTE. Sans session : la page la lit avant toute connexion, et c'est
+    # le visiteur arrive par http qui a besoin du lien.
+    avant = S.ADRESSE_PUBLIQUE
+    try:
+        st, c, _r = await appel(Req("/api/compte"), S.api_compte)
+        dit(st == 200 and (c or {}).get("adresse_publique") == avant,
+            "/api/compte sert l'adresse publique, sans session",
+            f"HTTP {st} {(c or {}).get('adresse_publique')!r}")
+        S.ADRESSE_PUBLIQUE = ""
+        st, c, _r = await appel(Req("/api/compte"), S.api_compte)
+        dit(st == 200 and (c or {}).get("adresse_publique") == "",
+            "et une chaine vide quand elle n'est pas posee : la page retombe "
+            "sur location.origin", f"HTTP {st} {c!r}"[:120])
+    finally:
+        S.ADRESSE_PUBLIQUE = avant
+
+    # LE MESSAGE AU DEMARRAGE : la banniere nomme le refus. Relue dans le
+    # texte — elle n'est jouee que sous « __main__ ».
+    arbre = ast.parse(brut_du_fichier(os.path.join(ICI, "serveur.py")))
+    principal_ = next((n for n in arbre.body if isinstance(n, ast.If)
+                       and "__main__" in ast.unparse(n.test)), None)
+    imprime = [ast.unparse(n) for n in ast.walk(principal_ or ast.Module(body=[]))
+               if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "print"]
+    dit(any("REFUS_ADRESSE_PUBLIQUE" in p and "ignoree" in p for p in imprime),
+        "une adresse refusee est dite au demarrage, avec sa raison",
+        f"{len(imprime)} print relus")
+
 
 def brut_du_fichier(chemin):
     with open(chemin, encoding="utf-8") as f:
@@ -3061,7 +3287,8 @@ async def principal():
             ("16. un rappel en cours survit a un redemarrage", s_rappels_persistants),
             ("17. ce que la cle peut faire", s_operations),
             ("18. le suivi des cles", s_suivi),
-            ("19. le plafond du jour par famille", s_plafonds_famille)):
+            ("19. le plafond du jour par famille", s_plafonds_famille),
+            ("20. l'adresse publique", s_adresse_publique)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

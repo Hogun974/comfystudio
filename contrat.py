@@ -53,6 +53,10 @@ ATTENDRE_MAX = 600
 # l'egalite, parce qu'une borne recopiee a la main derive.
 LISTE_MAX = 100
 ATTENDRE_MCP = 45
+# Recopie du DEFAUT de serveur.ATTENDRE_PROXY (STUDIO_ATTENTE_PROXY le
+# change) et du nom de l'en-tete qui le dit : banc_contrat.py exige l'egalite.
+ATTENDRE_PROXY = 55
+ENTETE_ATTENTE_BORNEE = "X-Attente-Bornee"
 ETATS = ("en_file", "en_cours", "attente_machine", "question",
          "fini", "erreur", "annule")
 ETATS_FINAUX = ("question", "fini", "erreur", "annule")
@@ -564,6 +568,19 @@ def _parametres():
     }
 
 
+def _attente_bornee():
+    """L'en-tete d'une attente raccourcie derriere un reverse proxy."""
+    return {ENTETE_ATTENTE_BORNEE: {
+        "schema": {"type": "integer", "minimum": 0},
+        "description": "Posé quand la requête est arrivée par un reverse "
+                       "proxy (X-Forwarded-For ou X-Forwarded-Proto) et "
+                       "demandait d'attendre plus longtemps : l'attente a "
+                       f"été bornée à ce nombre de secondes ({ATTENDRE_PROXY} "
+                       "par défaut, STUDIO_ATTENTE_PROXY), sous le délai du "
+                       "proxy. Le rendu suit son cours : relire GET "
+                       "/api/v1/rendus/{id}."}}
+
+
 def _reponses():
     refus = {"content": _json(_ref("schemas", "Refus"))}
     return {
@@ -586,7 +603,8 @@ def _reponses():
         "Inconnu": dict(refus, description="rendu_inconnu."),
         "UnRendu": {
             "description": "Le rendu.",
-            "headers": {"Location": {"schema": {"type": "string"}}},
+            "headers": dict({"Location": {"schema": {"type": "string"}}},
+                            **_attente_bornee()),
             "content": _json(_ref("schemas", "Rendu"))},
         "UnFichier": {
             "description": "Les octets du fichier, avec son type.",
@@ -612,7 +630,8 @@ def _chemins():
     rendu_cree = {
         "description": "Accepté, pas encore fini (ou fini dans le délai : "
                        "200). Location désigne le rendu.",
-        "headers": {"Location": {"schema": {"type": "string"}}},
+        "headers": dict({"Location": {"schema": {"type": "string"}}},
+                        **_attente_bornee()),
         "content": _json(_ref("schemas", "Rendu"))}
     return {
         "/api/v1/rendus": {"get": {
@@ -646,7 +665,8 @@ def _chemins():
                         "headers": {
                             "Location": {"schema": {"type": "string"}},
                             "Idempotent-Replayed": {
-                                "schema": {"type": "string", "enum": ["true"]}}},
+                                "schema": {"type": "string", "enum": ["true"]}},
+                            **_attente_bornee()},
                         "content": _json(_ref("schemas", "Rendu"))}})}},
         "/api/v1/rendus/{tid}": {
             "get": {
@@ -758,6 +778,7 @@ def _chemins():
                             "content": _json(_ref("schemas", "JsonRpc"))},
             "responses": {
                 "200": {"description": "La réponse JSON-RPC.",
+                        "headers": _attente_bornee(),
                         "content": _json(_ref("schemas", "JsonRpc"))},
                 "202": {"description": "Une notification : pas de corps."},
                 "400": {"description": "Version MCP refusée (erreur JSON-RPC "

@@ -1990,6 +1990,37 @@ TEXTES = {
         "fr": "j'ai copié",
         "en": "I have copied it"},
 
+    # ── ronde 8 : la page sait ou elle est servie ───────────────────
+    # Le lien vers l'adresse https, a cote de ce qui ne marche qu'en contexte
+    # sur, et les trois adresses de base a coller dans un outil. Aucune ne
+    # porte la cle : elle se donne a part, et la phrase le dit.
+    "page.brancher.https.lien": {
+        "fr": "ouvrir cette page en https",
+        "en": "open this page over https"},
+    "page.brancher.appli": {
+        "fr": "installer comme application : le navigateur ne le propose "
+              "qu'en https",
+        "en": "install as an app: browsers only offer it over https"},
+    "page.brancher.titre": {
+        "fr": "Brancher un outil",
+        "en": "Connect a tool"},
+    "page.brancher.pourquoi": {
+        "fr": "Les adresses à coller dans l'outil. La clé se donne à part, "
+              "dans l'en-tête « Authorization: Bearer » : elle n'est dans "
+              "aucune d'elles.",
+        "en": "The addresses to paste into the tool. The key goes "
+              "separately, in the “Authorization: Bearer” header: it is in "
+              "none of them."},
+    "page.brancher.v1": {
+        "fr": "n8n, scripts — adresse de base de l'API :",
+        "en": "n8n, scripts — API base address:"},
+    "page.brancher.openai": {
+        "fr": "Open WebUI, LibreChat, SDK openai — Base URL :",
+        "en": "Open WebUI, LibreChat, openai SDK — Base URL:"},
+    "page.brancher.mcp": {
+        "fr": "Claude (MCP) — adresse du serveur :",
+        "en": "Claude (MCP) — server address:"},
+
     # ── les interrupteurs de nuage ──────────────────────────────────
     "page.nuage.plafond.title": {
         "fr": "{libelle} : plafond du mois atteint ({faits} appels distants "

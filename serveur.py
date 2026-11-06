@@ -3338,6 +3338,10 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # lire, et non decouvrir une exception.
     reprise_ = None
     degenere_ = None
+    # UN PLANTAGE DU MOTEUR, UNE SEULE RELANCE PAR APPEL — toutes adresses
+    # confondues : la machine qui a plante une fois sur cet appel ne gagne pas
+    # une seconde relance parce qu'une autre a plante aussi.
+    relance_ = []
     for rang_, (url, ident) in enumerate(cerveaux):
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
         delai = ANALYSE_DELAI
@@ -3434,7 +3438,8 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                          for u, i in cerveaux[rang_ + 1:])
             delai = ((300 if reste_ else 900) if ici.get("images")
                      else 900 if ecriture else ANALYSE_DELAI)
-            rendu, coupe_ = await _ollama_essai(ici, url, delai)
+            rendu, coupe_ = await _essai_ou_relance(ici, url, delai, titre_ol,
+                                                    tid, relance_)
             modele_ici = ici.get("model") or ""
             # Vide AVEC un champ « error », c'est un modele qui ne se charge
             # pas : _ollama_local l'a deja ecarte, et le decharger n'y peut
@@ -3469,7 +3474,8 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                     reprise_ = trace_
                     degenere_ = rendu
                     reprise_["issue"] = "reprise sans reponse"
-                    rendu, coupe_ = await _ollama_essai(ici, url, delai)
+                    rendu, coupe_ = await _essai_ou_relance(
+                        ici, url, delai, titre_ol, tid, relance_)
                     encore_ = coupe_ or forme_degeneree(rendu)
                     reprise_["issue"] = ("toujours degeneree"
                                          if encore_ else "reparee")
@@ -3697,6 +3703,39 @@ def _repetition_coupee(texte):
     return "token repeat limit" in (texte or "").lower()
 
 
+class ReponseTronquee(ReponseDegeneree):
+    """Ollama a arrete une reponse JSON a sa borne avant la fin de l'objet.
+
+    « done_reason » vaut « length » : num_predict (LONGUEUR_JSON) ou le
+    contexte atteint. Le studio le DEVINAIT apres coup, en ratant le JSON —
+    « reponse mal formee », seconde tentative, puis les mots-cles. Ollama le
+    dit pourtant dans la reponse meme. Une reponse coupee est degeneree : un
+    plan tient en quelques centaines de jetons, mille sont une boucle (mesure
+    du 5 novembre 2026, « croute croustillante doree » repetee).
+
+    Elle porte le texte coupe : s'il n'y a rien de mieux, c'est lui que
+    l'appelant recoit, comme avant — il le declarera mal forme et en citera le
+    debut et la fin dans le fil.
+    """
+
+    def __init__(self, message, rendu=""):
+        super().__init__(message)
+        self.rendu = rendu
+
+
+class PlantageMoteur(RuntimeError):
+    """Un 5xx d'Ollama qui n'est ni un chargement rate ni une repetition coupee.
+
+    Le cas vu le 5 novembre 2026 dans le journal du PC : « CUDA error: an
+    illegal memory access was encountered », llama-server termine, et Ollama
+    le relance tout seul ~2 s plus tard. Le studio le prenait pour une adresse
+    en panne et partait a la suivante — le NAS, sur PROCESSEUR, 2 a 5 minutes
+    par analyse — ou, sans suivante, aux mots-cles. RuntimeError, comme
+    l'erreur qu'elle remplace : un appelant qui ne la connait pas la traite
+    comme avant.
+    """
+
+
 def _casse_ici(url, nom):
     """Ce modele a-t-il deja echoue A CETTE ADRESSE."""
     return (url or OLLAMA, nom) in MODELES_CASSES
@@ -3889,9 +3928,20 @@ async def _ollama_local(corps, url=None, secondes=900):
                 # modele —, et jamais au dechargement ni a la mise de cote.
                 elif _repetition_coupee(brut_):
                     raise ReponseDegeneree(f"ollama {r.status} : {brut_[:160]}")
+                elif r.status >= 500:
+                    # LE TEXTE DE CE 500, ON NE LE CONNAIT PAS : le studio ne
+                    # le gardait nulle part, et le plantage du 5 novembre ne
+                    # s'est lu que dans le journal d'Ollama. Les 160 premiers
+                    # caracteres, sur une ligne : c'est un message d'Ollama,
+                    # rien de secret, mais un corps d'erreur n'a pas de borne.
+                    plat_ = " ".join(brut_.split())[:160]
+                    print(f"  [ollama] {corps.get('model')} sur {url or OLLAMA} : "
+                          f"{r.status} — {plat_}", flush=True)
+                    raise PlantageMoteur(f"ollama {r.status} : {plat_}")
                 raise RuntimeError(f"ollama {r.status} : {brut_[:160]}")
             d = await r.json()
             rep_ = d.get("response", "")
+            relever_contexte(url or OLLAMA, corps, d)
             if not rep_.strip() and _repetition_coupee(str(d.get("error") or "")):
                 # La meme coupure, dite en 200 par un Ollama plus ancien : sans
                 # ce tri, le champ « error » ecartait le modele comme s'il ne se
@@ -3918,7 +3968,32 @@ async def _ollama_local(corps, url=None, secondes=900):
                       f"fini={d.get('done')} arret={d.get('done_reason')} "
                       f"jetons={d.get('eval_count')} "
                       f"erreur={str(d.get('error'))[:80]}", flush=True)
+            if rep_.strip() and d.get("done_reason") == "length":
+                # EN JSON SEULEMENT, ce « length » est une reponse coupee. Le
+                # texte libre — des paroles de chanson, une description — peut
+                # etre long pour de bon, et n'a pas de num_predict : il ne
+                # s'arrete la qu'au bout du contexte, et ce qu'il a ecrit reste
+                # utilisable. On le dit, on ne le repare pas. Et un objet
+                # ENTIER suivi de blancs jusqu'a la borne n'est pas coupe :
+                # lire_objet_json le lit tres bien, le jeter serait un recul.
+                if corps.get("format") and not _objet_entier(rep_):
+                    raise ReponseTronquee(
+                        f"ollama : reponse JSON arretee a sa borne "
+                        f"({d.get('eval_count')} jetons, done_reason length)",
+                        rep_)
+                print(f"  [ollama] {corps.get('model')} s'est arrete a sa borne "
+                      f"(done_reason length, {d.get('eval_count')} jetons) — "
+                      f"reponse rendue telle quelle", flush=True)
             return rep_
+
+
+def _objet_entier(texte):
+    """Le texte porte-t-il un objet JSON complet, tel que l'analyse le lira."""
+    try:
+        lire_objet_json(texte)
+        return True
+    except json.JSONDecodeError:
+        return False
 
 
 async def _ollama_essai(ici, url, delai):
@@ -3927,8 +4002,41 @@ async def _ollama_essai(ici, url, delai):
     rien de mieux ne vient, comme d'un 200 vide."""
     try:
         return await _ollama_local(ici, url, delai), ""
+    except ReponseTronquee as e:
+        # LE MEME CHEMIN QUE LA COUPURE — decharger, retenter, mettre de cote —
+        # sous son propre nom : la console doit dire laquelle des deux bornes a
+        # coupe, la repetition d'Ollama ou la longueur.
+        return e.rendu, "longueur"
     except ReponseDegeneree:
         return "", "coupee"
+
+
+# COMBIEN ATTENDRE AVANT DE RELANCER UN MOTEUR QUI A PLANTE. Ollama relance
+# llama-server ~2 s apres le plantage (journal du PC, 5 novembre 2026) : 3 s
+# laissent une marge, et coutent cent fois moins que le detour par le NAS sur
+# processeur.
+PAUSE_PLANTAGE = 3
+
+
+async def _essai_ou_relance(ici, url, delai, titre, tid, relance):
+    """_ollama_essai, et sur un plantage du moteur UNE relance au meme endroit.
+
+    « relance » est la liste propre a l'appel : non vide, la relance de cet
+    appel est deja prise, et le plantage suit le chemin d'avant — la machine
+    suivante. Jamais de boucle : un moteur qui replante juste apres sa relance
+    n'est plus une faute passagere.
+    """
+    try:
+        return await _ollama_essai(ici, url, delai)
+    except PlantageMoteur as e:
+        if relance:
+            journal(tid, f"{titre} : le moteur a plante de nouveau ({e})")
+            raise
+        relance.append(url)
+        journal(tid, f"{titre} : le moteur d'Ollama a plante ({e}) — nouvel "
+                     f"essai sur la meme machine dans {PAUSE_PLANTAGE} s")
+        await asyncio.sleep(PAUSE_PLANTAGE)
+        return await _ollama_essai(ici, url, delai)
 
 
 # L'ANCIENNE REGLE, gardee comme echappatoire et ETEINTE PAR DEFAUT.
@@ -4378,6 +4486,8 @@ async def reparer_degenere(url, modele, forme, tid, titre):
     # 500 — ce n'est plus « sans erreur ».
     quoi = {"vide": "une reponse vide sans erreur",
             "coupee": "une repetition qu'Ollama a coupee (token repeat limit)",
+            "longueur": "une reponse JSON arretee a sa borne avant la fin "
+                        "(done_reason length)",
             }.get(forme, "du charabia (un meme caractere repete) sans erreur")
     ident = cerveau(url).get("noeud")
     if ident and (noeud(ident) or {}).get("pause"):
@@ -4401,6 +4511,61 @@ async def reparer_degenere(url, modele, forme, tid, titre):
                  + ("modele decharge pour le reparer" if trace["decharge"]
                     else "le dechargement n'a pas abouti"))
     return trace
+
+
+# ══ LE CONTEXTE DE L'ANALYSE, TEL QU'OLLAMA L'A COMPTE ═════════════════
+# LE GABARIT GROSSIT AVEC LE CATALOGUE, et le jour ou il approche de
+# CONTEXTE_LLM, les plans se coupent sans que rien ne l'annonce : c'est ce qui
+# s'est passe a 4096, mesure du 5 novembre 2026 (~3870 jetons de gabarit).
+# Ollama compte les jetons du prompt a chaque appel (« prompt_eval_count ») ;
+# on retient ce compte pour L'ANALYSE — un appel JSON sans image, aujourd'hui
+# le seul est le plan — par (adresse, modele), et la console le montre AVANT
+# que les plans se coupent.
+SEUIL_CONTEXTE = 0.75
+# Un parc compte deux ou trois machines : vingt couples suffisent, et la
+# memoire ne grossit pas avec les noms.
+CONTEXTE_VU_MAX = 20
+# (adresse, modele) -> {"jetons", "plus_haut", "quand"}
+CONTEXTE_VU = {}
+
+
+def relever_contexte(url, corps, d):
+    """Retient les jetons du prompt d'une analyse, tels qu'Ollama les a lus."""
+    n = d.get("prompt_eval_count")
+    if (not corps.get("format") or corps.get("images")
+            or not isinstance(n, int) or n <= 0):
+        return
+    cle = (url, corps.get("model") or "")
+    avant = CONTEXTE_VU.get(cle) or {}
+    # LE PLUS HAUT AUSSI, et c'est lui qui leve le drapeau. Un prompt dont le
+    # debut est deja en cache peut n'etre compte qu'en partie : le dernier
+    # compte seul dirait « a moitie vide » d'un gabarit qui deborde.
+    CONTEXTE_VU[cle] = {"jetons": n, "plus_haut": max(n, avant.get("plus_haut", 0)),
+                        "quand": time.time()}
+    while len(CONTEXTE_VU) > CONTEXTE_VU_MAX:
+        del CONTEXTE_VU[min(CONTEXTE_VU, key=lambda c: CONTEXTE_VU[c]["quand"])]
+
+
+def releve_contexte():
+    """Pour la console : le contexte annonce, et ce que l'analyse en prend."""
+    lignes = []
+    for (u, modele), v in sorted(CONTEXTE_VU.items(),
+                                 key=lambda x: -x[1]["quand"]):
+        # _CERVEAUX et non cerveau() : la console ne doit jamais faire partir
+        # une sonde pour une adresse que le releve a gardee.
+        ident = (_CERVEAUX.get(u) or {}).get("noeud")
+        lignes.append({"machine": (noeud(ident) or {}).get("titre") or u
+                                  if ident else u,
+                       "modele": modele, "jetons": v["jetons"],
+                       "plus_haut": v["plus_haut"],
+                       "part": round(v["plus_haut"] / CONTEXTE_LLM, 3),
+                       "presque_plein":
+                           v["plus_haut"] >= SEUIL_CONTEXTE * CONTEXTE_LLM,
+                       "heure": time.strftime("%d/%m %H:%M:%S",
+                                              time.localtime(v["quand"]))})
+    return {"contexte": CONTEXTE_LLM, "seuil": SEUIL_CONTEXTE,
+            "presque_plein": any(l["presque_plein"] for l in lignes),
+            "analyses": lignes}
 
 
 def releve_degenerescences():
@@ -6513,6 +6678,17 @@ def appliquer_parametres(plan):
     plan["parametres_ajustes"] = ajustes
     return plan
 
+def consigne_si_bascule(plan, avant, texte):
+    """La consigne de retouche quand un moteur IMPOSE change une analyse en
+    retouche : le modele de langage croyait faire une image, et il a ecrit une
+    scene entiere — le moteur d'edition l'aurait peinte a la place de la
+    photo, comme le champ de ble du 5 novembre. Pas pour le « meme
+    personnage », qu'executer() refait en image neuve."""
+    if (avant != "edition" and plan.get("intention") == "edition"
+            and not veut_meme_personnage(texte or "")):
+        consigne_de_retouche(plan, texte)
+
+
 def consigne_de_retouche(plan, texte):
     """Le prompt d'une retouche que le CODE a decidee : la phrase de
     l'utilisateur, pas la scene que le modele de langage a ecrite.
@@ -6570,7 +6746,12 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
         plan["intention"] = "edition"
         plan["modele"] = "edition"
         plan["raison"] = "reprise de l'image precedente detectee"
-        consigne_de_retouche(plan, texte)
+        # SAUF LE « MEME PERSONNAGE » : « le meme » declenche _REPRISE, mais
+        # executer() en refait une image NEUVE avec la reference — et cette
+        # image a besoin de la scene ecrite par le modele, pas de la phrase
+        # brute. Releve par la relecture du 6 novembre 2026.
+        if not veut_meme_personnage(texte or ""):
+            consigne_de_retouche(plan, texte)
     # L'IMAGE JOINTE ET UN VERBE QUI LUI PARLE (voir _RETOUCHE_JOINTE). Le
     # « meme personnage » reste une image neuve : c'est voulu, executer() la
     # rend avec la reference.
@@ -9002,6 +9183,68 @@ async def api_admin_cles_poser(req):
                               "choix": dict(CHOIX)})
 
 
+# ══ L'ADRESSE PUBLIQUE DU STUDIO ═══════════════════════════════════════
+# LE STUDIO NE SAIT PAS TOUT SEUL PAR OU ON LE JOINT EN HTTPS. Il est servi en
+# http sur le port du reseau local ET, derriere un reverse proxy TLS, sous un
+# nom — en production le 6 novembre 2026, http://172.20.1.191:8199 et
+# https://studio.lan.egaonoinu.re pour le meme studio. Ouverte par l'adresse
+# http, la page ne peut ni notifier ni s'installer : les navigateurs reservent
+# les deux aux contextes surs. Et elle ne connait pas l'autre adresse, puisque
+# rien dans une requete http ne la dit. base_publique(req) ne sert pas ici :
+# elle rend l'adresse PAR LAQUELLE la requete est arrivee, c'est-a-dire
+# justement celle qui ne marche pas.
+#
+# VALIDEE AU CHARGEMENT, ET IGNOREE PLUTOT QUE CORRIGEE. Elle part dans un lien
+# que la page propose de cliquer, et dans les adresses qu'on colle dans n8n,
+# Open WebUI ou Claude : une valeur « reparee » (chemin coupe, schema devine)
+# enverrait ailleurs que la ou l'operateur croit, sans un mot. Refusee, la page
+# retombe sur ce qu'elle faisait avant — location.origin, et la phrase sans
+# lien — et la banniere de demarrage dit pourquoi.
+def lire_adresse_publique(brut):
+    """(adresse, refus) : « schema://hote[:port] » normalisee et "", ou "" et
+    la raison du refus, en une phrase pour la banniere. ("", "") quand la
+    variable est vide : absente n'est pas une faute."""
+    brut = (brut or "").strip()
+    if not brut:
+        return "", ""
+    # Les caracteres sur lesquels deux lecteurs d'URL divergent, comme dans
+    # rappels.py : un navigateur lit « \ » comme « / », et un espace coupe le
+    # lien la ou urlsplit ne le coupe pas.
+    if any(c == "\\" or ord(c) < 0x21 or ord(c) == 0x7f for c in brut):
+        return "", "illisible : espace, barre inverse ou caractere de controle"
+    try:
+        morceaux = urllib.parse.urlsplit(brut)
+        # .port leve sur un port non numerique ou hors bornes.
+        morceaux.port
+    except ValueError:
+        return "", "illisible : le port n'est pas un nombre valable"
+    schema = morceaux.scheme.lower()
+    if schema not in ("http", "https"):
+        return "", (f"schema « {morceaux.scheme or '?'} » : http ou https "
+                    "seulement")
+    # PAS D'IDENTIFIANTS : « https://studio@ailleurs » se lit « studio » et
+    # mene « ailleurs », et un vrai « nom:mot@ » s'afficherait en clair dans
+    # la page de quiconque ouvre les cles d'acces.
+    if morceaux.username is not None or morceaux.password is not None \
+            or "@" in morceaux.netloc:
+        return "", "pas d'identifiants dans l'adresse (« nom:mot@ »)"
+    if not morceaux.hostname:
+        return "", "il manque le nom de la machine"
+    # « / » seul n'est pas un chemin : c'est ce que la barre d'adresse donne a
+    # copier. Au-dela, la page construirait « .../studio/mcp » alors que le
+    # studio sert /mcp et /api/ a la racine — il ne sait pas vivre sous un
+    # prefixe, toutes ses pages appellent « /api/... ».
+    if morceaux.path not in ("", "/") or "?" in brut or "#" in brut:
+        return "", ("pas de chemin, de « ? » ni de « # » apres le nom de la "
+                    "machine")
+    return f"{schema}://{morceaux.netloc.lower()}", ""
+
+
+ADRESSE_PUBLIQUE_BRUTE = os.environ.get("STUDIO_ADRESSE_PUBLIQUE") or ""
+ADRESSE_PUBLIQUE, REFUS_ADRESSE_PUBLIQUE = lire_adresse_publique(
+    ADRESSE_PUBLIQUE_BRUTE)
+
+
 def _etat_compte(req):
     nom = req.get("compte") or ""
     admin = bool(nom) and COMPTES.est_admin(nom)
@@ -9018,7 +9261,14 @@ def _etat_compte(req):
             # de toute facon a l'ecran s'il est administrateur ; les autres
             # n'ont aucun lien a montrer.
             "demarrage": admin and demarrage_a_montrer(),
-            "obligatoire": AUTH == "obligatoire"}
+            "obligatoire": AUTH == "obligatoire",
+            # L'ADRESSE PUBLIQUE, SANS SESSION COMPRISE. La page la lit au
+            # chargement pour dire, en http, ou notifier et s'installer
+            # marchent, et pour les adresses a coller dans un outil. Elle ne
+            # dit rien de personne : l'operateur l'a posee pour la publier, et
+            # quiconque atteint cette route a deja trouve le studio. "" quand
+            # elle n'est pas posee, ou qu'elle a ete refusee au demarrage.
+            "adresse_publique": ADRESSE_PUBLIQUE}
 
 
 async def api_compte(req):
@@ -10555,9 +10805,11 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # rapport avec la demande.
             force_loin = None
         if modele_force:
+            avant_force = plan.get("intention")
             plan["modele"] = modele_force
             plan["modele_impose"] = True
             plan["intention"] = CATALOGUE[modele_force]["type"]
+            consigne_si_bascule(plan, avant_force, texte)
             plan["raison"] = ("moteur distant impose depuis l'interface"
                               if force_loin else "modele impose depuis l'interface")
             # Les reglages techniques proposes par le LLM valaient pour le modele
@@ -10663,7 +10915,16 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
         # Le studio n'a pas su preparer la demande : plutot que de l'envoyer
         # telle quelle et de laisser decouvrir le probleme dans le rendu, on
         # demande — en disant ce que CE moteur attend.
-        if plan.get("enrichissement_rate") and not _deja_demande(conv):
+        # UN CLIENT QUI NE SAIT PAS REPONDRE (sans_question) n'a pas cette
+        # question non plus : la route OpenAI la rendait en 400 « question »,
+        # alors que la doc promet qu'aucune question n'est posee a ces clients.
+        # Releve par la relecture du 6 novembre 2026. La demande part telle
+        # quelle, et le fil le dit.
+        sans_q_ = ((TACHES.get(tid) or {}).get("api") or {}).get("sans_question")
+        if plan.get("enrichissement_rate") and sans_q_:
+            journal(tid, "demande envoyee telle quelle — le client ne sait pas "
+                         "repondre a une question")
+        if plan.get("enrichissement_rate") and not _deja_demande(conv) and not sans_q_:
             garde = mise_en_garde(cle)
             titre = CATALOGUE.get(cle, {}).get("titre", cle)
             qs = [f"Je n'ai pas reussi a etoffer ta demande : je l'enverrais "
@@ -15405,6 +15666,9 @@ async def api_admin_noeuds(req):
                               # un modele qui se charge, repond 200, et rend du
                               # vide. Le 4 novembre 2026, personne ne l'a vu.
                               "modeles_degeneres": releve_degenerescences(),
+                              # CE QUE L'ANALYSE PREND DU CONTEXTE : le voir
+                              # monter avant que les plans se coupent.
+                              "contexte_analyse": releve_contexte(),
                               # LA SECONDE PLACE OU LIRE L'IDENTIFIANT, et la
                               # seule qui reste quand la console de demarrage a
                               # ete refermee — c'est le cas de l'executable
@@ -16411,6 +16675,16 @@ ATTENDRE_MAX = 600
 # ne rend jamais rien a l'assistant ; mieux vaut rendre l'identifiant et
 # laisser l'assistant rappeler etat_rendu.
 ATTENDRE_MCP = 45
+# Cinquante-cinq secondes, au plus, pour une requete arrivee par un reverse
+# proxy — quoi qu'elle demande. Le nginx-proxy-manager qui publie le studio en
+# https coupe a 90 s (proxy_read_timeout ; un nginx laisse par defaut, 60 s) :
+# mesure le 5 novembre 2026, un « attendre: 300 » y finissait en 504 DU PROXY.
+# Le client n'avait rien, le rendu continuait sans lui, et n8n partait en
+# erreur. Sous les deux, la reponse revient avec l'etat courant, comme a la
+# fin de n'importe quelle attente, et le client relit. 0 : aucune attente
+# derriere un proxy.
+ATTENDRE_PROXY = max(0, int(os.environ.get("STUDIO_ATTENTE_PROXY") or 55))
+ENTETE_ATTENTE_BORNEE = "X-Attente-Bornee"
 # Un lien signe vaut un jour : assez pour qu'un workflow telecharge, ou qu'un
 # humain clique le soir sur le lien que son assistant lui a donne le matin ;
 # pas assez pour qu'un lien colle dans un ticket reste une porte ouverte.
@@ -17159,6 +17433,20 @@ def _type_du_rendu(cle, image):
     return type_
 
 
+def _type_a_l_entree(cle, image, texte):
+    """Le type d'un rendu a moteur impose, juge a l'ENTREE comme executer() le
+    rendra : type_effectif, avec le type du moteur pour intention.
+
+    Releve par la relecture du 6 novembre 2026 : l'entree jugeait le moteur
+    seul. « edition » + image jointe + « le meme personnage sur une plage »
+    y etait compte en retouche, la marque famille_comptee faisait sauter le
+    controle d'apres l'analyse — et executer() rendait une image neuve. Une
+    cle a une image et vingt retouches par jour faisait ainsi vingt images.
+    """
+    return type_effectif({"intention": _type_du_rendu(cle, image), "modele": cle},
+                         texte or "", image)
+
+
 def retouche_permise(tid):
     """La cle de cette tache permet-elle de retoucher ? Vrai pour la page."""
     marque = (TACHES.get(tid) or {}).get("api") if tid else None
@@ -17493,7 +17781,7 @@ async def lancer_pour_programme(req, fiche, d, lg):
     plafonds = fiche.get("par_jour_familles") or {}
     famille_comptee = None
     if d.get("moteur") is not None and v["modele"]:
-        type_ = _type_du_rendu(v["modele"], v.get("image"))
+        type_ = _type_a_l_entree(v["modele"], v.get("image"), d.get("demande"))
         if not _acces.operation_permise(ops, type_):
             oublier_image()
             return refus("erreur.cle_operation_interdite", 403,
@@ -17576,6 +17864,33 @@ def _attente_demandee(valeur, defaut=0):
     return s if 0 <= s <= ATTENDRE_MAX else None
 
 
+def attente_derriere_proxy(req, secondes):
+    """L'attente que la requete peut tenir : « secondes », ou ATTENDRE_PROXY
+    si elle est arrivee par un reverse proxy et demandait davantage.
+
+    Le proxy se reconnait aux en-tetes qu'il pose — X-Forwarded-Proto, que
+    base_publique lit deja, ou X-Forwarded-For. UN CLIENT PEUT LES POSER LUI-
+    MEME, et c'est sans danger : il ne fait que raccourcir sa propre attente,
+    puis relire comme tout le monde. Une requete directe garde l'attente
+    demandee. La borne appliquee, req la retient : la reponse le dit
+    (_dire_la_borne)."""
+    if secondes and secondes > ATTENDRE_PROXY and (
+            req.headers.get("X-Forwarded-For") or req.headers.get("X-Forwarded-Proto")):
+        req["attente_bornee"] = ATTENDRE_PROXY
+        return ATTENDRE_PROXY
+    return secondes
+
+
+def _dire_la_borne(req, rep_):
+    """L'en-tete X-Attente-Bornee, quand attente_derriere_proxy a raccourci
+    l'attente : sans lui, un client qui demandait 300 s et recoit un etat non
+    final au bout de 55 ne saurait pas pourquoi. Rien de neuf dans le corps :
+    c'est la reponse d'une attente expiree, telle que le contrat la decrit."""
+    if req.get("attente_bornee") is not None:
+        rep_.headers[ENTETE_ATTENTE_BORNEE] = str(req["attente_bornee"])
+    return rep_
+
+
 # Huit attentes en cours par cle, au plus. Chacune tient une connexion et relit
 # le rendu deux fois par seconde : sans plafond, mille « attendre=600 »
 # ouverts par une seule cle saturaient la boucle ou les descripteurs d'un NAS
@@ -17646,7 +17961,7 @@ async def _repondre_rendu(req, fiche, tid, statut=200):
         statut = 200
     rep_ = web.json_response(corps, status=statut)
     rep_.headers["Location"] = f"{PREFIXE_PROGRAMME}rendus/{tid}"
-    return rep_
+    return _dire_la_borne(req, rep_)
 
 
 @pour_programme
@@ -17661,6 +17976,7 @@ async def api_v1_rendre(req, fiche):
     secondes = _attente_demandee(d.get("attendre"))
     if secondes is None:
         return refus_programme("erreur.attendre_bornes", 400, lg, maxi=ATTENDRE_MAX)
+    secondes = attente_derriere_proxy(req, secondes)
     # L'IDEMPOTENCE, parce que n8n reessaie. Un noeud HTTP regle sur « retry on
     # fail » renvoie la requete quand la reponse tarde — et chaque renvoi etait
     # un rendu de plus, du temps de carte pour une image que personne n'a
@@ -17757,6 +18073,7 @@ async def api_v1_rendu(req, fiche):
     secondes = _attente_demandee(req.query.get("attendre"))
     if secondes is None:
         return refus_programme("erreur.attendre_bornes", 400, lg, maxi=ATTENDRE_MAX)
+    secondes = attente_derriere_proxy(req, secondes)
     tid = req.match_info["tid"]
     if secondes and _rendu_de(tid, qui(req), fiche):
         await attendre_rendu(tid, qui(req), fiche, secondes)
@@ -17809,6 +18126,7 @@ async def api_v1_repondre(req, fiche):
     secondes = _attente_demandee(d.get("attendre"))
     if secondes is None:
         return refus_programme("erreur.attendre_bornes", 400, lg, maxi=ATTENDRE_MAX)
+    secondes = attente_derriere_proxy(req, secondes)
     demande = (t or {}).get("demande") or (tour or {}).get("demande") or ""
     suite = {"demande": f"{demande}\n\nPrécisions : {reponse.strip()}",
              "conversation": conv["id"]}
@@ -18327,7 +18645,7 @@ async def _outil_generer(arguments, ctx):
     if statut != 202:
         raise _mcp.ErreurOutil(_refus_pour_outil(corps, lg))
     await attendre_rendu(corps["id"], qui(req), fiche,
-                         arguments.get("attendre", ATTENDRE_MCP))
+                         attente_derriere_proxy(req, arguments.get("attendre", ATTENDRE_MCP)))
     return await _resultat_mcp(req, fiche, corps["id"])
 
 
@@ -18336,7 +18654,7 @@ async def _outil_etat(arguments, ctx):
     if _rendu_de(arguments["id"], qui(req), fiche) is None:
         raise _mcp.ErreurOutil(T("erreur.rendu_inconnu", langue_de(req)))
     await attendre_rendu(arguments["id"], qui(req), fiche,
-                         arguments.get("attendre", ATTENDRE_MCP))
+                         attente_derriere_proxy(req, arguments.get("attendre", ATTENDRE_MCP)))
     return await _resultat_mcp(req, fiche, arguments["id"])
 
 
@@ -18360,7 +18678,7 @@ async def _outil_repondre(arguments, ctx):
     if statut != 202:
         raise _mcp.ErreurOutil(_refus_pour_outil(corps, lg))
     await attendre_rendu(corps["id"], qui(req), fiche,
-                         arguments.get("attendre", ATTENDRE_MCP))
+                         attente_derriere_proxy(req, arguments.get("attendre", ATTENDRE_MCP)))
     return await _resultat_mcp(req, fiche, corps["id"])
 
 
@@ -18552,7 +18870,7 @@ async def api_mcp(req):
                                  signaler=signaler)
     if reponse is None:
         return web.Response(status=202)
-    return web.json_response(reponse)
+    return _dire_la_borne(req, web.json_response(reponse))
 
 
 # ── compatibilite OpenAI ─────────────────────────────────────────────────
@@ -18581,6 +18899,8 @@ PREFIXE_OPENAI = "/openai/v1/"
 # image locale prend de quelques secondes a quatre minutes (docs/mesures.md) :
 # neuf minutes couvrent un chargement de modele a froid derriere une file.
 ATTENDRE_OPENAI = 540
+# Le moteur de /images/edits quand le client laisse choisir le studio.
+MOTEUR_RETOUCHE_OPENAI = "edition"
 
 # LE REESSAI DU SDK REJOINT LE RENDU QU'IL A DEJA LANCE. openai-python
 # n'envoie aucune Idempotency-Key (_idempotency_header vaut None, lu dans la
@@ -18832,8 +19152,16 @@ def _demande_openai(d, famille, fiche, lg):
     # est ce que ces clients envoient par defaut, et le refuser fermerait la
     # porte a tous ceux qu'on n'a pas regles. Le studio choisit alors, comme
     # pour une demande sans moteur.
-    if modele in {m["cle"] for m in _moteurs_openai(fiche, famille, lg)}:
+    moteurs_ = {m["cle"] for m in _moteurs_openai(fiche, famille, lg)}
+    if modele in moteurs_:
         demande["moteur"] = modele
+    elif famille == "retouche" and MOTEUR_RETOUCHE_OPENAI in moteurs_:
+        # LA ROUTE DES RETOUCHES RETOUCHE. Sans moteur, l'analyse decidait — et
+        # « le ciel en rose », sans verbe que _RETOUCHE_JOINTE connaisse,
+        # restait une image, puis la cle restreinte a « retouche » la
+        # refusait : 400 sur la route meme des retouches, pour une cle qui
+        # permet tout. Releve par la relecture du 6 novembre 2026.
+        demande["moteur"] = MOTEUR_RETOUCHE_OPENAI
     if famille == "image":
         taille = taille_proche(d.get("size"))
         if taille is False:
@@ -18947,10 +19275,18 @@ async def _reponse_openai(req, fiche, tid, fmt, lg):
         code = err.get("code") or "inconnue"
         # UNE OPERATION HORS DE LA ROUTE est une faute de la demande — l'analyse
         # y a lu une video —, pas une panne : 400, et le client ne rejoue pas.
+        # UN PLAFOND DU JOUR est une limite, pas une panne : 429 avec
+        # Retry-After jusqu'a minuit, comme la doc le promet. Il arrivait en
+        # 500 « server_error » quand l'analyse decidait la famille — le cas du
+        # modele « comfystudio », donc le cas par defaut. Releve par la
+        # relecture du 6 novembre 2026.
+        plafond_ = code in ("cle_plafond_famille", "cle_plafond_jour")
         statut = (400 if code == "cle_operation_interdite"
-                  else 422 if code == "refus_mineurs" else 500)
+                  else 422 if code == "refus_mineurs"
+                  else 429 if plafond_ else 500)
         return erreur_openai(statut, err.get("message") or code, code=code,
-                             param="prompt" if statut < 500 else None)
+                             param="prompt" if statut in (400, 422) else None,
+                             apres=secondes_avant_minuit() if plafond_ else None)
     images = [f for f in corps["fichiers"] if f["type"] == "image"]
     if not images:
         return erreur_openai(500, T("erreur.openai_sans_image", lg, rendu=tid),
@@ -19469,6 +19805,16 @@ if __name__ == "__main__":
                  if _port_hote != str(PORT) else ""))
     else:
         print(f"  Interface : http://127.0.0.1:{PORT}")
+    # L'ADRESSE PUBLIQUE, OU POURQUOI ELLE EST IGNOREE. Une faute de frappe
+    # dans le compose ne se verrait sinon que par une absence dans la page —
+    # un lien qui ne vient pas, ce que personne ne remarque. La raison seule,
+    # jamais la valeur refusee : refusee pour ses identifiants, elle porterait
+    # un mot de passe dans le journal du conteneur.
+    if ADRESSE_PUBLIQUE:
+        print(f"  Publique  : {ADRESSE_PUBLIQUE}")
+    elif REFUS_ADRESSE_PUBLIQUE:
+        print(f"  PUBLIQUE  : STUDIO_ADRESSE_PUBLIQUE ignoree — "
+              f"{REFUS_ADRESSE_PUBLIQUE}")
     # LA LIGNE QUI MANQUAIT AU PREMIER DEMARRAGE. Le studio annonçait deja son
     # adresse, son jeton et le mot de passe d'admin ; il ne disait nulle part
     # ou aller voir ce qu'il lui manque encore. Elle disparait des que l'ecran

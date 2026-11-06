@@ -61,6 +61,11 @@ services:
       # est tire au sort et affiche UNE fois dans le journal du conteneur — ce
       # qui est facile a manquer. A changer depuis l'interface ensuite.
       STUDIO_ADMIN_MDP: "${STUDIO_ADMIN_MDP:-}"
+      # L'adresse https du studio derriere un reverse proxy, schema et nom
+      # seulement (https://studio.maison). La page ouverte en http y renvoie
+      # pour les notifications et l'installation, et en tire les adresses a
+      # coller dans n8n, Open WebUI ou Claude. Vide : la page fait sans.
+      STUDIO_ADRESSE_PUBLIQUE: "${STUDIO_ADRESSE_PUBLIQUE:-}"
       STUDIO_LLM: "${STUDIO_LLM:-}"
       STUDIO_VISION: "${STUDIO_VISION:-}"
       STUDIO_LLM_ECRITURE: "${STUDIO_LLM_ECRITURE:-}"
@@ -80,6 +85,7 @@ services:
       STUDIO_ATTENTE_CARTE: "${STUDIO_ATTENTE_CARTE:-}"
       STUDIO_PAUSE_PROPOSE: "${STUDIO_PAUSE_PROPOSE:-}"
       STUDIO_ARMEE_HEURES: "${STUDIO_ARMEE_HEURES:-}"
+      STUDIO_ATTENTE_PROXY: "${STUDIO_ATTENTE_PROXY:-}"
       STUDIO_VRAM_REPOS: "${STUDIO_VRAM_REPOS:-}"
       STUDIO_PLAFOND_NUAGE: "${STUDIO_PLAFOND_NUAGE:-}"
       STUDIO_ANALYSE_PETITE: "${STUDIO_ANALYSE_PETITE:-}"

@@ -902,6 +902,20 @@ body{padding-left:env(safe-area-inset-left,0px);
   border-color:#fff4;color:#fffa}
 .plein .introuvable b{color:#fff}
 .actions-sortie a[aria-disabled="true"]{opacity:.4;cursor:default;pointer-events:none}
+
+/* ── ronde 8 : la page sait ou elle est servie ──
+   Le lien vers l'adresse https se pose A COTE de ce qui ne marche pas ici :
+   dans la case des notifications, apres sa phrase, et dans le menu, sous la
+   langue. De la taille de la phrase qu'il complete, sans fond ni bordure :
+   c'est un renvoi, pas une alerte. La case passe sur deux lignes quand il
+   s'y ajoute — la phrase de la ronde 6 la remplissait deja a 375 px. */
+.vers-https{color:var(--braise);font-size:10.5px;text-decoration:underline dotted;
+  text-underline-offset:2px;white-space:nowrap}
+.vers-https:hover{color:var(--braise-vive)}
+.vers-https:focus-visible{outline:2px solid var(--braise);outline-offset:2px}
+.prevenir-fin:has(.vers-https){flex-wrap:wrap}
+.appli-https{margin:2px 6px 4px;padding:6px 4px 2px;border-top:1px solid var(--trait);
+  color:var(--encre-pale);font-size:10.5px;line-height:1.45}
 </style>
 </head>
 <body>
@@ -2422,6 +2436,7 @@ async function peindreCompte() {
   try {
     d = await (await fetch("/api/compte", { credentials: "same-origin" })).json();
   } catch (e) { return; }
+  retenirAdresse(d);   // ronde 8 : l'adresse publique, et ce qui en depend
   const zone = document.querySelector("#compte");
   zone.innerHTML = "";
   if (!d.comptes_existent && !d.connecte) return;
@@ -2943,7 +2958,7 @@ function formulaireAcces() {
   const peindreNeuve = x => {
     retenu = true;
     corps.innerHTML = ""; rang.innerHTML = ""; mal.textContent = "";
-    const origine = location.origin;
+    const origine = baseDesOutils();   // ronde 8 : l'adresse publique si posee
     // Les deux extraits sont prets a coller : c'est la que se font les
     // fautes — un « Bearer » oublie, l'adresse de la page au lieu de /mcp.
     const n8n = `POST ${origine}/api/v1/rendus\n`
@@ -3121,6 +3136,7 @@ function formulaireAcces() {
       ul.appendChild(li);
     }
     if (cles.length) corps.append(ul);
+    corps.append(...brancherUnOutil(copiable));   // ronde 8 : les adresses a coller
 
     if (cles.length >= (b.cles || 0)) {
       corps.append(dire("page.acces.pleine", "avertit", { max: b.cles }));
@@ -5024,6 +5040,103 @@ function balayer(voile, montrer) {
     if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy))
       montrer(dx < 0 ? 1 : -1);
   }, { passive: true });
+}
+
+/* ── ronde 8 : la page sait ou elle est servie ─────────────────────────
+   LE MEME STUDIO A DEUX ADRESSES, ET L'UNE NE SAIT PAS TOUT FAIRE. Il est
+   servi en http sur le reseau de la maison et, derriere un reverse proxy TLS,
+   sous un nom en https. Notifier et s'installer comme application ne se font
+   qu'en contexte sur — https, ou la machine elle-meme : depuis l'adresse
+   http, la case se grisait (ronde 6) et le navigateur ne proposait aucune
+   installation, sans dire ou aller. La page ne devine pas l'autre adresse :
+   rien dans une page http ne la dit. Le studio la connait si l'operateur l'a
+   posee (STUDIO_ADRESSE_PUBLIQUE, validee par serveur.py), et /api/compte la
+   sert — la route que la page lit deja au chargement, ouverte sans session,
+   et qui porte deja ce qu'est l'installation (« obligatoire »,
+   « comptes_existent »). /api/textes, lu plus tot encore, est un
+   dictionnaire par langue : une adresse n'y a pas sa place.
+
+   EN CONTEXTE SUR, RIEN NE CHANGE : peindreHorsHttps() s'arrete a sa
+   premiere ligne. Le lien vise la MEME page — chemin, requete et ancre —, pas
+   l'accueil : on veut retrouver de l'autre cote ce qu'on regardait. */
+let ADRESSE_PUBLIQUE = "";
+
+/* L'accroche de peindreCompte(), des que /api/compte a repondu. */
+function retenirAdresse(d) {
+  ADRESSE_PUBLIQUE = String((d && d.adresse_publique) || "");
+  peindreHorsHttps();
+}
+
+/* La base des adresses a coller : celle que l'operateur publie, sinon celle de
+   cette page — qui marche au moins depuis la ou l'on est. */
+function baseDesOutils() {
+  return ADRESSE_PUBLIQUE || location.origin;
+}
+
+/* Le lien vers la meme page a l'adresse publique, ou null. SEULEMENT VERS UNE
+   ADRESSE https : en http, le contexte n'y serait pas plus sur, et le lien
+   promettrait ce qu'il ne tient pas. Le reste — pas de chemin, pas
+   d'identifiants, des minuscules — serveur.py l'a deja exige
+   (lire_adresse_publique) : une seconde validation ici, ecrite autrement,
+   finirait par contredire la premiere. */
+function lienHttps() {
+  if (!ADRESSE_PUBLIQUE.startsWith("https://")) return null;
+  const a = document.createElement("a");
+  a.className = "vers-https";
+  a.href = ADRESSE_PUBLIQUE + location.pathname + location.search + location.hash;
+  a.textContent = T("page.brancher.https.lien");
+  return a;
+}
+
+/* Les deux endroits qui ne marchent pas ici, chacun avec sa phrase et, si
+   l'adresse est connue, son lien. Rejouable : peinte une premiere fois quand
+   le dictionnaire est la, puis quand /api/compte a dit l'adresse. */
+function peindreHorsHttps() {
+  if (window.isSecureContext) return;
+  // La case des notifications porte deja sa phrase (ronde 6,
+  // « page.saisie.prevenir.https ») : on n'y ajoute que le lien.
+  const ancien = $("#prevenirHttps");
+  if (ancien) ancien.remove();
+  const versNotif = lienHttps();
+  if (versNotif) {
+    versNotif.id = "prevenirHttps";
+    $("#refusPrevenir").after(versNotif);
+  }
+  // L'INSTALLATION N'A PAS DE BOUTON DANS LA PAGE : c'est le navigateur qui la
+  // propose, dans son menu ou sa barre d'adresse — et en http il ne la propose
+  // pas. La phrase va donc la ou se regle le reste de la page, le menu, sous
+  // la langue, plutot qu'en bandeau sur la conversation.
+  let note = $("#appliHttps");
+  if (!note) {
+    note = document.createElement("div");
+    note.id = "appliHttps";
+    note.className = "appli-https";
+    const langue = $("#panneauCompte .choix-langue");
+    if (langue) langue.after(note);
+    else $("#panneauCompte").append(note);
+  }
+  note.replaceChildren(T("page.brancher.appli"));
+  const versAppli = lienHttps();
+  if (versAppli) note.append(" ", versAppli);
+}
+PRET.then(peindreHorsHttps);
+
+/* « Brancher un outil », dans le voile des cles d'acces : les trois adresses
+   de base, chacune avec son bouton « copier » — celui des extraits de la cle
+   neuve, recu de formulaireAcces(), pour qu'il n'y ait qu'une facon de
+   copier. AUCUN SECRET : la cle n'y est pas, elle se donne a part ; ces
+   adresses se montrent donc a chaque ouverture, cle neuve ou pas. */
+function brancherUnOutil(copiable) {
+  const base = baseDesOutils();
+  const titre = document.createElement("h4");
+  titre.textContent = T("page.brancher.titre");
+  const pourquoi = document.createElement("div");
+  pourquoi.className = "dit";
+  pourquoi.textContent = T("page.brancher.pourquoi");
+  return [titre, pourquoi,
+          ...copiable("page.brancher.v1", base + "/api/v1"),
+          ...copiable("page.brancher.openai", base + "/openai/v1"),
+          ...copiable("page.brancher.mcp", base + "/mcp")];
 }
 </script>
 </body>
