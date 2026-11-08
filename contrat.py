@@ -68,6 +68,7 @@ LIEN_DUREE = 24 * 3600
 IDEMPOTENCE_DUREE = 24 * 3600
 IDEMPOTENCE_LONGUEUR = 200
 DEMANDE_MAX = 3000
+STYLE_AUDIO_MAX = 300
 VARIANTES_MAX = 4
 CORPS_MAX = 4 * 1024 ** 2
 # Triees : dans serveur.py, TAILLES est un ensemble, sans ordre. Un document
@@ -259,6 +260,34 @@ def _schemas():
                                         "compris."},
             "avance": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
             "secondes": {"type": ["number", "null"]},
+            "estimation": {
+                "type": ["object", "null"],
+                "description": (
+                    "Pendant le calcul (en_file, en_cours, attente_machine) : "
+                    "la durée habituelle d'un tel rendu, la médiane des rendus "
+                    "précédents de ce compte avec ce moteur (sur cette machine "
+                    "quand elle en a assez) — le devis que la page affiche. "
+                    "Null quand le "
+                    "studio ne la connaît pas (moins de trois rendus "
+                    "comparables, un brouillon) et une fois le rendu achevé : "
+                    "« secondes » dit alors la vraie durée. Pour un groupe de "
+                    "variantes, la durée d'UN tirage."),
+                "required": ["secondes", "mesures", "ecoule_rendu"],
+                "properties": {
+                    "secondes": {"type": "integer",
+                                 "description": "La médiane, en secondes de "
+                                                "calcul, sans l'attente de "
+                                                "la file."},
+                    "mesures": {"type": "integer",
+                                "description": "Le nombre de rendus dont elle "
+                                               "est tirée."},
+                    "ecoule_rendu": {"type": ["number", "null"],
+                                     "description": "Secondes depuis que la "
+                                                    "machine a pris le rendu, "
+                                                    "le seul temps comparable "
+                                                    "à la médiane ; null tant "
+                                                    "qu'elle ne l'a pas pris."},
+                }},
             "fichiers": {"type": "array", "items": _ref("schemas", "Fichier")},
             "questions": {"type": "array", "items": {"type": "string"}},
             "description": {"type": nul},
@@ -371,6 +400,18 @@ def _schemas():
                       "description": "false interdit le nuage pour cette "
                                      "demande. true ne l'ouvre pas à une clé "
                                      "qui n'y a pas droit."},
+            "style_audio": {"type": "string", "maxLength": STYLE_AUDIO_MAX,
+                            "description": "Pour une musique : les étiquettes de "
+                                           "style, en anglais, séparées par des "
+                                           "virgules. Passent telles quelles au "
+                                           "moteur, avant tout ce que le studio "
+                                           "lirait dans la demande ; le BPM s'y "
+                                           "ajoute s'il n'y est pas."},
+            "instrumental": {"type": "boolean",
+                             "description": "Pour une musique : true = sans voix "
+                                            "ni paroles, comme « sans voix » dans "
+                                            "la demande. Absent ou false : le "
+                                            "studio lit la demande."},
         },
     }
     reponse = {
@@ -395,7 +436,9 @@ def _schemas():
                                        "a droit."},
             "present": {"type": "boolean",
                         "description": "false : ses modèles ne sont sur "
-                                       "aucune machine."},
+                                       "aucune machine. Un moteur "
+                                       "qu'aucune carte connue du parc "
+                                       "ne porte n'est pas listé."},
         },
     }
     cle = {

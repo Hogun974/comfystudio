@@ -9388,14 +9388,8 @@ COMPREHENSION_SEPT = [
               "entier est declare mal forme",
         rougit="deux objets a la suite : le PREMIER",
         editions=[("serveur.py", brut(
-            '    debut = texte.find("{")\n'
-            "    if debut < 0:\n"
-            '        raise json.JSONDecodeError("aucun objet", texte, 0)\n'
-            "    objet, _ = json.JSONDecoder().raw_decode(texte[debut:])",
-            '    m = re.search(r"\\{.*\\}", texte, re.S)\n'
-            "    if not m:\n"
-            '        raise json.JSONDecodeError("aucun objet", texte, 0)\n'
-            "    objet = json.loads(m.group(0))"))]),
+            "        objet, _ = json.JSONDecoder().raw_decode(texte[debut:])",
+            '        objet = json.loads(re.search(r"\\{.*\\}", texte, re.S).group(0))'))]),
     dict(
         nom="le bruit part quand meme au modele",
         banc="banc_multilingue.py",
@@ -15593,8 +15587,8 @@ RELECTURE_HUIT = [
               "reste une image, refusee a une cle qui permet tout",
         rougit="la route des retouches impose le moteur d'edition",
         editions=[("serveur.py", brut(
-            '    elif famille == "retouche" and MOTEUR_RETOUCHE_OPENAI in moteurs_:',
-            '    elif False:'))]),
+            '    elif (famille == "retouche" and MOTEUR_RETOUCHE_OPENAI in moteurs_',
+            '    elif (False and MOTEUR_RETOUCHE_OPENAI in moteurs_'))]),
     dict(
         nom="l'enrichissement rate questionne le client muet",
         banc="banc_pilotage.py",
@@ -15759,6 +15753,846 @@ REGLE_PLACARD = [
 ]
 
 
+# ── le studio ne choisit jamais un moteur qu'aucune carte ne porte ────
+# Le 7 novembre 2026 : vram_max() rendait zero sur le studio du reseau (elle
+# ne lisait que NOEUDS, et parmi eux ceux qui repondaient), l'analyse a vu tout
+# le catalogue, a pris klein9bhd (18 Go) et le rendu a echoue.
+MOTEUR_IMPOSSIBLE = [
+    dict(
+        nom="le plafond oublie les cartes eteintes",
+        banc="banc_repartition.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 7 NOVEMBRE 2026, a moitie : seules les "
+              "machines qui repondent comptent. Le PC eteint, sa carte "
+              "disparait du plafond, et la plus grosse qui reste est le NAS",
+        rougit="le PC eteint compte encore : sa carte connue fixe le plafond",
+        editions=[("serveur.py", brut(
+            '    connues = [_vram_utile(x["id"]) for x in tous_les_noeuds()]',
+            '    connues = [_vram_utile(x["id"]) for x in tous_les_noeuds()'
+            ' if ETAT_NOEUDS.get(x["id"], {}).get("repond")]'))]),
+    dict(
+        nom="le plafond ne lit que noeuds.json",
+        banc="banc_repartition.py",
+        imite="L'AUTRE MOITIE DU DEFAUT : NOEUDS ne contient jamais les "
+              "machines a agent. Sur un studio sans carte, le plafond retombe "
+              "a zero et le catalogue montre a l'analyse n'ecarte plus rien",
+        rougit="PC eteint mais connu : klein9bhd n'est plus montre a l'analyse",
+        editions=[("serveur.py", brut(
+            '    connues = [_vram_utile(x["id"]) for x in tous_les_noeuds()]',
+            '    connues = [_vram_utile(x["id"]) for x in NOEUDS]'))]),
+    dict(
+        nom="le plafond prend la carte nue, sans le debordement",
+        banc="banc_repartition.py",
+        imite="la mesure qui semble la plus honnete — la VRAM de la carte — "
+              "et qui n'est pas celle du repartiteur : noeuds_pour() accepte "
+              "un moteur en debordant, l'analyse ne le verrait plus",
+        rougit="le PC eteint compte encore : sa carte connue fixe le plafond",
+        editions=[("serveur.py", brut(
+            '    connues = [_vram_utile(x["id"]) for x in tous_les_noeuds()]',
+            '    connues = [vram_de(x["id"]) for x in tous_les_noeuds()]'))]),
+    dict(
+        nom="un studio neuf suppose une carte de developpement",
+        banc="banc_repartition.py",
+        imite="une valeur en dur a la place du « on ne sait pas » : celle de la "
+              "machine de developpement. Le studio neuf ecarte des moteurs sur "
+              "la foi d'une carte qui n'existe pas ici",
+        rougit="studio neuf, aucune carte connue : tout le catalogue est montre",
+        editions=[("serveur.py", brut(
+            '    return max(connues, default=0.0) or VRAM_GO["total"]',
+            '    return max(connues, default=0.0) or 11.0'))]),
+    dict(
+        nom="le garde-fou apres l'analyse disparait",
+        banc="banc_repartition.py",
+        imite="on se fie au catalogue montre : un modele qui en sort, ou un "
+              "plan pose par le code, part tel quel vers un refus",
+        rougit="l'analyse rend klein9bhd : la demande part sur klein9b",
+        editions=[("serveur.py", brut(
+            '        if not plan.get("modele_impose"):' + chr(10)
+            + '            plan = rabattre_moteur(plan, tid)',
+            '        if False:' + chr(10)
+            + '            plan = rabattre_moteur(plan, tid)'))]),
+    dict(
+        nom="le garde-fou change aussi un moteur impose",
+        banc="banc_repartition.py",
+        imite="la garde posee sans sa condition : l'utilisateur choisit "
+              "klein9bhd dans la page, et reçoit klein9b sans l'avoir voulu",
+        rougit="impose, klein9bhd est garde tel quel",
+        editions=[("serveur.py", brut(
+            '        if not plan.get("modele_impose"):' + chr(10)
+            + '            plan = rabattre_moteur(plan, tid)',
+            '        if True:' + chr(10)
+            + '            plan = rabattre_moteur(plan, tid)'))]),
+    dict(
+        nom="le remplacement se fait en silence",
+        banc="banc_repartition.py",
+        imite="le moteur change et le fil n'en dit rien : l'utilisateur croit "
+              "avoir eu la pleine precision qu'il n'a pas eue",
+        rougit="et le fil de la tache le dit",
+        editions=[("serveur.py", brut(
+            "    journal(tid, f\"{CATALOGUE[cle]['titre']} reclame "
+            "{CATALOGUE[cle]['vram']:g} Go, \"",
+            "    (lambda *a: None)(tid, f\"{CATALOGUE[cle]['titre']} reclame "
+            "{CATALOGUE[cle]['vram']:g} Go, \""))]),
+    dict(
+        nom="le repli declare est ignore",
+        banc="banc_repartition.py",
+        imite="« le plus gros qui tient » tout seul : klein9bhd se rabat sur "
+              "klein4b, qui demande plus que klein9b — un autre modele, la ou "
+              "l'on voulait le meme en plus leger",
+        rougit="klein9bhd se rabat sur klein9b, et flux1hd sur flux1 : leurs "
+               "versions allegees",
+        editions=[("serveur.py", brut(
+            '    if m.get("repli") in tient:',
+            '    if False:'))]),
+    dict(
+        nom="le remplacement ignore la famille",
+        banc="banc_repartition.py",
+        imite="le plus gros du meme type, toutes familles confondues : un "
+              "moteur flux2 trop lourd part sur FLUX.1, qui ne parle pas la "
+              "meme langue de prompt",
+        rougit="sans repli declare, la meme famille passe avant la taille",
+        editions=[("serveur.py", brut(
+            '        bool(m.get("famille")) and CATALOGUE[c].get("famille") == m.get("famille"),',
+            '        False,'))]),
+    dict(
+        nom="le remplacement garde les etapes du moteur quitte",
+        banc="banc_repartition.py",
+        imite="le moteur change, ses reglages techniques restent ceux que "
+              "l'analyse avait proposes pour l'autre",
+        rougit="et les etapes sont celles du moteur retenu, pas de celui qu'on "
+               "quitte",
+        editions=[("serveur.py", brut(
+            '    plan["modele"] = autre' + chr(10)
+            + '    brut = dict(plan.get("parametres_bruts") or {})' + chr(10)
+            + '    for technique in ("etapes", "cfg"):' + chr(10)
+            + '        brut.pop(technique, None)' + chr(10),
+            '    plan["modele"] = autre' + chr(10)
+            + '    brut = dict(plan.get("parametres_bruts") or {})' + chr(10)))]),
+]
+
+
+MOTEURS_DISPONIBLES = [
+    dict(
+        nom="les listes des programmes oublient la taille",
+        banc="banc_pilotage.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 8 NOVEMBRE 2026 : « present » des que "
+              "les fichiers sont quelque part. lister_moteurs propose klein9bhd "
+              "a Jordan, et seul klein9b marche",
+        rougit="GET /api/v1/moteurs ne propose ni klein9bhd ni flux1hd, que le "
+               "parc ne porte pas ; klein9b, qui tient, y reste present",
+        editions=[("serveur.py", brut(
+            '             if not hors_du_parc(c)]',
+            '             ]'))]),
+    dict(
+        nom="le filtre de taille ne retire que ce qui n'est pas installe",
+        banc="banc_openai.py",
+        imite="la taille prise pour une affaire de telechargement : le moteur "
+              "trop lourd mais installe reste propose — exactement le cas de "
+              "klein9bhd le 8 novembre 2026 — et un client OpenAI le met dans "
+              "sa liste deroulante",
+        rougit="/models ne propose ni klein9bhd ni flux1hd, que le parc ne "
+               "porte pas ; klein9b reste",
+        editions=[("serveur.py", brut(
+            '             if not hors_du_parc(c)]',
+            '             if not hors_du_parc(c) or not manquants_partout(c)]'))]),
+    dict(
+        nom="hors_du_parc mesure la carte nue",
+        banc="banc_repartition.py",
+        imite="une seconde regle, la plus honnete en apparence — la VRAM des "
+              "cartes — a cote de vram_max() : les listes retirent un moteur "
+              "que noeuds_pour() accepte en debordant",
+        rougit="un moteur de 12 Go tient sur la 2080 Ti en debordant : il n'est "
+               "pas hors du parc",
+        editions=[("serveur.py", brut(
+            '    m = CATALOGUE.get(cle)' + chr(10)
+            + '    plafond = vram_max()' + chr(10)
+            + '    if not m or not plafond or m.get("vram", 0) <= plafond:' + chr(10)
+            + '        return 0.0',
+            '    m = CATALOGUE.get(cle)' + chr(10)
+            + '    plafond = max((vram_de(x["id"]) for x in tous_les_noeuds()), '
+            'default=0.0)' + chr(10)
+            + '    if not m or not plafond or m.get("vram", 0) <= plafond:' + chr(10)
+            + '        return 0.0'))]),
+    dict(
+        nom="un studio neuf retire tout moteur qui a une taille",
+        banc="banc_pilotage.py",
+        imite="le « plafond nul : on ne sait pas » oublie : sans carte connue, "
+              "tout moteur depasse zero, et le studio neuf ne propose plus rien "
+              "a un programme",
+        rougit="studio neuf, aucune carte connue : la liste reste entiere",
+        editions=[("serveur.py", brut(
+            '    if not m or not plafond or m.get("vram", 0) <= plafond:' + chr(10)
+            + '        return 0.0',
+            '    if not m or m.get("vram", 0) <= plafond:' + chr(10)
+            + '        return 0.0'))]),
+    dict(
+        nom="le menu dit present un moteur trop lourd",
+        banc="banc_pilotage.py",
+        imite="la page garde le moteur, marque, mais « present » reste celui "
+              "des fichiers : la jauge le compte pret, et le menu n'a plus de "
+              "quoi le distinguer d'un moteur qui marche",
+        rougit="/api/modeles (le menu de la page) les garde, non presents, avec "
+               "ce qu'ils demandent, la plus grosse carte et le repli",
+        editions=[("serveur.py", brut(
+            '                  present=not manquants_partout(c) and not hors_du_parc(c),',
+            '                  present=not manquants_partout(c),'))]),
+    dict(
+        nom="la page cache le moteur trop lourd au lieu de le griser",
+        banc="banc_page.py",
+        imite="le geste le plus court : l'option disparait, et klein9bhd sort "
+              "du menu sans un mot sur la carte qui le rendrait",
+        rougit="le moteur trop lourd est desactive avec une infobulle, pas cache",
+        editions=[("web/index.html", brut(
+            '  o.disabled = true;' + chr(10)
+            + '  o.textContent = m.titre + " " + T("page.moteurtrop.suffixe");',
+            '  o.hidden = true;' + chr(10)
+            + '  o.textContent = m.titre + " " + T("page.moteurtrop.suffixe");'))]),
+    dict(
+        nom="la page grise tous les moteurs",
+        banc="banc_page.py",
+        imite="le garde de tete perdu : un objet vide a la place de « rien », "
+              "et chaque moteur, meme celui qui tient, est desactive",
+        rougit="temoin : un moteur sans « trop_lourd » sort de moteurTrop() a la "
+               "premiere ligne, choisissable comme avant",
+        editions=[("web/index.html", brut(
+            '  const t = m.trop_lourd;' + chr(10) + '  if (!t) return;',
+            '  const t = m.trop_lourd || {};'))]),
+    dict(
+        nom="le crochet du menu passe avant le libelle",
+        banc="banc_page.py",
+        imite="l'appel pose une ligne trop haut : le libelle « (a telecharger) » "
+              "du code d'avant ecrase la raison, et le moteur grise ne dit plus "
+              "pourquoi",
+        rougit="le menu des moteurs appelle moteurTrop(o, m) APRES avoir pose le "
+               "libelle, avant d'ajouter l'option — sinon « (a telecharger) » "
+               "effacerait la raison",
+        editions=[("web/index.html", brut(
+            '    o.value = m.cle;' + chr(10)
+            + '    o.textContent = m.titre + (m.present',
+            '    o.value = m.cle;' + chr(10)
+            + '    moteurTrop(o, m);' + chr(10)
+            + '    o.textContent = m.titre + (m.present')),
+            ("web/index.html", brut(
+                '    moteurTrop(o, m);   // ronde 10 : grise ce que le parc ne porte pas' + chr(10),
+                ''))]),
+    dict(
+        nom="le refus d'un moteur trop lourd redevient generique",
+        banc="banc_repartition.py",
+        imite="L'ETAT DU DEPOT JUSQU'AU 8 NOVEMBRE 2026 : « modele absent, ou "
+              "carte trop petite », et rien ne dit de prendre klein9b",
+        rougit="impose et intenable, son refus nomme la cause et propose klein9b",
+        editions=[("serveur.py", brut(
+            '    lourd = hors_du_parc(cle)' + chr(10) + '    if lourd:' + chr(10)
+            + '        titre = CATALOGUE[cle]["titre"]',
+            '    lourd = hors_du_parc(cle)' + chr(10) + '    if False:' + chr(10)
+            + '        titre = CATALOGUE[cle]["titre"]'))]),
+    dict(
+        nom="le refus promet un repli meme quand rien ne tient",
+        banc="banc_repartition.py",
+        imite="une seule phrase pour les deux cas : « essaie None » quand "
+              "aucun moteur du meme genre ne tient, ou un repli invente",
+        rougit="sans moteur du meme genre qui tienne, le refus dit la cause et ne "
+               "propose rien",
+        editions=[("serveur.py", brut(
+            '        autre = moteur_qui_tient(cle)' + chr(10) + '        if autre:',
+            '        autre = moteur_qui_tient(cle) or "klein9b"' + chr(10)
+            + '        if autre:'))]),
+]
+
+# -- La mediatheque sait d'ou vient une image (ronde 10, 8 novembre 2026)
+# Les rendus demandes par cle etaient dans la mediatheque de leur proprietaire
+# sans qu'aucun banc le garde, et rien ne les distinguait de ceux de la page.
+# banc_pilotage.py (section 21) garde le serveur, banc_page.py la page.
+# Jouees rouges par jouer_mutations.py MEDIA_PROGRAMMES.
+MEDIA_PROGRAMMES = [
+    dict(
+        nom="la mediatheque oublie les conversations de programme",
+        banc="banc_pilotage.py",
+        imite="le filtre de la liste des conversations recopie dans la "
+              "mediatheque : les images d'un n8n disparaissent de la page, "
+              "qui ne montre leur conversation nulle part ailleurs",
+        rougit="le fichier rendu par cle est dans la mediatheque de son proprietaire",
+        editions=[("serveur.py", brut(
+            "            else mes_conversations(pid))",
+            "            else [c for c in mes_conversations(pid)" + chr(10)
+            + "                  if not est_conversation_de_programme(c)])"))]),
+    dict(
+        nom="l'origine montre l'identifiant de la cle au lieu de son nom",
+        banc="banc_pilotage.py",
+        imite="la marque lue par son champ « cle » — l'identifiant public, "
+              "celui des liens signes — au lieu du nom donne par le proprietaire",
+        rougit="et il porte son origine : le NOM que le proprietaire a donne a sa cle",
+        editions=[("serveur.py", brut(
+            '    return {"cle": str(marque.get("nom") or (fiche or {}).get("nom") or ""),',
+            '    return {"cle": str(ident or ""),'))]),
+    dict(
+        nom="l'origine emporte l'identifiant en plus du nom",
+        banc="banc_pilotage.py",
+        imite="un champ ajoute « pour deboguer » : l'identifiant de la cle sous "
+              "chaque vignette, dans une reponse que la page met en cache",
+        rougit="ni l'identifiant de la cle ni ses secrets ne sortent dans la mediatheque",
+        editions=[("serveur.py", brut(
+            '            "revoquee": bool(ACCES) and fiche is None}',
+            '            "revoquee": bool(ACCES) and fiche is None, "id": ident}'))]),
+    dict(
+        nom="la mediatheque d'un compte montre les images des autres",
+        banc="banc_pilotage.py",
+        imite="la vue de l'administrateur ouverte a tout le monde : les rendus "
+              "du n8n de l'un dans la mediatheque de l'autre",
+        rougit="un autre compte ne voit pas ce fichier dans SA mediatheque",
+        editions=[("serveur.py", brut(
+            'vues = ([c for c in CONVERSATIONS.values() if not c.get("ferme")] if admin',
+            'vues = ([c for c in CONVERSATIONS.values() if not c.get("ferme")] if True'))]),
+    dict(
+        nom="une cle revoquee passe pour vivante",
+        banc="banc_pilotage.py",
+        imite="l'origine lue sur la marque seule, sans demander a ACCES : la "
+              "page promet encore des images d'une cle qui n'existe plus",
+        rougit="une cle revoquee : l'image reste, avec le nom de la cle et « revoquee »",
+        editions=[("serveur.py", brut(
+            '            "revoquee": bool(ACCES) and fiche is None}',
+            '            "revoquee": False}'))]),
+    dict(
+        nom="le delai de garde servi en dur",
+        banc="banc_pilotage.py",
+        imite="trente ecrit dans la reponse : le jour ou GARDE_PROGRAMME change, "
+              "la visionneuse annonce un delai faux",
+        rougit="et ce delai suit GARDE_PROGRAMME : douze jours poses, douze servis",
+        editions=[("serveur.py", brut(
+            '"garde_programme_jours": GARDE_PROGRAMME // (24 * 3600)',
+            '"garde_programme_jours": 30'))]),
+    dict(
+        nom="le filtre de la mediatheque inverse la page et les programmes",
+        banc="banc_page.py",
+        imite="les deux gardes ecrites a l'envers : « la page » montre les "
+              "rendus des programmes, et l'inverse",
+        rougit="le filtre « la page / les programmes » garde ce qu'il dit",
+        editions=[("web/index.html", brut(
+            "  page: f => !f.origine," + chr(10) + "  programmes: f => !!f.origine,",
+            "  page: f => !!f.origine," + chr(10) + "  programmes: f => !f.origine,"))]),
+    dict(
+        nom="le filtre de la mediatheque n'est pas lu",
+        banc="banc_page.py",
+        imite="le menu pose et oublie par trierEtFiltrer : on choisit « les "
+              "programmes » et la grille ne change pas",
+        rougit="le filtre est branche : la grille le lit",
+        editions=[("web/index.html", brut(
+            "    && origineGardee(f)" + chr(10), ""))]),
+    dict(
+        nom="le delai de la visionneuse ecrit en dur",
+        banc="banc_page.py",
+        imite="« 30 » dans la page : il ment des que le serveur change sa regle",
+        rougit="la visionneuse rappelle le delai, lu dans la reponse du serveur",
+        editions=[("web/index.html", brut(
+            "  const jours = (mediaCharge || {}).garde_programme_jours;",
+            "  const jours = 30;"))]),
+    dict(
+        nom="la visionneuse tait l'origine et le delai",
+        banc="banc_page.py",
+        imite="le crochet oublie dans peindreVue : l'image d'un programme se "
+              "regarde en grand sans rien dire de ce qui l'attend",
+        rougit="la visionneuse rappelle le delai, lu dans la reponse du serveur",
+        editions=[("web/index.html", brut(
+            "  peindreOrigineVue(vue, f);" + chr(10), ""))]),
+    dict(
+        nom="la vignette d'un programme sans badge",
+        banc="banc_page.py",
+        imite="le serveur sert l'origine, la grille la jette",
+        rougit="la vignette d'un programme porte son badge",
+        editions=[("web/index.html", brut(
+            '    if (f.origine) marques.push(["marque-programme", badgeProgramme(f)]);' + chr(10),
+            ""))]),
+    dict(
+        nom="le nom de la cle pose en HTML dans la visionneuse",
+        banc="banc_page.py",
+        imite="un nom de cle choisi par son proprietaire, interprete comme du "
+              "HTML sous l'image",
+        rougit="le nom de la cle est pose en texte, jamais en HTML",
+        editions=[("web/index.html", brut(
+            "  qui.textContent = badgeProgramme(f);",
+            "  qui.innerHTML = badgeProgramme(f);"))]),
+]
+
+# LA RELECTURE DU 8 NOVEMBRE 2026 : quatre defauts des rondes 8 et 9.
+RELECTURE_DIX = [
+    dict(
+        nom="le meme episode compte au lieu de retenter",
+        banc="banc_cerveaux.py",
+        imite="la trace du second appel sans « decharge » : il compte, et trois "
+              "appels en vol mettent au placard un modele repare",
+        rougit="trois appels en vol qui degenerent ensemble : UN dechargement",
+        editions=[("serveur.py", brut(
+            '        trace["decharge"] = True' + chr(10)
+            + '        trace["par_un_autre_appel"] = True',
+            '        trace["par_un_autre_appel"] = True'))]),
+    dict(
+        nom="une imbrication sans fin leve RecursionError",
+        banc="banc_multilingue.py",
+        imite="raw_decode sans garde : la boucle « [[[[ » passe pour une panne "
+              "de machine",
+        rougit="une imbrication sans fin (3000 crochets) est un JSON illisible",
+        editions=[("serveur.py", brut(
+            '    except RecursionError:' + chr(10)
+            + '        raise json.JSONDecodeError("imbrication trop profonde", texte, debut)',
+            '    except ZeroDivisionError:' + chr(10)
+            + '        raise json.JSONDecodeError("imbrication trop profonde", texte, debut)'))]),
+    dict(
+        nom="le meme personnage est impose au moteur d'edition",
+        banc="banc_openai.py",
+        imite="la route des retouches impose l'edition sans exception : 403 "
+              "d'entree a une cle qui permet tout",
+        rougit="« le meme personnage » sur la route des retouches n'est pas impose",
+        editions=[("serveur.py", brut(
+            '          and not veut_meme_personnage(prompt)):',
+            '          and True):'))]),
+]
+
+MUSIQUE_NEGATIONS = [
+    dict(
+        nom="style_musical lit la demande sans voir ses negations",
+        banc="banc_refaire.py",
+        imite="le defaut du 8 novembre 2026 : « sans voix, sans batterie » trouve "
+              "« batterie » et ajoute « clear vocals »",
+        rougit="« no vocals » se dit positivement",
+        editions=[("serveur.py", brut(
+            "    t, exclus = lire_negations(texte)",
+            '    t, exclus = sans_accents((texte or "").lower()), []'))]),
+    dict(
+        nom="clear vocals ajoute meme a un morceau sans voix",
+        banc="banc_refaire.py",
+        imite="la fin de style_musical qui ne regarde pas les exclusions : la "
+              "consigne fixe « clear vocals » repart a chaque style lu",
+        rougit="« no vocals » se dit positivement",
+        editions=[("serveur.py", brut(
+            '    morceaux.append("instrumental, studio recording" if "vocals" in exclus',
+            '    morceaux.append("studio recording, clear vocals" if "vocals" in exclus'))]),
+    dict(
+        nom="pas trop de batterie lu comme pas de batterie",
+        banc="banc_refaire.py",
+        imite="une liste d'intercalaires trop genereuse : « pas trop de », « pas "
+              "mal de » veulent de la batterie, et la perdent",
+        rougit="« pas trop de batterie, du rock » garde drums",
+        editions=[("serveur.py", brut(
+            '                   "any", "the", "a", "el", "los", "las", "una"}',
+            '                   "any", "the", "a", "el", "los", "las", "una", "trop", "mal"}'))]),
+    dict(
+        nom="la negation porte jusqu'au prochain instrument",
+        banc="banc_refaire.py",
+        imite="une portee de negation qui saute les mots inconnus : « sans fin "
+              "avec batterie » retire la batterie demandee",
+        rougit="« un rock sans fin avec batterie et guitare » garde drums",
+        editions=[("serveur.py", brut(
+            "        while j < len(jetons) and (jetons[j].group() in _ENTRE_NEGATION",
+            "        while j < len(jetons) and ((jetons[j].group()[0].isalnum() and not "
+            "_exclu_par(jetons[j].group()))"))]),
+    dict(
+        nom="sans paroles fait encore ecrire un refrain",
+        banc="banc_refaire.py",
+        imite="executer qui lit _CHANSON sur la demande brute : « paroles » y est, "
+              "un refrain s'ecrit pour un morceau qui n'en veut pas",
+        rougit="« un morceau sans paroles ni batterie, piano calme » : aucune parole",
+        editions=[("serveur.py", brut(
+            "            chantee = chanson_demandee(texte)",
+            '            chantee = bool(_CHANSON.search(texte or ""))'))]),
+    dict(
+        nom="les paroles du plan gardees malgre sans voix",
+        banc="banc_refaire.py",
+        imite="un plan dont l'analyse a ecrit des paroles, envoyees telles quelles "
+              "a un morceau demande sans voix",
+        rougit="« une musique calme, sans voix, sans batterie » : aucune parole",
+        editions=[("serveur.py", brut(
+            '            if "vocals" in exclus:' + chr(10) + '                plan["paroles"] = ""',
+            '            if "vocals" in exclus:' + chr(10) + '                pass'))]),
+    dict(
+        nom="le style de l'analyse part sans purge",
+        banc="banc_refaire.py",
+        imite="la garde laissee au gabarit seul : le petit modele ecrit « gentle "
+              "female vocals, light drums » et ACE-Step les chante",
+        rougit="« une musique calme, sans voix, sans batterie » : ni voix ni batterie",
+        editions=[("serveur.py", brut(
+            "            if exclus:" + chr(10) + "                style = purger_style(style, exclus)",
+            "            if False:" + chr(10) + "                style = purger_style(style, exclus)"))]),
+    dict(
+        nom="la purge ne coupe qu'aux virgules",
+        banc="banc_refaire.py",
+        imite="un tag en phrase « piano with vocals and drums » jete entier : le "
+              "piano part avec",
+        rougit="le style de l'analyse perd voix et batterie, garde le reste",
+        editions=[("serveur.py", brut(
+            '    for morceau in re.split(r"[,;]|\\.\\s|\\bwith\\b|\\bfeaturing\\b", style or ""):',
+            '    for morceau in re.split(r"[,;]", style or ""):'))]),
+    dict(
+        nom="sans voix ne dit pas instrumental",
+        banc="banc_refaire.py",
+        imite="les voix retirees sans rien dire de positif : le moteur, sans "
+              "consigne, peut fredonner",
+        rougit="le style de l'analyse perd voix et batterie, garde le reste, et dit",
+        editions=[("serveur.py", brut(
+            '        gardes.insert(0, "instrumental")',
+            "        pass"))]),
+    dict(
+        nom="une chanson sans paroles part sur le moteur soigne",
+        banc="banc_refaire.py",
+        imite="normaliser qui lit _CHANSON sur la demande brute : cinquante "
+              "etapes pour un instrumental",
+        rougit="une chanson va sur le moteur soigne, pas « une chanson sans paroles »",
+        editions=[("serveur.py", brut(
+            '        if chanson_demandee(texte) and plan.get("modele") != "audioplus" \\',
+            '        if _CHANSON.search(texte or "") and plan.get("modele") != "audioplus" \\'))]),
+    dict(
+        nom="l'estimation n'est jamais servie aux programmes",
+        banc="banc_pilotage.py",
+        imite="le devis reste reserve a la page : n8n et Claude suivent une "
+              "musique sans savoir combien elle dure",
+        rougit="en cours avec un devis : « estimation » porte la mediane",
+        editions=[("serveur.py", brut(
+            '    if etat not in ETATS_FINAUX and devis_.get("secondes"):',
+            '    if False and devis_.get("secondes"):'))]),
+    dict(
+        nom="l'estimation survit a la fin du rendu",
+        banc="banc_pilotage.py",
+        imite="le devis lu sur la tache sans regarder l'etat : un rendu fini "
+              "promet encore une duree",
+        rougit="fini, le devis toujours sur la tache : « estimation » retombe a null",
+        editions=[("serveur.py", brut(
+            '    if etat not in ETATS_FINAUX and devis_.get("secondes"):',
+            '    if devis_.get("secondes"):'))]),
+    dict(
+        nom="l'estimation sort sous un champ que le contrat ne decrit pas",
+        banc="banc_contrat.py",
+        imite="un champ renomme d'un cote seulement : le client genere lit "
+              "« ecoule_rendu », le studio rend « ecoule »",
+        rougit="estimation : ses champs sont ceux du contrat",
+        editions=[("serveur.py", brut(
+            '            "ecoule_rendu": (round(time.time() - t["debut_rendu"], 1)',
+            '            "ecoule": (round(time.time() - t["debut_rendu"], 1)'))]),
+    dict(
+        nom="etat_rendu tait l'estimation dans son texte",
+        banc="banc_pilotage.py",
+        imite="l'estimation dans le seul contenu structure : un client MCP qui "
+              "lit le texte ne la voit pas",
+        rougit="etat_rendu sur un rendu en cours : l'estimation, structuree et en texte",
+        editions=[("serveur.py", brut(
+            '    if corps["estimation"]:',
+            "    if False:"))]),
+    dict(
+        nom="30 seconds ne se lit pas",
+        banc="banc_durees.py",
+        imite="la duree d'essai lue en francais seulement : « a 30 seconds lofi "
+              "track » part sur 60 s",
+        rougit="« a calm lofi track, 30 seconds » se lit 30.0",
+        editions=[("serveur.py", brut(
+            "(?:s|sec|secondes?|seconds?|segundos?)",
+            "(?:s|sec|secondes?)"))]),
+    dict(
+        nom="instrumental ne retire pas les voix",
+        banc="banc_refaire.py",
+        imite="le rendu 2b9002f2 du 8 novembre 2026 : « Musique d'ambiance "
+              "INSTRUMENTALE » partie avec « clear vocals »",
+        rougit="l'exemple : un style sans « vocals »",
+        editions=[("serveur.py", brut(
+            '    if (re.search(r"\\binstrumenta(?:l|le|ls|les|ux)\\b", t) and not _CHANSON.search(t)',
+            "    if (False and not _CHANSON.search(t)"))]),
+    dict(
+        nom="un pont instrumental retire le chant d'une chanson",
+        banc="banc_refaire.py",
+        imite="« instrumental » lu partout, meme dans une chanson qui a un pont "
+              "instrumental : elle part sans paroles",
+        rougit="« un pont instrumental » reste une chanson",
+        editions=[("serveur.py", brut(
+            '    if (re.search(r"\\binstrumenta(?:l|le|ls|les|ux)\\b", t) and not _CHANSON.search(t)',
+            '    if (re.search(r"\\binstrumenta(?:l|le|ls|les|ux)\\b", t)'))]),
+    dict(
+        nom="les mots-cles cherches en sous-chaines",
+        banc="banc_refaire.py",
+        imite="l'ancien _trouves : « violon » dans « violoncelle », « rap » "
+              "dans « rapide »",
+        rougit="violoncelle n'est pas un violon",
+        editions=[("serveur.py", brut(
+            '                re.search(r"\\b" + re.escape(c) + r"(?:s|x|e|es)?\\b", texte)',
+            "                c in texte"))]),
+    dict(
+        nom="le tempo ecrit en mots est ignore",
+        banc="banc_refaire.py",
+        imite="« tempo tres lent » a 90 BPM : seul le genre changeait le tempo",
+        rougit="l'exemple : « tempo tres lent » donne ~55 BPM",
+        editions=[("serveur.py", brut(
+            "        if tempo:" + chr(10) + '            plan["parametres_bruts"]["bpm"] = tempo',
+            "        if False:" + chr(10) + '            plan["parametres_bruts"]["bpm"] = tempo'))]),
+    dict(
+        nom="tres lent lu comme lent",
+        banc="banc_refaire.py",
+        imite="un « tres » qui ne compte pas : le morceau tres lent part a 70",
+        rougit="l'exemple : « tempo tres lent » donne ~55 BPM",
+        editions=[("serveur.py", brut(
+            '    (55, ("tres lent", "tres lente", "tres lentement", "very slow", "muy lento",',
+            '    (70, ("tres lent", "tres lente", "tres lentement", "very slow", "muy lento",'))]),
+    dict(
+        nom="le nombre de BPM ecrit ne prime pas",
+        banc="banc_refaire.py",
+        imite="« 60 bpm, tres rapide » lu par les mots seuls : 150 au lieu des 60 "
+              "que l'utilisateur a ecrits",
+        rougit="« 60 bpm » prime sur les mots",
+        editions=[("serveur.py", brut(
+            "    m = _BPM_ECRIT.search(t)",
+            "    m = None"))]),
+    dict(
+        nom="deux ambiances seulement",
+        banc="banc_refaire.py",
+        imite="l'ancien plafond : « sombres, mysterieuse et inquietante » perd "
+              "l'inquietant",
+        rougit="l'exemple : un style sans « vocals », avec « instrumental » et chaque",
+        editions=[("serveur.py", brut(
+            "    ambiances = _trouves(t, _AMBIANCES)[:4]",
+            "    ambiances = _trouves(t, _AMBIANCES)[:2]"))]),
+    dict(
+        nom="la harpe absente de la table",
+        banc="banc_refaire.py",
+        imite="un instrument nomme que la table ne connait pas : il disparait du "
+              "style, qui prime sur l'analyse",
+        rougit="l'exemple : un style sans « vocals », avec « instrumental » et chaque",
+        editions=[("serveur.py", brut(
+            '    ("harp", ("harpe", "harp")),' + chr(10),
+            ""))]),
+    dict(
+        nom="instrumental pour tout le monde",
+        banc="banc_refaire.py",
+        imite="la consigne « clear vocals » remplacee partout : une chanson rock "
+              "chantee par un homme part instrumentale",
+        rougit="temoin : « une chanson rock, guitare, batterie, voix d'homme »",
+        editions=[("serveur.py", brut(
+            '    morceaux.append("instrumental, studio recording" if "vocals" in exclus',
+            '    morceaux.append("instrumental, studio recording" if True'))]),
+    dict(
+        nom="sans paroles exige des paroles",
+        banc="banc_refaire.py",
+        imite="le rendu 4f24e251 du 8 novembre 2026 : « Morceau instrumental, sans "
+              "paroles » trouve « paroles » et leve faute de refrain",
+        rougit="cas A : il ne leve pas",
+        editions=[("serveur.py", brut(
+            '    return bool(_CHANSON.search(reste)) and "vocals" not in exclus',
+            '    return bool(_CHANSON.search(texte or ""))'))]),
+    dict(
+        nom="le style donne dans la demande ignore",
+        banc="banc_refaire.py",
+        imite="le rendu cc73077b : « Style : dark ambient… » remplace par la "
+              "lecture de style_musical, « folk, ballad, clear vocals »",
+        rougit="cas B : les tags donnes passent tels quels",
+        editions=[("serveur.py", brut(
+            '            donne = style_donne(texte, par, exclus, api_audio.get("style_audio"))',
+            '            donne = ""'))]),
+    dict(
+        nom="le genre ecrase un tempo ecrit",
+        banc="banc_refaire.py",
+        imite="« folk a 90 BPM » qui part a 100 : un tempo ecrit egal au defaut "
+              "passait pour un defaut",
+        rougit="« folk … 90 BPM » reste a 90",
+        editions=[("serveur.py", brut(
+            "                    and not tempo_demande(texte) and not tempo_sa):",
+            "                    and True and not tempo_sa):"))]),
+    dict(
+        nom="tempo 72 ne se lit pas",
+        banc="banc_refaire.py",
+        imite="le tempo ecrit sans « BPM » : « tempo 72 » part au defaut",
+        rougit="« 60 bpm » prime sur les mots",
+        editions=[("serveur.py", brut(
+            "|\\btempo\\s*(?:de|a|:|=)?\\s*(\\d{2,3})\\b",
+            "|\\btempo\\s*(?:de|a|:|=)?\\s*(\\d{2,3})\\bjamais"))]),
+    dict(
+        nom="instrumental du programme ignore",
+        banc="banc_refaire.py",
+        imite="« instrumental: true » accepte par la route et jamais lu : la "
+              "chanson part avec des paroles",
+        rougit="un programme : « style_audio » passe tel quel",
+        editions=[("serveur.py", brut(
+            '            if api_audio.get("instrumental") and "vocals" not in exclus:',
+            '            if False and "vocals" not in exclus:'))]),
+    dict(
+        nom="style_audio du programme ignore",
+        banc="banc_refaire.py",
+        imite="le champ lu par la route mais pas par executer : le studio "
+              "reprend sa propre lecture de la demande",
+        rougit="un programme : « style_audio » passe tel quel",
+        editions=[("serveur.py", brut(
+            '            donne = style_donne(texte, par, exclus, api_audio.get("style_audio"))',
+            '            donne = style_donne(texte, par, exclus, None)'))]),
+    dict(
+        nom="style_audio pas pose sur la marque",
+        banc="banc_pilotage.py",
+        imite="un champ valide puis oublie avant la file : 202, et rien n'arrive "
+              "a executer",
+        rougit="style_audio et instrumental : portes par la marque",
+        editions=[("serveur.py", brut(
+            '        marque["style_audio"] = style_audio',
+            "        pass"))]),
+    dict(
+        nom="style_audio sans borne",
+        banc="banc_pilotage.py",
+        imite="un style de dix mille caracteres accepte : il part tel quel a "
+              "l'encodeur",
+        rougit="un style au-dela de STYLE_AUDIO_MAX rend 400",
+        editions=[("serveur.py", brut(
+            "                                    or len(style_audio) > STYLE_AUDIO_MAX):",
+            "                                    or False):"))]),
+    dict(
+        nom="instrumental absent du schema MCP",
+        banc="banc_contrat.py",
+        imite="le champ ajoute a la route et pas a l'outil : Claude ne peut pas "
+              "le passer, additionalProperties le refuse",
+        rougit="generer_rendu (MCP) decrit « style_audio » et « instrumental »",
+        editions=[("serveur.py", brut(
+            '                 "instrumental": {"type": "boolean",',
+            '                 "instrumental_": {"type": "boolean",'))]),
+]
+
+# LE TEMPO DE style_audio (8 novembre 2026, vu par un studio d'essai).
+TEMPO_STYLE_AUDIO = [
+    dict(
+        nom="le tempo de style_audio n'est pas lu",
+        banc="banc_refaire.py",
+        imite="les tags disent 50 BPM, le parametre du moteur reste a 90 : "
+              "ACE-Step obeit au parametre",
+        rougit="le tempo ecrit dans style_audio devient le tempo du moteur",
+        editions=[("serveur.py", brut(
+            '            if tempo_sa:' + chr(10) + '                par["bpm"] = tempo_sa',
+            '            if False:' + chr(10) + '                par["bpm"] = tempo_sa'))]),
+    dict(
+        nom="le champ ecrase le tempo de la demande",
+        banc="banc_refaire.py",
+        imite="le champ d'un gabarit passe devant ce que l'humain a ecrit",
+        rougit="temoin : la demande garde la priorite",
+        editions=[("serveur.py", brut(
+            '    if not style_audio or tempo_demande(texte):' + chr(10) + '        return None',
+            '    if not style_audio:' + chr(10) + '        return None'))]),
+]
+
+
+# UNE ANALYSE LENTE NE RETIENT PAS UN MOTEUR IMPOSE (8 novembre 2026 : dix
+# minutes d'analyse pour « moteur: klein9b », le PC mis de cote et le NAS
+# servant cinq demandes l'une apres l'autre).
+ANALYSE_NE_BLOQUE_PAS = [
+    dict(
+        nom="la borne du moteur impose n'est pas posee",
+        banc="banc_cerveaux.py",
+        imite="executer() oublie la borne : la demande au moteur impose attend "
+              "la carte du NAS appel apres appel, comme le 8 novembre",
+        rougit="de bout en bout : moteur impose, PC de cote, NAS occupe — au "
+               "bout de la borne le rendu part sur klein9b, avec la demande "
+               "telle quelle",
+        editions=[("serveur.py", brut(
+            "            if modele_force and tid in TACHES:",
+            "            if False and tid in TACHES:"))]),
+    dict(
+        nom="la borne posee meme sans moteur impose",
+        banc="banc_cerveaux.py",
+        imite="la borne pour tout le monde : sans moteur impose, l'aiguillage "
+              "par mots-cles choisirait le moteur des qu'une carte est prise",
+        rougit="temoin : sans moteur impose, l'analyse n'a pas de borne ; avec, "
+               "elle en a une",
+        editions=[("serveur.py", brut(
+            "            if modele_force and tid in TACHES:",
+            "            if tid in TACHES:"))]),
+    dict(
+        nom="l'attente d'une carte occupee n'est pas bornee",
+        banc="banc_cerveaux.py",
+        imite="la borne ne vise que l'appel, et l'analyse attend la carte du "
+              "NAS jusqu'a ATTENTE_CARTE — le chemin exact de l'incident",
+        rougit="moteur impose, PC mis de cote, carte du NAS tenue : au bout de "
+               "la borne l'analyse renonce — sans appel au NAS ni detour par un "
+               "agent",
+        editions=[("serveur.py", brut(
+            "            if par_borne_:" + chr(10)
+            + "                reste = min(reste, borne_ - time.time())",
+            "            if False:" + chr(10)
+            + "                reste = min(reste, borne_ - time.time())"))]),
+    dict(
+        nom="l'appel a un autre cerveau n'est pas borne",
+        banc="banc_cerveaux.py",
+        imite="la carte du NAS est libre mais son modele deborde : 55 a 107 s "
+              "par appel, trois ou quatre appels, et la borne ne mord pas",
+        rougit="PC de cote, NAS libre mais lent : l'appel au NAS part avec ce "
+               "qui reste de la borne, et l'analyse renonce a son echeance — "
+               "sans se dire « cerveau lent » d'ANALYSE_DELAI",
+        editions=[("serveur.py", brut(
+            "            if borne_ and (rang_ or sur_processeur(url)):",
+            "            if False and (rang_ or sur_processeur(url)):"))]),
+    dict(
+        nom="le premier cerveau est coupe aussi",
+        banc="banc_cerveaux.py",
+        imite="la borne sur tous les appels : le PC libre qui charge son modele "
+              "d'ecriture perd l'enrichissement et la traduction",
+        rougit="temoin : moteur impose et borne passee, mais le PC libre et sur "
+               "sa carte repond — il n'est jamais coupe, meme lent a charger",
+        editions=[("serveur.py", brut(
+            "            if borne_ and (rang_ or sur_processeur(url)):",
+            "            if borne_ and (True or sur_processeur(url)):"))]),
+    dict(
+        nom="un appel borne qui expire se dit cerveau lent",
+        banc="banc_cerveaux.py",
+        imite="l'echeance de la borne prise pour celle d'ANALYSE_DELAI : le fil "
+              "dit « n'a pas repondu en 1 s », et la marque n'est pas celle de "
+              "la borne",
+        rougit="PC de cote, NAS libre mais lent : l'appel au NAS part avec ce "
+               "qui reste de la borne, et l'analyse renonce a son echeance — "
+               "sans se dire « cerveau lent » d'ANALYSE_DELAI",
+        editions=[("serveur.py", brut(
+            "            if borne_ici_ and isinstance(e, asyncio.TimeoutError):",
+            "            if False and isinstance(e, asyncio.TimeoutError):"))]),
+    dict(
+        nom="un appel part quand la borne est deja passee",
+        banc="banc_cerveaux.py",
+        imite="un delai negatif passe a Ollama : la requete part, et la carte "
+              "du NAS la commence pour rien",
+        rougit="la borne deja passee, PC de cote : aucun appel ne part au NAS",
+        editions=[("serveur.py", brut(
+            "                if borne_ - time.time() <= 0:",
+            "                if False:"))]),
+    dict(
+        nom="la coupe ne marque pas la demande",
+        banc="banc_cerveaux.py",
+        imite="la coupe rend la main sans la marque « cerveau lent » : "
+              "l'enrichissement et la traduction repartent chercher une carte",
+        rougit="le fil le dit en une ligne claire, et la demande porte la "
+               "marque « cerveau lent », posee par la borne",
+        editions=[("serveur.py", brut(
+            '        t_["cerveau_lent"] = titre',
+            '        t_["cerveau_lent_"] = titre'))]),
+    dict(
+        nom="la marque de la borne survit a l'analyse",
+        banc="banc_cerveaux.py",
+        imite="la marque posee par la borne reste : les paroles d'une chanson "
+              "au moteur impose ne s'ecrivent plus, et la demande meurt",
+        rougit="apres l'analyse, la marque de la borne tombe : les paroles "
+               "d'une chanson n'ont pas de raccourci",
+        editions=[("serveur.py", brut(
+            '        if t_borne_.pop("analyse_coupee", None):' + chr(10)
+            + '            t_borne_.pop("cerveau_lent", None)',
+            '        if t_borne_.pop("analyse_coupee", None):' + chr(10)
+            + '            pass'))]),
+    dict(
+        nom="le detour par un agent n'est pas borne",
+        banc="banc_cerveaux.py",
+        imite="la borne oubliee sur le chemin de l'agent : 75 a 162 s par "
+              "appel (mesure du 31 aout)",
+        rougit="les deux Ollama en panne : le detour par un agent n'a que ce "
+               "qui reste de la borne, puis l'analyse renonce",
+        editions=[("serveur.py", brut(
+            "    rendu = await demander_a_un_noeud(corps, tid, secondes_)",
+            "    rendu = await demander_a_un_noeud(corps, tid)"))]),
+    dict(
+        nom="apres le detour, la borne passee ne coupe pas",
+        banc="banc_cerveaux.py",
+        imite="l'agent n'a rien rendu et la demande leve sa panne sans "
+              "marque : chaque appel suivant refait le detour",
+        rougit="les deux Ollama en panne : le detour par un agent n'a que ce "
+               "qui reste de la borne, puis l'analyse renonce",
+        editions=[("serveur.py", brut(
+            "    if borne_ and time.time() >= borne_:" + chr(10)
+            + "        raise _couper_analyse(tid, _mot_local())" + chr(10)
+            + "    raise panne",
+            "    raise panne"))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -15772,7 +16606,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
              + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES
-             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT + REGLE_PLACARD)
+             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT + REGLE_PLACARD + MOTEUR_IMPOSSIBLE + MOTEURS_DISPONIBLES + MEDIA_PROGRAMMES + RELECTURE_DIX + MUSIQUE_NEGATIONS + TEMPO_STYLE_AUDIO + ANALYSE_NE_BLOQUE_PAS)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

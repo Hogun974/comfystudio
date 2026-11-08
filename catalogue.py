@@ -7,6 +7,10 @@ qu'elle finisse par diverger du serveur.
 
 vram : gigaoctets necessaires sur la carte. C'est ce qui decide quels moteurs
 sont proposables sur une machine donnee.
+
+repli : pour une variante lourde, le moteur dont elle est la version pleine
+precision. Le studio le prend a sa place quand l'analyse la choisit et
+qu'aucune carte connue du parc ne la tient (voir moteur_qui_tient).
 """
 
 # fichiers : (sous-dossier, nom local, depot HF ou None, chemin distant)
@@ -132,14 +136,14 @@ CATALOGUE = {
               "Comfy-Org/hunyuan3D_2.0_repackaged",
               "split_files/hunyuan3d-dit-v2_fp16.safetensors")]),
  "klein9bhd": dict(titre="FLUX.2 klein 9B pleine precision", famille="flux2", type="image",
-   duree="70 s", vram=18.0, multilingue=True,
+   duree="70 s", vram=18.0, multilingue=True, repli="klein9b",
    pour="comme klein 9B, mais l'encodeur de texte est en pleine precision : "
         "le suivi du prompt et les details montent d'un cran. Exige une grosse carte.",
    fichiers=[("diffusion_models","flux-2-klein-9b-Q8_0.gguf","unsloth/FLUX.2-klein-9B-GGUF","flux-2-klein-9b-Q8_0.gguf"),
              ("text_encoders","qwen_3_8b.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-9b","split_files/text_encoders/qwen_3_8b.safetensors"),
              ("vae","flux2-vae.safetensors","Comfy-Org/vae-text-encorder-for-flux-klein-4b","split_files/vae/flux2-vae.safetensors")]),
  "flux1hd": dict(titre="FLUX.1 dev pleine precision", famille="flux1", type="image",
-   duree="110 s", traduire=True, vram=26.0,
+   duree="110 s", traduire=True, vram=26.0, repli="flux1",
    pour="FLUX.1 dev sans quantification, avec l'encodeur T5 complet : la meilleure "
         "photographie possible ici. Exige une tres grosse carte.",
    fichiers=[("diffusion_models","flux1-dev.safetensors","Comfy-Org/flux1-dev","flux1-dev.safetensors"),

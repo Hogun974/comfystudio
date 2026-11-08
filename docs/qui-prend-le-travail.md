@@ -183,6 +183,16 @@ Quand il n'y a plus d'autre machine, une analyse attend la carte occupée pendan
 `STUDIO_ATTENTE_CARTE` — trente minutes par défaut, voir
 [Réglages](reglages.md) — puis renonce en le disant.
 
+**Sauf quand le moteur est imposé.** L'analyse n'a alors plus de moteur à
+choisir, seulement un prompt à réécrire, et le rendu ne l'attend que
+`STUDIO_ANALYSE_IMPOSE_DELAI` — 45 s — dès que ce qui reste est lent : la carte
+d'une machine qui calcule, un autre cerveau que le premier, un Ollama sur
+processeur. Le fil dit alors `analyse trop lente (machine occupee)` et la
+demande part telle quelle. Le 8 novembre 2026, le PC avait mis son modèle de
+côté, et cinq demandes `moteur: klein9b` attendaient la GTX 1060 du NAS l'une
+après l'autre, trois ou quatre appels chacune : dix minutes et plus pour une
+image que le PC aurait rendue en une minute et demie.
+
 ## Refaire sur la grosse carte
 
 Après un pouce en bas, un bouton **« refaire sur la grosse carte »** apparaît

@@ -1258,6 +1258,243 @@ try:
 finally:
     del S.CATALOGUE["_essai_sans_fichier"]
 
+# ══════ un moteur qu'aucune carte ne porte ═══════════════════════════
+# LE DEFAUT DU 7 NOVEMBRE 2026. Une demande par cle d'API, sans moteur impose,
+# a fini sur « FLUX.2 klein 9B pleine precision n'est disponible sur aucune
+# machine joignable ». klein9bhd reclame 18 Go ; le PC en charge 14,5 en
+# debordant, le NAS 7,9. vram_max() ne lisait que NOEUDS — jamais les machines
+# a agent — et seulement celles qui repondaient : sur le studio du reseau elle
+# rendait zero, PC allume ou non, et le catalogue montre a l'analyse n'ecartait
+# rien. Ce soir-la le PC etait eteint.
+print("\n  ── un moteur qu'aucune carte ne porte ──")
+
+
+def _catalogue_montre():
+    """Les cles que voit l'analyse, lues sur le texte qu'elle reçoit."""
+    texte = S.catalogue_texte()
+    return {c for c in S.CATALOGUE if f'- "{c}" (' in texte}
+
+
+poser(vram_studio=0.0)
+S.ETAT_NOEUDS["local"]["repond"] = False
+S.ETAT_NOEUDS["pc"]["repond"] = False
+S.ETAT_NOEUDS["pc"]["vu"] = S.time.time() - 3600
+S.VRAM_GO["total"] = 0.0
+dit(S.vram_max() == S._vram_utile("pc") == 14.5,
+    "le PC eteint compte encore : sa carte connue fixe le plafond",
+    f"vram_max() = {S.vram_max()} Go")
+_montre = _catalogue_montre()
+dit("klein9bhd" not in _montre and "flux1hd" not in _montre,
+    "PC eteint mais connu : klein9bhd n'est plus montre a l'analyse",
+    ", ".join(sorted(c for c in ("klein9bhd", "flux1hd") if c in _montre))
+    or "ni klein9bhd ni flux1hd")
+dit("klein9b" in _montre and "klein4b" in _montre,
+    "et klein9b, qui tient en 11 Go, l'est toujours",
+    ", ".join(sorted(_montre)))
+
+# LE MOTEUR QUE SEUL LE PC ETEINT TIENT RESTE PROPOSE. klein4b reclame 8 Go,
+# le NAS en charge 7,9 : c'est le cas « rallume-la », pas un moteur a ecarter.
+S.MODELES_NOEUD.clear()
+_inventaire("pc", "klein4b", S.time.time() - 7200)
+dit("klein4b" in _montre and S.moteur_qui_tient("klein4b") is None,
+    "klein4b, que seul le PC eteint tient, n'est ni ecarte ni remplace",
+    f"remplace par {S.moteur_qui_tient('klein4b')}")
+_refus = S.refus_moteur("klein4b", [x for x in S.tous_les_noeuds()
+                                   if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")])
+dit((_refus.marque or {}).get("cle") == "panne.moteur_machines_absentes"
+    and "Rallume" in str(_refus),
+    "et son refus dit toujours « Rallume-la »", str(_refus)[:90])
+
+# LE STUDIO NEUF : aucune carte n'a jamais ete connue. On ne sait pas, on
+# montre tout — ecarter au hasard serait pire qu'un refus explicite.
+S.ETAT_NOEUDS.clear()
+S.MODELES_NOEUD.clear()
+dit(S.vram_max() == 0.0 and _catalogue_montre() == set(S.CATALOGUE),
+    "studio neuf, aucune carte connue : tout le catalogue est montre",
+    f"vram_max() = {S.vram_max()}, {len(_catalogue_montre())}/{len(S.CATALOGUE)}")
+dit(S.moteur_qui_tient("klein9bhd") is None,
+    "et rien n'est remplace sur la foi d'une carte inconnue",
+    str(S.moteur_qui_tient("klein9bhd")))
+
+# LA REGLE DE REMPLACEMENT. Le repli declare d'abord : klein9bhd est klein9b
+# en pleine precision. « Le plus gros qui tient » rendrait klein4b — 8 Go
+# contre 6 —, un autre modele.
+poser(vram_studio=0.0)
+S.ETAT_NOEUDS["pc"]["repond"] = False
+dit(S.moteur_qui_tient("klein9bhd") == "klein9b"
+    and S.moteur_qui_tient("flux1hd") == "flux1",
+    "klein9bhd se rabat sur klein9b, et flux1hd sur flux1 : leurs versions "
+    "allegees",
+    f"{S.moteur_qui_tient('klein9bhd')}, {S.moteur_qui_tient('flux1hd')}")
+dit(S.moteur_qui_tient("klein9b") is None,
+    "un moteur qui tient n'est pas touche", str(S.moteur_qui_tient("klein9b")))
+# Sans repli declare : le meme type, la meme famille d'abord, puis le plus
+# gros qui tient. Deux moteurs fictifs, retires quoi qu'il arrive.
+S.CATALOGUE["_essai_lourd_flux2"] = {"titre": "lourd flux2", "type": "image",
+                                     "famille": "flux2", "vram": 30.0,
+                                     "fichiers": []}
+S.CATALOGUE["_essai_lourd_seul"] = {"titre": "lourd sans famille",
+                                    "type": "image", "vram": 30.0,
+                                    "fichiers": []}
+try:
+    _fam = S.moteur_qui_tient("_essai_lourd_flux2")
+    _seul = S.moteur_qui_tient("_essai_lourd_seul")
+finally:
+    del S.CATALOGUE["_essai_lourd_flux2"]
+    del S.CATALOGUE["_essai_lourd_seul"]
+dit(_fam == "klein4b",
+    "sans repli declare, la meme famille passe avant la taille",
+    f"rendu {_fam}")
+dit(_seul == "flux1",
+    "et sans famille, le plus gros moteur du meme type qui tient",
+    f"rendu {_seul}")
+
+# ── et dans executer(), le seul endroit ou cela compte ─────────────────
+# Une analyse simulee rend klein9bhd ; l'enrichissement simule note le moteur
+# qu'il reçoit et arrete la demande. On mesure ce qui partirait, sans rendu.
+
+
+class _Arret(Exception):
+    pass
+
+
+_RECU = {}
+
+
+async def _faux_aiguiller(texte, tid, conv, image_b64=None, **_):
+    return {"intention": "image", "modele": "klein9bhd",
+            "prompt": "un phare sous l'orage", "negatif": "",
+            "largeur": 1216, "hauteur": 832, "raison": "banc",
+            "parametres": {"etapes": 24}, "parametres_bruts": {"etapes": 24}}
+
+
+async def _faux_enrichir(plan, texte, tid):
+    _RECU["modele"] = plan.get("modele")
+    _RECU["etapes"] = (plan.get("parametres") or {}).get("etapes")
+    raise _Arret("le banc s'arrete ici")
+
+
+def _executer(tid, **kw):
+    _RECU.clear()
+    conv = S._vide(proprietaire="banc")
+    conv["id"] = "c_moteur"
+    S.CONVERSATIONS["c_moteur"] = conv
+    S.TACHES[tid] = {"etapes": [], "etat": "en cours",
+                     "debut": S.time.time(), "demande": "un phare",
+                     "conversation": "c_moteur", "proprietaire": "banc"}
+    asyncio.run(S.executer(tid, "un phare sous l'orage", conv, **kw))
+    return [e["msg"] for e in S.TACHES[tid]["etapes"]]
+
+
+_vrais = (S.aiguiller, S.enrichir)
+S.aiguiller, S.enrichir = _faux_aiguiller, _faux_enrichir
+try:
+    poser(vram_studio=0.0)
+    S.ETAT_NOEUDS["pc"]["repond"] = False
+    _fil = _executer("t_rabat")
+    dit(_RECU.get("modele") == "klein9b",
+        "l'analyse rend klein9bhd : la demande part sur klein9b",
+        f"moteur reçu : {_RECU.get('modele')}")
+    dit(any("FLUX.2 klein 9B pleine precision" in m
+            and "rendu avec FLUX.2 klein 9B" in m for m in _fil),
+        "et le fil de la tache le dit",
+        next((m for m in _fil if "rendu avec" in m), "rien")[:110])
+    dit(_RECU.get("etapes") == S.REGLAGES["klein9b"]["etapes"],
+        "et les etapes sont celles du moteur retenu, pas de celui qu'on quitte",
+        f"etapes {_RECU.get('etapes')}")
+
+    # LE MEME MOTEUR, IMPOSE : l'utilisateur l'a voulu. Il n'est pas change.
+    poser(vram_studio=0.0)
+    S.ETAT_NOEUDS["pc"]["repond"] = False
+    _fil = _executer("t_impose", modele_force="klein9bhd", modele_choisi=True)
+    dit(_RECU.get("modele") == "klein9bhd"
+        and not any("rendu avec" in m for m in _fil),
+        "impose, klein9bhd est garde tel quel",
+        f"moteur reçu : {_RECU.get('modele')}")
+finally:
+    S.aiguiller, S.enrichir = _vrais
+
+# ET SON REFUS NOMME LA CAUSE, PUIS LE MOTEUR QUI TIENT (ronde 10). Aucune
+# machine ne le tient, le PC eteint pas davantage — on ne l'envoie pas
+# rallumer pour rien. « Modele absent, ou carte trop petite » laissait
+# chercher un modele qui etait la : le 8 novembre 2026, Jordan a demande
+# klein9bhd par l'outil MCP, et rien ne lui disait de prendre klein9b.
+poser(vram_studio=0.0)
+S.ETAT_NOEUDS["pc"]["repond"] = False
+S.MODELES_NOEUD.clear()
+_inventaire("pc", "klein9bhd", S.time.time() - 7200)
+
+
+def _vivantes():
+    return [x for x in S.tous_les_noeuds()
+            if (S.ETAT_NOEUDS.get(x["id"]) or {}).get("repond")]
+
+
+dit(S.hors_du_parc("klein9bhd") == 18.0 and S.hors_du_parc("flux1hd") == 26.0
+    and S.hors_du_parc("klein9b") == 0,
+    "hors_du_parc : klein9bhd (18 Go) et flux1hd (26) depassent la plus grosse "
+    "carte connue, klein9b non",
+    f"{S.hors_du_parc('klein9bhd')}, {S.hors_du_parc('flux1hd')}, "
+    f"{S.hors_du_parc('klein9b')}")
+# LE DEBORDEMENT COMPTE, comme pour le repartiteur : un moteur de 12 Go tient
+# sur les 11 Go du PC et ses 63,8 Go de RAM. Une seconde mesure, la carte
+# nue, l'aurait retire des listes pendant que noeuds_pour() l'accepte. Un
+# moteur fictif, retire quoi qu'il arrive.
+S.CATALOGUE["_essai_debord"] = {"titre": "debord", "type": "image",
+                                "vram": 12.0, "fichiers": []}
+try:
+    _debord = S.hors_du_parc("_essai_debord")
+finally:
+    del S.CATALOGUE["_essai_debord"]
+dit(_debord == 0,
+    "un moteur de 12 Go tient sur la 2080 Ti en debordant : il n'est pas hors "
+    "du parc", f"hors_du_parc = {_debord}")
+_refus = S.refus_moteur("klein9bhd", _vivantes())
+_phrase = str(_refus)
+dit((_refus.marque or {}).get("cle") == "panne.moteur_trop_lourd"
+    and _phrase.startswith("FLUX.2 klein 9B pleine precision demande 18 Go, "
+                           "et aucune carte du parc ne le porte")
+    and "en tient 14.5" in _phrase
+    and _phrase.endswith(": essaie FLUX.2 klein 9B.")
+    and "Rallume" not in _phrase,
+    "impose et intenable, son refus nomme la cause et propose klein9b",
+    _phrase[:120])
+dit(TR.rendre(_refus.marque, "fr") == _phrase
+    and "try FLUX.2 klein 9B" in TR.rendre(_refus.marque, "en"),
+    "et sa cle rend la meme phrase en francais, l'anglais en anglais",
+    TR.rendre(_refus.marque, "en")[:90])
+_refus = S.refus_moteur("flux1hd", _vivantes())
+dit(str(_refus).endswith(": essaie FLUX.1 dev."),
+    "flux1hd, impose, envoie vers FLUX.1 dev", str(_refus)[-40:])
+# SANS RIEN QUI TIENNE A SA PLACE : la cause seule, sans promettre un repli.
+# Un moteur fictif d'un genre que rien d'autre ne fait, retire quoi qu'il
+# arrive.
+S.CATALOGUE["_essai_lourd_unique"] = {"titre": "lourd unique", "type": "_banc",
+                                      "vram": 30.0, "fichiers": []}
+try:
+    _refus = S.refus_moteur("_essai_lourd_unique", _vivantes())
+finally:
+    del S.CATALOGUE["_essai_lourd_unique"]
+dit((_refus.marque or {}).get("cle") == "panne.moteur_trop_lourd_seul"
+    and "essaie" not in str(_refus)
+    and TR.rendre(_refus.marque, "fr") == str(_refus),
+    "sans moteur du meme genre qui tienne, le refus dit la cause et ne "
+    "propose rien", str(_refus)[:100])
+# TEMOIN : un moteur qui tient garde l'ancienne phrase — la taille n'est pas
+# sa cause, et le dire l'enverrait sur une fausse piste.
+S.MODELES_NOEUD.clear()
+_refus = S.refus_moteur("klein9b", _vivantes())
+dit((_refus.marque or {}).get("cle") == "panne.moteur_nulle_part",
+    "temoin : klein9b, qui tient, garde son refus « disponible sur aucune "
+    "machine »", f"{(_refus.marque or {}).get('cle')}")
+# ET LE STUDIO NEUF : aucune carte connue, on ne pretend rien sur la taille.
+S.ETAT_NOEUDS.clear()
+_refus = S.refus_moteur("klein9bhd", [])
+dit(S.hors_du_parc("klein9bhd") == 0
+    and (_refus.marque or {}).get("cle") == "panne.moteur_nulle_part",
+    "studio neuf : klein9bhd n'est pas dit trop lourd sur la foi d'une carte "
+    "inconnue", f"{(_refus.marque or {}).get('cle')}")
+
 # ══════ les moteurs DISTANTS, et les clefs orphelines ═════════════════
 # banc_catalogue.py tient les vingt moteurs de catalogue.py ; il ne peut pas
 # tenir les quatre distants, qui vivent dans serveur.py et lui imposeraient

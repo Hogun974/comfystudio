@@ -348,6 +348,30 @@ try:
     dit(len(corps["fichiers"]) == 2 and corps["etat"] == "fini",
         "temoin : le rendu mesure a bien deux fichiers et il est fini",
         f"{len(corps['fichiers'])} fichiers, {corps['etat']}")
+    # L'ESTIMATION, mesuree sur un rendu EN COURS qui porte un devis : sur le
+    # rendu fini ci-dessus elle vaut null, et ses champs ne se verraient pas.
+    tid_e = "cd" * 16
+    conv_e = {"id": "e" * 32, "api": {"cle": fiche["id"]},
+              "tours": [{"id": tid_e, "etat": "en cours", "demande": "une musique",
+                         "fichiers": []}]}
+    S.TACHES[tid_e] = {"etat": "en cours", "debut": S.time.time() - 30,
+                       "debut_rendu": S.time.time() - 12,
+                       "devis": {"secondes": 95, "mesures": 4, "mot": "95 s"}}
+    try:
+        en_cours = S.rendu_public(tid_e, conv_e, S.TACHES[tid_e], conv_e["tours"][0],
+                                  BASE, "fr")
+    finally:
+        S.TACHES.pop(tid_e, None)
+    est_doc = DOC["components"]["schemas"]["Rendu"]["properties"].get("estimation") or {}
+    est = en_cours.get("estimation") or {}
+    dit(corps.get("estimation", "absent") is None and en_cours["etat"] == "en_cours"
+        and est.get("secondes") == 95,
+        "estimation : null sur un rendu fini, la mediane du devis sur un rendu en cours",
+        f"fini {corps.get('estimation', 'absent')!r}, en cours {est!r}")
+    dit(bool(est) and set(est) == set(est_doc.get("properties") or {})
+        == set(est_doc.get("required") or []),
+        "estimation : ses champs sont ceux du contrat",
+        f"rendus {sorted(est)}, decrits {sorted(est_doc.get('properties') or {})}")
     f0 = corps["fichiers"][0] if corps["fichiers"] else {}
     dit(set(f0) == proprietes(DOC, "Fichier"),
         "Fichier : les champs du contrat sont ceux d'un fichier rendu",
@@ -542,6 +566,19 @@ try:
     entete_ = DOC["components"]["parameters"]["IdempotencyKey"]["schema"]
     dit(entete_.get("maxLength") == S.IDEMPOTENCE_LONGUEUR,
         "l'en-tete Idempotency-Key est borne a IDEMPOTENCE_LONGUEUR")
+    dit(C.STYLE_AUDIO_MAX == S.STYLE_AUDIO_MAX
+        and ((DOC["components"]["schemas"]["DemandeRendu"]["properties"]
+              .get("style_audio") or {}).get("maxLength")) == S.STYLE_AUDIO_MAX,
+        "STYLE_AUDIO_MAX est celui de serveur.py, et borne « style_audio »",
+        f"{C.STYLE_AUDIO_MAX} / {S.STYLE_AUDIO_MAX}")
+    # L'outil MCP generer_rendu porte les deux memes champs, avec la meme borne :
+    # un assistant n'a que son schema pour savoir qu'ils existent.
+    gen_ = next((o for o in S.outils_mcp() if o["name"] == "generer_rendu"), {})
+    props_ = (gen_.get("inputSchema") or {}).get("properties") or {}
+    dit((props_.get("style_audio") or {}).get("maxLength") == S.STYLE_AUDIO_MAX
+        and (props_.get("instrumental") or {}).get("type") == "boolean",
+        "generer_rendu (MCP) decrit « style_audio » et « instrumental » comme le contrat",
+        f"{sorted(props_)}")
     dit(C.DEMANDE_MAX == S.DEMANDE_MAX and C.VARIANTES_MAX == S.VARIANTES_MAX
         and C.CORPS_MAX == S.CORPS_MAX,
         "DEMANDE_MAX, VARIANTES_MAX et CORPS_MAX sont ceux de serveur.py")

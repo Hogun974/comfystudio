@@ -761,6 +761,23 @@ TEXTES = {
         "fr": "{moteur} reclame {vram} Go de VRAM : la carte n'en a que "
               "{dispo}.",
         "en": "{moteur} needs {vram} GB of VRAM: the card only has {dispo}."},
+    # ── ronde 10 : un moteur impose que le parc ne porte pas ────────────
+    # La cause, puis le moteur qui tient. {plafond} est la plus grosse carte
+    # CONNUE, debordement compris : celle de vram_max().
+    "panne.moteur_trop_lourd": {
+        "fr": "{moteur} demande {vram} Go, et aucune carte du parc ne le "
+              "porte (la plus grosse en tient {plafond}, debordement "
+              "compris) : essaie {repli}.",
+        "en": "{moteur} needs {vram} GB, and no card in the fleet can hold "
+              "it (the largest takes {plafond}, overflow included): try "
+              "{repli}."},
+    "panne.moteur_trop_lourd_seul": {
+        "fr": "{moteur} demande {vram} Go, et aucune carte du parc ne le "
+              "porte (la plus grosse en tient {plafond}, debordement "
+              "compris) ; aucun autre moteur de ce genre n'y tient.",
+        "en": "{moteur} needs {vram} GB, and no card in the fleet can hold "
+              "it (the largest takes {plafond}, overflow included); no other "
+              "engine of this kind fits either."},
     "panne.echec_inattendu": {
         "fr": "ERREUR inattendue : {quoi}",
         "en": "unexpected ERROR: {quoi}"},
@@ -1037,6 +1054,42 @@ TEXTES = {
         "fr": "{n} / {total}",
         "en": "{n} / {total}"},
 
+    # ── ronde 10 : la mediatheque sait d'ou vient une image ─────────
+    # La marque d'une piece demandee par cle, par le NOM que le proprietaire
+    # a donne a sa cle ; le filtre « tout / la page / les programmes » ; et ce
+    # que la visionneuse rappelle : ces images partent avec leur conversation.
+    # Le nombre de jours est celui que sert /api/mediatheque.
+    "page.mediaprog.badge": {
+        "fr": "par clé · {nom}",
+        "en": "by key · {nom}"},
+    "page.mediaprog.badge.revoquee": {
+        "fr": "par clé · {nom} (révoquée)",
+        "en": "by key · {nom} (revoked)"},
+    "page.mediaprog.badge.anonyme": {
+        "fr": "par clé",
+        "en": "by key"},
+    "page.mediaprog.filtre.aria": {
+        "fr": "Origine",
+        "en": "Origin"},
+    "page.mediaprog.filtre.tout": {
+        "fr": "tout",
+        "en": "everything"},
+    "page.mediaprog.filtre.page": {
+        "fr": "la page",
+        "en": "from the page"},
+    "page.mediaprog.filtre.programmes": {
+        "fr": "les programmes",
+        "en": "from programs"},
+    "page.mediaprog.garde": {
+        "fr": ["Demandée par un programme : sa conversation se ferme après "
+               "{n} jour sans activité, et l'image est effacée avec elle.",
+               "Demandée par un programme : sa conversation se ferme après "
+               "{n} jours sans activité, et l'image est effacée avec elle."],
+        "en": ["Requested by a program: its conversation closes after {n} "
+               "day without activity, and the image is deleted with it.",
+               "Requested by a program: its conversation closes after {n} "
+               "days without activity, and the image is deleted with it."]},
+
     # ── la barre laterale ───────────────────────────────────────────
     "page.conv.neuve": {
         "fr": "+ nouvelle conversation",
@@ -1234,6 +1287,23 @@ TEXTES = {
     "page.moteur.a_telecharger": {
         "fr": "(à télécharger)",
         "en": "(to download)"},
+    # ── ronde 10 : un moteur que le parc ne porte pas ───────────────────
+    # Grise dans le menu, avec sa raison : le suffixe se voit partout, y
+    # compris au telephone ; l'infobulle donne les chiffres et le repli.
+    "page.moteurtrop.suffixe": {
+        "fr": "(trop lourd pour le parc)",
+        "en": "(too heavy for the fleet)"},
+    "page.moteurtrop.infobulle": {
+        "fr": "Demande {vram} Go : aucune carte du parc ne le porte (la plus "
+              "grosse en tient {plafond}, débordement compris). Essaie "
+              "{repli}.",
+        "en": "Needs {vram} GB: no card in the fleet can hold it (the "
+              "largest takes {plafond}, overflow included). Try {repli}."},
+    "page.moteurtrop.infobulle_seul": {
+        "fr": "Demande {vram} Go : aucune carte du parc ne le porte (la plus "
+              "grosse en tient {plafond}, débordement compris).",
+        "en": "Needs {vram} GB: no card in the fleet can hold it (the "
+              "largest takes {plafond}, overflow included)."},
     "page.priorite.aria": {
         "fr": "Priorité",
         "en": "Priority"},

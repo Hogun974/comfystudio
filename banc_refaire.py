@@ -53,6 +53,11 @@ Ce que ce banc mesure, dans l'ordre de gravite :
     a l'ecran, le detail au journal du studio : le meme « ERREUR :
     'sdxl_vieux' » que ci-dessus, sur la seule des trois ou personne n'avait
     regarde.
+  - CE QUE LA DEMANDE EXCLUT NE PART PAS A LA CARTE, depuis le 8 novembre
+    2026 : « sans voix, sans batterie » partait avec des voix et de la
+    batterie. Ce banc est le seul ou une musique traverse executer() jusqu'au
+    graphe ; c'est donc ici que se mesure ce qu'ACE-Step recoit, et non ce que
+    le plan propose.
   - LA LANGUE DE CELUI QUI LIT, depuis le 2 septembre 2026 au soir. Ce banc
     monte deja un studio entier hors ligne et exerce /api/etat : c'est le seul
     endroit du depot ou une panne se joue POUR DE VRAI, et donc le seul ou l'on
@@ -1645,6 +1650,299 @@ async def main():
         and ferme.get("connexion") is True,
         "et le refus lui-meme se traduit, sans toucher au champ que la page lit",
         f"{ferme.get('erreur')} / connexion={ferme.get('connexion')}")
+
+    # ══ 17. CE QUE LA DEMANDE EXCLUT NE PART PAS A LA CARTE ═════════════
+    # Retour d'usage du 8 novembre 2026 : « une musique calme, sans voix, sans
+    # batterie » a produit de la batterie ET des voix. La faute etait dans le
+    # code — style_musical() trouvait « batterie » sans voir le « sans », et
+    # ajoutait « clear vocals » a tout — mais la garde vaut aussi pour ce que
+    # l'analyse propose : le plan de ces tours porte expres des voix et de la
+    # batterie, comme un petit modele les y met.
+    print("\n  ── une musique sans voix ni batterie ──")
+    VOIX = re.compile(r"vocal|voice|sing|choir|lyric", re.I)
+    BATTERIE = re.compile(r"drum|percussi|\bbeats?\b", re.I)
+
+    def encodeur_audio(g):
+        return next((n.get("inputs") or {} for n in g.values()
+                     if "lyrics" in (n.get("inputs") or {})), {})
+
+    for demande, exclus_ in (("une musique calme, sans voix, sans batterie",
+                              ["vocals", "drums"]),
+                             ("no vocals, no drums, calm lofi piano",
+                              ["vocals", "drums"]),
+                             ("sin voz ni batería, guitarra suave",
+                              ["vocals", "drums"]),
+                             ("pas de voix ni de percussions, juste un piano",
+                              ["vocals", "drums"]),
+                             ("without vocals or drums, a slow piano",
+                              ["vocals", "drums"])):
+        _reste, lus = S.lire_negations(demande)
+        style_ = S.style_musical(demande, {"bpm": 70})
+        dit(sorted(lus) == sorted(exclus_) and not VOIX.search(style_)
+            and not BATTERIE.search(style_),
+            f"« {demande} » : {', '.join(exclus_)} exclus, et le style lu n'en dit rien",
+            f"exclus {lus}, style {style_!r}")
+    style_ = S.style_musical("no vocals, no drums, calm lofi piano", {"bpm": 70})
+    dit("instrumental" in style_ and "piano" in style_,
+        "« no vocals » se dit positivement : le style lu porte « instrumental », "
+        "et garde le piano", repr(style_))
+    # LES TEMOINS : la meme lecture ne retire rien a qui veut des voix et de la
+    # batterie, ni a « sans » suivi d'autre chose qu'un son.
+    temoin = "une chanson avec une voix douce et de la batterie"
+    style_t = S.style_musical(temoin, {"bpm": 90})
+    dit(S.lire_negations(temoin)[1] == [] and BATTERIE.search(style_t)
+        and VOIX.search(style_t) and S.chanson_demandee(temoin),
+        "temoin : « avec une voix douce et de la batterie » garde voix et batterie, "
+        "et reste une chanson", repr(style_t))
+    for demande, garde in (("un rock sans fin avec batterie et guitare", "drums"),
+                           ("sans attendre, une musique au piano", "piano"),
+                           ("pas trop de batterie, du rock", "drums"),
+                           ("sans voix et une batterie douce, rock", "drums")):
+        style_ = S.style_musical(demande, {"bpm": 90})
+        dit(garde in style_,
+            f"« {demande} » garde {garde} : la negation ne porte que sur ce qu'elle nie",
+            f"exclus {S.lire_negations(demande)[1]}, style {style_!r}")
+    dit(not S.chanson_demandee("une chanson sans paroles, au piano")
+        and S.chanson_demandee("une chanson au piano")
+        and S.chanson_demandee("une chanson sans choeurs"),
+        "« sans paroles » n'est pas une chanson a ecrire ; « sans choeurs » en reste une",
+        "")
+    purge = S.purger_style("Calm ambient piano with soft female vocals and light "
+                           "drums, warm pads, upbeat feel, no vocals",
+                           ["vocals", "drums"])
+    dit(not VOIX.search(purge) and not BATTERIE.search(purge)
+        and "Calm ambient piano" in purge and "upbeat feel" in purge
+        and purge.startswith("instrumental"),
+        "le style de l'analyse perd voix et batterie, garde le reste, et dit "
+        "« instrumental »", repr(purge))
+
+    # L'EXEMPLE DE PRODUCTION DU 8 NOVEMBRE 2026, mot pour mot (rendu
+    # 2b9002f2, moteur impose audioplus). Le journal disait « style lu dans la
+    # demande : 90 BPM, violin, cello, studio recording, clear vocals » : des
+    # voix pour un instrumental, un violon lu dans « violoncelle », ni harpe ni
+    # vielle ni cordes, et 90 BPM pour « tempo tres lent ».
+    AMBIANCE = ("Musique d'ambiance INSTRUMENTALE … violoncelle grave et vielle "
+                "à roue jouant lentement, quelques notes isolées de harpe, longues "
+                "nappes de cordes sombres, tempo très lent, mystérieuse et "
+                "inquiétante… Durée 60 secondes.")
+    conv = poser()
+    plan_a = S.normaliser({"intention": "audio", "modele": "audioplus",
+                           "prompt": AMBIANCE, "tags_audio": "dark ambient",
+                           "parametres": {"bpm": 90, "duree_s": 60}},
+                          AMBIANCE, False, conv)
+    par_a = plan_a.get("parametres") or {}
+    dit(50 <= (par_a.get("bpm") or 0) <= 60 and par_a.get("duree_s") == 60,
+        "l'exemple : « tempo tres lent » donne ~55 BPM, et la duree reste 60 s",
+        f"{par_a.get('bpm')} BPM, {par_a.get('duree_s')} s")
+    style_a = S.style_musical(AMBIANCE, par_a)
+    voulus = ("instrumental", "cello", "hurdy-gurdy", "harp", "strings", "dark",
+              "mysterious", "ominous")
+    manque = [v for v in voulus if v not in style_a]
+    dit(not VOIX.search(style_a) and not manque,
+        "l'exemple : un style sans « vocals », avec « instrumental » et chaque "
+        "instrument et ambiance nommes", f"{style_a!r}, manque {manque}")
+    dit("violin" not in style_a and S.style_musical(
+            "une musique classique avec violoncelle", {"bpm": 80}).count("violin") == 0,
+        "violoncelle n'est pas un violon : on cherche des mots, pas des sous-chaines",
+        repr(style_a))
+    dit("hip hop" not in S.style_musical("une musique rapide au piano", {"bpm": 130}),
+        "et « rapide » n'est pas du rap", "")
+    dit(S.tempo_demande("un rock a 60 bpm, tres rapide") == 60
+        and S.tempo_demande("un blues lent") == 70
+        and S.tempo_demande("tempo tres lent") == 55
+        and S.tempo_demande("pas lent du tout, un rock") is None
+        and S.tempo_demande("une chanson rock") is None
+        and S.tempo_demande("un folk, tempo 72") == 72,
+        "« 60 bpm » prime sur les mots, « tres lent » n'est pas « lent », un "
+        "tempo nie ne dit rien",
+        f"{S.tempo_demande('un rock a 60 bpm, tres rapide')} / "
+        f"{S.tempo_demande('un blues lent')} / {S.tempo_demande('tempo tres lent')}")
+    dit(S.chanson_demandee("une chanson avec un pont instrumental")
+        and "vocals" in S.lire_negations("an instrumental track with piano")[1],
+        "« un pont instrumental » reste une chanson ; « an instrumental track » exclut "
+        "les voix", "")
+    TEMOIN_ROCK = "une chanson rock, guitare, batterie, voix d'homme"
+    dit(S.style_musical(TEMOIN_ROCK, {"bpm": 90})
+        == "rock, 90 BPM, electric guitars, drums, male lead vocal, "
+           "studio recording, clear vocals",
+        f"temoin : « {TEMOIN_ROCK} » rend le meme style qu'avant",
+        repr(S.style_musical(TEMOIN_ROCK, {"bpm": 90})))
+    # Jusqu'au graphe : le plan de l'analyse a mis des voix, le tempo ecrit
+    # arrive a l'encodeur.
+    conv = poser()
+    plan_g = dict(plan_a, modele=AUDIO, tags_audio="dark ambient, cello, soft female vocals",
+                  prompt="dark ambient, cello, soft female vocals", paroles="",
+                  langue="en", tonalite="D minor")
+    tour_a = poser_tour_avec_plan(plan_g, demande=AMBIANCE)
+    st, corps = await refaire(tour_a)
+    await tourner()
+    enc = encodeur_audio(premier_graphe())
+    dit(bool(GRAPHES) and not VOIX.search(enc.get("tags") or "")
+        and "instrumental" in (enc.get("tags") or "") and enc.get("lyrics") == ""
+        and 50 <= (enc.get("bpm") or 0) <= 60,
+        "l'exemple jusqu'au graphe : instrumental, sans voix ni paroles, ~55 BPM",
+        f"{enc.get('tags')!r} a {enc.get('bpm')} BPM" if GRAPHES
+        else f"aucune musique partie ({st})")
+
+    # LES CAS A ET B DE PRODUCTION (8 novembre 2026). A (rendu 4f24e251) a
+    # LEVE « les paroles n'ont pas pu etre ecrites » : _CHANSON trouvait
+    # « paroles » dans « sans paroles » et exigeait un refrain. B (rendu
+    # cc73077b, le meme style sans « sans paroles ») est parti en « folk,
+    # ballad, 100 BPM, studio recording, clear vocals ». B est reconstitue : le
+    # rapport donnait son style, pas sa premiere phrase.
+    STYLE_AB = ("dark ambient, cinematic horror, medieval folk, drone, low cello, "
+                "hurdy-gurdy, sparse harp, dark strings pad, minor key, eerie, "
+                "slow, 55 BPM, instrumental")
+    CAS_A = "Morceau instrumental, sans paroles. Style : " + STYLE_AB
+    CAS_B = "Musique instrumentale. Style : " + STYLE_AB
+    for nom_cas, demande in (("A", CAS_A), ("B", CAS_B)):
+        conv = poser()
+        plan_c = S.normaliser({"intention": "audio", "modele": "audioplus",
+                               "prompt": demande, "tags_audio": "folk ballad",
+                               "parametres": {"bpm": 90, "duree_s": 60}},
+                              demande, False, conv)
+        plan_c.update(modele=AUDIO, paroles="", langue="en", tonalite="D minor",
+                      tags_audio="folk ballad, clear vocals", prompt="folk ballad")
+        tour_c = poser_tour_avec_plan(plan_c, demande=demande)
+        st, corps = await refaire(tour_c)
+        await tourner()
+        enc = encodeur_audio(premier_graphe())
+        tags_ = enc.get("tags") or ""
+        dit(bool(GRAPHES) and APPELS["paroles"] == 0 and enc.get("lyrics") == ""
+            and (tour_de(corps.get("id")).get("etat") or "fini") != "erreur",
+            f"cas {nom_cas} : il ne leve pas, part instrumental, et rien ne s'ecrit en paroles",
+            f"{APPELS['paroles']} appel(s), paroles {enc.get('lyrics')!r}"
+            if GRAPHES else f"aucune musique partie ({st}) — {mots(corps.get('id'))[-160:]}")
+        dit(bool(GRAPHES) and tags_.startswith(STYLE_AB) and not VOIX.search(tags_)
+            and enc.get("bpm") == 55 and "tempo du genre" not in mots(corps.get("id")),
+            f"cas {nom_cas} : les tags donnes passent tels quels, a 55 BPM, sans voix "
+            f"ni tempo du genre", f"{tags_!r} a {enc.get('bpm')} BPM")
+    # UN TEMPO ECRIT PRIME SUR LE GENRE, meme quand il vaut le defaut.
+    conv = poser()
+    plan_f = {"intention": "audio", "modele": AUDIO, "prompt": "folk",
+              "tags_audio": "folk", "paroles": "", "langue": "en",
+              "tonalite": "C major", "raison": "musique",
+              "parametres": {"etapes": 8, "cfg": 1.0, "bpm": 90, "duree_s": 60},
+              "parametres_bruts": {"bpm": 90, "duree_s": 60}}
+    st, corps = await refaire(poser_tour_avec_plan(
+        plan_f, demande="un morceau folk instrumental a la guitare, 90 BPM"))
+    await tourner()
+    enc = encodeur_audio(premier_graphe())
+    dit(bool(GRAPHES) and enc.get("bpm") == 90,
+        "« folk … 90 BPM » reste a 90 : le genre ne remplace pas un tempo ecrit",
+        f"{enc.get('bpm')} BPM — {mots(corps.get('id'))[-120:]}")
+    # LE CHAMP D'UN PROGRAMME : « style_audio » et « instrumental », lus sur
+    # la marque de la tache, priment sur la demande. La marque est posee a la
+    # main : c'est banc_pilotage qui mesure la route qui l'ecrit.
+    conv = poser()
+    st, corps = await refaire(poser_tour_avec_plan(
+        dict(plan_f, tags_audio="rock, male vocals"),
+        demande="une chanson rock avec guitare et batterie"))
+    tid_p = corps.get("id")
+    S.TACHES.setdefault(tid_p, {})["api"] = {"style_audio": "lofi, mellow piano, vinyl crackle",
+                                             "instrumental": True}
+    await tourner()
+    enc = encodeur_audio(premier_graphe())
+    dit(bool(GRAPHES) and (enc.get("tags") or "").startswith("lofi, mellow piano, vinyl crackle")
+        and "instrumental" in (enc.get("tags") or "") and enc.get("lyrics") == ""
+        and APPELS["paroles"] == 0,
+        "un programme : « style_audio » passe tel quel, « instrumental » vide les "
+        "paroles meme d'une chanson",
+        f"{enc.get('tags')!r}, {APPELS['paroles']} appel(s)" if GRAPHES
+        else f"aucune musique partie ({st})")
+
+    # LE TEMPO DU CHAMP (studio d'essai, 8 novembre 2026) : « 50 BPM » dans
+    # style_audio partait a 90, le parametre du moteur ignorant les tags.
+    conv = poser()
+    st, corps = await refaire(poser_tour_avec_plan(
+        dict(plan_f, tags_audio="ambient"), demande="une musique pour la nuit"))
+    tid_t = corps.get("id")
+    S.TACHES.setdefault(tid_t, {})["api"] = {"style_audio": "dark ambient, drone, low cello, "
+                                                            "eerie, 50 BPM",
+                                             "instrumental": True}
+    await tourner()
+    enc = encodeur_audio(premier_graphe())
+    dit(bool(GRAPHES) and enc.get("bpm") == 50,
+        "le tempo ecrit dans style_audio devient le tempo du moteur, quand la "
+        "demande n'en donne pas", f"{enc.get('bpm')} BPM" if GRAPHES
+        else f"aucune musique partie ({st})")
+    dit(S.tempo_style_audio("une musique a 55 BPM", "drone, 50 BPM") is None
+        and S.tempo_style_audio("une musique", "") is None
+        and S.tempo_style_audio("une musique", "drone, eerie") is None,
+        "temoin : la demande garde la priorite, et un champ sans tempo n'en invente pas")
+
+    # LA GARDE AVANT LE MOTEUR : « sans paroles » ne part pas sur le moteur
+    # soigne des chansons. Les deux moteurs sont poses sur le parc, sinon le
+    # temoin resterait sur le petit faute de moteur, et ne mesurerait rien.
+    conv = poser()
+    for ident in S.MODELES_NOEUD:
+        for sous, nom, _repo, _distant in S.CATALOGUE["audioplus"]["fichiers"]:
+            S.MODELES_NOEUD[ident]["dossiers"].setdefault(sous, set()).add(nom)
+
+    def moteur_de(demande):
+        return S.normaliser({"intention": "audio", "modele": "audio",
+                             "prompt": demande, "tags_audio": "piano",
+                             "parametres": {}}, demande, False, conv).get("modele")
+
+    dit(moteur_de("une chanson au piano") == "audioplus"
+        and moteur_de("une chanson sans paroles, au piano") == "audio",
+        "une chanson va sur le moteur soigne, pas « une chanson sans paroles »",
+        f"{moteur_de('une chanson au piano')} / "
+        f"{moteur_de('une chanson sans paroles, au piano')}")
+
+    # JUSQU'AU GRAPHE, par executer() : ce que la carte recoit.
+    for demande, tags_plan, paroles_plan in (
+            ("une musique calme, sans voix, sans batterie",
+             "calm ambient, soft piano, gentle female vocals, light drums", "[verse]\nla la"),
+            ("no vocals, no drums, calm lofi piano",
+             "lofi hip hop beat, mellow piano, vocal chops", ""),
+            # « paroles » est un mot de _CHANSON : lu tel quel, il faisait
+            # ecrire un refrain pour un morceau qui n'en veut pas.
+            ("un morceau sans paroles ni batterie, piano calme",
+             "calm piano, female vocals, brushed drums", "")):
+        conv = poser()
+        tour_m = poser_tour_avec_plan(
+            {"intention": "audio", "modele": AUDIO, "prompt": tags_plan,
+             "tags_audio": tags_plan, "paroles": paroles_plan, "langue": "en",
+             "tonalite": "C major", "raison": "musique",
+             "parametres": {"etapes": 8, "cfg": 1.0, "bpm": 70, "duree_s": 60},
+             "parametres_bruts": {"bpm": 70, "duree_s": 60}},
+            demande=demande)
+        st, corps = await refaire(tour_m)
+        await tourner()
+        enc = encodeur_audio(premier_graphe())
+        tags_ = enc.get("tags") or ""
+        dit(bool(GRAPHES) and not VOIX.search(tags_) and not BATTERIE.search(tags_)
+            and "instrumental" in tags_,
+            f"« {demande} » : ni voix ni batterie dans les tags envoyes, "
+            f"« instrumental » oui",
+            repr(tags_) if GRAPHES else f"aucune musique partie ({st})")
+        dit(bool(GRAPHES) and enc.get("lyrics") == "" and APPELS["paroles"] == 0,
+            f"« {demande} » : aucune parole a la carte, et aucune ecrite",
+            f"{(enc.get('lyrics') or '')[:30]!r}, {APPELS['paroles']} appel(s)"
+            if GRAPHES else "aucune musique partie")
+        dit("exclu par la demande : vocals, drums" in mots(corps.get("id")),
+            "et le journal dit ce qui a ete exclu",
+            mots(corps.get("id"))[-160:])
+    # LE TEMOIN JUSQU'AU GRAPHE : une chanson qui veut des voix et de la
+    # batterie les garde, et ses paroles s'ecrivent.
+    conv = poser()
+    tour_t = poser_tour_avec_plan(
+        {"intention": "audio", "modele": AUDIO, "prompt": "soft female vocals, drums",
+         "tags_audio": "soft female vocals, drums", "paroles": "", "langue": "fr",
+         "tonalite": "C major", "raison": "chanson",
+         "parametres": {"etapes": 8, "cfg": 1.0, "bpm": 90, "duree_s": 60},
+         "parametres_bruts": {"bpm": 90, "duree_s": 60}},
+        demande=temoin)
+    st, corps = await refaire(tour_t)
+    await tourner()
+    enc = encodeur_audio(premier_graphe())
+    dit(bool(GRAPHES) and BATTERIE.search(enc.get("tags") or "")
+        and VOIX.search(enc.get("tags") or "") and enc.get("lyrics")
+        and APPELS["paroles"] == 1,
+        "temoin : la chanson avec voix et batterie les garde a la carte, paroles ecrites",
+        f"{enc.get('tags')!r}, {APPELS['paroles']} appel(s)" if GRAPHES
+        else f"aucune musique partie ({st})")
 
     print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
     for r in rate:

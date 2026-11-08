@@ -1118,6 +1118,26 @@ async def s_lancer():
     dit(st == 400 and code(c) == "image_illisible" and rien_de_plus(avant),
         "un base64 invalide rend 400 « image_illisible »", f"HTTP {st} {code(c)}")
     vider_file()
+    # POUR UNE MUSIQUE : « style_audio » et « instrumental » arrivent sur la
+    # marque de la tache, que executer() lit ; mal formes, un 400 avant la file.
+    remise_a_zero()
+    st, c, _r = await lancer(K_N8N, {"demande": "une musique calme",
+                                     "style_audio": "lofi, mellow piano, 70 BPM",
+                                     "instrumental": True})
+    api_ = (S.TACHES.get((c or {}).get("id")) or {}).get("api") or {}
+    dit(st == 202 and api_.get("style_audio") == "lofi, mellow piano, 70 BPM"
+        and api_.get("instrumental") is True,
+        "style_audio et instrumental : portes par la marque de la tache",
+        f"HTTP {st} {api_.get('style_audio')!r} {api_.get('instrumental')!r}")
+    for corps_, quoi in (({"demande": "x", "style_audio": ["lofi"]}, "un style qui n'est pas une chaine"),
+                         ({"demande": "x", "style_audio": "a" * (S.STYLE_AUDIO_MAX + 1)},
+                          "un style au-dela de STYLE_AUDIO_MAX"),
+                         ({"demande": "x", "instrumental": "oui"}, "un instrumental qui n'est pas un booleen")):
+        avant = etat_des_registres()
+        st, c, _r = await lancer(K_N8N, corps_)
+        dit(st == 400 and code(c) == "champ_illisible" and rien_de_plus(avant),
+            f"{quoi} rend 400 « champ_illisible », rien en file", f"HTTP {st} {code(c)}")
+    vider_file()
     # « Tout est valide : maintenant seulement, on ecrit. » — lancer_pour_programme.
     # Un refus par etape : avant l'image (la conversation), pendant la
     # validation commune (le moteur), et apres elle (garde_fou). L'image est
@@ -1192,6 +1212,26 @@ async def s_lire():
     st, c, _r = await lire_rendu(K_N8N, tid)
     dit((c or {}).get("etat") == "en_cours", "sortie de la file : « en_cours »",
         str((c or {}).get("etat")))
+    # L'ESTIMATION : absente tant que le studio n'a pas de devis, la mediane
+    # quand il en a un, et rien une fois le rendu fini — « secondes » dit alors
+    # la vraie duree.
+    dit((c or {}).get("estimation", "absent") is None,
+        "en cours sans devis : « estimation » vaut null",
+        repr((c or {}).get("estimation", "absent")))
+    S.TACHES[tid]["devis"] = {"secondes": 95, "mesures": 4, "mot": "95 s"}
+    S.TACHES[tid]["debut_rendu"] = time.time() - 12
+    st, c, _r = await lire_rendu(K_N8N, tid)
+    est = (c or {}).get("estimation") or {}
+    dit(est.get("secondes") == 95 and est.get("mesures") == 4
+        and 11 <= (est.get("ecoule_rendu") or 0) < 20,
+        "en cours avec un devis : « estimation » porte la mediane, ses mesures, "
+        "et le temps de rendu ecoule", repr(est))
+    S.TACHES[tid]["etat"] = "fini"
+    _conv["tours"][-1]["etat"] = "fini"
+    st, c, _r = await lire_rendu(K_N8N, tid)
+    dit((c or {}).get("etat") == "fini" and (c or {}).get("estimation", "absent") is None,
+        "fini, le devis toujours sur la tache : « estimation » retombe a null",
+        f"{(c or {}).get('etat')} {(c or {}).get('estimation', 'absent')!r}")
     tid, _conv = poser_rendu(F_N8N, "en cours")
     S.ARMEES[tid] = {"quand": time.time()}
     st, c, _r = await lire_rendu(K_N8N, tid)
@@ -1768,6 +1808,20 @@ async def s_mcp():
     S.ATTENDRE_PROXY = 1
     try:
         tid_p, _conv = poser_rendu(F_N8N, "en cours")
+        # L'estimation par l'outil aussi, et EN TEXTE : un client qui ne lit
+        # pas le contenu structure ne la verrait pas sinon.
+        S.TACHES[tid_p]["devis"] = {"secondes": 95, "mesures": 4, "mot": "95 s"}
+        st, c, _r = await mcp(K_N8N, rpc("tools/call", {"name": "etat_rendu",
+                                                        "arguments": {"id": tid_p,
+                                                                      "attendre": 0}}))
+        res = (c or {}).get("result") or {}
+        sc = res.get("structuredContent") or {}
+        texte_ = " ".join(x.get("text", "") for x in res.get("content") or [])
+        dit((sc.get("estimation") or {}).get("secondes") == 95
+            and "compte environ 95 s" in texte_,
+            "etat_rendu sur un rendu en cours : l'estimation, structuree et en texte",
+            f"{sc.get('estimation')!r} / {texte_[:90]!r}")
+        S.TACHES[tid_p].pop("devis", None)
 
         def etat_par(attendre, entetes):
             return appel(Req("/mcp", "POST", cle=K_N8N, corps=rpc(
@@ -2498,6 +2552,61 @@ async def s_operations():
     dit(types1 and types1 <= {"image", "planche"} and "video" in types2,
         "GET /api/v1/moteurs ne montre a une cle d'images que des moteurs d'image",
         f"{sorted(types1)} contre {len(types2)} types pour une cle sans liste")
+
+    # ── NI CE QU'AUCUNE CARTE DU PARC NE PORTE (ronde 10) ───────────────
+    # Le 8 novembre 2026, lister_moteurs proposait klein9bhd a Jordan — ses
+    # fichiers etaient quelque part — et seul klein9b marchait. Le parc du
+    # reseau : un studio sans carte, et le PC derriere son agent, eteint
+    # (11 Go, 14,5 en debordant). Tout est « installe » : ce qu'on mesure est
+    # la taille, pas l'inventaire.
+    gardes_ = (dict(S.REGISTRE), dict(S.ETAT_NOEUDS), S.manquants_partout)
+    S.REGISTRE["pc_banc"] = {"id": "pc_banc", "titre": "PC (RTX 2080 Ti)",
+                             "agent": True, "jeton": "x", "pause": None}
+    S.ETAT_NOEUDS["pc_banc"] = {"repond": False, "vram": 11.0, "ram": 63.8}
+    S.manquants_partout = lambda cle: []
+    try:
+        _st, cv, _r = await appel(Req("/api/v1/moteurs", cle=K_N8N), S.api_v1_moteurs)
+        _st, cm, _r = await mcp(K_N8N, rpc("tools/call", {"name": "lister_moteurs",
+                                                          "arguments": {}}))
+        _st, cp, _r = await appel(Req("/api/modeles"), S.api_modeles, middleware=False)
+        # Le studio neuf : aucune carte n'a jamais ete connue.
+        S.ETAT_NOEUDS.pop("pc_banc", None)
+        _st, cn, _r = await appel(Req("/api/v1/moteurs", cle=K_N8N), S.api_v1_moteurs)
+    finally:
+        S.REGISTRE.clear()
+        S.REGISTRE.update(gardes_[0])
+        S.ETAT_NOEUDS.clear()
+        S.ETAT_NOEUDS.update(gardes_[1])
+        S.manquants_partout = gardes_[2]
+    v1 = {m.get("cle"): m for m in (cv or {}).get("moteurs") or []}
+    dit("klein9bhd" not in v1 and "flux1hd" not in v1
+        and (v1.get("klein9b") or {}).get("present") is True,
+        "GET /api/v1/moteurs ne propose ni klein9bhd ni flux1hd, que le parc ne "
+        "porte pas ; klein9b, qui tient, y reste present",
+        f"{len(v1)} moteurs, klein9bhd {'la' if 'klein9bhd' in v1 else 'absent'}")
+    res_ = (cm or {}).get("result") or {}
+    sc_ = {m.get("cle") for m in (res_.get("structuredContent") or {}).get("moteurs") or []}
+    txt_ = ((res_.get("content") or [{}])[0]).get("text", "")
+    dit("klein9bhd" not in sc_ and "flux1hd" not in sc_
+        and "klein9bhd" not in txt_ and "- klein9b (" in txt_ and "klein9b" in sc_,
+        "lister_moteurs (MCP) non plus, ni dans sa liste ni dans son texte ; "
+        "klein9b y reste", f"{len(sc_)} moteurs")
+    pg_ = {m.get("cle"): m for m in cp or [] if isinstance(m, dict)}
+    dit((pg_.get("klein9bhd") or {}).get("present") is False
+        and (pg_.get("klein9bhd") or {}).get("trop_lourd")
+        == {"vram": 18.0, "plafond": 14.5, "repli": "FLUX.2 klein 9B"}
+        and (pg_.get("flux1hd") or {}).get("trop_lourd", {}).get("repli") == "FLUX.1 dev",
+        "/api/modeles (le menu de la page) les garde, non presents, avec ce "
+        "qu'ils demandent, la plus grosse carte et le repli",
+        f"{(pg_.get('klein9bhd') or {}).get('trop_lourd')}")
+    dit((pg_.get("klein9b") or {}).get("present") is True
+        and (pg_.get("klein9b") or {}).get("trop_lourd") is None,
+        "temoin : klein9b, qui tient, n'est pas marque dans le menu",
+        f"{pg_.get('klein9b')}"[:90])
+    vn = {m.get("cle") for m in (cn or {}).get("moteurs") or []}
+    dit({"klein9bhd", "flux1hd", "klein9b"} <= vn,
+        "studio neuf, aucune carte connue : la liste reste entiere",
+        f"{len(vn)} moteurs")
 
     # ── CHAQUE MOTEUR A SA FAMILLE. Un type oublie dans acces.FAMILLES
     # serait ferme EN SILENCE a toute cle restreinte, y compris a celle qui
@@ -3266,6 +3375,141 @@ def brut_du_fichier(chemin):
         return f.read()
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  21. La mediatheque du proprietaire
+# ══════════════════════════════════════════════════════════════════════
+# « Les demandes faites en API s'affichent dans la mediatheque ? » — oui, et
+# aucun banc ne le gardait (verifie le 6 novembre 2026) : un filtre de plus
+# dans api_mediatheque, et les images d'un n8n disparaissaient de la page sans
+# un mot, puisque leur conversation n'est pas dans la liste. ICI et non dans
+# banc_variantes.py : il faut une vraie cle, la vraie route et le vrai
+# middleware, que ce banc seul monte. La fin du rendu est celle qu'executer()
+# ecrit — enregistrer_tour() —, pas un tour pose a la main.
+async def _media_de(compte, pid):
+    st, c, rep = await appel(Req("/api/mediatheque", compte=compte, pid=pid),
+                             S.api_mediatheque, middleware=False)
+    return st, c or {}, (rep.text if rep is not None else "")
+
+
+def _a_la_main(pid, nom):
+    conv = S._vide(proprietaire=pid)
+    conv["tours"].append({
+        "id": uuid.uuid4().hex, "heure": "11:00", "demande": "un chat",
+        "modele": "klein4b", "type": "image", "etat": "fini",
+        "fichiers": [{"filename": nom, "subfolder": "", "type": "output",
+                      "noeud": "local"}]})
+    S.CONVERSATIONS[conv["id"]] = conv
+    return conv
+
+
+async def s_mediatheque():
+    remise_a_zero()
+    jour = 24 * 3600
+    res = nouvelle_cle("lou", "n8n de lou")
+    k_lou, f_lou = res["cle"], fiche_de(res["cle"])
+    pid_l, pid_m = pid_de("lou"), pid_de("maxime")
+    page = _a_la_main(pid_l, "lou_page.png")
+    _a_la_main(pid_m, "maxime_page.png")
+
+    st, c, _r = await lancer(k_lou, {"demande": "un phare dans la brume"})
+    tid = (c or {}).get("id") or ""
+    t = S.TACHES.get(tid) or {}
+    conv = S.CONVERSATIONS.get(t.get("conversation")) or {}
+    vider_file()
+    dit(st == 202 and (conv.get("api") or {}).get("cle") == f_lou["id"],
+        "temoin : la demande par cle est acceptee, dans une conversation "
+        "marquee « api »", f"HTTP {st}")
+    sortie = {"filename": f"prog_{tid[:8]}.png", "subfolder": "",
+              "type": "output", "noeud": "local"}
+    t["etat"] = "fini"
+    S.enregistrer_tour(conv, tid, "un phare dans la brume",
+                       {"prompt": "a lighthouse in the fog"}, "image",
+                       "klein4b", [sortie], "fini")
+
+    st_l, m_l, brut_l = await _media_de("lou", pid_l)
+    par_nom = {f.get("filename"): f for f in m_l.get("fichiers") or []}
+    piece = par_nom.get(sortie["filename"])
+    dit(st_l == 200 and piece is not None
+        and piece.get("conversation") == conv.get("id"),
+        "le fichier rendu par cle est dans la mediatheque de son proprietaire",
+        f"HTTP {st_l}, {len(par_nom)} piece(s)")
+    dit((piece or {}).get("origine") == {"cle": "n8n de lou", "revoquee": False},
+        "et il porte son origine : le NOM que le proprietaire a donne a sa cle",
+        repr((piece or {}).get("origine")))
+    dit("lou_page.png" in par_nom and par_nom["lou_page.png"].get("origine") is None,
+        "temoin : l'image faite par la page y est aussi, sans origine")
+    # Le texte ENTIER de la reponse, pas seulement le champ : une fuite se
+    # glisse aussi bien dans un champ qu'on ajoute demain.
+    fuites = [quoi for quoi, s in (("la cle", k_lou),
+                                   ("le secret de rappel", res["secret_rappel"]),
+                                   ("l'identifiant", f'"{f_lou["id"]}"'),
+                                   ("l'apercu", acces.PREFIXE + f_lou["id"]))
+              if s in brut_l]
+    dit(bool(brut_l) and not fuites,
+        "ni l'identifiant de la cle ni ses secrets ne sortent dans la mediatheque",
+        ", ".join(fuites) or "rien")
+
+    st_m, m_m, _b = await _media_de("maxime", pid_m)
+    noms_m = {f.get("filename") for f in m_m.get("fichiers") or []}
+    dit(st_m == 200 and "maxime_page.png" in noms_m,
+        "temoin : maxime voit sa propre image dans SA mediatheque",
+        f"HTTP {st_m}, {sorted(noms_m)}")
+    dit(sortie["filename"] not in noms_m and "lou_page.png" not in noms_m
+        and not m_m.get("tout"),
+        "un autre compte ne voit pas ce fichier dans SA mediatheque",
+        f"{sorted(noms_m)}")
+
+    _st, m_j, _b = await _media_de("jordan", PID_J)
+    vu_j = next((f for f in m_j.get("fichiers") or []
+                 if f.get("filename") == sortie["filename"]), None)
+    dit(bool(m_j.get("tout")) and vu_j is not None and vu_j.get("a") == "lou"
+        and (vu_j.get("origine") or {}).get("cle") == "n8n de lou",
+        "l'administrateur le voit, avec son proprietaire (« a ») et son origine",
+        repr({k: (vu_j or {}).get(k) for k in ("a", "origine")}))
+
+    _st, c_c, _r = await appel(Req("/api/conversations", compte="lou", pid=pid_l),
+                               S.api_conversations, middleware=False)
+    ids = [x.get("id") for x in (c_c or {}).get("conversations") or []]
+    dit(page["id"] in ids and conv.get("id") not in ids,
+        "et sa conversation n'est pas dans la liste de la page : la "
+        "mediatheque est le seul endroit ou la page montre ce rendu",
+        f"{len(ids)} listee(s)")
+
+    # LE DELAI QUE LA VISIONNEUSE RAPPELLE, servi et non ecrit dans la page.
+    dit(m_l.get("garde_programme_jours") == S.GARDE_PROGRAMME // jour,
+        "la reponse dit le delai de garde des programmes, en jours",
+        f"{m_l.get('garde_programme_jours')!r}")
+    garde = S.GARDE_PROGRAMME
+    S.GARDE_PROGRAMME = 12 * jour
+    try:
+        _st, m_12, _b = await _media_de("lou", pid_l)
+    finally:
+        S.GARDE_PROGRAMME = garde
+    dit(m_12.get("garde_programme_jours") == 12,
+        "et ce delai suit GARDE_PROGRAMME : douze jours poses, douze servis",
+        f"{m_12.get('garde_programme_jours')!r}")
+
+    # LA CLE REVOQUEE : ses images restent jusqu'a la fermeture, et disent
+    # encore d'ou elles viennent.
+    S.ACCES.revoquer(f_lou["id"])
+    _st, m_r, _b = await _media_de("lou", pid_l)
+    apres = next((f for f in m_r.get("fichiers") or []
+                  if f.get("filename") == sortie["filename"]), None)
+    dit(apres is not None
+        and apres.get("origine") == {"cle": "n8n de lou", "revoquee": True},
+        "une cle revoquee : l'image reste, avec le nom de la cle et « revoquee »",
+        repr((apres or {}).get("origine")))
+
+    # Ce que la page annonce : trente jours sans tour, et l'image part avec.
+    conv["modifie"] = time.time() - 31 * jour
+    S.fermer_vieux_programmes()
+    _st, m_f, _b = await _media_de("lou", pid_l)
+    noms_f = {f.get("filename") for f in m_f.get("fichiers") or []}
+    dit(sortie["filename"] not in noms_f and "lou_page.png" in noms_f,
+        "fermee apres trente jours sans tour, la conversation emporte l'image "
+        "hors de la mediatheque ; celle de la page reste", f"{sorted(noms_f)}")
+
+
 async def principal():
     S.FILE_ATTENTE = asyncio.Queue()
     for titre, corps in (
@@ -3288,7 +3532,8 @@ async def principal():
             ("17. ce que la cle peut faire", s_operations),
             ("18. le suivi des cles", s_suivi),
             ("19. le plafond du jour par famille", s_plafonds_famille),
-            ("20. l'adresse publique", s_adresse_publique)):
+            ("20. l'adresse publique", s_adresse_publique),
+            ("21. la mediatheque du proprietaire", s_mediatheque)):
         print(f"\n  ── {titre} ──")
         try:
             await corps()

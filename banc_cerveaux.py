@@ -726,6 +726,7 @@ async def main():
     poser()
 
     await degeneres()
+    await impose_lent()
 
 
 async def degeneres():
@@ -1104,10 +1105,12 @@ async def degeneres():
                                            S._DECHARGES_NUMERO[0])
         finally:
             S.aiohttp.ClientSession = FausseSession
-        dit(len(decharges) == 2 and t1_["decharge"] and not t2_["decharge"]
-            and t3_["decharge"],
+        dit(len(decharges) == 2 and t1_["decharge"] and t3_["decharge"]
+            and not t1_.get("par_un_autre_appel") and t2_.get("par_un_autre_appel")
+            and t2_["decharge"] and not t3_.get("par_un_autre_appel"),
             "deux appels partis ensemble qui degenerent ensemble : UN "
-            "dechargement ; un appel parti apres lui en refait un",
+            "dechargement, que le second reconnait comme le sien ; un appel "
+            "parti apres lui en refait un",
             f"{decharges}, {t1_['decharge']}/{t2_['decharge']}/{t3_['decharge']}")
         # Et par le vrai appel. Le verrou de la carte range d'ordinaire les
         # appels l'un apres l'autre ; sans lui — un Ollama que rien ne garde —
@@ -1152,6 +1155,37 @@ async def degeneres():
             "par le vrai appel, deux appels en vol ensemble qui degenerent : UN "
             "dechargement, et le fil dit pourquoi pas le second",
             f"{r_!r}, {decharges}, essais={[a[0] for a in appels]}")
+
+        # TROIS EN VOL (relecture du 8 novembre 2026) : chacun retente sur le
+        # modele recharge, au meme endroit ; aucun ne compte, aucun ne part
+        # ailleurs. Avant, le deuxieme et le troisieme comptaient — et le
+        # modele que le dechargement venait de reparer partait au placard.
+        S._DECHARGE_DEGENERE.clear()
+        del appels[:]
+        del decharges[:]
+        neuf()
+        S.verrou_noeud = lambda ident: SansVerrou()
+        scenario[PC] = [lent_vide, lent_vide, lent_vide, "{}"]
+        scenario[NAS] = ["{}"]
+        tid = "banc-degen-trois"
+        tids.append(tid)
+        S.TACHES[tid] = {"etapes": [], "etat": "en cours"}
+        try:
+            r3_ = await asyncio.wait_for(asyncio.gather(*(
+                S._appeler_llm("x", None, None, True, None, 0.1, tid)
+                for _ in range(3)), return_exceptions=True), 5)
+        except Exception as e:
+            r3_ = f"a leve {type(e).__name__}"
+        finally:
+            S.verrou_noeud = vrai_verrou_
+        vus3_ = [a[0] for a in appels]
+        dit(r3_ == ["{}", "{}", "{}"] and len(decharges) == 1
+            and vus3_.count(PC) == 6 and NAS not in vus3_
+            and not S.QUARANTAINES,
+            "trois appels en vol qui degenerent ensemble : UN dechargement, "
+            "chacun retente sur le modele recharge, aucun ne part ailleurs ni "
+            "ne met de cote",
+            f"{r3_!r}, {decharges}, essais={vus3_}, de cote={list(S.QUARANTAINES)}")
 
         # ── LA REPRISE TOMBE EN PANNE : on ne sait pas, cela compte ─────
         S._DECHARGE_DEGENERE.clear()
@@ -1911,6 +1945,344 @@ async def degeneres():
         "et combien de dechargements la fenetre a faits, sur combien",
         "web/admin.html absent" if not page else "")
     poser()
+
+
+async def impose_lent():
+    """Une analyse lente ne retient pas un rendu dont le moteur est impose.
+
+    L'INCIDENT DU 8 NOVEMBRE 2026, vers 9 h : des demandes par cle d'API,
+    « moteur: klein9b », restaient dix minutes et plus a l'analyse.
+    qwen2.5vl:7b avait degenere sur le PC et y etait mis de cote ; le NAS,
+    seule machine restante, servait l'une apres l'autre les analyses de cinq
+    demandes, et chacune attendait sa carte — sans autre borne que les trente
+    minutes d'ATTENTE_CARTE, par appel.
+
+    Ici : le PC mis de cote, la carte du NAS TENUE par un vrai verrou, la borne
+    a une seconde et ATTENTE_CARTE a trois — une mutation qui ote la borne fait
+    attendre trois secondes, pas trente minutes.
+    """
+    print("\n  ── une analyse lente ne retient pas un moteur impose ──")
+    poser()
+    S._PLACEMENT[PC] = {"part": 1.0, "quand": S.time.time()}
+    S._PLACEMENT[NAS] = {"part": 1.0, "quand": S.time.time()}
+    S.QUARANTAINES.clear()
+    S._VUS_DEGENERE.clear()
+    S._DECHARGE_DEGENERE.clear()
+    modele_pc = S.corps_ici(S.corps_ollama("x", None, None, True, None, 0.1, 0),
+                            PC)["model"]
+    appels, agents, graphes = [], [], []
+    scenario = {}
+
+    async def faux_local(corps, url=None, secondes=900):
+        appels.append((url, corps.get("model"), secondes))
+        rep_ = scenario.get(url, "{}")
+        if callable(rep_):
+            rep_ = rep_(corps)
+        if isinstance(rep_, (int, float)):
+            # Un appel qui calcule rep_ secondes : au-dela de « secondes »,
+            # l'echeance tombe, comme dans le vrai _ollama_local.
+            await asyncio.sleep(min(rep_, secondes))
+            if rep_ > secondes:
+                raise asyncio.TimeoutError()
+            return "{}"
+        return rep_
+
+    async def faux_agent(corps, tid=None, secondes=None):
+        # Le detour par un agent prend ce qu'on lui donne — et un peu plus,
+        # comme une echeance reelle —, cinq secondes au plus : un agent qui ne
+        # repond pas, pas un banc qui dort.
+        agents.append(secondes)
+        await asyncio.sleep(min((secondes or 0.2) + 0.05, 5))
+        return ""
+
+    async def faux_soumettre(g, tid, ident, cle, patience=1800, viser="petite",
+                             taille=None):
+        graphes.append((tid, cle, S.json.dumps(g, ensure_ascii=False)))
+        return ([{"filename": f"{tid[:8]}_00001_.png", "subfolder": "u/image",
+                  "type": "output", "noeud": ident}], 1.0)
+
+    def mettre_pc_de_cote():
+        S.QUARANTAINES[(PC, modele_pc)] = {
+            "debut": S.time.time(), "fin": S.time.time() + 900,
+            "machine": "PC (RTX 2080 Ti)", "modele": modele_pc,
+            "essai": False, "fois": 1}
+
+    def fil(tid):
+        return [e["msg"] for e in (S.TACHES.get(tid) or {}).get("etapes", [])]
+
+    LIGNE = ("analyse trop lente (machine occupee) : le rendu part avec ta "
+             "demande telle quelle, sur le moteur impose")
+    gardes = (S._ollama_local, S.demander_a_un_noeud, S.soumettre_robuste,
+              S.ATTENTE_CARTE, S.ANALYSE_IMPOSE_DELAI)
+    S._ollama_local = faux_local
+    S.demander_a_un_noeud = faux_agent
+    S.soumettre_robuste = faux_soumettre
+    S.ATTENTE_CARTE = 3
+    S.ANALYSE_IMPOSE_DELAI = 1
+    nas = S.verrou_noeud("zima")
+    tids = []
+
+    def tache(tid, **en_plus):
+        tids.append(tid)
+        S.TACHES[tid] = dict({"etapes": [], "etat": "en cours"}, **en_plus)
+        return tid
+
+    async def appel(tid):
+        t0 = S.time.time()
+        try:
+            r_ = await S.appeler_ollama("x", None, None, True, tid=tid)
+        except Exception as e:
+            r_ = type(e).__name__
+        return r_, S.time.time() - t0
+
+    try:
+        # ── LE CAS DU 8 NOVEMBRE : PC de cote, carte du NAS tenue ──────────
+        mettre_pc_de_cote()
+        await nas.acquire()
+        try:
+            tid = tache("banc-impose-lent",
+                        analyse_impose_avant=S.time.time() + 1)
+            r_, mis_ = await appel(tid)
+        finally:
+            nas.release()
+        t_ = S.TACHES[tid]
+        dit(r_ == "CerveauTropLent" and mis_ < 2.5 and not appels and not agents,
+            "moteur impose, PC mis de cote, carte du NAS tenue : au bout de la "
+            "borne l'analyse renonce — sans appel au NAS ni detour par un agent",
+            f"{r_}, {mis_:.1f} s, appels={appels}, agents={agents}")
+        dit(LIGNE in fil(tid) and t_.get("cerveau_lent")
+            and t_.get("analyse_coupee"),
+            "le fil le dit en une ligne claire, et la demande porte la marque "
+            "« cerveau lent », posee par la borne", str(fil(tid)[-3:]))
+        r2_, mis2_ = await appel(tid)
+        dit(r2_ == "CerveauTropLent" and mis2_ < 0.5 and not appels
+            and fil(tid).count(LIGNE) == 1,
+            "l'appel suivant de la demande (enrichissement, traduction) ne part "
+            "pas et n'attend rien ; la ligne n'est pas redite",
+            f"{r2_}, {mis2_:.1f} s")
+
+        # ── TEMOIN : la meme carte tenue, sans moteur impose ──────────────
+        del appels[:], agents[:]
+        await nas.acquire()
+        try:
+            tid = tache("banc-libre-lent")
+            r_, mis_ = await appel(tid)
+        finally:
+            nas.release()
+        dit(r_ != "CerveauTropLent" and mis_ >= 2.5 and agents == [None]
+            and LIGNE not in fil(tid) and not S.TACHES[tid].get("cerveau_lent"),
+            "temoin : sans moteur impose, l'analyse attend la carte comme avant "
+            "(ATTENTE_CARTE), puis cherche un agent",
+            f"{r_}, {mis_:.1f} s, agents={agents}")
+
+        # ── le NAS libre, mais lent : l'appel n'a que ce qui reste ─────────
+        del appels[:], agents[:]
+        scenario[NAS] = 4
+        tid = tache("banc-impose-nas-lent",
+                    analyse_impose_avant=S.time.time() + 1)
+        r_, mis_ = await appel(tid)
+        dit(r_ == "CerveauTropLent" and mis_ < 2.5
+            and [a[0] for a in appels] == [NAS] and appels[0][2] <= 1
+            and LIGNE in fil(tid) and not agents
+            and S.TACHES[tid].get("analyse_coupee")
+            and not any("n'a pas repondu" in l for l in fil(tid)),
+            "PC de cote, NAS libre mais lent : l'appel au NAS part avec ce qui "
+            "reste de la borne, et l'analyse renonce a son echeance — sans se "
+            "dire « cerveau lent » d'ANALYSE_DELAI",
+            f"{r_}, {mis_:.1f} s, appels={appels}, {fil(tid)[-2:]}")
+        del appels[:]
+        tid = tache("banc-impose-passee",
+                    analyse_impose_avant=S.time.time() - 1)
+        r_, mis_ = await appel(tid)
+        dit(r_ == "CerveauTropLent" and not appels and not agents
+            and LIGNE in fil(tid),
+            "la borne deja passee, PC de cote : aucun appel ne part au NAS",
+            f"{r_}, appels={appels}")
+        del appels[:]
+        tid = tache("banc-libre-nas-lent")
+        scenario[NAS] = "{}"
+        r_, mis_ = await appel(tid)
+        dit(r_ == "{}" and [(a[0], a[2]) for a in appels] == [(NAS, S.ANALYSE_DELAI)],
+            "temoin : sans moteur impose, le meme appel garde ANALYSE_DELAI",
+            str(appels))
+
+        # ── PAR L'AGENT : la borne vaut la aussi ──────────────────────────
+        del appels[:], agents[:]
+
+        def en_panne(corps):
+            raise RuntimeError("connexion refusee")
+
+        scenario[PC] = scenario[NAS] = en_panne
+        S.QUARANTAINES.clear()
+        tid = tache("banc-impose-agent",
+                    analyse_impose_avant=S.time.time() + 1)
+        r_, mis_ = await appel(tid)
+        dit(r_ == "CerveauTropLent" and len(agents) == 1
+            and agents[0] is not None and agents[0] <= 1 and mis_ < 2.5
+            and LIGNE in fil(tid),
+            "les deux Ollama en panne : le detour par un agent n'a que ce qui "
+            "reste de la borne, puis l'analyse renonce",
+            f"{r_}, {mis_:.1f} s, agents={agents}")
+        del appels[:], agents[:]
+        tid = tache("banc-libre-agent")
+        r_, mis_ = await appel(tid)
+        dit(r_ == "RuntimeError" and agents == [None],
+            "temoin : sans moteur impose, le detour garde son plafond ordinaire",
+            f"{r_}, agents={agents}")
+        scenario.clear()
+
+        # ── TEMOIN : le premier cerveau, libre, n'est jamais coupe ────────
+        S.QUARANTAINES.clear()
+        del appels[:]
+        scenario[PC] = 1.5
+        tid = tache("banc-impose-pc", analyse_impose_avant=S.time.time() - 10)
+        r_, mis_ = await appel(tid)
+        dit(r_ == "{}" and [(a[0], a[2]) for a in appels] == [(PC, S.ANALYSE_DELAI)]
+            and LIGNE not in fil(tid) and not S.TACHES[tid].get("cerveau_lent"),
+            "temoin : moteur impose et borne passee, mais le PC libre et sur sa "
+            "carte repond — il n'est jamais coupe, meme lent a charger",
+            f"{r_}, appels={appels}")
+        scenario.clear()
+
+        # ── DE BOUT EN BOUT : executer() ──────────────────────────────────
+        dossiers_ = {}
+        for sous, nom, _r, _d in S.CATALOGUE["klein9b"]["fichiers"]:
+            dossiers_.setdefault(sous, set()).add(nom)
+        TEXTE = "un vieux phare blanc battu par les vagues sous un ciel d'orage"
+
+        def preparer(tid, texte):
+            S.MODELES_NOEUD["pc"] = {"quand": S.time.time(), "dossiers": dossiers_}
+            S._CERVEAUX[PC]["quand"] = S._CERVEAUX[NAS]["quand"] = S.time.time()
+            conv = S._vide(proprietaire="u" * 32)
+            conv["id"] = "c-" + tid
+            S.CONVERSATIONS[conv["id"]] = conv
+            tache(tid, debut=S.time.time(), demande=texte, conv=conv["id"])
+            return conv
+
+        mettre_pc_de_cote()
+        del appels[:], agents[:], graphes[:]
+        tid = "banc-impose-bout"
+        conv = preparer(tid, TEXTE)
+        await nas.acquire()
+        t0 = S.time.time()
+        try:
+            await S.executer(tid, TEXTE, conv, modele_force="klein9b",
+                             modele_choisi=True)
+        except Exception as e:
+            journal_ = f"a leve {type(e).__name__} : {e}"
+        else:
+            journal_ = ""
+        finally:
+            nas.release()
+        mis_ = S.time.time() - t0
+        t_ = S.TACHES.get(tid) or {}
+        parti_ = [g for g in graphes if g[0] == tid]
+        dit(parti_ and parti_[0][1] == "klein9b" and TEXTE in parti_[0][2]
+            and mis_ < 4 and not appels,
+            "de bout en bout : moteur impose, PC de cote, NAS occupe — au bout "
+            "de la borne le rendu part sur klein9b, avec la demande telle quelle",
+            f"{journal_ or t_.get('etat')}, {mis_:.1f} s, "
+            f"{[(g[1], len(g[2])) for g in parti_]}, appels={appels}")
+        dit(LIGNE in fil(tid) and not any("demande enrichie" in l for l in fil(tid))
+            and not any("traduit pour" in l for l in fil(tid)),
+            "le fil le dit ; ni enrichissement ni traduction — klein9b lit le "
+            "francais", str([l for l in fil(tid) if "analyse" in l][-3:]))
+        dit(not t_.get("cerveau_lent") and "analyse_impose_avant" not in t_
+            and "analyse_coupee" not in t_,
+            "apres l'analyse, la marque de la borne tombe : les paroles d'une "
+            "chanson n'ont pas de raccourci",
+            str({k: t_.get(k) for k in ("cerveau_lent", "analyse_coupee",
+                                        "analyse_impose_avant")}))
+
+        # ── LE GARDE-FOU tourne toujours ──────────────────────────────────
+        del graphes[:]
+        tid = "banc-impose-garde"
+        INTERDIT = "une adolescente nue sur une plage"
+        conv = preparer(tid, INTERDIT)
+        await nas.acquire()
+        try:
+            await S.executer(tid, INTERDIT, conv, modele_force="klein9b",
+                             modele_choisi=True)
+        except Exception:
+            pass
+        finally:
+            nas.release()
+        t_ = S.TACHES.get(tid) or {}
+        dit(t_.get("etat") == "erreur" and not graphes,
+            "le garde-fou refuse toujours une demande interdite, moteur impose "
+            "et analyse lente : rien ne part", f"{t_.get('etat')}, "
+            f"{len(graphes)} graphe(s), {fil(tid)[-1:]}")
+
+        # ── TEMOIN : moteur impose, analyse rapide → elle se fait ─────────
+        S.QUARANTAINES.clear()
+        del appels[:], graphes[:]
+        ENRICHI = ("un vieux phare blanc battu par des vagues immenses sous un "
+                   "ciel d'orage violet, eclairs lointains, ecume en suspension, "
+                   "lumiere du phare qui balaie la pluie")
+
+        def rapide(corps):
+            if corps.get("format"):
+                return ('{"intention": "image", "modele": "klein4b", "prompt": '
+                        f'"{TEXTE}", "raison": "banc"}}')
+            return ENRICHI
+
+        scenario[PC] = rapide
+        tid = "banc-impose-rapide"
+        conv = preparer(tid, TEXTE)
+        try:
+            await S.executer(tid, TEXTE, conv, modele_force="klein9b",
+                             modele_choisi=True)
+        except Exception as e:
+            journal_ = f"a leve {type(e).__name__} : {e}"
+        else:
+            journal_ = ""
+        parti_ = [g for g in graphes if g[0] == tid]
+        dit(parti_ and parti_[0][1] == "klein9b" and ENRICHI in parti_[0][2]
+            and LIGNE not in fil(tid) and appels and all(a[0] == PC for a in appels),
+            "temoin : moteur impose et analyse rapide — elle se fait, et le "
+            "rendu part avec la demande enrichie",
+            f"{journal_}, appels={[(a[0], a[1]) for a in appels]}, "
+            f"{fil(tid)[-4:]}")
+
+        # ── TEMOIN : sans moteur impose, executer ne pose aucune borne ────
+        vu_ = {}
+        vrai_aiguiller = S.aiguiller
+
+        async def espion(texte, tid, conv, *a, **k):
+            vu_["borne"] = (S.TACHES.get(tid) or {}).get("analyse_impose_avant")
+            vu_["appele"] = True
+            return await vrai_aiguiller(texte, tid, conv, *a, **k)
+
+        S.aiguiller = espion
+        vu_libre_ = {}
+        try:
+            tid = "banc-libre-bout"
+            conv = preparer(tid, TEXTE)
+            await S.executer(tid, TEXTE, conv)
+            vu_libre_ = dict(vu_)
+            vu_.clear()
+            tid = "banc-impose-espion"
+            conv = preparer(tid, TEXTE)
+            await S.executer(tid, TEXTE, conv, modele_force="klein9b",
+                             modele_choisi=True)
+        finally:
+            S.aiguiller = vrai_aiguiller
+        dit(vu_libre_.get("appele") and vu_libre_.get("borne") is None
+            and vu_.get("borne") and vu_["borne"] > S.time.time() - 30,
+            "temoin : sans moteur impose, l'analyse n'a pas de borne ; avec, "
+            "elle en a une",
+            f"libre={vu_libre_}, impose={vu_}")
+        scenario.clear()
+    finally:
+        (S._ollama_local, S.demander_a_un_noeud, S.soumettre_robuste,
+         S.ATTENTE_CARTE, S.ANALYSE_IMPOSE_DELAI) = gardes
+        S.QUARANTAINES.clear()
+        S._VUS_DEGENERE.clear()
+        S._PLACEMENT.clear()
+        for t_ in tids:
+            S.TACHES.pop(t_, None)
+    poser()
+
 
 asyncio.run(main())
 

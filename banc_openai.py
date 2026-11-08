@@ -615,6 +615,19 @@ async def s_edits(c):
         repr(item.get("image")))
     dit(marque.get("operations") == ["retouche"],
         "la marque de la tache est restreinte a « retouche »", repr(marque.get("operations")))
+    remise_a_zero()
+    st_p, corps_p, _h = await c.appel("POST", EDITS, cle=TOUT, data=formulaire(
+        prompt="le meme personnage sur une plage"))
+    item_p = VUS[-1] if VUS else {}
+    dit(st_p != 403 and not item_p.get("modele"),
+        "« le meme personnage » sur la route des retouches n'est pas impose au "
+        "moteur d'edition : pas de 403 d'entree, l'analyse decide (relecture "
+        "du 8 novembre 2026)", f"HTTP {st_p} {erreur(corps_p).get('code')} "
+                              f"{item_p.get('modele')!r}")
+    remise_a_zero()
+    st, corps, _h = await c.appel("POST", EDITS, cle=TOUT, data=formulaire(
+        type_="image/jpeg", prompt="le ciel en rose", n=2, size="1536x1024"))
+    item = VUS[-1] if VUS else {}
     dit(item.get("modele") == S.MOTEUR_RETOUCHE_OPENAI,
         "sans modele choisi, la route des retouches impose le moteur d'edition : "
         "« le ciel en rose » n'est plus laisse a l'analyse, qui y lisait une image",
@@ -667,6 +680,35 @@ async def s_modeles(c):
     st, corps, _h = await c.appel("GET", MODELES, cle=VIDEO)
     ids = [m.get("id") for m in (corps or {}).get("data") or []]
     dit(ids == [S.MODELE_STUDIO], "une cle « video » ne voit aucun moteur d'image", repr(ids))
+
+    # NI CE QU'AUCUNE CARTE DU PARC NE PORTE (ronde 10). Le PC derriere son
+    # agent, eteint : 11 Go, 14,5 en debordant. klein9bhd (18) et flux1hd
+    # (26) quittent la liste deroulante du client ; un « model » qui les nomme
+    # est ignore comme un modele inconnu — le studio choisit, au lieu de
+    # partir vers un refus.
+    gardes_ = (dict(S.REGISTRE), dict(S.ETAT_NOEUDS))
+    S.REGISTRE["pc_banc"] = {"id": "pc_banc", "titre": "PC (RTX 2080 Ti)",
+                             "agent": True, "jeton": "x", "pause": None}
+    S.ETAT_NOEUDS["pc_banc"] = {"repond": False, "vram": 11.0, "ram": 63.8}
+    try:
+        st, corps, _h = await c.appel("GET", MODELES, cle=TOUT)
+        ids = [m.get("id") for m in (corps or {}).get("data") or []]
+        lourd_, _f, _r = S._demande_openai({"prompt": "un phare", "model": "klein9bhd"},
+                                           "image", fiche_de(TOUT), "fr")
+        tient_, _f, _r = S._demande_openai({"prompt": "un phare", "model": "klein9b"},
+                                           "image", fiche_de(TOUT), "fr")
+    finally:
+        S.REGISTRE.clear()
+        S.REGISTRE.update(gardes_[0])
+        S.ETAT_NOEUDS.clear()
+        S.ETAT_NOEUDS.update(gardes_[1])
+    dit(st == 200 and "klein9bhd" not in ids and "flux1hd" not in ids and "klein9b" in ids,
+        "/models ne propose ni klein9bhd ni flux1hd, que le parc ne porte pas ; "
+        "klein9b reste", repr(ids))
+    dit(lourd_ is not None and "moteur" not in lourd_
+        and (tient_ or {}).get("moteur") == "klein9b",
+        "« model: klein9bhd » est ignore, le studio choisit ; « klein9b » est "
+        "pris tel quel", f"{lourd_} / {tient_}"[:100])
 
 
 async def principal():

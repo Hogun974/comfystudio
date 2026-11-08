@@ -201,6 +201,9 @@ for texte, attendu in (("une video de deux minutes", 120.0),
                        ("1 min 30", 90.0),
                        ("45 secondes", 45.0),
                        ("2 a 3 min", 150.0),
+                       # Une piste d'essai demandee en anglais ou en espagnol.
+                       ("a calm lofi track, 30 seconds", 30.0),
+                       ("una musica de 30 segundos", 30.0),
                        ("un chat qui dort", None)):
     lu = S.duree_demandee(texte)
     dit(lu == attendu,

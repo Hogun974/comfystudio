@@ -510,6 +510,17 @@ async def main():
         "un moteur d'edition IMPOSE sur une analyse « image » part avec la phrase "
         "de l'utilisateur ; une analyse deja « edition » et le « meme personnage » "
         "gardent leur prompt", f"{plan_b['prompt']!r} / {plan_e['prompt']!r} / {plan_p['prompt']!r}")
+    profond = '{"intention": "image", "parametres": ' + "[" * 3000
+    try:
+        S.lire_objet_json(profond)
+        leve_ = "rien"
+    except json.JSONDecodeError:
+        leve_ = "JSONDecodeError"
+    except Exception as e:
+        leve_ = type(e).__name__
+    dit(leve_ == "JSONDecodeError",
+        "une imbrication sans fin (3000 crochets) est un JSON illisible, pas "
+        "une RecursionError qui passerait pour une panne de machine", leve_)
     _src = inspect.getsource(S.executer)
     dit("consigne_si_bascule(plan, avant_force, texte)" in _src,
         "et executer() l'applique au moteur impose",

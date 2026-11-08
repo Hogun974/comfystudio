@@ -916,6 +916,25 @@ body{padding-left:env(safe-area-inset-left,0px);
 .prevenir-fin:has(.vers-https){flex-wrap:wrap}
 .appli-https{margin:2px 6px 4px;padding:6px 4px 2px;border-top:1px solid var(--trait);
   color:var(--encre-pale);font-size:10.5px;line-height:1.45}
+
+/* ── ronde 10 : la mediatheque sait d'ou vient une image ──
+   La marque d'une piece demandee par cle : en bas a gauche de la vignette,
+   pour tenir avec celles du brouillon (haut gauche) et de la retenue (haut
+   droite). Sombre et sans couleur d'accent : c'est une provenance, pas un
+   etat a regarder — la braise dit « pas fini », le vert « choisie ». Un nom
+   de cle long se coupe au lieu de passer sous l'image. */
+.cadre-media .marque-programme{position:absolute;left:7px;bottom:7px;
+  max-width:calc(100% - 14px);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;background:#000a;color:var(--encre-douce);
+  border:1px solid var(--trait-vif);border-radius:6px;padding:0 7px;
+  font:10px/1.7 var(--mono);pointer-events:none}
+/* Sur une video, le bas est a la barre de lecture : la marque monte en haut a
+   gauche, sous celle du brouillon s'il y en a une. */
+.cadre-media video ~ .marque-programme{bottom:auto;top:7px}
+.cadre-media video ~ .marque-esquisse ~ .marque-programme{top:30px}
+.media figcaption small.origine-media{color:var(--encre-douce)}
+.plein .visio-origine{color:#fffb}
+.plein .visio-garde{color:#fff9;font-style:italic}
 </style>
 </head>
 <body>
@@ -1062,6 +1081,15 @@ body{padding-left:env(safe-area-inset-left,0px);
       <option value="" data-t="page.media.soin.tout">brouillons et finies</option>
       <option value="finies" data-t="page.media.soin.finies">images finies</option>
       <option value="brouillons" data-t="page.media.soin.brouillons">brouillons</option>
+    </select>
+    <!-- ronde 10 : la page ou les programmes. Les valeurs sont de PROTOCOLE,
+         celles de ORIGINE_MEDIA dans le script ; cache tant qu'aucune piece
+         ne vient d'une cle. -->
+    <select id="origineMedia" data-t-aria-label="page.mediaprog.filtre.aria"
+            aria-label="Origine" hidden>
+      <option value="" data-t="page.mediaprog.filtre.tout">tout</option>
+      <option value="page" data-t="page.mediaprog.filtre.page">la page</option>
+      <option value="programmes" data-t="page.mediaprog.filtre.programmes">les programmes</option>
     </select>
     <select id="moteurMedia" data-t-aria-label="page.media.moteur.aria" aria-label="Moteur"></select>
     <select id="machineMedia" data-t-aria-label="page.media.machine.aria" aria-label="Machine"></select>
@@ -2336,6 +2364,7 @@ PRET.then(() => fetch("/api/modeles")).then(r => r.json()).then(ms => {
     // catalogue et non le reglage : le menu ouvert le dit, la pastille nomme
     // le moteur.
     o.dataset.court = m.titre;
+    moteurTrop(o, m);   // ronde 10 : grise ce que le parc ne porte pas
     sel.appendChild(o);
   });
   $("#jaugeModeles").innerHTML =
@@ -3317,6 +3346,7 @@ async function ouvrirMediatheque() {
   for (const id of ["#chercheMedia", "#triMedia", "#moteurMedia",
                     "#machineMedia", "#quiMedia", "#soinMedia"])
     $(id).oninput = peindreGrille;
+  peindreOrigineMedia(tous);
   peindreGrille();
 }
 
@@ -3362,6 +3392,7 @@ function trierEtFiltrer(liste) {
     && (!machine || f.noeud === machine)
     && (!qui || f.a === qui)
     && (!soin || (soin === SOIN_BROUILLONS ? !!f.esquisse : !f.esquisse))
+    && origineGardee(f)
     // La recherche porte sur ce que l'utilisateur a ECRIT, sur ce qui a ete
     // ENVOYE au moteur, et sur le nom du fichier : les trois façons dont on se
     // souvient d'une image qu'on a produite il y a trois semaines.
@@ -3423,6 +3454,7 @@ function peindreGrille() {
     const marques = [];
     if (f.esquisse) marques.push(["marque-esquisse", T("page.brouillon")]);
     if (f.choisie) marques.push(["marque-retenue", T("page.media.retenue")]);
+    if (f.origine) marques.push(["marque-programme", badgeProgramme(f)]);
     const vignette = marques.length
                   && (f.famille === FAMILLE.image || f.famille === FAMILLE.video);
     if (vignette) {
@@ -3561,6 +3593,7 @@ function peindreGrille() {
       };
       legende.appendChild(b);
     }
+    legendeProgramme(legende, f, vignette);
     carte.appendChild(legende);
 
     const actions = document.createElement("div");
@@ -4982,6 +5015,7 @@ function peindreVue(vue, f, rang, n) {
     .filter(Boolean).map(ech).join(" · ");
   vue.legende.innerHTML = `<span>${ech(f.demande || f.filename)}</span>`
                         + (detail ? `<small>${detail}</small>` : "");
+  peindreOrigineVue(vue, f);
   vue.compte.textContent = T("page.media.visio.compte", { n: rang + 1, total: n });
   vue.gestes.replaceChildren();
   if (!video) {
@@ -5137,6 +5171,99 @@ function brancherUnOutil(copiable) {
           ...copiable("page.brancher.v1", base + "/api/v1"),
           ...copiable("page.brancher.openai", base + "/openai/v1"),
           ...copiable("page.brancher.mcp", base + "/mcp")];
+}
+
+/* ── ronde 10 : un moteur que le parc ne porte pas ─────────────────────
+   GRISE, ET NON CACHE. /api/modeles le sert avec « trop_lourd » : ce qu'il
+   demande, la plus grosse carte connue du parc (debordement compris), et le
+   moteur qui tient a sa place. Le cacher aurait fait disparaitre klein9bhd
+   sans dire qu'une carte plus grosse le rendrait ; le laisser choisissable
+   menait a un refus apres l'envoi. Le suffixe se lit partout, telephone
+   compris ; l'infobulle donne les chiffres. Une option desactivee reste
+   posable par programme — une conversation qui l'avait retenue la garde, et
+   le refus du serveur nomme alors la cause et le repli. */
+function moteurTrop(o, m) {
+  const t = m.trop_lourd;
+  if (!t) return;
+  const nombre = x => Number(x).toLocaleString(locale(), { maximumFractionDigits: 1 });
+  o.disabled = true;
+  o.textContent = m.titre + " " + T("page.moteurtrop.suffixe");
+  o.title = t.repli
+    ? T("page.moteurtrop.infobulle", { vram: nombre(t.vram), plafond: nombre(t.plafond), repli: t.repli })
+    : T("page.moteurtrop.infobulle_seul", { vram: nombre(t.vram), plafond: nombre(t.plafond) });
+}
+
+/* ── ronde 10 : la mediatheque sait d'ou vient une image ───────────────
+   Une demande faite par cle — n8n, Open WebUI, Claude par MCP — a sa propre
+   conversation, absente de la liste de gauche ; ses images sont pourtant dans
+   la mediatheque, et rien ne les distinguait de celles faites ici. Elles ne
+   vivent pas pareil : leur conversation se ferme apres quelques semaines sans
+   tour (GARDE_PROGRAMME, serveur.py), et ses images partent avec. Le serveur
+   sert « origine » — le NOM de la cle, jamais son identifiant — et le delai
+   en jours ; la page les montre, elle n'invente ni l'un ni l'autre. */
+
+/* Les valeurs de PROTOCOLE du filtre, celles des <option> de #origineMedia :
+   banc_page.py exige que les deux listes soient la meme. Vide : tout. */
+const ORIGINE_MEDIA = {
+  page: f => !f.origine,
+  programmes: f => !!f.origine,
+};
+
+function origineGardee(f) {
+  const sel = $("#origineMedia");
+  const garde = sel ? ORIGINE_MEDIA[sel.value] : null;
+  return !garde || garde(f);
+}
+
+/* Le filtre n'existe que s'il y a de quoi filtrer : « les programmes » sur une
+   mediatheque qui n'en a aucun ferait chercher dans le vide — la regle de
+   garnirChoix(). Cache, il revient a « tout » : un filtre invisible qui
+   filtrerait encore ferait disparaitre des images sans raison visible. */
+function peindreOrigineMedia(tous) {
+  const sel = $("#origineMedia");
+  if (!sel) return;
+  sel.hidden = !tous.some(f => f.origine);
+  if (sel.hidden) sel.value = "";
+  sel.oninput = peindreGrille;
+}
+
+/* « par clé · n8n », et « (révoquée) » quand la cle n'existe plus : ses
+   images restent, et plus rien n'arrivera par elle. Sans nom, « par clé »
+   seul. Du TEXTE, que les appelants posent par textContent : le nom est
+   choisi par le proprietaire, il n'a rien a faire dans du HTML. */
+function badgeProgramme(f) {
+  const o = f.origine || {};
+  if (!o.cle) return T("page.mediaprog.badge.anonyme");
+  return T(o.revoquee ? "page.mediaprog.badge.revoquee" : "page.mediaprog.badge",
+           { nom: o.cle });
+}
+
+/* Le son et l'objet 3D n'ont pas de vignette ou poser la marque : elle va dans
+   leur legende, comme celle du brouillon. */
+function legendeProgramme(legende, f, vignette) {
+  if (!f.origine || vignette) return;
+  const s = document.createElement("small");
+  s.className = "origine-media";
+  s.textContent = badgeProgramme(f);
+  legende.appendChild(s);
+}
+
+/* Dans la visionneuse, la marque ET ce qu'elle implique : l'image part avec sa
+   conversation apres N jours sans activite. N vient du serveur
+   (garde_programme_jours) ; absent — un studio d'avant —, la phrase se tait
+   plutot que d'avancer un chiffre que personne n'a dit. */
+function peindreOrigineVue(vue, f) {
+  if (!f.origine) return;
+  const qui = document.createElement("small");
+  qui.className = "visio-origine";
+  qui.textContent = badgeProgramme(f);
+  vue.legende.appendChild(qui);
+  const jours = (mediaCharge || {}).garde_programme_jours;
+  if (!jours) return;
+  const garde = document.createElement("small");
+  garde.className = "visio-garde";
+  garde.textContent = T("page.mediaprog.garde", { n: jours });
+  vue.legende.appendChild(garde);
 }
 </script>
 </body>

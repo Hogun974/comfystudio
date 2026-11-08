@@ -871,10 +871,34 @@ def est_local(ident):
     return bool(x and x.get("local"))
 
 def vram_max():
-    """La plus grosse carte joignable. Prendre la VRAM d'un seul noeud rendait
-    invisibles au LLM tous les modeles que la machine forte sait tenir."""
-    dispo = [vram_de(x["id"]) for x in NOEUDS if ETAT_NOEUDS.get(x["id"], {}).get("repond")]
-    return max(dispo) if dispo else VRAM_GO["total"]
+    """La plus grosse carte CONNUE du parc, allumee ou non, mesuree comme la
+    mesure noeuds_pour() : la carte, plus ce que la RAM tolere de debordement.
+    Prendre la VRAM d'un seul noeud rendait invisibles au LLM tous les modeles
+    que la machine forte sait tenir.
+
+    TOUS LES NOEUDS, ET PAS SEULEMENT CEUX QUI REPONDENT. Cette fonction ne
+    lisait que NOEUDS — noeuds.json, jamais les machines a agent — et parmi eux
+    ceux qui repondaient. Sur le studio du reseau, sans carte et dont toutes les
+    cartes sont derriere un agent, elle rendait donc VRAM_GO["total"], zero, PC
+    allume ou non : le catalogue montre a l'analyse n'ecartait rien. Le 7
+    novembre 2026, l'analyse y a pris klein9bhd (18 Go, aucune carte du parc ne
+    le tient) et le rendu a fini sur « disponible sur aucune machine ».
+
+    ALLUMEE OU NON : une carte ne retrecit pas quand sa machine dort. L'annonce
+    « comfy: False » laisse « vram » en place, et charger_parc() la relit apres
+    un redemarrage du studio. Un moteur que le PC eteint sait tenir reste donc
+    propose — c'est le « rallume-la » de refus_moteur(), pas un moteur a
+    ecarter.
+
+    _vram_utile ET NON LA CARTE NUE, parce que c'est la mesure de noeuds_pour()
+    et de muettes_capables() : une autre ici ecarterait de l'analyse un moteur
+    que le repartiteur accepte en debordant.
+
+    Zero quand aucune carte n'a jamais ete connue — un studio neuf : on ne sait
+    pas, et catalogue_texte() montre alors tout.
+    """
+    connues = [_vram_utile(x["id"]) for x in tous_les_noeuds()]
+    return max(connues, default=0.0) or VRAM_GO["total"]
 
 def memoire_vive():
     """Memoire physique de la machine, en Go. 0 si on ne sait pas la lire."""
@@ -1935,6 +1959,31 @@ def refus_moteur(cle, vivantes):
     verifier qu'aucune entree du dictionnaire ne dort. Une cle construite a
     l'execution serait invisible, donc declaree morte.
     """
+    # LA TAILLE D'ABORD, QUAND C'EST ELLE. Un moteur qu'aucune carte connue ne
+    # porte n'a pas de machine absente a rallumer, et « modele absent, ou
+    # carte trop petite » envoyait chercher un modele qui etait la. Le
+    # 8 novembre 2026, Jordan a demande klein9bhd par l'outil MCP, et rien ne
+    # disait que seul klein9b pouvait tourner. La phrase nomme la cause, puis
+    # le moteur qui tient : celui que l'analyse aurait pris d'elle-meme.
+    lourd = hors_du_parc(cle)
+    if lourd:
+        titre = CATALOGUE[cle]["titre"]
+        plafond = f"{round(vram_max(), 1):g}"
+        autre = moteur_qui_tient(cle)
+        if autre:
+            return RefusMoteur(
+                f"{titre} demande {lourd:g} Go, et aucune carte du parc ne le "
+                f"porte (la plus grosse en tient {plafond}, debordement "
+                f"compris) : essaie {CATALOGUE[autre]['titre']}.",
+                panne_de("panne.moteur_trop_lourd", moteur=titre,
+                         vram=f"{lourd:g}", plafond=plafond,
+                         repli=CATALOGUE[autre]["titre"]))
+        return RefusMoteur(
+            f"{titre} demande {lourd:g} Go, et aucune carte du parc ne le "
+            f"porte (la plus grosse en tient {plafond}, debordement "
+            f"compris) ; aucun autre moteur de ce genre n'y tient.",
+            panne_de("panne.moteur_trop_lourd_seul", moteur=titre,
+                     vram=f"{lourd:g}", plafond=plafond))
     absentes = muettes_capables(cle)
     if absentes:
         noms = " et ".join(titre for titre, _age in absentes[:3])
@@ -2909,17 +2958,101 @@ def catalogue_texte():
     """Ce que voit l'aiguilleur : ce qui est deja la, ce qu'il faudrait
     telecharger et a quel prix, et rien qui depasse la carte."""
     lignes = []
-    plafond = vram_max()
     for c, m in CATALOGUE.items():
         # Plafond nul : la carte n'est pas connue. Mieux vaut tout montrer que
         # d'ecarter au hasard — l'echec, s'il vient, sera explicite.
-        if plafond and m.get("vram", 0) > plafond:
+        if hors_du_parc(c):
             continue
         etat = ("installe" if not manquants_partout(c)
                 else f"A TELECHARGER une seule fois, ~{POIDS.get(c, 1):.0f} Go")
         lignes.append(f'- "{c}" ({m["titre"]}, {m["type"]}) : {m["pour"]} '
                       f'[~{m["duree"]}, {etat}]')
     return "\n".join(lignes)
+
+
+def hors_du_parc(cle):
+    """Les Go que reclame « cle » quand aucune carte CONNUE du parc ne le
+    porte ; 0 s'il tient quelque part, ou si l'on ne sait rien des cartes.
+
+    UNE REGLE, ET QUATRE LECTEURS : le catalogue montre a l'analyse, le repli
+    de moteur_qui_tient(), les listes servies aux programmes et a la page, et
+    le refus d'un moteur impose. Le 8 novembre 2026, lister_moteurs annoncait
+    klein9bhd « present » — ses fichiers etaient bien quelque part — pendant
+    que l'analyse l'ecartait deja : Jordan l'a demande, et seul klein9b
+    marchait. Deux mesures font proposer d'un cote ce que l'autre refuse.
+
+    vram_max() et non la carte nue, pour la raison qu'elle donne : c'est la
+    mesure du repartiteur, debordement compris. Zero sur un studio neuf : on
+    ne sait pas, on n'ecarte rien.
+    """
+    m = CATALOGUE.get(cle)
+    plafond = vram_max()
+    if not m or not plafond or m.get("vram", 0) <= plafond:
+        return 0.0
+    return m["vram"]
+
+
+def moteur_qui_tient(cle):
+    """Le moteur a prendre a la place de « cle » quand aucune carte CONNUE du
+    parc ne le tient. None s'il tient, si l'on ne sait rien des cartes (studio
+    neuf : on ne devine pas), ou si rien du meme type ne tient non plus — le
+    refus de executer() dira alors pourquoi, et c'est la bonne reponse.
+
+    LE REPLI DECLARE D'ABORD. catalogue.py nomme, pour une variante « pleine
+    precision », le moteur dont elle est la version lourde : klein9bhd est
+    klein9b avec un encodeur complet. La VRAM ne le dirait pas — klein4b en
+    demande PLUS que klein9b, et « le plus gros qui tient » rendrait klein4b,
+    un autre modele, la ou l'analyse voulait le meme en plus leger.
+
+    SINON LE MEME TYPE, LA MEME FAMILLE D'ABORD, PUIS LE PLUS GROS QUI TIENT.
+    La VRAM est la seule mesure d'ambition que porte le catalogue : le plus
+    gros qui tient est le plus proche, par le bas, de ce qui etait voulu. A
+    egalite, l'ordre du catalogue, celui ou l'analyse les lit.
+    """
+    if not hors_du_parc(cle):
+        return None
+    m = CATALOGUE[cle]
+    plafond = vram_max()
+    tient = [c for c, x in CATALOGUE.items()
+             if x["type"] == m["type"] and x.get("vram", 0) <= plafond]
+    if m.get("repli") in tient:
+        return m["repli"]
+    if not tient:
+        return None
+    ordre = list(CATALOGUE)
+    # « famille » absente des deux cotes ne fait pas une famille : realvis et
+    # pony n'ont rien de commun que de n'en declarer aucune.
+    return max(tient, key=lambda c: (
+        bool(m.get("famille")) and CATALOGUE[c].get("famille") == m.get("famille"),
+        CATALOGUE[c].get("vram", 0), -ordre.index(c)))
+
+
+def rabattre_moteur(plan, tid):
+    """Remplace, dans un plan, le moteur qu'aucune carte connue ne tient — et
+    le dit dans le fil de la demande.
+
+    POUR UN MOTEUR CHOISI PAR L'ANALYSE SEULEMENT. Un moteur impose (la page,
+    « moteur » en API, un rejeu) garde son refus : l'utilisateur l'a voulu, on
+    ne le change pas en silence. executer() en tient la condition.
+
+    Les reglages techniques proposes valaient pour le moteur d'origine : on les
+    retire et l'on reprend les defauts du nouveau, comme le fait executer()
+    quand un moteur est impose.
+    """
+    cle = plan.get("modele")
+    autre = moteur_qui_tient(cle)
+    if not autre:
+        return plan
+    journal(tid, f"{CATALOGUE[cle]['titre']} reclame {CATALOGUE[cle]['vram']:g} Go, "
+                 f"et la plus grosse carte connue du parc en charge "
+                 f"{vram_max():g}, debordement compris : rendu avec "
+                 f"{CATALOGUE[autre]['titre']}, qui y tient")
+    plan["modele"] = autre
+    brut = dict(plan.get("parametres_bruts") or {})
+    for technique in ("etapes", "cfg"):
+        brut.pop(technique, None)
+    plan["parametres_bruts"] = brut
+    return appliquer_parametres(plan)
 
 SYSTEME = """Tu es l'aiguilleur d'un studio local de creation d'images, de videos et de musique.
 On te donne une demande en francais. Tu reponds UNIQUEMENT par un objet JSON, sans texte autour.
@@ -2953,6 +3086,8 @@ Champs :
                 sujet de la chanson — ils vont dans "paroles", et seulement la.
                 Ce champ decrit ce qu'on ENTEND, pas ce que ca raconte. Y mettre
                 une biographie produit une musique qui n'a rien du style demande.
+                Ce que la demande EXCLUT (« sans voix », « no drums ») n'y figure
+                pas, meme precede de « no » : ecris « instrumental » pour « sans voix ».
                 Exemple pour un rock : "Energetic rock and roll at 128 BPM, driving
                 electric guitars, walking bass, live drums, male lead vocal with
                 male backing vocals on the chorus, warm analog studio recording."
@@ -3173,6 +3308,25 @@ class CerveauTropLent(RuntimeError):
     on ne l'attend plus pour les appels suivants de la meme demande."""
 
 
+def _couper_analyse(tid, titre):
+    """La borne du moteur impose est passee (voir ANALYSE_IMPOSE_DELAI).
+
+    LE MEME CHEMIN QUE LE CERVEAU LENT : la marque, et les appels suivants de
+    la demande — enrichissement, traduction — levent sans partir. « coupee »
+    dit que c'est la borne qui l'a posee : executer() la retire apres
+    l'analyse, les paroles d'une chanson n'ont pas de raccourci. Rend
+    l'exception a lever.
+    """
+    t_ = TACHES.get(tid) or {}
+    if not t_.get("cerveau_lent"):
+        t_["cerveau_lent"] = titre
+        t_["analyse_coupee"] = True
+    journal_une_fois(tid, "analyse trop lente (machine occupee) : le rendu "
+                          "part avec ta demande telle quelle, sur le moteur "
+                          "impose")
+    return CerveauTropLent(titre)
+
+
 def consigner_appel_distant(*a, **kw):
     """Le meme, mais qui ne peut pas emporter la demande avec lui.
 
@@ -3342,6 +3496,12 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # confondues : la machine qui a plante une fois sur cet appel ne gagne pas
     # une seconde relance parce qu'une autre a plante aussi.
     relance_ = []
+    # LA BORNE D'UNE DEMANDE AU MOTEUR IMPOSE, posee par executer() : l'heure
+    # au-dela de laquelle ce qui est lent ne s'attend plus. Jamais pour une
+    # image : lire n'a pas de raccourci.
+    borne_ = (None if image_b64
+              else (TACHES.get(tid) or {}).get("analyse_impose_avant"))
+    trop_lent_ = None
     for rang_, (url, ident) in enumerate(cerveaux):
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
         delai = ANALYSE_DELAI
@@ -3367,6 +3527,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                                   f"machine suivante")
             continue
         essai_ = False
+        borne_ici_ = False
         # La carte de la machine qui heberge cet Ollama : une carte ne fait
         # qu'une tache a la fois, analyse comprise. PAS d'echappatoire — la
         # version qui lançait l'analyse « malgre tout » au bout de vingt
@@ -3377,6 +3538,11 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                 journal(tid, f"{titre_ol} calcule — l'analyse attend que sa "
                              f"carte se libere")
             reste = echeance - time.time()
+            # ATTENDRE UNE CARTE QUI CALCULE est lent par definition : la
+            # demande au moteur impose n'attend que ce qui reste de sa borne.
+            par_borne_ = bool(borne_) and verrou_ol.locked()
+            if par_borne_:
+                reste = min(reste, borne_ - time.time())
             if reste <= 0:
                 panne = panne or RuntimeError(
                     f"aucune carte ne s'est liberee en "
@@ -3389,6 +3555,9 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                 await asyncio.wait_for(verrou_ol.acquire(prioritaire=True),
                                        timeout=reste)
             except asyncio.TimeoutError:
+                if par_borne_ and borne_ <= echeance:
+                    trop_lent_ = titre_ol
+                    break
                 panne = RuntimeError(
                     f"{titre_ol} n'a pas libere sa carte en "
                     f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance dessus.")
@@ -3438,6 +3607,15 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                          for u, i in cerveaux[rang_ + 1:])
             delai = ((300 if reste_ else 900) if ici.get("images")
                      else 900 if ecriture else ANALYSE_DELAI)
+            # UN AUTRE CERVEAU QUE LE PREMIER, ou un Ollama sur processeur :
+            # c'est la lenteur que la borne du moteur impose vise. L'appel n'a
+            # que ce qui reste.
+            if borne_ and (rang_ or sur_processeur(url)):
+                if borne_ - time.time() <= 0:
+                    trop_lent_ = titre_ol
+                    break
+                delai = min(delai, borne_ - time.time())
+                borne_ici_ = True
             # Le dechargement qui arriverait pendant cet appel serait celui
             # de SON episode : noter ou l'on en est, apres l'attente de la carte.
             vu_ = _DECHARGES_NUMERO[0]
@@ -3532,6 +3710,9 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                 _CHAUD[tid] = (url, ici.get("model") or "")
             return rendu
         except Exception as e:
+            if borne_ici_ and isinstance(e, asyncio.TimeoutError):
+                trop_lent_ = titre_ol
+                break
             panne = e
             if isinstance(e, asyncio.TimeoutError):
                 # LE MOMENT OU LA MESURE VAUT LE PLUS. Elle est prise apres un
@@ -3561,6 +3742,11 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # toujours derriere un essai que personne ne finira.
             if essai_:
                 _rendre_essai(url, modele_q)
+    # LA BORNE DU MOTEUR IMPOSE EST PASSEE, et avant la reponse degeneree : la
+    # rendre ne ferait que relancer une seconde tentative du plan, qui
+    # attendrait la meme carte.
+    if trop_lent_ or (borne_ and time.time() >= borne_):
+        raise _couper_analyse(tid, trop_lent_ or _mot_local())
     # LA REPRISE N'A RIEN DONNE DE MIEUX. Un modele a pourtant repondu, mal :
     # c'est cette reponse que l'appel rendait avant de savoir la reconnaitre,
     # et on la rend encore, plutot qu'une exception ou un detour de plusieurs
@@ -3589,11 +3775,16 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # Et il faut avoir LACHE la carte avant : poser_a() prend le verrou de la
     # machine a qui il pose la question, et cette machine peut etre celle dont on
     # vient d'essayer l'Ollama. Le repli se serait attendu lui-meme.
+    # PAR L'AGENT, c'est 75 a 162 s (mesure du 31 aout) : la borne du moteur
+    # impose vaut la aussi.
+    secondes_ = borne_ - time.time() if borne_ else None
     journal(tid, f"{_mot_local()} injoignable ({type(panne).__name__}) — "
                  f"on cherche une machine qui en porte un")
-    rendu = await demander_a_un_noeud(corps, tid)
+    rendu = await demander_a_un_noeud(corps, tid, secondes_)
     if rendu:
         return rendu
+    if borne_ and time.time() >= borne_:
+        raise _couper_analyse(tid, _mot_local())
     raise panne
 
 
@@ -3646,7 +3837,15 @@ def lire_objet_json(brut):
     debut = texte.find("{")
     if debut < 0:
         raise json.JSONDecodeError("aucun objet", texte, 0)
-    objet, _ = json.JSONDecoder().raw_decode(texte[debut:])
+    # UNE IMBRICATION SANS FIN n'est pas un plantage : raw_decode leve
+    # RecursionError vers 2500 crochets ouverts — une boucle « [[[[ » coupee a
+    # sa borne en fait autant. Laissee filer, elle passait pour une panne
+    # d'adresse (« injoignable (RecursionError) ») au lieu d'une reponse
+    # degeneree a decharger. Releve par la relecture du 8 novembre 2026.
+    try:
+        objet, _ = json.JSONDecoder().raw_decode(texte[debut:])
+    except RecursionError:
+        raise json.JSONDecodeError("imbrication trop profonde", texte, debut)
     if not isinstance(objet, dict):
         raise json.JSONDecodeError("pas un objet", texte, debut)
     return objet
@@ -3917,6 +4116,27 @@ def _pourquoi_aucun_cerveau():
 # sans rien mettre a la place. Celle-ci est trois fois plus large, et elle
 # tombe sur un repli qui repond.
 ANALYSE_DELAI = int(os.environ.get("STUDIO_ANALYSE_DELAI") or 180)
+
+# UNE ANALYSE LENTE NE RETIENT PAS UN RENDU DONT LE MOTEUR EST IMPOSE. Le
+# 8 novembre 2026 vers 9 h, des demandes par cle d'API, « moteur: klein9b »,
+# sont restees dix minutes et plus a l'analyse : qwen2.5vl:7b avait degenere
+# sur le PC et y etait mis de cote, et le NAS, seule machine restante, servait
+# l'une apres l'autre les trois ou quatre analyses de cinq demandes, 55 a 107 s
+# chacune. ANALYSE_DELAI ne borne que l'APPEL ; l'attente de la carte n'avait,
+# elle, que les trente minutes d'ATTENTE_CARTE — par appel.
+#
+# Un moteur impose ne laisse a l'analyse que le prompt a reecrire, et un prompt
+# tel quel vaut mieux qu'un rendu qui ne part pas. Passe cette borne, comptee
+# depuis le debut de l'analyse, la demande fait donc le reste sans modele — la
+# marque « cerveau lent » —, mais seulement si ce qui reste est LENT : attendre
+# la carte d'une machine qui calcule, demander a un autre cerveau que le
+# premier de la liste, ou a un Ollama sur processeur. Le premier cerveau, libre
+# et sur sa carte, n'est jamais coupe : y charger le modele d'ecriture prend
+# parfois plus de 45 s, et c'est une analyse qui avance, pas une demande qui
+# attend.
+#
+# Sans moteur impose, rien ne change : c'est l'analyse qui choisit le moteur.
+ANALYSE_IMPOSE_DELAI = int(os.environ.get("STUDIO_ANALYSE_IMPOSE_DELAI") or 45)
 
 
 async def _ollama_local(corps, url=None, secondes=900):
@@ -4550,9 +4770,19 @@ async def reparer_degenere(url, modele, forme, tid, titre, depuis=None):
     deja = _DECHARGE_DEGENERE.get((url, modele))
     if deja and depuis is not None and deja["numero"] > depuis:
         # LE MEME EPISODE : decharge pendant que cet appel etait en vol.
+        # « decharge » VRAI POUR CET APPEL AUSSI : le modele qu'il retentera
+        # est celui qu'on vient de recharger, et la boucle le retente sans
+        # compter — seule une reprise qui degenere encore met de cote. Sans
+        # cela, trois appels en vol sur un Ollama sans verrou de carte (celui
+        # du studio) comptaient chacun et mettaient au placard un modele que
+        # le dechargement venait de reparer. Releve par la relecture du
+        # 8 novembre 2026, prouve sur le vrai _appeler_llm.
+        trace["decharge"] = True
+        trace["par_un_autre_appel"] = True
         journal(tid, f"{modele} sur {titre} a rendu {quoi} — deja "
                      f"decharge il y a {maintenant - deja['quand'][-1]:.0f} s, "
-                     f"pendant cet appel : on ne le decharge pas deux fois")
+                     f"pendant cet appel : on ne le decharge pas deux fois, "
+                     f"on retente sur le modele recharge")
         return trace
     if deja and len(deja["quand"]) >= DECHARGES_PAR_FENETRE:
         journal(tid, f"{modele} sur {titre} a rendu {quoi} — deja "
@@ -5706,21 +5936,35 @@ _GENRES = [
     ("ballad", ("ballade", "berceuse", "slow")),
     ("chanson francaise", ("chanson francaise", "chanson a texte")),
 ]
+# EN FRANCAIS ET EN ANGLAIS depuis le 8 novembre 2026 : « cello, harp » ne
+# trouvait rien, et « violoncelle » ne se lisait que parce qu'il contient
+# « violon » — il rendait « violin, cello ». « bass » seul n'y est pas : il est
+# dans « double bass », qui n'est pas une basse electrique.
 _INSTRUMENTS = [
-    ("electric guitars", ("guitare electrique", "guitares electriques", "guitare")),
-    ("acoustic guitar", ("guitare acoustique", "guitare seche")),
-    ("bass guitar", ("basse",)),
-    ("drums", ("batterie", "percussion", "percussions", "tambour")),
+    ("electric guitars", ("guitare electrique", "guitares electriques", "guitare",
+                          "electric guitar", "guitar")),
+    ("acoustic guitar", ("guitare acoustique", "guitare seche", "acoustic guitar")),
+    ("bass guitar", ("basse", "bass guitar", "electric bass")),
+    ("drums", ("batterie", "percussion", "percussions", "tambour", "drums", "drum")),
     ("piano", ("piano",)),
-    ("hammond organ", ("orgue", "hammond")),
-    ("violin", ("violon",)),
+    ("hammond organ", ("orgue", "hammond", "organ")),
+    ("violin", ("violon", "violin")),
     ("saxophone", ("saxophone", "saxo", "sax")),
-    ("trumpet", ("trompette",)),
+    ("trumpet", ("trompette", "trumpet")),
     ("harmonica", ("harmonica",)),
-    ("synthesizer", ("synthe", "synthetiseur", "synthes")),
-    ("accordion", ("accordeon",)),
-    ("cello", ("violoncelle",)),
+    ("synthesizer", ("synthe", "synthetiseur", "synthes", "synth", "synthesizer")),
+    ("accordion", ("accordeon", "accordion")),
+    ("cello", ("violoncelle", "cello")),
     ("flute", ("flute",)),
+    ("hurdy-gurdy", ("vielle a roue", "hurdy-gurdy", "hurdy gurdy")),
+    ("harp", ("harpe", "harp")),
+    ("strings", ("cordes", "nappes de cordes", "quatuor a cordes", "orchestre a cordes",
+                 "strings", "string pads", "string section")),
+    ("double bass", ("contrebasse", "double bass", "upright bass")),
+    ("harpsichord", ("clavecin", "harpsichord")),
+    ("french horn", ("cor", "cor d'harmonie", "french horn", "horn")),
+    ("clarinet", ("clarinette", "clarinet")),
+    ("oboe", ("hautbois", "oboe")),
 ]
 _VOIX = [
     ("male lead vocal", ("un homme chante", "chantee par un homme", "voix d'homme",
@@ -5730,12 +5974,19 @@ _VOIX = [
 ]
 _CHOEURS_DEMANDES = ("choeur", "chorale", "backing", "harmonies")
 _AMBIANCES = [
-    ("energetic", ("entrainant", "energique", "puissant", "endiable", "rythme")),
+    ("energetic", ("entrainant", "energique", "puissant", "endiable", "rythme",
+                   "energetic", "upbeat")),
     ("melancholic", ("triste", "melancolique", "nostalgique", "hommage", "deuil",
-                     "disparu", "decede", "en memoire")),
-    ("joyful", ("joyeux", "gai", "festif", "heureux")),
-    ("calm", ("calme", "doux", "apaisant", "tranquille")),
-    ("epic", ("epique", "grandiose", "heroique")),
+                     "disparu", "decede", "en memoire", "sad", "melancholic")),
+    ("joyful", ("joyeux", "gai", "festif", "heureux", "joyful", "happy")),
+    ("calm", ("calme", "doux", "douce", "apaisant", "tranquille", "calm", "peaceful")),
+    ("epic", ("epique", "grandiose", "heroique", "epic")),
+    ("dark", ("sombre", "tenebreux", "tenebreuse", "dark")),
+    ("mysterious", ("mysterieux", "mysterieuse", "mystere", "mysterious")),
+    ("ominous", ("inquietant", "angoissant", "menacant", "ominous", "eerie")),
+    ("ambient", ("ambiant", "ambiance", "atmospherique", "ambient")),
+    ("cinematic", ("cinematographique", "musique de film", "bande originale",
+                   "cinematic", "soundtrack")),
 ]
 
 
@@ -5746,10 +5997,17 @@ _TEMPOS = {"rock and roll": 132, "rock": 122, "metal": 140, "blues": 80,
 
 
 def _trouves(texte, table):
-    """Les libelles anglais dont un des mots-cles apparait dans la demande."""
+    """Les libelles anglais dont un des mots-cles est un MOT de la demande.
+
+    Un mot, et non une sous-chaine : « violon » se trouvait dans
+    « violoncelle », « rap » dans « rapide », et « cor » serait dans « encore ».
+    Le pluriel et le feminin suivent (« guitares », « inquietante »).
+    """
     vus = []
     for anglais, cles in table:
-        if any(c in texte for c in cles) and anglais not in vus:
+        if anglais not in vus and any(
+                re.search(r"\b" + re.escape(c) + r"(?:s|x|e|es)?\b", texte)
+                for c in cles):
             vus.append(anglais)
     return vus
 
@@ -5761,14 +6019,16 @@ def style_musical(texte, par=None):
     Un genre general n'est garde que si aucun genre plus precis ne l'est deja :
     « rock and roll » et « rock » ensemble ne disent pas plus que le premier.
     """
-    t = sans_accents((texte or "").lower())
+    t, exclus = lire_negations(texte)
     genres = _trouves(t, _GENRES)
     if len(genres) > 1 and genres[0].startswith(genres[1]):
         genres = genres[:1]
     genres = genres[:2]
-    instruments = _trouves(t, _INSTRUMENTS)[:5]
+    # Six et quatre : « violoncelle, vielle a roue, harpe, nappes de cordes
+    # sombres, mysterieuse et inquietante » doit tout garder.
+    instruments = _trouves(t, _INSTRUMENTS)[:6]
     voix = _trouves(t, _VOIX)[:1]
-    ambiances = _trouves(t, _AMBIANCES)[:2]
+    ambiances = _trouves(t, _AMBIANCES)[:4]
 
     morceaux = list(genres)
     bpm = (par or {}).get("bpm")
@@ -5783,7 +6043,8 @@ def style_musical(texte, par=None):
     morceaux += ambiances
     if not genres and not instruments:
         return ""
-    morceaux.append("studio recording, clear vocals")
+    morceaux.append("instrumental, studio recording" if "vocals" in exclus
+                    else "studio recording, clear vocals")
     return ", ".join(morceaux)
 
 
@@ -5802,6 +6063,239 @@ def _style_prose(style):
                 " son ", " sa ", " ses ", " avec ", " pour ", " dans ", " etait ")
     creux = sans_accents(" " + style.lower() + " ")
     return any(m in creux for m in francais) or style.count(",") < 1
+
+
+# CE QUE L'UTILISATEUR EXCLUT NE DEVIENT JAMAIS UN TAG. Retour d'usage du
+# 8 novembre 2026 : « une musique calme, sans voix, sans batterie » est sortie
+# avec de la batterie ET des voix. Le modele de langage n'y etait pour rien :
+# style_musical() trouvait « batterie » dans la demande sans voir le « sans »
+# devant, et ajoutait « clear vocals » a tout style qu'elle rendait — le style
+# lu dans la demande passe AVANT celui de l'analyse, si bien que la faute du
+# code ecrasait meme une analyse juste.
+#
+# Chaque ligne : ce qu'on exclut, les mots qui le nomment dans la demande (sans
+# accent ni casse ; francais, anglais, espagnol — les langues ou le studio lit
+# une demande telle quelle), puis le motif des tags anglais a retirer du style
+# envoye. ACE-Step n'a PAS de champ negatif : l'encodeur
+# TextEncodeAceStepAudio1.5 ne prend que tags et paroles, et le negatif du
+# KSampler est un ConditioningZeroOut du positif, comme dans les gabarits
+# officiels. Ce qu'on exclut ne peut donc que disparaitre du positif — et ce
+# qui se dit positivement se dit : « sans voix » devient « instrumental », sans
+# paroles.
+NEGATIONS_MUSIQUE = [
+    ("vocals", ("voix", "vocal", "vocals", "voice", "voices", "chant", "chants",
+                "chanteur", "chanteuse", "chanteurs", "chanteuses", "paroles",
+                "parole", "singing", "singer", "singers", "lyrics", "voz",
+                "voces", "canto", "cantante", "cantantes", "letra", "letras"),
+     r"\bvocal\w*|\bvoices?\b|\bsing(?:ing|ers?)?\b|\bsung\b|\bchoirs?\b|"
+     r"\bchoral\b|\blyrics?\b|\brap(?:ping|per)?\b|\ba cappella\b"),
+    # Les choeurs a part : « une chanson sans choeurs » reste une chanson.
+    ("choir", ("choeur", "choeurs", "chorale", "chorales", "choir", "choirs",
+               "backing", "coro", "coros"),
+     r"\bchoirs?\b|\bchoral\b|\bbacking vocals?\b|\bharmon(?:y|ies)\b"),
+    ("drums", ("batterie", "batteries", "percussion", "percussions", "tambour",
+               "tambours", "drum", "drums", "beat", "beats", "bateria",
+               "baterias", "percusion", "percusiones"),
+     r"\bdrum\w*|\bpercussi\w*|\b(?:break)?beats?\b|\bkicks?\b|\bsnares?\b|"
+     r"\bhi-?hats?\b|\bcymbals?\b|\bfull band\b"),
+    ("guitar", ("guitare", "guitares", "guitar", "guitars", "guitarra",
+                "guitarras"),
+     r"\bguitars?\b"),
+    ("piano", ("piano", "pianos"), r"\bpianos?\b"),
+    ("bass", ("basse", "basses", "bass", "bajo", "bajos"),
+     r"\bbass(?:lines?)?\b|\b808s?\b"),
+    ("synthesizer", ("synthe", "synthes", "synthetiseur", "synthetiseurs",
+                     "synth", "synths", "synthesizer", "synthesizers",
+                     "sintetizador", "sintetizadores"),
+     r"\bsynth\w*"),
+    ("strings", ("violon", "violons", "cordes", "violin", "violins", "strings",
+                 "violines", "cuerdas"),
+     r"\bviolins?\b|\bstrings?\b|\bfiddles?\b"),
+]
+# « pas » seul et non « pas de » : les jetons coupent l'elision (« pas d'orgue »).
+_NIER = {"sans", "pas", "aucun", "aucune", "ni", "without", "no", "nor", "sin",
+         "ningun", "ninguna", "ninguno"}
+# Ce qui peut s'intercaler entre la negation et le mot nie. RIEN D'AUTRE : « pas
+# trop de batterie », « pas mal de batterie » veulent de la batterie.
+_ENTRE_NEGATION = {"de", "d", "du", "des", "la", "le", "les", "l", "un", "une",
+                   "any", "the", "a", "el", "los", "las", "una"}
+# « sans voix ni batterie », « no vocals or drums » : la negation porte encore
+# sur le mot suivant, mais SEULEMENT s'il est dans la table — « sans voix et
+# une batterie douce » veut sa batterie.
+_ENCHAINER_NEGATION = {"et", "ou", "and", "or", "y", "o"}
+
+
+def _exclu_par(mot):
+    for exclu, mots, _motif in NEGATIONS_MUSIQUE:
+        if mot in mots or (mot.endswith("s") and mot[:-1] in mots):
+            return exclu
+    return None
+
+
+def lire_negations(texte):
+    """(la demande sans ses passages nies, ce qu'elle exclut).
+
+    La demande rendue est en minuscules et sans accents, comme style_musical la
+    lit. Le mot qui suit une negation en est retire meme s'il n'est pas dans la
+    table : « pas de rock » ne doit pas trouver de rock, et « sans fin » ne perd
+    que « fin », qui ne nomme aucun son.
+    """
+    t = sans_accents((texte or "").lower())
+    jetons = list(re.finditer(r"[a-z0-9]+|[,;:.!?()]", t))
+    exclus, trous = [], []
+    i = 0
+    while i < len(jetons):
+        if jetons[i].group() not in _NIER:
+            i += 1
+            continue
+        j = i + 1
+        while j < len(jetons) and (jetons[j].group() in _ENTRE_NEGATION
+                                   or jetons[j].group() in _NIER):
+            j += 1
+        if j >= len(jetons) or not jetons[j].group()[0].isalnum():
+            i = j
+            continue
+        trous.append(jetons[j].span())
+        exclu = _exclu_par(jetons[j].group())
+        i = j + 1
+        while exclu:
+            if exclu not in exclus:
+                exclus.append(exclu)
+            exclu = None
+            if (i + 1 < len(jetons) and jetons[i].group() in _ENCHAINER_NEGATION
+                    and _exclu_par(jetons[i + 1].group())):
+                trous.append(jetons[i + 1].span())
+                exclu = _exclu_par(jetons[i + 1].group())
+                i += 2
+    for a, b in reversed(trous):
+        t = t[:a] + " " * (b - a) + t[b:]
+    # « instrumental » dit en plein ce que « sans voix » dit en creux — sauf dans
+    # une chanson : « un pont instrumental » n'en retire pas le chant. Exemple
+    # de production du 8 novembre 2026 : « Musique d'ambiance INSTRUMENTALE »
+    # est partie avec « clear vocals ».
+    if (re.search(r"\binstrumenta(?:l|le|ls|les|ux)\b", t) and not _CHANSON.search(t)
+            and "vocals" not in exclus):
+        exclus.append("vocals")
+    return t, exclus
+
+
+# LE TEMPO DIT EN MOTS. Exemple de production du 8 novembre 2026 : « tempo
+# tres lent » est parti a 90 BPM, le defaut — le code ne changeait le tempo
+# que par le genre (_TEMPOS), et le modele avait laisse 90. Les valeurs sont
+# celles que le gabarit donne deja au modele (60-75 lent, 90-110 modere,
+# 125-140 rapide), poussees aux extremes pour « tres ». « tres lent » AVANT
+# « lent » : le premier qui se trouve l'emporte.
+_TEMPOS_DITS = [
+    (55, ("tres lent", "tres lente", "tres lentement", "very slow", "muy lento",
+          "muy lenta")),
+    (150, ("tres rapide", "very fast", "muy rapido", "muy rapida")),
+    (70, ("lent", "lente", "lentement", "slow", "slowly", "lento", "lenta")),
+    (100, ("modere", "moderee", "moderate", "moderato", "moderado")),
+    (130, ("rapide", "fast", "rapido", "rapida", "allegro")),
+]
+_BPM_ECRIT = re.compile(r"\b(\d{2,3})\s*bpm\b|\btempo\s*(?:de|a|:|=)?\s*(\d{2,3})\b",
+                        re.I)
+
+
+def tempo_style_audio(texte, style_audio):
+    """Le tempo ecrit dans le champ « style_audio » d'un programme, quand la
+    demande n'en donne pas. Vu par un studio d'essai le 8 novembre 2026 :
+    « style_audio: dark ambient, drone, low cello, eerie, 50 BPM » partait
+    a 90 BPM — les tags disaient 50, le parametre du moteur 90, et ACE-Step
+    obeit au parametre. La demande garde la priorite : elle est ecrite par
+    l'humain, le champ souvent par un gabarit."""
+    if not style_audio or tempo_demande(texte):
+        return None
+    return tempo_demande(style_audio)
+
+
+def tempo_demande(texte):
+    """Le tempo que la demande ECRIT, en BPM, ou None.
+
+    « 60 BPM » prime sur les mots ; un mot nie ne dit rien (« pas lent »).
+    """
+    t, _ = lire_negations(texte)
+    m = _BPM_ECRIT.search(t)
+    if m:
+        return int(m.group(1) or m.group(2))
+    for bpm, mots in _TEMPOS_DITS:
+        if any(re.search(r"\b" + re.escape(m_) + r"\b", t) for m_ in mots):
+            return bpm
+    return None
+
+
+# LE STYLE DONNE PASSE TEL QUEL. Exemple de production du 8 novembre 2026
+# (rendu cc73077b) : « Style : dark ambient, cinematic horror, medieval folk,
+# drone, low cello, hurdy-gurdy… 55 BPM, instrumental » est parti en « folk,
+# ballad, 100 BPM, studio recording, clear vocals » — style_musical avait lu
+# « folk » et « slow », et sa lecture primait sur des etiquettes que
+# l'utilisateur avait ecrites lui-meme, en anglais, pour ACE-Step.
+STYLE_AUDIO_MAX = 300   # caracteres : une liste d'etiquettes, pas un recit
+_STYLE_ECRIT = re.compile(r"\b(?:style|tags)\s*:\s*(.+?)(?:\.(?:\s|$)|\n|$)", re.I)
+
+
+def style_donne(texte, par=None, exclus=(), champ=None):
+    """Le style que l'utilisateur DONNE, nettoye, ou "".
+
+    Le champ « style_audio » d'un programme d'abord, sinon ce qui suit
+    « Style : » ou « Tags : » dans la demande, jusqu'a la fin de la phrase ou
+    de la ligne. Borne, sans saut de ligne, une etiquette par virgule ; le BPM
+    s'y ajoute s'il n'y est pas, « instrumental » si les voix sont exclues, et
+    JAMAIS « clear vocals ».
+    """
+    brut = champ if isinstance(champ, str) and champ.strip() else ""
+    if not brut:
+        m = _STYLE_ECRIT.search(texte or "")
+        brut = m.group(1) if m else ""
+    morceaux = [" ".join(x.split()) for x in re.split(r"[,;\n]", brut[:STYLE_AUDIO_MAX])]
+    morceaux = [x for x in morceaux if x]
+    if not morceaux:
+        return ""
+    bpm = (par or {}).get("bpm")
+    if bpm and not any(re.search(r"\bbpm\b", x, re.I) for x in morceaux):
+        morceaux.append(f"{int(bpm)} BPM")
+    if "vocals" in exclus and not any(re.search(r"\binstrumental\b", x, re.I)
+                                      for x in morceaux):
+        morceaux.append("instrumental")
+    return ", ".join(morceaux)
+
+
+def chanson_demandee(texte):
+    """Une chanson CHANTEE est-elle demandee ? « une chanson sans paroles » non,
+    et « un morceau sans choeurs » pas davantage : _CHANSON, lu tel quel, y
+    trouvait « paroles » et « choeurs » et faisait ecrire un refrain."""
+    reste, exclus = lire_negations(texte)
+    return bool(_CHANSON.search(reste)) and "vocals" not in exclus
+
+
+def purger_style(style, exclus):
+    """Le style sans aucun tag qui nomme ce que la demande exclut.
+
+    LA VERIFICATION EST ICI, EN CODE, ET APRES L'ANALYSE : le gabarit demande
+    deja au modele de ne pas ecrire « no vocals », mais un petit modele le fait
+    quand meme, et rien ne garantit qu'ACE-Step lise « no vocals » autrement
+    que « vocals » : non mesure, donc retire. Un tag est coupe
+    a ses virgules et a ses « with » ; un morceau qui nomme l'exclu est retire,
+    le reste garde — « soft piano and light drums » garde « soft piano ».
+    """
+    if not exclus:
+        return style
+    motifs = [re.compile(m, re.I) for exclu, _mots, m in NEGATIONS_MUSIQUE
+              if exclu in exclus]
+    gardes = []
+    for morceau in re.split(r"[,;]|\.\s|\bwith\b|\bfeaturing\b", style or ""):
+        morceau = morceau.strip(" .")
+        if not morceau:
+            continue
+        if any(p.search(morceau) for p in motifs):
+            gardes += [m.strip(" .") for m in re.split(r"\s+and\s+|\s*&\s*", morceau)
+                       if m.strip(" .") and not any(p.search(m) for p in motifs)]
+        else:
+            gardes.append(morceau)
+    if "vocals" in exclus and not any(re.search(r"\binstrumental\b", m, re.I)
+                                      for m in gardes):
+        gardes.insert(0, "instrumental")
+    return ", ".join(gardes)
 
 
 
@@ -6578,7 +7072,9 @@ _NOMBRE = r"(\d+|" + "|".join(_MOTS_NOMBRE) + r")"
 _INTERVALLE_MIN = re.compile(_NOMBRE + r"\s*(?:a|à|/|-|ou)\s*" + _NOMBRE +
                              r"\s*min", re.I)
 _MINUTES = re.compile(_NOMBRE + r"\s*min(?:ute)?s?(?:\s*(\d+))?", re.I)
-_SECONDES = re.compile(_NOMBRE + r"\s*(?:s|sec|secondes?)\b", re.I)
+# « 30 seconds » et « 30 segundos » aussi : une demande anglaise ou espagnole
+# d'une piste d'essai partait sur les 60 s par defaut.
+_SECONDES = re.compile(_NOMBRE + r"\s*(?:s|sec|secondes?|seconds?|segundos?)\b", re.I)
 
 def _nombre(m):
     m = (m or "").strip().lower()
@@ -6877,13 +7373,19 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
         plan["parametres_bruts"] = brut
 
         # Une chanson va sur le moteur soigne : cinquante etapes contre huit.
-        if _CHANSON.search(texte or "") and plan.get("modele") != "audioplus" \
+        if chanson_demandee(texte) and plan.get("modele") != "audioplus" \
                 and not manquants_partout("audioplus"):
             plan["modele"] = "audioplus"
             plan["raison"] = "chanson structuree : moteur soigne"
         voulue = duree_demandee(texte)
         if voulue:
             plan["parametres_bruts"]["duree_s"] = voulue
+        # Meme raison que la duree : ce que l'utilisateur ecrit ne se devine
+        # pas, et le petit modele laisse le defaut. Le genre ne joue ensuite
+        # (dans executer) que si le tempo est reste au defaut.
+        tempo = tempo_demande(texte)
+        if tempo:
+            plan["parametres_bruts"]["bpm"] = tempo
         plan = appliquer_parametres(plan)
 
     if plan["intention"] == "image":
@@ -10510,14 +11012,14 @@ async def produire_distant(choix, plan, texte, entree, intention, tid, conv):
             # Les paroles s'ecrivent ici et non plus bas : la branche locale qui
             # s'en charge d'ordinaire est en aval de cet aiguillage, et un morceau
             # chante partirait sans un mot.
-            if not plan.get("paroles") and _CHANSON.search(texte or ""):
+            if not plan.get("paroles") and chanson_demandee(texte):
                 duree = float((plan.get("parametres") or {}).get("duree_s", 60))
                 plan["paroles"] = await ecrire_paroles(texte, duree, tid,
                                                        plan.get("langue") or "fr")
             # Le style et les paroles partent ensemble : ces modeles ne prennent
             # qu'un texte, contrairement a ACE-Step qui a deux champs distincts.
             morceaux = [style_musical(texte, plan.get("parametres")) or texte]
-            if plan.get("paroles"):
+            if plan.get("paroles") and "vocals" not in lire_negations(texte)[1]:
                 morceaux.append("Paroles a chanter :\n" + plan["paroles"])
             octets, mime = await fournisseurs.musique(conf["fournisseur"], cle_api,
                                                       "\n\n".join(morceaux), modele)
@@ -10845,6 +11347,11 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 journal(tid, "meme prompt et meme moteur que l'esquisse, tout le "
                              "soin — la composition, elle, sera differente")
         else:
+            # LA BORNE DE L'ANALYSE AU MOTEUR IMPOSE (voir ANALYSE_IMPOSE_DELAI)
+            # court des maintenant, enrichissement et traduction compris.
+            if modele_force and tid in TACHES:
+                TACHES[tid]["analyse_impose_avant"] = (time.time()
+                                                       + ANALYSE_IMPOSE_DELAI)
             plan = await aiguiller(texte, tid, conv, img_b64,
                                    a_une_image=(famille_du_fichier(image) if image
                                                 else False),
@@ -10941,6 +11448,14 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             if plan.get("modele") not in CATALOGUE:
                 plan["modele"] = secours(texte, bool(image))["modele"]
             plan = caler_taille(plan, texte, taille)
+        # UN MOTEUR QU'AUCUNE CARTE NE PORTE NE SORT PAS DE L'ANALYSE. Le
+        # catalogue qu'elle lit les ecarte deja ; ceci est le garde-fou, pour un
+        # modele qui sortirait du catalogue montre ou un plan pose par le code.
+        # Avant l'enrichissement et la traduction, qui dependent du moteur, et
+        # apres le repli des questions, qui en choisit un. Un moteur IMPOSE n'y
+        # passe pas : il garde son refus.
+        if not plan.get("modele_impose"):
+            plan = rabattre_moteur(plan, tid)
         # le prompt reecrit passe aussi la garde
         garde_fou(texte, plan.get("prompt"), plan.get("tags_audio"), plan.get("paroles"))
         # CE QUE LA CLE PEUT FAIRE, des que l'analyse l'a decide et AVANT
@@ -10985,6 +11500,13 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # « schoolgirl » si — et c'est precisement l'image a ne pas faire.
             garde_fou(texte, plan.get("prompt"), plan.get("tags_audio"),
                       plan.get("paroles"))
+        # LA BORNE NE VAUT QUE POUR L'ANALYSE. Les paroles d'une chanson
+        # s'ecrivent plus loin, et sans elles la demande meurt : la marque posee
+        # par la borne tombe ici, et elles attendent leur carte comme avant.
+        t_borne_ = TACHES.get(tid) or {}
+        t_borne_.pop("analyse_impose_avant", None)
+        if t_borne_.pop("analyse_coupee", None):
+            t_borne_.pop("cerveau_lent", None)
         cle = plan["modele"]
 
         # Le studio n'a pas su preparer la demande : plutot que de l'envoyer
@@ -11748,7 +12270,18 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             journal(tid, "sculpture du maillage — compter environ 3 minutes…")
         elif intention == "audio":
             # Les paroles ne viennent pas du plan : elles ont leur propre appel.
-            chantee = bool(_CHANSON.search(texte or ""))
+            # « sans voix » : ni paroles ni appel pour en ecrire, quoi que porte
+            # le plan — voir NEGATIONS_MUSIQUE.
+            _, exclus = lire_negations(texte)
+            # « instrumental: true » d'un programme vaut « sans voix ».
+            api_audio = (TACHES.get(tid) or {}).get("api") or {}
+            if api_audio.get("instrumental") and "vocals" not in exclus:
+                exclus.append("vocals")
+            if "vocals" in exclus:
+                plan["paroles"] = ""
+            chantee = chanson_demandee(texte)
+            if api_audio.get("instrumental"):
+                chantee = False
             if not plan.get("paroles") and chantee:
                 duree = float((plan.get("parametres") or {}).get("duree_s", 60))
                 plan["paroles"] = await ecrire_paroles(texte, duree, tid,
@@ -11765,14 +12298,27 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # il n'y a rien a deviner.
             # Le tempo suit le genre, sauf si l'utilisateur a donne le sien :
             # « rock and roll » a 90 BPM traine, quels que soient les instruments.
-            if par.get("bpm") == REGLAGES.get(cle, {}).get("bpm"):
-                for genre in _trouves(sans_accents((texte or "").lower()), _GENRES):
+            # UN TEMPO ECRIT N'EST JAMAIS LE DEFAUT, meme s'il vaut 90 : « folk a
+            # 90 BPM » partait a 100, le tempo du genre. Le genre se lit sans
+            # ce que la demande nie (« pas de rock »).
+            tempo_sa = tempo_style_audio(texte, api_audio.get("style_audio"))
+            if tempo_sa:
+                par["bpm"] = tempo_sa
+                journal(tid, f"tempo lu dans style_audio : {tempo_sa} BPM")
+            if (par.get("bpm") == REGLAGES.get(cle, {}).get("bpm")
+                    and not tempo_demande(texte) and not tempo_sa):
+                for genre in _trouves(lire_negations(texte)[0], _GENRES):
                     if genre in _TEMPOS:
                         par["bpm"] = _TEMPOS[genre]
                         journal(tid, f"tempo du genre {genre} : {par['bpm']} BPM")
                         break
-            style = style_musical(texte, par)
-            if style:
+            # Le style DONNE d'abord — champ « style_audio » d'un programme, ou
+            # « Style : » dans la demande —, puis celui qu'on lit, puis l'analyse.
+            donne = style_donne(texte, par, exclus, api_audio.get("style_audio"))
+            style = donne or style_musical(texte, par)
+            if donne:
+                journal(tid, f"style donne tel quel : {style}")
+            elif style:
                 journal(tid, f"style lu dans la demande : {style}")
             elif _style_prose(plan.get("tags_audio")):
                 journal(tid, "style propose inexploitable — il decrit l'histoire")
@@ -11785,6 +12331,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                 # avec le rock demande. Mieux vaut une consigne neutre.
                 style = "A well-recorded song with clear vocals and a full band."
                 journal(tid, "aucun style musical propose — consigne neutre utilisee")
+            # D'ou qu'il vienne — la demande, l'analyse, la consigne neutre —, le
+            # style perd ici ce que la demande exclut. Voir NEGATIONS_MUSIQUE.
+            if exclus:
+                style = purger_style(style, exclus)
+                journal(tid, f"exclu par la demande : {', '.join(exclus)} — "
+                             f"style envoye : {style}")
             # La fiche de l'echange doit montrer ce qui a REELLEMENT ete envoye :
             # c'est sur elle que se fonde un pouce en bas.
             plan["tags_audio"] = plan["prompt"] = style
@@ -12107,6 +12659,20 @@ def dit_moteur(cle, champ, defaut, langue):
     return defaut if rendu == k or not rendu.strip() else rendu
 
 
+def _trop_lourd(cle, lg):
+    """Pour la page : ce que reclame un moteur que le parc ne porte pas, la
+    plus grosse carte connue, et le titre traduit du moteur a prendre a sa
+    place — None s'il tient. Des nombres et non une phrase : la page les
+    ecrit avec la virgule de sa langue."""
+    lourd = hors_du_parc(cle)
+    if not lourd:
+        return None
+    autre = moteur_qui_tient(cle)
+    return {"vram": lourd, "plafond": round(vram_max(), 1),
+            "repli": dit_moteur(autre, "titre", CATALOGUE[autre]["titre"], lg)
+            if autre else None}
+
+
 async def api_modeles(req):
     """Les moteurs locaux, puis ceux qu'une cle rend joignables.
 
@@ -12129,7 +12695,14 @@ async def api_modeles(req):
     liste = [dict(cle=c, titre=dit_moteur(c, "titre", m["titre"], lg),
                   type=m["type"], pour=dit_moteur(c, "pour", m["pour"], lg),
                   duree=m["duree"], distant=False,
-                  present=not manquants_partout(c)) for c, m in CATALOGUE.items()]
+                  # Qu'aucune carte du parc ne porte : pas « present », meme
+                  # installe, et GRISE dans le menu avec sa raison plutot que
+                  # cache — c'est le menu d'une personne, qui verrait sinon un
+                  # moteur disparaitre sans apprendre qu'une carte plus
+                  # grosse le rendrait. Les programmes, eux, ne le voient pas
+                  # (_moteurs_pour).
+                  present=not manquants_partout(c) and not hors_du_parc(c),
+                  trop_lourd=_trop_lourd(c, lg)) for c, m in CATALOGUE.items()]
     liste += [dict(cle=c, titre=dit_moteur(c, "titre", m["titre"], lg),
                    type=m["type"], pour=dit_moteur(c, "pour", m["pour"], lg),
                    duree=m["duree"], distant=True, present=True)
@@ -13814,6 +14387,34 @@ def _date_sortie(f, conv):
     return conv.get("modifie", 0)
 
 
+def origine_programme(conv):
+    """D'ou vient une piece : {"cle": nom, "revoquee": bool}, ou None (la page).
+
+    La mediatheque melait les images faites a la main et celles d'un n8n qui
+    tourne toutes les heures, sans rien pour les distinguer — alors que les
+    secondes partent avec leur conversation apres GARDE_PROGRAMME sans tour,
+    et les premieres jamais.
+
+    LE NOM, JAMAIS L'IDENTIFIANT. Le nom est celui que le proprietaire a donne
+    a sa cle, pris sur la marque de la conversation. L'identifiant est la
+    moitie publique de la cle : il est dans chaque lien signe et dans le
+    journal des secrets faux, et l'imprimer sous chaque vignette n'apprendrait
+    rien a qui regarde. Le secret, le studio n'en garde que l'empreinte.
+
+    UNE CLE REVOQUEE GARDE SON NOM. La marque l'a ecrit a la premiere demande ;
+    ACCES ne connait plus la fiche, mais les images restent jusqu'a la
+    fermeture, et « par cle · n8n (revoquee) » dit encore d'ou elles viennent
+    — et qu'aucune autre n'arrivera par la.
+    """
+    marque = (conv or {}).get("api")
+    if not marque:
+        return None
+    ident = marque.get("cle")
+    fiche = ACCES.fiche(ident) if ACCES and ident else None
+    return {"cle": str(marque.get("nom") or (fiche or {}).get("nom") or ""),
+            "revoquee": bool(ACCES) and fiche is None}
+
+
 async def api_mediatheque(req):
     """Tout ce que cet utilisateur a produit, range par famille.
 
@@ -13837,6 +14438,8 @@ async def api_mediatheque(req):
     vues = ([c for c in CONVERSATIONS.values() if not c.get("ferme")] if admin
             else mes_conversations(pid))
     for conv in vues:
+        # Une fois par conversation : toutes ses pieces ont la meme origine.
+        origine = origine_programme(conv)
         # La reponse par GROUPE et non par piece : variante_retenue() balaie les
         # tours de la conversation, et une mediatheque de six cents vignettes la
         # rappelait six cents fois sur les memes listes. Mesuree sur une
@@ -13900,6 +14503,10 @@ async def api_mediatheque(req):
                     "quand": _date_sortie(f, conv),
                     "conversation": conv["id"],
                     "titre": (conv.get("titre") or "")[:60],
+                    # D'OU ELLE VIENT : la page (None), ou une cle par son
+                    # nom (origine_programme). Le proprietaire, pour un
+                    # administrateur, est deja dans « a ».
+                    "origine": origine,
                     # Seulement pour un administrateur : personne d'autre n'a a
                     # savoir qui a produit quoi.
                     "a": (dossier_utilisateur(conv.get("proprietaire"))
@@ -13912,8 +14519,12 @@ async def api_mediatheque(req):
     compte = {}
     for it in items:
         compte[it["famille"]] = compte.get(it["famille"], 0) + 1
+    # LE DELAI DE GARDE DES CONVERSATIONS DE PROGRAMME, en jours : la
+    # visionneuse le rappelle sous leurs images, et l'ecrire dans la page
+    # lui ferait dire trente le jour ou la regle changerait ici.
     return web.json_response({"fichiers": items[:600], "compte": compte,
-                              "total": len(items), "tout": admin})
+                              "total": len(items), "tout": admin,
+                              "garde_programme_jours": GARDE_PROGRAMME // (24 * 3600)})
 
 
 async def api_fichier(req):
@@ -17343,6 +17954,7 @@ def rendu_public(tid, conv, t, tour, base, lg):
         "machine": t.get("noeud"),
         "position": (ATTENTE.index(tid) + len(EN_VOL)) if tid in ATTENTE else None,
         "avance": None, "secondes": t.get("secondes"),
+        "estimation": None,
         "fichiers": fichiers,
         "questions": list(t.get("questions") or (tour or {}).get("questions") or []),
         "description": t.get("description") or (tour or {}).get("description"),
@@ -17355,6 +17967,21 @@ def rendu_public(tid, conv, t, tour, base, lg):
     a_ = AVANCES.get(tid) or {}
     if a_.get("total"):
         corps["avance"] = round(min(1.0, a_.get("fait", 0) / a_["total"]), 3)
+    # LE DEVIS DE LA PAGE, AUX PROGRAMMES AUSSI. La pastille de la bulle le
+    # montrait ; un rendu suivi par n8n ou par Claude n'en savait rien, et une
+    # musique de 50 etapes annulee faute de savoir combien elle durerait
+    # (retour d'usage du 8 novembre 2026) aurait pu etre attendue. Le meme
+    # champ « devis » que /api/etat, donc la meme mediane des rendus de ce
+    # compte : null tant qu'elle n'existe pas — et une fois le rendu acheve,
+    # « secondes » dit la vraie duree.
+    devis_ = t.get("devis") or {}
+    if etat not in ETATS_FINAUX and devis_.get("secondes"):
+        corps["estimation"] = {
+            "secondes": devis_["secondes"], "mesures": devis_.get("mesures") or 0,
+            # Le seul temps comparable a la mediane : celui du rendu, carte en
+            # main, sans l'attente de la file.
+            "ecoule_rendu": (round(time.time() - t["debut_rendu"], 1)
+                             if t.get("debut_rendu") else None)}
     if etat in ("erreur", "annule"):
         panne = t.get(MARQUE_PANNE)
         corps["erreur"] = {
@@ -17764,6 +18391,17 @@ async def lancer_pour_programme(req, fiche, d, lg):
             return refus("erreur.rappel_refuse", 400, raison=raison)
         rappel = rappel.strip()
 
+    # POUR UNE MUSIQUE, CE QU'UN PROGRAMME SAIT DEJA. Le style en etiquettes
+    # passe tel quel (style_donne) et prime sur ce que le studio lirait ;
+    # « instrumental » vaut « sans voix », et rien ne s'ecrit en paroles.
+    style_audio = d.get("style_audio")
+    if style_audio is not None and (not isinstance(style_audio, str)
+                                    or len(style_audio) > STYLE_AUDIO_MAX):
+        return refus("erreur.champ_illisible", 400, champ="style_audio")
+    instrumental = d.get("instrumental")
+    if instrumental is not None and not isinstance(instrumental, bool):
+        return refus("erreur.champ_illisible", 400, champ="instrumental")
+
     # La conversation AVANT l'image : un identifiant faux doit etre refuse
     # avant qu'une image en base64 soit posee sur le disque pour rien.
     cid = d.get("conversation")
@@ -17922,6 +18560,12 @@ async def lancer_pour_programme(req, fiche, d, lg):
     # rien produit d'exploitable (executer, intention « question »).
     if fiche.get("_sans_question"):
         marque["sans_question"] = True
+    # Sur la marque, comme les operations : executer() les lit, et
+    # reprendre_file() les restaure avec la tache.
+    if style_audio and style_audio.strip():
+        marque["style_audio"] = style_audio
+    if instrumental:
+        marque["instrumental"] = True
     tid, _devant = await deposer_demande(conv, pid, page, v, api=marque)
     return 202, {"id": tid}
 
@@ -18289,7 +18933,16 @@ def _moteurs_pour(fiche, lg):
               "pour": dit_moteur(c, "pour", m.get("pour", ""), lg),
               "type": m["type"], "distant": False,
               "present": not manquants_partout(c)}
-             for c, m in CATALOGUE.items()]
+             for c, m in CATALOGUE.items()
+             # NI UN MOTEUR QU'AUCUNE CARTE DU PARC NE PORTE, pour la raison
+             # des deux filtres qui suivent. Il passait pour « present » des
+             # que ses fichiers etaient quelque part : le 8 novembre 2026,
+             # lister_moteurs a propose klein9bhd a Jordan, et seul klein9b
+             # marchait. RETIRE ET NON MARQUE : « present: false » dit deja
+             # « a telecharger » a qui lit cette liste — un assistant l'aurait
+             # demande quand meme, et /openai/v1/models ne lit que ce champ.
+             # La page le garde, grise (api_modeles).
+             if not hors_du_parc(c)]
     # Un moteur distant n'est montre qu'a une cle qui a droit au nuage, et s'il
     # a sa cle de fournisseur : proposer un choix qui sera refuse ne sert pas
     # l'assistant qui lit cette liste pour choisir.
@@ -18672,6 +19325,9 @@ async def _resultat_mcp(req, fiche, tid):
     lignes = [f"rendu {tid} : {corps['etat']} (conversation {corps['conversation']})"]
     if corps["etat"] in ("en_file", "en_cours", "attente_machine"):
         lignes.append("pas encore fini : rappelle etat_rendu avec cet identifiant.")
+    if corps["estimation"]:
+        lignes.append(f"compte environ {corps['estimation']['secondes']} s de calcul, "
+                      f"d'apres {corps['estimation']['mesures']} rendus precedents.")
     if corps["questions"]:
         lignes.append("le studio demande : " + " / ".join(corps["questions"]))
     if corps["description"]:
@@ -18833,7 +19489,11 @@ def outils_mcp():
             "Lance un rendu (image, video, musique, objet 3D, retouche, "
             "agrandissement…) a partir d'une demande en langage naturel. Rend "
             "le resultat s'il est pret dans le delai, sinon un identifiant a "
-            "suivre avec etat_rendu.",
+            "suivre avec etat_rendu. Une musique dure "
+            f"{REGLAGES['audio']['duree_s']} s sauf si la demande dit sa duree "
+            f"(« 30 secondes », « deux minutes » ; de "
+            f"{BORNES['audio']['duree_s'][0]} a {BORNES['audio']['duree_s'][1]} s) : "
+            "une piste courte pour un essai se demande ainsi.",
             {"type": "object", "additionalProperties": False,
              "required": ["demande"],
              "properties": {
@@ -18853,6 +19513,15 @@ def outils_mcp():
                                                  "agrandir, animer…, en base64 "
                                                  "(ou URL data:)."},
                  "image_type": {"type": "string", "enum": ["png", "jpeg", "jpg", "webp"]},
+                 "style_audio": {"type": "string", "maxLength": STYLE_AUDIO_MAX,
+                                 "description": "Pour une musique : les etiquettes "
+                                                "de style, en anglais, separees par "
+                                                "des virgules (« dark ambient, low "
+                                                "cello, 55 BPM »). Passent telles "
+                                                "quelles au moteur."},
+                 "instrumental": {"type": "boolean",
+                                  "description": "Pour une musique : true = sans "
+                                                 "voix ni paroles."},
                  "conversation": {"type": "string",
                                   "description": "Pour enchainer sur un rendu "
                                                  "precedent (« la meme en "
@@ -18862,7 +19531,8 @@ def outils_mcp():
         _mcp.outil(
             "etat_rendu", "Suivre un rendu",
             "Donne l'etat d'un rendu et ses fichiers ; attend sa fin au plus "
-            "« attendre » secondes.",
+            "« attendre » secondes. Pendant le calcul, « estimation » donne la "
+            "duree habituelle d'un tel rendu quand le studio la connait.",
             {"type": "object", "additionalProperties": False, "required": ["id"],
              "properties": {"id": _id, "attendre": _SCHEMA_ATTENDRE}},
             _outil_etat),
@@ -19230,7 +19900,13 @@ def _demande_openai(d, famille, fiche, lg):
     moteurs_ = {m["cle"] for m in _moteurs_openai(fiche, famille, lg)}
     if modele in moteurs_:
         demande["moteur"] = modele
-    elif famille == "retouche" and MOTEUR_RETOUCHE_OPENAI in moteurs_:
+    elif (famille == "retouche" and MOTEUR_RETOUCHE_OPENAI in moteurs_
+          and not veut_meme_personnage(prompt)):
+        # SAUF LE « MEME PERSONNAGE » : c'est une image neuve, et la route
+        # ne la permet pas — mais le refus doit rester celui de l'analyse
+        # (400, la demande sort de la route), pas un 403 d'entree qui dit
+        # « cle sans la famille » a une cle qui permet tout. Releve par la
+        # relecture du 8 novembre 2026.
         # LA ROUTE DES RETOUCHES RETOUCHE. Sans moteur, l'analyse decidait — et
         # « le ciel en rose », sans verbe que _RETOUCHE_JOINTE connaisse,
         # restait une image, puis la cle restreinte a « retouche » la

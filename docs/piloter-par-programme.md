@@ -373,6 +373,35 @@ curl -s "$STUDIO/api/v1/rendus" \
 | `rappel` | Une URL à prévenir à la fin ([Les rappels](#les-rappels)). Son hôte doit être déclaré dans la clé. |
 | `attendre` | Secondes à attendre un état final avant de répondre, de 0 à **600**. 0 par défaut : la réponse part tout de suite. |
 | `nuage` | `false` interdit le nuage pour cette demande. `true` (le défaut) ne l'ouvre **pas** à une clé qui n'y a pas droit : la demande peut restreindre la clé, jamais l'élargir. |
+| `style_audio` | Pour une musique : les étiquettes de style, en anglais, séparées par des virgules — `"dark ambient, low cello, hurdy-gurdy, 55 BPM"`. 300 caractères au plus. Elles partent **telles quelles** au moteur, avant tout ce que le studio lirait dans la demande ; le BPM s'y ajoute s'il n'y est pas, et jamais « clear vocals ». |
+| `instrumental` | Pour une musique : `true` = sans voix ni paroles, même si la demande parle de chanson. Absent ou `false` : le studio lit la demande. |
+
+**Une musique courte, pour un essai, se demande dans la phrase.** Il n'y a pas
+de champ de durée : le studio la lit dans `demande` — « une musique calme de
+30 secondes », « 45 s de piano », « a 30 seconds lofi track », « 30 segundos »,
+« deux minutes ». Sans précision, un morceau dure **60 s** ; la durée reste
+bornée de 20 à 180 s. Ce défaut n'a pas été raccourci, faute de mesure qui dise
+combien trente secondes font gagner : le temps d'un morceau ne tient pas qu'à
+sa longueur. Le moteur soigné (`audioplus`) fait 50 étapes au lieu de 8, une
+chanson fait d'abord écrire ses paroles au modèle de langage, et la passe qui
+invente les codes audio — toujours faite pour un morceau neuf — a coûté à elle
+seule ~95 s sur 106 sur un morceau de 60 s (mesure du 30 août 2026, sur une
+retouche où elle était forcée, [journal](journal/audio_retouche.md)) ; ce
+qu'elle coûte pour 30 s n'a pas été mesuré. Pour juger vite, `priorite: "brouillon"`
+divise les étapes par quatre ([Le brouillon](brouillon.md)).
+
+**Ce que la demande exclut ne devient pas un style.** « sans voix », « pas de
+batterie », « no vocals », « without drums », « sin voz » : le mot nié est
+retiré des étiquettes envoyées au moteur de musique, même si l'analyse l'y
+avait mis, et « sans voix » — comme « instrumental » hors d'une chanson — rend
+un morceau instrumental, sans paroles. Le tempo se dit aussi dans la phrase :
+« 60 BPM » d'abord, sinon « très lent » (55), « lent » (70), « modéré » (100),
+« rapide » (130), « très rapide » (150), en français, anglais ou espagnol ; un
+tempo écrit n'est jamais remplacé par celui du genre. Des étiquettes écrites
+après **`Style :`** ou **`Tags :`** dans la demande, jusqu'à la fin de la phrase,
+passent telles quelles, comme `style_audio`.
+ACE-Step n'a pas de champ négatif : ce qu'on exclut ne peut que disparaître du
+positif. Le journal du rendu le dit (« exclu par la demande : vocals, drums »).
 
 Pourquoi 600 secondes et pas une heure : le nœud HTTP Request de n8n coupe à
 300 s par défaut (on peut le monter), et un rendu vidéo sur la 2080 Ti dure
@@ -383,11 +412,15 @@ rappel : garder une connexion ouverte une heure n'est un service pour personne.
 défaut, 90 s pour le nginx-proxy-manager qui publie le studio en https. Un
 `attendre: 300` y finissait en **504 du proxy** — rien pour le client, et le
 rendu continuait sans lui. Le studio reconnaît donc une requête arrivée par un
-proxy (`X-Forwarded-For` ou `X-Forwarded-Proto`) et y borne l'attente à
+proxy (`X-Forwarded-For` ou `X-Forwarded-Proto` — nginx-proxy-manager, Caddy
+et Traefik les posent ; un `proxy_pass` nu de nginx, **non** : ajoute-y
+`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`, sinon le studio
+croit la requête directe et le 504 revient) et y borne l'attente à
 **55 s** (`STUDIO_ATTENTE_PROXY`, [Réglages](reglages.md)) — `attendre` de
 `GET /api/v1/rendus/{id}`, de `.../reponse` et des outils MCP compris. Au-delà,
 c'est la réponse d'une attente expirée, pas une erreur : 202 (ou 200) avec
-l'état courant, plus l'en-tête **`X-Attente-Bornee: 55`**. Relis le rendu
+l'état courant. L'en-tête **`X-Attente-Bornee: 55`** est posé sur toute réponse
+dont l'attente a été bornée, même si le rendu a fini avant. Relis le rendu
 ensuite. Une requête directe garde son `attendre` ; un client qui pose ces
 en-têtes lui-même ne fait que raccourcir sa propre attente. La recette n8n
 plus bas relit déjà, jusqu'à vingt fois : derrière un proxy, cela fait
@@ -411,6 +444,7 @@ structuré de l'outil MCP :
  "position": null,
  "avance": null,
  "secondes": 41.2,
+ "estimation": null,
  "fichiers": [
   {"rang": 0, "variante": 1, "nom": "studio_00012_.png", "type": "image",
    "url": "http://192.0.2.10:8199/api/v1/rendus/3f2a9c41d0e84b6f9a7215c3e8d06b11/fichiers/0",
@@ -428,6 +462,22 @@ montre : un humain qui relit l'exécution n8n comprend ainsi *pourquoi* un rendu
 a pris trois minutes, sans ouvrir le studio. Avec des variantes, `id` est celui
 du premier tirage, `fichiers` rassemble ceux de tous les tirages (`variante`
 dit lequel), et le groupe est `fini` dès qu'un tirage a abouti.
+
+**`estimation`** dit, pendant le calcul, combien de temps un tel rendu prend
+d'habitude — le devis que la page affiche à côté de la bulle
+([Combien de temps ça va prendre](combien-de-temps.md)) :
+
+```json
+"estimation": {"secondes": 95, "mesures": 4, "ecoule_rendu": 12.0}
+```
+
+`secondes` est la médiane des rendus précédents de ce compte avec ce moteur,
+`mesures` le nombre de rendus dont elle est tirée, `ecoule_rendu` le temps
+depuis que la machine a pris le rendu (`null` tant qu'il attend), le seul
+comparable à la médiane. `null` quand le studio ne sait pas — moins de trois
+rendus comparables, un brouillon — et une fois le rendu achevé : `secondes`, au
+premier niveau, dit alors la vraie durée. Pour une musique, la médiane ne
+distingue pas encore une piste de 30 s d'une piste de trois minutes.
 
 **Tout est vérifié avant la file**, dans cet ordre : les plafonds de la clé,
 l'adresse de rappel, l'image, la conversation, la validation commune avec la
@@ -574,7 +624,10 @@ curl -s "$STUDIO/api/v1/moteurs" -H "Authorization: Bearer $CLE"
  "variantes_max": 4}
 ```
 
-`present: false` : ses modèles ne sont sur aucune machine. Les moteurs distants
+`present: false` : ses modèles ne sont sur aucune machine. Un moteur qu'aucune
+carte connue du parc ne porte — `klein9bhd` demande 18 Go, la 2080 Ti en tient
+14,5 en débordant — n'est pas listé du tout ; imposé quand même, il est refusé
+par une phrase qui nomme le moteur à prendre à sa place. Les moteurs distants
 n'apparaissent qu'à une clé qui a droit au nuage, et seulement si leur clé
 d'API est posée : proposer un choix qui sera refusé ne sert pas l'assistant qui
 lit cette liste pour choisir.

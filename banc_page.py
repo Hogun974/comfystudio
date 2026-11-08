@@ -2873,6 +2873,185 @@ dit("corps.append(...brancherUnOutil(copiable));" in _ACCES8
     "la section est dans le voile des cles d'acces, et ne porte aucun secret")
 
 
+# ══ RONDE 10 : UN MOTEUR QUE LE PARC NE PORTE PAS ══════════════════════
+# /api/modeles le sert avec « trop_lourd » (ce qu'il demande, la plus grosse
+# carte connue, le repli) ; le menu le GRISE et dit pourquoi, sans le cacher.
+# Ce qui suit tient les deux moities : les noms que la page lit sont ceux que
+# serveur.py ecrit, le crochet est la ou il ne se fait pas effacer, et un
+# moteur qui tient n'est pas touche. Ce qu'il ne voit PAS : l'affichage reel
+# du menu ouvert, ni l'infobulle — l'oeil, sur ordinateur et telephone.
+print("\n  ── ronde 10 : le menu grise ce que le parc ne porte pas ──")
+_TROP10 = _corps_de(CODE, "moteurTrop")
+_bloc10 = CODE.split('fetch("/api/modeles")', 1)[-1].split("sel.appendChild(o)", 1)[0]
+_cles10 = sorted(c for c in TR.TEXTES if c.startswith("page.moteurtrop."))
+_vides10 = [c for c in _cles10
+            if not all(str(TR.TEXTES[c].get(lg) or "").strip() for lg in ("fr", "en"))]
+dit(len(_cles10) == 3 and not _vides10 and all(f'"{c}"' in _TROP10 for c in _cles10),
+    "les textes « page.moteurtrop.* » sont traduits (fr et en) et poses par "
+    "moteurTrop()", ", ".join(_vides10) or f"{len(_cles10)} cles")
+_place10 = [_bloc10.find("o.textContent = m.titre"), _bloc10.find("moteurTrop(o, m);")]
+dit(-1 not in _place10 and _place10[0] < _place10[1],
+    "le menu des moteurs appelle moteurTrop(o, m) APRES avoir pose le libelle, "
+    "avant d'ajouter l'option — sinon « (a telecharger) » effacerait la raison",
+    f"positions {_place10}")
+dit(bool(re.match(r'\{\s*const t = m\.trop_lourd;\s*if \(!t\) return;', _TROP10 or "")),
+    "temoin : un moteur sans « trop_lourd » sort de moteurTrop() a la premiere "
+    "ligne, choisissable comme avant",
+    (_TROP10 or "moteurTrop() absente")[:60].replace("\n", " "))
+dit("o.disabled = true;" in _TROP10 and "o.title = " in _TROP10
+    and "hidden" not in _TROP10 and ".remove()" not in _TROP10,
+    "le moteur trop lourd est desactive avec une infobulle, pas cache")
+# LES NOMS DES DEUX COTES : ce que la page lit, serveur.py l'ecrit.
+_noeud10 = next((n for n in ARBRE_SERVEUR.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "_trop_lourd"), None)
+# Par l'arbre : un motif sur le texte lirait aussi les commentaires.
+_ecrits10 = {k.value for n in ast.walk(_noeud10) if isinstance(n, ast.Dict)
+             for k in n.keys if isinstance(k, ast.Constant)} if _noeud10 else set()
+_api10 = next((n for n in ARBRE_SERVEUR.body if isinstance(n, ast.AsyncFunctionDef)
+               and n.name == "api_modeles"), None)
+_sert10 = [k for n in ast.walk(_api10) if isinstance(n, ast.Call) for k in n.keywords
+           if k.arg == "trop_lourd" and isinstance(k.value, ast.Call)
+           and getattr(k.value.func, "id", "") == "_trop_lourd"] if _api10 else []
+_lus10 = set(re.findall(r'\bt\.(\w+)', _TROP10))
+dit(_lus10 and _lus10 <= _ecrits10 and len(_sert10) == 1,
+    "les champs que lit la page (t.vram, t.plafond, t.repli) sont ceux que "
+    "_trop_lourd() ecrit, sous le nom « trop_lourd » de /api/modeles",
+    f"lus {sorted(_lus10)}, ecrits {sorted(_ecrits10)}")
+_valeurs10 = {c: set(re.findall(r"\{(\w+)\}", TR.TEXTES[c].get("fr", "")))
+              for c in _cles10}
+dit(all(v <= {"vram", "plafond", "repli"} for v in _valeurs10.values())
+    and "repli" in _valeurs10.get("page.moteurtrop.infobulle", set())
+    and all(f"{v}: " in _TROP10 for v in ("vram", "plafond", "repli")),
+    "l'infobulle recoit chaque valeur que ses phrases attendent, le repli compris",
+    repr(_valeurs10))
+
+# ══ RONDE 10 : LA MEDIATHEQUE SAIT D'OU VIENT UNE IMAGE ═════════════════
+# Une image demandee par cle est dans la mediatheque de son proprietaire —
+# banc_pilotage.py le garde de bout en bout (section 21). La page doit le
+# dire : une marque « par cle · nom » sur la vignette, un filtre « tout / la
+# page / les programmes », et dans la visionneuse le delai apres lequel
+# l'image part avec sa conversation — lu dans la reponse, jamais ecrit ici.
+# Ce qu'il ne voit PAS : l'affichage, la coupure d'un nom long, le telephone.
+print("\n  ── ronde 10 : la mediatheque sait d'ou vient une image ──")
+_grille10 = _corps_de(CODE, "peindreGrille(")
+_ouvrir10 = _corps_de(CODE, "ouvrirMediatheque(")
+_trier10 = _corps_de(CODE, "trierEtFiltrer(")
+_vue10 = _corps_de(CODE, "peindreVue(")
+_badge10 = _corps_de(CODE, "badgeProgramme(")
+_gardee10 = _corps_de(CODE, "origineGardee(")
+_peint10 = _corps_de(CODE, "peindreOrigineMedia(")
+_leg10 = _corps_de(CODE, "legendeProgramme(")
+_ovue10 = _corps_de(CODE, "peindreOrigineVue(")
+
+# LES CLES : chacune en francais ET en anglais, chaque forme non vide, et
+# toutes posees par la page.
+_cles10 = sorted(c for c in TR.TEXTES if c.startswith("page.mediaprog."))
+
+
+def _formes10(c):
+    return [x for lg in ("fr", "en")
+            for x in (TR.TEXTES[c].get(lg) if isinstance(TR.TEXTES[c].get(lg), list)
+                      else [TR.TEXTES[c].get(lg)])]
+
+
+_vides10 = [c for c in _cles10 if not all(str(x or "").strip() for x in _formes10(c))]
+_muettes10 = [c for c in _cles10 if f'"{c}"' not in PAGE]
+dit(len(_cles10) >= 8 and not _vides10 and not _muettes10,
+    "les textes « page.mediaprog.* » sont traduits (fr et en) et tous poses "
+    "par la page", ", ".join(_vides10 + _muettes10) or f"{len(_cles10)} cles")
+
+# LES NOMS DU CONTRAT, lus des deux cotes : ce que api_mediatheque sert, ce
+# que origine_programme() rend, ce que la page lit.
+_med10 = next((n for n in ast.walk(ARBRE_SERVEUR)
+               if isinstance(n, ast.AsyncFunctionDef) and n.name == "api_mediatheque"),
+              None)
+_ori10 = next((n for n in ast.walk(ARBRE_SERVEUR)
+               if isinstance(n, ast.FunctionDef) and n.name == "origine_programme"),
+              None)
+
+
+def _cles_dict10(noeud):
+    return {k.value for n in ast.walk(noeud or ast.Module(body=[]))
+            if isinstance(n, ast.Dict) for k in n.keys if isinstance(k, ast.Constant)}
+
+
+_servi10 = _cles_dict10(_med10)
+_origine10 = _cles_dict10(_ori10)
+_jours_lu10 = re.search(r'const jours = \(mediaCharge \|\| \{\}\)\.(\w+);', _ovue10)
+dit({"origine", "garde_programme_jours"} <= _servi10
+    and _origine10 == {"cle", "revoquee"}
+    and "f.origine" in _badge10 and "o.cle" in _badge10 and "o.revoquee" in _badge10
+    and _jours_lu10 is not None and _jours_lu10.group(1) in _servi10,
+    "la page lit l'origine et le delai sous les noms que serveur.py sert",
+    f"servi {sorted(_servi10 & {'origine', 'garde_programme_jours'})}, "
+    f"origine {sorted(_origine10)}")
+
+# LE FILTRE, JOUE : chaque valeur des <option> a sa garde dans ORIGINE_MEDIA,
+# et la garde dit ce que son libelle promet — « la page » ce qui n'a pas
+# d'origine, « les programmes » ce qui en a une. Vide : tout.
+_sel10 = re.search(r'<select id="origineMedia"[^>]*>(.*?)</select>', _CORPS_HTML, re.S)
+_valeurs10 = set(re.findall(r'value="([^"]*)"', _sel10.group(1))) if _sel10 else set()
+_table10 = re.search(r'const ORIGINE_MEDIA = \{(.*?)\};', CODE, re.S)
+_gardes10 = dict(re.findall(r'(\w+): f => (!!?)f\.origine\b', _table10.group(1))
+                 if _table10 else [])
+_promis10 = {"page": "!", "programmes": "!!"}
+dit(_valeurs10 == {""} | set(_promis10) and _gardes10 == _promis10
+    and "return !garde || garde(f);" in _gardee10,
+    "le filtre « la page / les programmes » garde ce qu'il dit, et « tout » "
+    "garde tout", f"options {sorted(_valeurs10)}, gardes {_gardes10}")
+
+# BRANCHE : trierEtFiltrer le lit, l'ouverture le peint avant la grille, et
+# il n'existe que s'il y a des programmes — cache, il revient a « tout ».
+dit("&& origineGardee(f)" in _trier10
+    and re.search(r'peindreOrigineMedia\(tous\);\s*peindreGrille\(\);', _ouvrir10)
+    and "sel.hidden = !tous.some(f => f.origine);" in _peint10
+    and 'if (sel.hidden) sel.value = "";' in _peint10
+    and "sel.oninput = peindreGrille;" in _peint10,
+    "le filtre est branche : la grille le lit, il ne se montre que s'il y a "
+    "des programmes, et cache il revient a « tout »")
+
+# LA MARQUE, sur la vignette — et dans la legende du son ou de l'objet 3D, qui
+# n'en ont pas. La regle CSS existe : sans elle, le texte flotterait sous
+# l'image comme une ligne de plus.
+dit('if (f.origine) marques.push(["marque-programme", badgeProgramme(f)]);' in _grille10
+    and re.search(r'legendeProgramme\(legende, f, vignette\);\s*carte\.appendChild\(legende\);',
+                  _grille10)
+    and "if (!f.origine || vignette) return;" in _leg10
+    and ".cadre-media .marque-programme" in CSS,
+    "la vignette d'un programme porte son badge « par cle · nom », et le son "
+    "ou l'objet 3D dans sa legende")
+dit(all(f'"{c}"' in _badge10 for c in ("page.mediaprog.badge",
+                                       "page.mediaprog.badge.revoquee",
+                                       "page.mediaprog.badge.anonyme"))
+    and "{ nom: o.cle }" in _badge10,
+    "le badge dit le nom de la cle, « revoquee » si elle n'existe plus, et "
+    "« par cle » seul sans nom")
+
+# LE NOM EST CHOISI PAR LE PROPRIETAIRE : du texte, jamais du HTML.
+_html10 = [n for n, c in (("badgeProgramme", _badge10), ("legendeProgramme", _leg10),
+                          ("peindreOrigineVue", _ovue10)) if "innerHTML" in c]
+dit(not _html10 and "s.textContent = badgeProgramme(f);" in _leg10
+    and "qui.textContent = badgeProgramme(f);" in _ovue10
+    and "marque.textContent = mot;" in _grille10,
+    "le nom de la cle est pose en texte, jamais en HTML",
+    ", ".join(_html10) or "textContent partout")
+
+# LA VISIONNEUSE : la marque et le delai, APRES que la legende est ecrite (son
+# innerHTML effacerait la ligne), le nombre lu dans la reponse.
+_apres10 = (_vue10.find("peindreOrigineVue(vue, f);") > _vue10.find("vue.legende.innerHTML")
+            >= 0)
+dit(_apres10 and _jours_lu10 is not None
+    and 'T("page.mediaprog.garde", { n: jours })' in _ovue10
+    and not re.search(r'const jours = \d', _ovue10),
+    "la visionneuse rappelle le delai, lu dans la reponse du serveur et non "
+    "ecrit dans la page")
+_garde10 = _formes10("page.mediaprog.garde") if "page.mediaprog.garde" in TR.TEXTES else []
+dit(_garde10 and all("{n}" in x and not re.search(r'\d', x.replace("{n}", ""))
+                     for x in _garde10),
+    "la phrase du delai porte {n} dans chaque forme, et aucun chiffre ecrit",
+    f"{len(_garde10)} formes")
+
+
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:
     print("    a regarder :", r)
