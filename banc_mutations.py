@@ -16129,7 +16129,7 @@ RELECTURE_DIX = [
         banc="banc_multilingue.py",
         imite="raw_decode sans garde : la boucle « [[[[ » passe pour une panne "
               "de machine",
-        rougit="une imbrication sans fin (3000 crochets) est un JSON illisible",
+        rougit="une imbrication sans fin (un million de crochets) est un JSON illisible",
         editions=[("serveur.py", brut(
             '    except RecursionError:' + chr(10)
             + '        raise json.JSONDecodeError("imbrication trop profonde", texte, debut)',

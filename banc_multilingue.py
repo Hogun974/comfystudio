@@ -510,7 +510,21 @@ async def main():
         "un moteur d'edition IMPOSE sur une analyse « image » part avec la phrase "
         "de l'utilisateur ; une analyse deja « edition » et le « meme personnage » "
         "gardent leur prompt", f"{plan_b['prompt']!r} / {plan_e['prompt']!r} / {plan_p['prompt']!r}")
-    profond = '{"intention": "image", "parametres": ' + "[" * 3000
+    # La profondeur qui fait lever raw_decode depend de la version et de la
+    # pile : 3000 crochets suffisent sous 3.12 et 3.13, pas sous 3.14 (borne
+    # a la taille de pile, plus haute). Un million la depasse partout ; le
+    # temoin le verifie, sinon le test passerait sans rien eprouver.
+    profond = '{"intention": "image", "parametres": ' + "[" * 1000000
+    try:
+        json.JSONDecoder().raw_decode(profond[profond.find("{"):])
+        temoin_ = "rien"
+    except RecursionError:
+        temoin_ = "RecursionError"
+    except Exception as e:
+        temoin_ = type(e).__name__
+    dit(temoin_ == "RecursionError",
+        "temoin : cette imbrication fait bien lever RecursionError a raw_decode "
+        "sur ce Python", temoin_)
     try:
         S.lire_objet_json(profond)
         leve_ = "rien"
@@ -519,7 +533,7 @@ async def main():
     except Exception as e:
         leve_ = type(e).__name__
     dit(leve_ == "JSONDecodeError",
-        "une imbrication sans fin (3000 crochets) est un JSON illisible, pas "
+        "une imbrication sans fin (un million de crochets) est un JSON illisible, pas "
         "une RecursionError qui passerait pour une panne de machine", leve_)
     _src = inspect.getsource(S.executer)
     dit("consigne_si_bascule(plan, avant_force, texte)" in _src,
