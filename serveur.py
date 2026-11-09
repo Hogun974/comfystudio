@@ -580,6 +580,78 @@ def verrou_noeud(ident):
     return VERROUS_NOEUD.setdefault(ident, VerrouCarte())
 
 
+async def premiere_carte(verrous, delai):
+    """Attend PLUSIEURS cartes a la fois et prend la premiere qui se libere.
+
+    Rend son rang dans « verrous » ; au retour, elle seule est tenue. Leve
+    asyncio.TimeoutError si aucune ne s'est liberee dans le delai.
+
+    POURQUOI : quand toutes les cartes calculent, l'analyse attendait la
+    premiere de la liste — la plus grosse — et elle seule. Releve du 8 novembre
+    2026 : le PC rend pour un programme, le NAS analyse une autre demande ;
+    l'analyse suivante attend le PC 45 s, la borne du moteur impose tombe, et
+    elle part sans plan alors que le NAS s'etait libere entre-temps.
+
+    LES PRISES PERDANTES SONT ANNULEES, et VerrouCarte.acquire() rend
+    lui-meme une carte qu'on lui remettait a l'instant de l'annulation. Une
+    prise qui a abouti en meme temps que la gagnante est rendue ici.
+    """
+    prises = [asyncio.ensure_future(v.acquire(prioritaire=True)) for v in verrous]
+    gagnant = None
+    try:
+        try:
+            await asyncio.wait(prises, timeout=delai,
+                               return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for k, p in enumerate(prises):
+                if p.done():
+                    if not p.cancelled() and p.exception() is None:
+                        if gagnant is None:
+                            gagnant = k
+                        else:
+                            verrous[k].release()
+                else:
+                    p.cancel()
+            restes = [p for p in prises if not p.done()]
+            if restes:
+                await asyncio.gather(*restes, return_exceptions=True)
+    except BaseException:
+        # ANNULE DE L'EXTERIEUR (la demande est arretee) avec une carte en
+        # main : la garder fermerait la machine pour de bon.
+        if gagnant is not None:
+            verrous[gagnant].release()
+        raise
+    if gagnant is None:
+        raise asyncio.TimeoutError()
+    return gagnant
+
+
+def _rivaux_de_carte(cerveaux, depuis, corps, url_attendu, ident_attendu):
+    """Les cerveaux apres le rang « depuis » dont la carte peut etre attendue EN
+    MEME TEMPS que celle d'« url_attendu » : ceux que la boucle essaierait de
+    toute facon, et qu'elle sauterait sinon.
+
+    Pas un Ollama SUR PROCESSEUR quand celui qu'on attend est sur sa carte :
+    cerveaux_utilisables() le met dernier « libre ou non », et le prendre parce
+    qu'il est libre defairait cette regle. Pas une adresse sans machine : elle
+    n'a pas de verrou a attendre. Rend [(rang, url, ident)].
+    """
+    proc_ = sur_processeur(url_attendu)
+    vus_ = {ident_attendu}
+    rivaux = []
+    for k, (u, i) in enumerate(cerveaux[depuis:], start=depuis):
+        if not i or i in vus_ or (noeud(i) or {}).get("pause"):
+            continue
+        if sur_processeur(u) and not proc_:
+            continue
+        ici_ = corps_ici(corps, u)
+        if ici_ is None or en_quarantaine(u, ici_.get("model") or ""):
+            continue
+        vus_.add(i)
+        rivaux.append((k, u, i))
+    return rivaux
+
+
 def verrou_modele(sous, nom):
     return VERROUS_MODELE.setdefault((sous, nom), asyncio.Lock())
 FICHIER_FILE = os.path.join(DOSSIER_CONV, "_file.json")
@@ -1749,6 +1821,9 @@ def charger_parc():
                 "dossiers": {k: set(v) for k, v in garde["dossiers"].items()
                              if isinstance(v, list)}}
 FRAICHEUR_MODELES = 60      # secondes
+# Ce que vaut au plus l'inventaire d'une machine DISTANTE, vivante, et chacun
+# de ses dossiers : deux fois la cadence a laquelle l'agent le renvoie (300 s).
+INVENTAIRE_DISTANT_MAX = 600
 
 def _dossiers_a_lire(sous, nom):
     if nom.lower().endswith(".gguf") and sous in _JUMEAUX_GGUF:
@@ -1796,8 +1871,33 @@ def manquants(cle, ident=None):
     # Perime : on prefere relire le disque (noeud local) plutot que d'affirmer
     # l'etat d'avant. Sans cela, un modele depose a la main pendant que ComfyUI
     # etait arrete etait retelecharge en entier.
+    #
+    # LE NOEUD LOCAL SEULEMENT. Cette regle date d'avant les agents, et pour
+    # une machine distante elle ne remplace pas le releve par le disque : elle
+    # le remplace par « tout absent ». Une machine vivante qui rend sans
+    # interruption — un programme qui l'occupe des heures — n'en ressortait pas
+    # moins de noeuds_pour() ET de patienter_machine() des que son inventaire
+    # avait trois minutes, et la demande suivante mourait sur « disponible sur
+    # aucune machine joignable » : vingt demandes en production, dont sept le
+    # 9 novembre 2026 entre 03:57 et 03:59, pendant que le PC rendait klein9b
+    # pour d'autres. Un modele ne disparait pas d'une machine parce qu'on ne
+    # l'a pas regardee depuis trois minutes.
+    #
+    # MAIS UNE MACHINE QUI SE TAIT, SI : son releve ne vaut que tant qu'elle
+    # vit. Sans cette borne — la premiere version de ce correctif —, un agent
+    # coupe net gardait pour toujours ses moteurs « installes » : l'aiguilleur
+    # les choisissait, puis noeuds_pour() l'ecartait, et la demande mourait
+    # sur « le PC le savait » au lieu de partir sur le NAS (relecture du
+    # 9 novembre 2026). La meme tolerance que patienter_machine(). Et pas
+    # au-dela d'INVENTAIRE_DISTANT_MAX meme vivante : l'agent renvoie son
+    # inventaire toutes les cinq minutes, un releve deux fois plus vieux dit
+    # que ses annonces ne nous apprennent plus rien (tous les dossiers vides,
+    # ignores).
     if cache and time.time() - cache.get("quand", 0) > 3 * FRAICHEUR_MODELES:
-        cache = None
+        vu_ = (ETAT_NOEUDS.get(ident) or {}).get("vu") or 0
+        if (est_local(ident) or time.time() - vu_ > 4 * SILENCE_MAX
+                or time.time() - cache.get("quand", 0) > INVENTAIRE_DISTANT_MAX):
+            cache = None
     fichiers = CATALOGUE[cle]["fichiers"]
     if not cache:
         if est_local(ident):
@@ -3502,7 +3602,23 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     borne_ = (None if image_b64
               else (TACHES.get(tid) or {}).get("analyse_impose_avant"))
     trop_lent_ = None
-    for rang_, (url, ident) in enumerate(cerveaux):
+    # LA COURSE DES CARTES (voir premiere_carte) REORDONNE la liste : la carte
+    # qui s'est liberee la premiere passe au rang courant, et celle qu'on
+    # attendait reste a essayer juste apres. D'ou une boucle sur un rang qu'on
+    # avance soi-meme, et le RANG D'ORIGINE garde a part : c'est lui qui dit
+    # « un autre cerveau que le premier » pour la borne du moteur impose.
+    cerveaux = list(cerveaux)
+    rang_origine_ = {u: k for k, (u, _) in enumerate(cerveaux)}
+    tenue_ = None          # la machine dont la course nous a deja donne la carte
+    rang_ = -1
+    while rang_ + 1 < len(cerveaux):
+        rang_ += 1
+        url, ident = cerveaux[rang_]
+        if tenue_ is not None and tenue_ != ident:
+            # Ne devrait pas arriver : la carte gagnee est toujours essayee
+            # tout de suite. La rendre plutot que la garder sans s'en servir.
+            verrou_noeud(tenue_).release()
+            tenue_ = None
         titre_ol = (noeud(ident) or {}).get("titre", ident) if ident else url
         delai = ANALYSE_DELAI
         # LE « tid » TOUJOURS, et non « seulement s'il n'y a qu'une adresse ».
@@ -3516,6 +3632,9 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
         if ici is None:
             # Une image a lire et pas de modele de vision ici : substituer en
             # rendrait une description inventee, sans que rien ne le dise.
+            if tenue_ is not None:
+                verrou_noeud(tenue_).release()
+                tenue_ = None
             continue
         # MIS DE COTE : on passe, AVANT d'attendre sa carte. Attendre la fin
         # d'un rendu pour interroger un modele dont on sait qu'il degenere,
@@ -3525,6 +3644,10 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             journal_une_fois(tid, f"{titre_ol} : {modele_q} est mis de cote "
                                   f"(reponses degenerees) — on passe a la "
                                   f"machine suivante")
+            # Mise de cote PENDANT la course : la carte gagnee est rendue.
+            if tenue_ is not None:
+                verrou_noeud(tenue_).release()
+                tenue_ = None
             continue
         essai_ = False
         borne_ici_ = False
@@ -3533,10 +3656,26 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
         # version qui lançait l'analyse « malgre tout » au bout de vingt
         # secondes s'installait a cote d'un rendu sur la meme carte.
         verrou_ol = verrou_noeud(ident) if ident else None
-        if verrou_ol is not None:
+        if verrou_ol is not None and tenue_ == ident:
+            # GAGNEE A LA COURSE : la carte est deja a nous. La pause, elle, a
+            # pu tomber pendant l'attente — verifiee plus bas comme pour les
+            # autres.
+            tenue_ = None
+        elif verrou_ol is not None:
+            # LES AUTRES CARTES QUI CALCULENT AUSSI, attendues en meme temps
+            # que celle-ci (voir premiere_carte). Seulement si celle-ci est
+            # tenue : libre, elle se prend tout de suite, comme avant.
+            rivaux_ = (_rivaux_de_carte(cerveaux, rang_ + 1, corps, url, ident)
+                       if verrou_ol.locked() else [])
             if verrou_ol.locked() and tid:
-                journal(tid, f"{titre_ol} calcule — l'analyse attend que sa "
-                             f"carte se libere")
+                if rivaux_:
+                    noms_ = [titre_ol] + [(noeud(i) or {}).get("titre", i)
+                                          for _, _, i in rivaux_]
+                    journal(tid, f"{', '.join(noms_)} calculent — l'analyse "
+                                 f"prendra la premiere carte qui se libere")
+                else:
+                    journal(tid, f"{titre_ol} calcule — l'analyse attend que sa "
+                                 f"carte se libere")
             reste = echeance - time.time()
             # ATTENDRE UNE CARTE QUI CALCULE est lent par definition : la
             # demande au moteur impose n'attend que ce qui reste de sa borne.
@@ -3552,8 +3691,14 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                 # PRIORITAIRE : c'est une analyse, et elle passe devant les
                 # rendus qui attendent cette carte — jamais devant celui qui
                 # l'occupe deja.
-                await asyncio.wait_for(verrou_ol.acquire(prioritaire=True),
-                                       timeout=reste)
+                if rivaux_:
+                    gagne_ = await premiere_carte(
+                        [verrou_ol] + [verrou_noeud(i) for _, _, i in rivaux_],
+                        reste)
+                else:
+                    await asyncio.wait_for(verrou_ol.acquire(prioritaire=True),
+                                           timeout=reste)
+                    gagne_ = 0
             except asyncio.TimeoutError:
                 if par_borne_ and borne_ <= echeance:
                     trop_lent_ = titre_ol
@@ -3562,6 +3707,18 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                     f"{titre_ol} n'a pas libere sa carte en "
                     f"{ATTENTE_CARTE // 60} minutes — rien n'a ete lance dessus.")
                 continue
+            if gagne_:
+                # UNE AUTRE CARTE S'EST LIBEREE LA PREMIERE : elle passe au rang
+                # courant, carte en main, et celle qu'on attendait reste a
+                # essayer juste apres.
+                k_, u_, i_ = rivaux_[gagne_ - 1]
+                cerveaux.insert(rang_, cerveaux.pop(k_))
+                tenue_ = i_
+                journal(tid, f"{(noeud(i_) or {}).get('titre', i_)} s'est "
+                             f"liberee la premiere — l'analyse y passe")
+                rang_ -= 1
+                continue
+        if verrou_ol is not None:
             # LA PAUSE A PU ARRIVER PENDANT L'ATTENTE. On a pu patienter une
             # demi-heure derriere un rendu ; entre-temps son proprietaire a très
             # bien pu mettre la machine en pause pour jouer, et le filtre du
@@ -3610,7 +3767,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # UN AUTRE CERVEAU QUE LE PREMIER, ou un Ollama sur processeur :
             # c'est la lenteur que la borne du moteur impose vise. L'appel n'a
             # que ce qui reste.
-            if borne_ and (rang_ or sur_processeur(url)):
+            if borne_ and (rang_origine_.get(url, rang_) or sur_processeur(url)):
                 if borne_ - time.time() <= 0:
                     trop_lent_ = titre_ol
                     break
@@ -3821,6 +3978,78 @@ SCHEMA_PLAN = {
     },
     "required": ["intention", "modele", "prompt", "raison"],
 }
+
+
+# LES CHAMPS D'UN SEUL MOT : une liste n'y a pas de sens, on garde le premier.
+# Les autres textes se joignent — « prompt » rendu en trois morceaux reste le
+# meme prompt.
+_CHAMPS_UN_MOT = ("intention", "modele", "classement", "langue", "tonalite")
+
+
+def _textes_de(valeur):
+    """Les textes d'une valeur imbriquee, dans l'ordre, sans les vides."""
+    if isinstance(valeur, str):
+        return [valeur] if valeur.strip() else []
+    if isinstance(valeur, bool) or valeur is None:
+        return []
+    if isinstance(valeur, (int, float)):
+        return [str(valeur)]
+    if isinstance(valeur, list):
+        return [t for v in valeur for t in _textes_de(v)]
+    return []
+
+
+def formes_du_plan(plan):
+    """Remet chaque champ du plan dans la forme que SCHEMA_PLAN lui donne.
+
+    LE PLAN N'EST PAS DEMANDE AVEC SON SCHEMA (voir aiguiller : le decodage
+    contraint coutait dix a vingt fois l'appel) : rien ne garantit donc ses
+    types. Releve du 8 au 9 novembre 2026 : sept demandes mortes sur « sequence
+    item 1: expected str instance, list found », toutes analysees par
+    mistral:7b sur le NAS, qui rendait « prompt » en LISTE de morceaux. Le
+    studio joignait ce prompt a une phrase, et la demande entiere tombait en
+    erreur — pour un plan parfaitement lisible.
+
+    Rend (plan, champs remis en forme). Une forme sans aucun sens pour son
+    champ (un objet a la place d'un texte) est retiree : le reste du studio
+    sait faire sans un champ, pas avec un champ d'un autre type.
+    """
+    proprietes = SCHEMA_PLAN["properties"]
+    retouches = []
+    for cle in list(plan):
+        attendu = (proprietes.get(cle) or {}).get("type")
+        v = plan[cle]
+        if attendu == "string" and not isinstance(v, str):
+            textes = _textes_de(v)
+            if not textes:
+                del plan[cle]
+            elif cle in _CHAMPS_UN_MOT:
+                plan[cle] = textes[0]
+            else:
+                plan[cle] = ", ".join(t.strip() for t in textes)
+            retouches.append(cle)
+        elif attendu == "integer" and (isinstance(v, bool)
+                                       or not isinstance(v, int)):
+            # Un booleen n'est pas une taille, meme si Python le compte 1.
+            try:
+                if isinstance(v, bool):
+                    raise TypeError("booleen")
+                plan[cle] = int(float(v))
+            except (TypeError, ValueError, OverflowError):
+                del plan[cle]
+            retouches.append(cle)
+        elif attendu == "array" and (not isinstance(v, list)
+                                     or any(not isinstance(x, str) for x in v)):
+            textes = _textes_de(v)
+            if textes:
+                plan[cle] = textes
+            else:
+                del plan[cle]
+            retouches.append(cle)
+        elif attendu == "object" and not isinstance(v, dict):
+            del plan[cle]
+            retouches.append(cle)
+    return plan, retouches
 
 
 def lire_objet_json(brut):
@@ -5123,6 +5352,21 @@ def _cadre_technique(plan):
     return "\n".join(lignes) + "\n"
 
 
+# UNE DEMANDE DEJA DETAILLEE NE S'ETOFFE PAS. L'enrichissement fait d'une
+# demande courte — « un chat roux » — une description ; il n'est reussi que
+# s'il ajoute cinq mots nouveaux et allonge le texte (_enrichi). Une demande
+# de cent trente mots, le modele la resume ou la recopie : « enrichissement
+# sans effet », et le studio demandait alors « je n'ai pas reussi a etoffer
+# ta demande, tu preferes la reecrire ? ». Releve de production au 9 novembre
+# 2026 : 314 demandes de programme arretees sur cette question, 130 mots en
+# mediane (72 au moins), et 42 de la page, 73 mots en mediane — quand celles
+# de la page qui aboutissent en font 22. Au-dela de ce seuil : ni appel au
+# modele, ni question. Le prompt du plan part tel quel — sauf si l'analyse a
+# reduit la demande de plus de moitie : c'est alors le texte de l'auteur qui
+# part, ses details n'ont pas a disparaitre dans un resume.
+DEMANDE_DETAILLEE = int(os.environ.get("STUDIO_DEMANDE_DETAILLEE") or 40)
+
+
 async def enrichir(plan, texte, tid):
     """Fait du prompt une vraie description, en un appel qui ne fait que cela."""
     quoi = _ENRICHIT.get(plan.get("intention"))
@@ -5132,6 +5376,18 @@ async def enrichir(plan, texte, tid):
         return plan
     depart = (plan.get("prompt") or texte or "").strip()
     if not depart:
+        return plan
+    # LES MOTS DE L'UTILISATEUR, pas ceux du plan : c'est sa demande a lui
+    # qui est detaillee ou non, quoi que l'analyse en ait fait.
+    mots_ = len((texte or "").split())
+    if mots_ >= DEMANDE_DETAILLEE:
+        if len(depart.split()) * 2 < mots_:
+            plan["prompt"] = " ".join(texte.split())
+            journal(tid, f"demande deja detaillee ({mots_} mots) : envoyee telle "
+                         f"que tu l'as ecrite, sans le resume de l'analyse")
+        else:
+            journal(tid, f"demande deja detaillee ({mots_} mots) : envoyee sans "
+                         f"l'etoffer")
         return plan
     if _enrichi(texte, depart):
         return plan             # l'aiguilleur a deja fait le travail
@@ -5886,6 +6142,10 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
         journal(tid, "aiguillage par mots-cles")
         return normaliser(secours(texte, a_une_image), texte,
                           a_une_image, conv, taille, priorite)
+    plan, retouches_ = formes_du_plan(plan)
+    if retouches_:
+        journal(tid, f"plan remis en forme ({', '.join(retouches_)}) : le "
+                     f"modele n'avait pas rendu le type attendu")
     plan = normaliser(plan, texte, a_une_image, conv, taille, priorite)
 
     # Filet sur les demandes tres courtes que l'aiguilleur a decide d'executer :
@@ -15803,13 +16063,36 @@ async def api_noeud_annonce(req):
         ETAT_NOEUDS.setdefault(x["id"], {}).update(
             llm=bool(llm.get("ok")), llm_modeles=llm.get("modeles") or [])
     if isinstance(dossiers, dict) and any(dossiers.values()):
-        MODELES_NOEUD[x["id"]] = {
-            "quand": time.time(),
-            # Des listes de chaines, et rien d'autre : « set(v) » sur une liste
-            # de dictionnaires levait TypeError, donc 500, sur la seule foi de
-            # ce qu'une machine annonce.
-            "dossiers": {str(k): {m for m in v if isinstance(m, str)}
-                         for k, v in dossiers.items() if isinstance(v, list)}}
+        # Des listes de chaines, et rien d'autre : « set(v) » sur une liste
+        # de dictionnaires levait TypeError, donc 500, sur la seule foi de
+        # ce qu'une machine annonce.
+        neuf_ = {str(k): {m for m in v if isinstance(m, str)}
+                 for k, v in dossiers.items() if isinstance(v, list)}
+        # UN DOSSIER QUI N'A PAS REPONDU N'EST PAS UN DOSSIER VIDE. L'agent
+        # liste chaque dossier a part, dix secondes au plus chacun, et ne
+        # rapporte que ceux qui ont repondu : pendant un rendu lourd, il
+        # suffit que « diffusion_models » tarde pour que l'inventaire arrive
+        # sans lui — et il remplacait tout ce qu'on savait de la machine,
+        # klein9b et les autres disparus d'un coup. Ce qui a repondu fait foi,
+        # y compris vide ; ce qui n'a pas repondu garde son dernier releve.
+        #
+        # PAS INDEFINIMENT : un dossier que l'agent ne rapporte plus du tout —
+        # le noeud additionnel qui le servait ne se charge plus, et ComfyUI
+        # rend 404 — garderait sinon pour toujours ses fichiers, re-dates a
+        # chaque annonce, et les rendus partiraient vers des .gguf que la
+        # machine ne sait plus lire (relecture du 9 novembre 2026). Chaque
+        # dossier a donc sa date de releve, et un dossier reporte plus
+        # d'INVENTAIRE_DISTANT_MAX est oublie.
+        avant_ = MODELES_NOEUD.get(x["id"]) or {}
+        maintenant_ = time.time()
+        vus_ = {k_: maintenant_ for k_ in neuf_}
+        for k_, v_ in (avant_.get("dossiers") or {}).items():
+            vu_ = (avant_.get("vus") or {}).get(k_, avant_.get("quand") or 0)
+            if k_ not in neuf_ and maintenant_ - vu_ <= INVENTAIRE_DISTANT_MAX:
+                neuf_[k_] = v_
+                vus_[k_] = vu_
+        MODELES_NOEUD[x["id"]] = {"quand": maintenant_, "dossiers": neuf_,
+                                  "vus": vus_}
     # Ce qu'on vient d'apprendre d'elle, garde pour le prochain reveil. Ecrit au
     # plus une fois toutes les trente secondes : trois machines qui battent
     # toutes les dix secondes ecriraient sinon ce fichier neuf fois par minute

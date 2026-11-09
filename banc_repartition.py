@@ -54,6 +54,10 @@ def dit(vrai, quoi, detail=""):
 CLE = min(S.CATALOGUE, key=lambda c: S.CATALOGUE[c].get("vram", 0) or 99)
 BESOIN = S.CATALOGUE[CLE].get("vram", 0)
 
+# La VRAIE lecture de l'inventaire, gardee avant que poser() ne la remplace :
+# la section des inventaires, a la fin, l'eprouve elle-meme.
+VRAI_MANQUANTS = S.manquants
+
 
 def poser(vram_studio=0.0, ram_studio=64.0, vram_pc=11.0, vram_zima=5.9):
     """Le parc reel : un studio en conteneur, et deux machines a agent."""
@@ -1572,6 +1576,102 @@ dit(not _orphelines,
     "et aucune entree « moteur. » ne designe un moteur qui n'existe plus",
     f"{len(_orphelines)} orpheline(s) : " + ", ".join(_orphelines[:3])
     if _orphelines else f"{len(_connus)} moteurs connus")
+
+
+# ── L'INVENTAIRE D'UNE MACHINE VIVANTE NE PERIME PAS ─────────────────────
+# Le 9 novembre 2026, entre 03:57 et 03:59, sept demandes sont mortes sur
+# « FLUX.2 klein 9B n'est disponible sur aucune machine joignable (NAS, PC) »
+# pendant que le PC rendait klein9b pour d'autres. manquants() jetait
+# l'inventaire d'une machine DISTANTE au-dela de trois minutes et la declarait
+# alors vide ; un inventaire arrive incomplet effacait tout le reste.
+print("\n  ── l'inventaire d'une machine qui travaille ──")
+poser()
+S.manquants = VRAI_MANQUANTS
+_k9 = "klein9b"
+_dossiers_k9 = {}
+for _sous, _nom, _r, _d in S.CATALOGUE[_k9]["fichiers"]:
+    _dossiers_k9.setdefault(_sous, set()).add(_nom)
+_garde_inv = dict(S.MODELES_NOEUD)
+_garde_racine = S.RACINE_MODELES
+try:
+    S.MODELES_NOEUD.clear()
+    S.MODELES_NOEUD["pc"] = {"quand": S.time.time() - 300,
+                             "dossiers": {k: set(v) for k, v in _dossiers_k9.items()}}
+    S.ETAT_NOEUDS["zima"]["repond"] = False
+    dit(S.manquants(_k9, "pc") == []
+        and "pc" in [x["id"] for x in S.noeuds_pour(_k9)],
+        "LE CAS DU 9 NOVEMBRE : le PC repond, son inventaire a cinq minutes — "
+        "il porte toujours klein9b, et le rendu peut lui aller",
+        f"manquants={len(S.manquants(_k9, 'pc'))}, "
+        f"capables={[x['id'] for x in S.noeuds_pour(_k9)]}")
+    # UNE MACHINE QUI SE TAIT perd son releve, comme avant : sinon un agent
+    # coupe net garde pour toujours ses moteurs « installes », et l'aiguilleur
+    # les choisit pour une demande qui mourra ensuite.
+    _inv5 = {"quand": S.time.time() - 300,
+             "dossiers": {k: set(v) for k, v in _dossiers_k9.items()}}
+    S.MODELES_NOEUD["pc"] = dict(_inv5)
+    S.ETAT_NOEUDS["pc"]["vu"] = S.time.time() - 4 * S.SILENCE_MAX - 20
+    dit(bool(S.manquants(_k9, "pc")),
+        "un agent muet depuis plus de quatre battements manques : son releve "
+        "de cinq minutes ne vaut plus, klein9b n'y est plus cru installe",
+        f"manquants={len(S.manquants(_k9, 'pc'))}")
+    S.ETAT_NOEUDS["pc"]["vu"] = S.time.time()
+    S.MODELES_NOEUD["pc"] = {"quand": S.time.time() - S.INVENTAIRE_DISTANT_MAX - 60,
+                             "dossiers": {k: set(v) for k, v in _dossiers_k9.items()}}
+    dit(bool(S.manquants(_k9, "pc")),
+        "vivante mais sans inventaire neuf depuis plus d'INVENTAIRE_DISTANT_MAX : "
+        "le releve ne vaut plus non plus",
+        f"manquants={len(S.manquants(_k9, 'pc'))}")
+    S.MODELES_NOEUD["pc"] = {"quand": S.time.time() - 300, "dossiers": {}}
+    dit(S.manquants(_k9, "pc") and "pc" not in [x["id"] for x in S.noeuds_pour(_k9)],
+        "temoin : un inventaire ancien ou klein9b n'est PAS n'invente rien",
+        f"manquants={len(S.manquants(_k9, 'pc'))}")
+    # LE NOEUD LOCAL GARDE SA REGLE : il relit son disque, et un disque vide
+    # dit « absent » meme si le releve d'il y a dix minutes disait present.
+    _vide = tempfile.mkdtemp(prefix="banc_inventaire_")
+    S.RACINE_MODELES = _vide
+    S.MODELES_NOEUD["local"] = {"quand": S.time.time() - 300,
+                                "dossiers": {k: set(v) for k, v in _dossiers_k9.items()}}
+    dit(len(S.manquants(_k9, "local")) == len(S.CATALOGUE[_k9]["fichiers"]),
+        "temoin : le studio lui-meme relit son disque passe trois minutes, "
+        "comme avant", f"manquants={len(S.manquants(_k9, 'local'))}")
+
+    # ── UN DOSSIER QUI N'A PAS REPONDU N'EST PAS VIDE ─────────────────────
+    S.MODELES_NOEUD.clear()
+    S.MODELES_NOEUD["pc"] = {"quand": S.time.time(),
+                             "dossiers": {k: set(v) for k, v in _dossiers_k9.items()}}
+    S.ETAT_NOEUDS["zima"]["repond"] = True
+    _rep, _temoin = asyncio.run(battre("pc", modeles={"loras": ["un_style.safetensors"]}))
+    _apres = (S.MODELES_NOEUD.get("pc") or {}).get("dossiers") or {}
+    dit(_temoin and S.manquants(_k9, "pc") == []
+        and "un_style.safetensors" in _apres.get("loras", set()),
+        "un inventaire arrive sans les dossiers de klein9b (ils n'ont pas "
+        "repondu a temps) : ce qu'on en savait reste, et le reste est mis a jour",
+        f"temoin={_temoin}, manquants={len(S.manquants(_k9, 'pc'))}, "
+        f"dossiers={sorted(_apres)}")
+    _sous_k9 = sorted(_dossiers_k9)
+    _rep, _temoin = asyncio.run(battre(
+        "pc", modeles=dict({k: [] for k in _sous_k9}, loras=["un_style.safetensors"])))
+    dit(_temoin and S.manquants(_k9, "pc"),
+        "temoin : un dossier qui a REPONDU vide fait foi — klein9b retire de "
+        "la machine n'y est plus", f"manquants={len(S.manquants(_k9, 'pc'))}")
+    # UN DOSSIER QUI NE REPOND PLUS DU TOUT est oublie passe la borne : le
+    # noeud additionnel qui le servait ne se charge plus, ComfyUI rend 404.
+    S.MODELES_NOEUD["pc"] = {"quand": S.time.time(),
+                             "dossiers": {k: set(v) for k, v in _dossiers_k9.items()},
+                             "vus": {k: S.time.time() - S.INVENTAIRE_DISTANT_MAX - 60
+                                     for k in _dossiers_k9}}
+    _rep, _temoin = asyncio.run(battre("pc", modeles={"loras": ["un_style.safetensors"]}))
+    _apres = (S.MODELES_NOEUD.get("pc") or {}).get("dossiers") or {}
+    dit(_temoin and S.manquants(_k9, "pc") and not (set(_apres) & set(_dossiers_k9)),
+        "un dossier que l'agent ne rapporte plus depuis plus d'INVENTAIRE_DISTANT_MAX "
+        "est oublie, au lieu d'etre re-date a chaque annonce",
+        f"dossiers={sorted(_apres)}")
+finally:
+    S.MODELES_NOEUD.clear()
+    S.MODELES_NOEUD.update(_garde_inv)
+    S.RACINE_MODELES = _garde_racine
+    poser()
 
 print(f"\n  {len(ok)} verifications passees, {len(rate)} echouees")
 for r in rate:

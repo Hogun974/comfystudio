@@ -418,6 +418,23 @@ jobs:
       - name: Une demande etrangere n'est pas executee de travers en silence
         run: python banc_multilingue.py
 
+      # UN PLAN LISIBLE NE TUE PAS UNE DEMANDE. Le plan n'est pas demande avec
+      # son schema — le decodage contraint coutait dix a vingt fois l'appel —,
+      # donc rien n'en garantit les types : du 8 au 9 novembre 2026, sept
+      # demandes sont mortes sur « sequence item 1: expected str instance, list
+      # found », mistral:7b rendant « prompt » en liste. Ce banc dicte au modele
+      # des plans aux champs mal formes et les fait passer par executer().
+      - name: Un champ du plan mal forme ne fait pas echouer la demande
+        run: python banc_formes_plan.py
+      # UNE DEMANDE DEJA DETAILLEE PART TELLE QUELLE. L'enrichissement n'est
+      # reussi que s'il ajoute cinq mots nouveaux ; une demande de cent trente
+      # mots, le modele la resume, et le studio demandait « je n'ai pas reussi
+      # a etoffer ta demande ». 314 demandes de programme arretees ainsi au
+      # 9 novembre 2026. Ce banc garde le seuil, et que les demandes courtes
+      # restent etoffees.
+      - name: Une demande deja detaillee n'est pas arretee sur une question
+        run: python banc_demande_detaillee.py
+
       # UNE TRADUCTION NE PLANTE PAS, ELLE MENT. Un « {titre} » oublie dans la
       # version anglaise ne leve aucune exception : la phrase s'affiche,
       # entiere, sans le nom du moteur qu'elle annonce. Une cle qui manque dans

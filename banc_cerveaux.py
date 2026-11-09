@@ -727,6 +727,7 @@ async def main():
 
     await degeneres()
     await impose_lent()
+    await course_des_cartes()
 
 
 async def degeneres():
@@ -2276,6 +2277,268 @@ async def impose_lent():
     finally:
         (S._ollama_local, S.demander_a_un_noeud, S.soumettre_robuste,
          S.ATTENTE_CARTE, S.ANALYSE_IMPOSE_DELAI) = gardes
+        S.QUARANTAINES.clear()
+        S._VUS_DEGENERE.clear()
+        S._PLACEMENT.clear()
+        for t_ in tids:
+            S.TACHES.pop(t_, None)
+    poser()
+
+
+async def course_des_cartes():
+    """Toutes les cartes calculent : l'analyse prend la PREMIERE qui se libere.
+
+    LE RELEVE DU 8 NOVEMBRE 2026 : un programme fait rendre le PC en continu,
+    le NAS analyse les demandes une a une. L'analyse suivante attendait le PC,
+    et lui seul : 188 demandes en trois jours ont vu la borne du moteur impose
+    tomber pendant cette attente, et sont parties sans plan — alors que le NAS
+    se liberait souvent avant le PC.
+
+    Les cartes sont tenues par de VRAIS verrous, rendus a l'heure dite ; ce qui
+    est verifie a la fin de chaque cas, c'est qu'aucune carte ne reste prise.
+    """
+    print("\n  ── la premiere carte qui se libere ──")
+    poser()
+    S._PLACEMENT[PC] = {"part": 1.0, "quand": S.time.time()}
+    S._PLACEMENT[NAS] = {"part": 1.0, "quand": S.time.time()}
+    S.QUARANTAINES.clear()
+    S._VUS_DEGENERE.clear()
+    S._DECHARGE_DEGENERE.clear()
+    appels, agents = [], []
+    scenario = {}
+
+    async def faux_local(corps, url=None, secondes=900):
+        appels.append((url, corps.get("model"), secondes))
+        rep_ = scenario.get(url, "{}")
+        if callable(rep_):
+            rep_ = rep_(corps)
+        return rep_
+
+    async def faux_agent(corps, tid=None, secondes=None):
+        agents.append(secondes)
+        return ""
+
+    gardes = (S._ollama_local, S.demander_a_un_noeud, S.ATTENTE_CARTE,
+              S.ANALYSE_IMPOSE_DELAI, S.journal)
+    S._ollama_local = faux_local
+    S.demander_a_un_noeud = faux_agent
+    S.ATTENTE_CARTE = 3
+    S.ANALYSE_IMPOSE_DELAI = 1
+    gardefous = []
+
+    def journal_espion(tid, msg, *a, **kw):
+        if "GARDE-FOU" in str(msg):
+            gardefous.append(msg)
+        return gardes[4](tid, msg, *a, **kw)
+
+    S.journal = journal_espion
+    pc = S.verrou_noeud("pc")
+    nas = S.verrou_noeud("zima")
+    boucle = asyncio.get_running_loop()
+    tids = []
+
+    def tache(tid, **en_plus):
+        tids.append(tid)
+        S.TACHES[tid] = dict({"etapes": [], "etat": "en cours"}, **en_plus)
+        return tid
+
+    def fil(tid):
+        return [e["msg"] for e in (S.TACHES.get(tid) or {}).get("etapes", [])]
+
+    async def appel(tid):
+        t0 = S.time.time()
+        try:
+            r_ = await S.appeler_ollama("x", None, None, True, tid=tid)
+        except Exception as e:
+            r_ = type(e).__name__
+        return r_, S.time.time() - t0
+
+    async def tenir(verrou, secondes, puis=None):
+        """La carte prise par un autre travail, rendue au bout de « secondes »."""
+        await verrou.acquire()
+
+        def rendre():
+            if puis:
+                puis()
+            verrou.release()
+        return boucle.call_later(secondes, rendre)
+
+    async def finir(*minuteries):
+        # Les cartes encore tenues par le « travail » du banc sont rendues
+        # pour de bon avant le cas suivant.
+        for m in minuteries:
+            m.cancel()
+        for v in (pc, nas):
+            if v.locked():
+                v.release()
+
+    try:
+        # ── LE NAS SE LIBERE LE PREMIER ────────────────────────────────────
+        m1 = await tenir(pc, 2.5)
+        m2 = await tenir(nas, 0.3)
+        tid = tache("banc-course-nas")
+        r_, mis_ = await appel(tid)
+        pc_tenu_ = pc.locked()
+        nas_tenu_ = nas.locked()
+        await finir(m1, m2)
+        dit(r_ == "{}" and mis_ < 1.5 and [a[0] for a in appels] == [NAS],
+            "PC et NAS calculent, le NAS se libere le premier : l'analyse y "
+            "passe, sans attendre le PC",
+            f"{r_}, {mis_:.1f} s, appels={[a[0] for a in appels]}")
+        dit(pc_tenu_ and not nas_tenu_ and not gardefous,
+            "au retour, le PC reste a son travail et la carte du NAS est rendue",
+            f"pc tenu={pc_tenu_}, nas tenu={nas_tenu_}, {gardefous}")
+        dit(any("calculent — l'analyse prendra la premiere carte" in l
+                for l in fil(tid))
+            and any("s'est liberee la premiere" in l for l in fil(tid)),
+            "le fil dit qu'elle attend les deux cartes, puis laquelle l'a prise",
+            str(fil(tid)[-3:]))
+
+        # ── TEMOIN : le PC se libere le premier ────────────────────────────
+        del appels[:]
+        m1 = await tenir(pc, 0.3)
+        m2 = await tenir(nas, 2.5)
+        tid = tache("banc-course-pc")
+        r_, mis_ = await appel(tid)
+        nas_tenu_ = nas.locked()
+        await finir(m1, m2)
+        dit(r_ == "{}" and mis_ < 1.5 and [a[0] for a in appels] == [PC]
+            and nas_tenu_ and not gardefous
+            and not any("s'est liberee la premiere" in l for l in fil(tid)),
+            "temoin : le PC se libere le premier, l'analyse y reste ; le NAS "
+            "n'est pas pris",
+            f"{r_}, {mis_:.1f} s, appels={[a[0] for a in appels]}")
+
+        # ── MOTEUR IMPOSE : le NAS libere dans la borne ────────────────────
+        del appels[:]
+        m1 = await tenir(pc, 2.5)
+        m2 = await tenir(nas, 0.4)
+        tid = tache("banc-course-impose", analyse_impose_avant=S.time.time() + 1)
+        r_, mis_ = await appel(tid)
+        await finir(m1, m2)
+        dit(r_ == "{}" and [a[0] for a in appels] == [NAS]
+            and not S.TACHES[tid].get("cerveau_lent"),
+            "moteur impose, les deux cartes tenues, le NAS libre avant la "
+            "borne : l'analyse a son plan au lieu de partir sans",
+            f"{r_}, appels={[a[0] for a in appels]}")
+        dit(bool(appels) and appels[0][2] <= 1,
+            "et l'appel au NAS n'a que ce qui reste de la borne : il garde son "
+            "rang d'origine, il n'est pas devenu « le premier cerveau »",
+            str(appels))
+
+        # ── MOTEUR IMPOSE : aucune carte ne se libere dans la borne ────────
+        del appels[:]
+        m1 = await tenir(pc, 2.5)
+        m2 = await tenir(nas, 2.5)
+        tid = tache("banc-course-coupee", analyse_impose_avant=S.time.time() + 0.5)
+        r_, mis_ = await appel(tid)
+        pris_ = (pc.locked(), nas.locked())
+        await finir(m1, m2)
+        dit(r_ == "CerveauTropLent" and mis_ < 1.5 and not appels
+            and not agents and not gardefous,
+            "les deux tenues au-dela de la borne : l'analyse renonce a la borne, "
+            "sans appel ni detour",
+            f"{r_}, {mis_:.1f} s, appels={appels}, agents={agents}")
+        dit(not pc.locked() and not nas.locked() and pris_ == (True, True),
+            "et les deux prises de la course sont annulees : une fois leur "
+            "travail fini, aucune carte ne reste fermee",
+            f"pendant={pris_}, apres=({pc.locked()}, {nas.locked()})")
+
+        # ── LE NAS SUR PROCESSEUR n'entre pas dans la course ───────────────
+        del appels[:]
+        S._PLACEMENT[NAS] = {"part": 0.0, "quand": S.time.time()}
+        m1 = await tenir(pc, 0.5)
+        m2 = await tenir(nas, 0.1)
+        tid = tache("banc-course-processeur")
+        r_, mis_ = await appel(tid)
+        await finir(m1, m2)
+        S._PLACEMENT[NAS] = {"part": 1.0, "quand": S.time.time()}
+        dit(r_ == "{}" and [a[0] for a in appels] == [PC] and mis_ >= 0.4,
+            "un NAS qui calcule sur son processeur reste dernier, libre ou non : "
+            "l'analyse attend la carte du PC",
+            f"{r_}, {mis_:.1f} s, appels={[a[0] for a in appels]}")
+
+        # ── MIS DE COTE PENDANT LA COURSE : la carte gagnee est rendue ────
+        del appels[:]
+        modele_nas = S.corps_ici(S.corps_ollama("x", None, None, True, None,
+                                                0.1, 0), NAS)["model"]
+
+        def de_cote():
+            S.QUARANTAINES[(NAS, modele_nas)] = {
+                "debut": S.time.time(), "fin": S.time.time() + 900,
+                "machine": "NAS ZimaOS", "modele": modele_nas,
+                "essai": False, "fois": 1}
+
+        m1 = await tenir(pc, 0.8)
+        m2 = await tenir(nas, 0.2, puis=de_cote)
+        tid = tache("banc-course-de-cote")
+        r_, mis_ = await appel(tid)
+        nas_tenu_ = nas.locked()
+        await finir(m1, m2)
+        S.QUARANTAINES.clear()
+        dit(r_ == "{}" and [a[0] for a in appels] == [PC] and not nas_tenu_
+            and not gardefous,
+            "le NAS gagne la course mais vient d'etre mis de cote : sa carte est "
+            "rendue sur-le-champ, et l'analyse va au PC",
+            f"{r_}, appels={[a[0] for a in appels]}, nas tenu={nas_tenu_}")
+
+        # ── premiere_carte : deux cartes libres a la fois, et l'annulation ─
+        # DES VERROUS NEUFS A CHAQUE CAS, et une course qui ne finit pas en
+        # trois secondes est un echec : une carte restee prise ne doit pas
+        # faire pendre le banc, elle doit le faire rougir.
+        async def solder(course, a_debloquer):
+            fini_, _ = await asyncio.wait({course}, timeout=3)
+            if not fini_:
+                for v in a_debloquer:
+                    if v.locked():
+                        v.release()
+                await asyncio.wait({course}, timeout=3)
+            try:
+                course.result()
+            except BaseException:
+                pass
+            return bool(fini_)
+
+        a_, b_ = S.VerrouCarte(), S.VerrouCarte()
+        course_ = asyncio.ensure_future(S.premiere_carte([a_, b_], 1))
+        fini_ = await solder(course_, [])
+        k_ = course_.result() if fini_ and not course_.cancelled() \
+            and course_.exception() is None else None
+        dit(fini_ and k_ == 0 and a_.locked() and not b_.locked(),
+            "deux cartes libres a la fois : une seule est prise, l'autre est "
+            "rendue", f"rang={k_}, a={a_.locked()}, b={b_.locked()}")
+
+        a_, b_ = S.VerrouCarte(), S.VerrouCarte()
+        await a_.acquire()
+        await b_.acquire()
+        course_ = asyncio.ensure_future(S.premiere_carte([a_, b_], 5))
+        await asyncio.sleep(0.05)
+        b_.release()          # la carte b passe a la course...
+        course_.cancel()      # ... qu'on annule dans le meme tour de boucle
+        fini_ = await solder(course_, [a_])
+        if a_.locked():
+            a_.release()      # le « travail » qui tenait a se termine
+        await asyncio.sleep(0)
+        dit(fini_ and not a_.locked() and not b_.locked(),
+            "une course annulee de l'exterieur au moment ou une carte lui est "
+            "remise : elle se termine, la carte est rendue, et la prise de "
+            "l'autre carte est annulee", f"finie={fini_}, a={a_.locked()}, "
+                                         f"b={b_.locked()}")
+
+        a_ = S.VerrouCarte()
+        await a_.acquire()
+        course_ = asyncio.ensure_future(S.premiere_carte([a_], 5))
+        await asyncio.sleep(0.05)
+        a_.release()
+        await asyncio.sleep(0)
+        course_.cancel()
+        fini_ = await solder(course_, [])
+        dit(fini_ and not a_.locked(),
+            "et annulee juste apres l'avoir gagnee : la carte gagnee est rendue",
+            f"finie={fini_}, a={a_.locked()}")
+    finally:
+        (S._ollama_local, S.demander_a_un_noeud, S.ATTENTE_CARTE,
+         S.ANALYSE_IMPOSE_DELAI, S.journal) = gardes
         S.QUARANTAINES.clear()
         S._VUS_DEGENERE.clear()
         S._PLACEMENT.clear()

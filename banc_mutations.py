@@ -501,6 +501,10 @@ BESOINS = {
     # depot, comme banc_pilotage.py, et lance S.app() sur 127.0.0.1.
     "banc_openai.py": ["banc_openai.py"] + fichiers_du_conteneur(),
     "banc_noms_sorties.py": ["banc_noms_sorties.py"] + fichiers_du_conteneur(),
+    # Les formes du plan : il importe serveur.py et rien d'autre du depot.
+    "banc_formes_plan.py": ["banc_formes_plan.py"] + fichiers_du_conteneur(),
+    # Une demande deja detaillee : il importe serveur.py et rien d'autre.
+    "banc_demande_detaillee.py": ["banc_demande_detaillee.py"] + fichiers_du_conteneur(),
     # agent_noeud.py N'ETAIT COPIE PAR AUCUN BANC, et c'est ce qui rendait
     # PERIMEES les deux mutations qui le visaient — « MUTATION PERIMEE,
     # agent_noeud.py n'est pas copie pour banc_repartition.py ». Aucune de ses
@@ -10008,9 +10012,9 @@ SECURITE_SEPT = [
         rougit="seules les LISTES DE CHAINES sont retenues",
         editions=[
             ("serveur.py", brut(
-                '            "dossiers": {str(k): {m for m in v if isinstance(m, str)}\n'
-                "                         for k, v in dossiers.items() if isinstance(v, list)}}",
-                '            "dossiers": {k: set(v) for k, v in dossiers.items()}}')),
+                '        neuf_ = {str(k): {m for m in v if isinstance(m, str)}\n'
+                "                 for k, v in dossiers.items() if isinstance(v, list)}",
+                '        neuf_ = {k: set(v) for k, v in dossiers.items()}')),
         ]),
     # ── 2 et 6. ce que app() assemble ─────────────────────────────────
     dict(
@@ -16513,8 +16517,8 @@ ANALYSE_NE_BLOQUE_PAS = [
                "qui reste de la borne, et l'analyse renonce a son echeance — "
                "sans se dire « cerveau lent » d'ANALYSE_DELAI",
         editions=[("serveur.py", brut(
-            "            if borne_ and (rang_ or sur_processeur(url)):",
-            "            if False and (rang_ or sur_processeur(url)):"))]),
+            "            if borne_ and (rang_origine_.get(url, rang_) or sur_processeur(url)):",
+            "            if False and (rang_origine_.get(url, rang_) or sur_processeur(url)):"))]),
     dict(
         nom="le premier cerveau est coupe aussi",
         banc="banc_cerveaux.py",
@@ -16523,7 +16527,7 @@ ANALYSE_NE_BLOQUE_PAS = [
         rougit="temoin : moteur impose et borne passee, mais le PC libre et sur "
                "sa carte repond — il n'est jamais coupe, meme lent a charger",
         editions=[("serveur.py", brut(
-            "            if borne_ and (rang_ or sur_processeur(url)):",
+            "            if borne_ and (rang_origine_.get(url, rang_) or sur_processeur(url)):",
             "            if borne_ and (True or sur_processeur(url)):"))]),
     dict(
         nom="un appel borne qui expire se dit cerveau lent",
@@ -16593,6 +16597,306 @@ ANALYSE_NE_BLOQUE_PAS = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  La course des cartes (ronde 11) — banc_cerveaux.py
+# ──────────────────────────────────────────────────────────────────────
+# Toutes les cartes calculent : l'analyse attend les deux, prend la premiere
+# qui se libere, et ne laisse aucune carte fermee derriere elle.
+COURSE_DES_CARTES = [
+    dict(
+        nom="personne ne court : l'analyse attend la premiere carte de la liste",
+        banc="banc_cerveaux.py",
+        imite="le comportement du 8 novembre : le NAS se libere, l'analyse "
+              "attend toujours le PC",
+        rougit="PC et NAS calculent, le NAS se libere le premier : l'analyse y "
+               "passe, sans attendre le PC",
+        editions=[("serveur.py", brut(
+            "            rivaux_ = (_rivaux_de_carte(cerveaux, rang_ + 1, corps, url, ident)",
+            "            rivaux_ = ([] and _rivaux_de_carte(cerveaux, rang_ + 1, corps, url, ident)"))]),
+    dict(
+        nom="un Ollama sur processeur entre dans la course",
+        banc="banc_cerveaux.py",
+        imite="le NAS qui calcule sur son processeur, libre, est pris devant la "
+              "carte du PC qui se libere dans la seconde",
+        rougit="un NAS qui calcule sur son processeur reste dernier, libre ou non",
+        editions=[("serveur.py", brut(
+            "        if sur_processeur(u) and not proc_:",
+            "        if False and sur_processeur(u) and not proc_:"))]),
+    dict(
+        nom="deux cartes gagnees a la fois, les deux gardees",
+        banc="banc_cerveaux.py",
+        imite="la seconde prise qui aboutit en meme temps n'est pas rendue : "
+              "une machine fermee pour de bon",
+        rougit="deux cartes libres a la fois : une seule est prise, l'autre est "
+               "rendue",
+        editions=[("serveur.py", brut(
+            "                            verrous[k].release()",
+            "                            pass"))]),
+    dict(
+        nom="une course annulee garde la carte qu'elle a gagnee",
+        banc="banc_cerveaux.py",
+        imite="la demande est arretee a l'instant ou la carte lui revient : la "
+              "carte reste prise par une demande morte",
+        rougit="et annulee juste apres l'avoir gagnee : la carte gagnee est rendue",
+        editions=[("serveur.py", brut(
+            "            verrous[gagnant].release()",
+            "            pass"))]),
+    dict(
+        nom="les prises perdantes ne sont pas annulees",
+        banc="banc_cerveaux.py",
+        imite="la course finie, les autres prises attendent encore : chaque "
+              "carte qui se libere ensuite est prise par une analyse partie",
+        rougit="les deux tenues au-dela de la borne : l'analyse renonce a la "
+               "borne, sans appel ni detour",
+        editions=[("serveur.py", brut(
+            "                    p.cancel()",
+            "                    pass"))]),
+    dict(
+        nom="la carte gagnee devient « le premier cerveau »",
+        banc="banc_cerveaux.py",
+        imite="le NAS gagne la course, prend le rang 0 et echappe a la borne du "
+              "moteur impose : 224 s d'appel comme le 9 novembre",
+        rougit="et l'appel au NAS n'a que ce qui reste de la borne : il garde son "
+               "rang d'origine",
+        editions=[("serveur.py", brut(
+            "rang_origine_.get(url, rang_) or sur_processeur(url)",
+            "rang_ or sur_processeur(url)"))]),
+    dict(
+        nom="la carte gagnee d'un modele mis de cote n'est pas rendue",
+        banc="banc_cerveaux.py",
+        imite="le NAS gagne la course pendant qu'on le met de cote : la boucle "
+              "le saute et oublie sa carte",
+        rougit="le NAS gagne la course mais vient d'etre mis de cote : sa carte "
+               "est rendue sur-le-champ",
+        editions=[("serveur.py", brut(
+            "            # Mise de cote PENDANT la course : la carte gagnee est rendue.",
+            "            tenue_ = None"))]),
+    dict(
+        nom="la carte gagnee est reprise une seconde fois",
+        banc="banc_cerveaux.py",
+        imite="l'analyse attend la carte qu'elle tient deja : elle s'attend "
+              "elle-meme jusqu'a l'echeance",
+        rougit="PC et NAS calculent, le NAS se libere le premier : l'analyse y "
+               "passe, sans attendre le PC",
+        editions=[("serveur.py", brut(
+            "        if verrou_ol is not None and tenue_ == ident:",
+            "        if False and verrou_ol is not None and tenue_ == ident:"))]),
+    dict(
+        nom="la gagnante est sautee au lieu d'etre essayee",
+        banc="banc_cerveaux.py",
+        imite="la liste est reordonnee mais le rang avance quand meme : la "
+              "carte gagnee est rendue, et l'analyse retourne attendre le PC",
+        rougit="PC et NAS calculent, le NAS se libere le premier : l'analyse y "
+               "passe, sans attendre le PC",
+        editions=[("serveur.py", brut(
+            "                rang_ -= 1",
+            "                pass"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  Les formes du plan (ronde 11) — banc_formes_plan.py
+# ──────────────────────────────────────────────────────────────────────
+# Sept demandes mortes du 8 au 9 novembre 2026 sur « sequence item 1:
+# expected str instance, list found » : mistral rendait « prompt » en liste.
+FORMES_DU_PLAN = [
+    dict(
+        nom="le plan n'est pas remis en forme",
+        banc="banc_formes_plan.py",
+        imite="la production du 9 novembre : un « prompt » en liste fait mourir "
+              "la demande",
+        rougit="LE CAS DU 9 NOVEMBRE : « prompt » rendu en liste par le modele",
+        editions=[("serveur.py", brut(
+            "    plan, retouches_ = formes_du_plan(plan)",
+            "    retouches_ = []"))]),
+    dict(
+        nom="un texte en liste ne garde que son premier morceau",
+        banc="banc_formes_plan.py",
+        imite="le prompt « un jeton rond » perd « anneau de bronze grave » : "
+              "la demande aboutit, amputee",
+        rougit="et les deux morceaux du prompt arrivent au moteur",
+        editions=[("serveur.py", brut(
+            '                plan[cle] = ", ".join(t.strip() for t in textes)',
+            "                plan[cle] = textes[0]"))]),
+    dict(
+        nom="un champ d'un seul mot est joint comme un texte",
+        banc="banc_formes_plan.py",
+        imite="le moteur devient « klein9b, flux1 », que le catalogue ne "
+              "connait pas",
+        rougit="un champ d'un seul mot (moteur, intention) garde le premier",
+        editions=[("serveur.py", brut(
+            "            elif cle in _CHAMPS_UN_MOT:",
+            "            elif False:"))]),
+    dict(
+        nom="un booleen passe pour une taille",
+        banc="banc_formes_plan.py",
+        imite="« largeur: true » devient une image d'un pixel de large",
+        rougit="un booleen ou un mot n'est pas une taille : retire",
+        editions=[("serveur.py", brut(
+            '                    raise TypeError("booleen")',
+            "                    pass"))]),
+    dict(
+        nom="les elements d'une liste de textes ne sont pas verifies",
+        banc="banc_formes_plan.py",
+        imite="une question rendue en nombre ou en liste traverse jusqu'a la "
+              "page",
+        rougit="une liste de textes reste une liste de textes",
+        editions=[("serveur.py", brut(
+            "                                     or any(not isinstance(x, str) for x in v)):",
+            "                                     or False):"))]),
+    dict(
+        nom="des parametres qui ne sont pas un objet traversent",
+        banc="banc_formes_plan.py",
+        imite="« parametres » en liste : le premier .get() dessus leve",
+        rougit="des parametres qui ne sont pas un objet sont retires",
+        editions=[("serveur.py", brut(
+            '        elif attendu == "object" and not isinstance(v, dict):',
+            "        elif False:"))]),
+    dict(
+        nom="les morceaux vides sont gardes",
+        banc="banc_formes_plan.py",
+        imite="« un jeton, rond, , 3 » : une virgule de trop dans le prompt",
+        rougit="une liste imbriquee est aplatie, les vides retires",
+        editions=[("serveur.py", brut(
+            "        return [valeur] if valeur.strip() else []",
+            "        return [valeur]"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  L'inventaire d'une machine qui travaille (ronde 11) — banc_repartition.py
+# ──────────────────────────────────────────────────────────────────────
+# Vingt demandes mortes sur « disponible sur aucune machine joignable »,
+# dont sept le 9 novembre 2026 pendant que le PC rendait ce meme moteur.
+INVENTAIRE_VIVANT = [
+    dict(
+        nom="l'inventaire d'une machine distante perime a trois minutes",
+        banc="banc_repartition.py",
+        imite="la regle d'avant les agents : le PC qui rend depuis une heure "
+              "est declare vide, et la demande meurt",
+        rougit="LE CAS DU 9 NOVEMBRE : le PC repond, son inventaire a cinq minutes",
+        editions=[("serveur.py", brut(
+            "        if (est_local(ident) or time.time() - vu_ > 4 * SILENCE_MAX",
+            "        if (True or time.time() - vu_ > 4 * SILENCE_MAX"))]),
+    dict(
+        nom="le releve d'une machine muette vaut encore",
+        banc="banc_repartition.py",
+        imite="l'agent coupe net garde ses moteurs « installes » : l'aiguilleur "
+              "les choisit, la demande meurt sur « le PC le savait »",
+        rougit="un agent muet depuis plus de quatre battements manques",
+        editions=[("serveur.py", brut(
+            "        if (est_local(ident) or time.time() - vu_ > 4 * SILENCE_MAX",
+            "        if (est_local(ident) or False"))]),
+    dict(
+        nom="le releve d'une machine vivante ne perime jamais",
+        banc="banc_repartition.py",
+        imite="une machine dont les annonces arrivent vides garde pour toujours "
+              "ce qu'elle portait",
+        rougit="vivante mais sans inventaire neuf depuis plus d'INVENTAIRE_DISTANT_MAX",
+        editions=[("serveur.py", brut(
+            '                or time.time() - cache.get("quand", 0) > INVENTAIRE_DISTANT_MAX):',
+            "                or False):"))]),
+    dict(
+        nom="l'inventaire du studio lui-meme ne perime plus",
+        banc="banc_repartition.py",
+        imite="la dispense etendue au noeud local : un modele efface de son "
+              "disque y est cru present tant que le studio vit",
+        rougit="temoin : le studio lui-meme relit son disque passe trois minutes",
+        editions=[("serveur.py", brut(
+            "        if (est_local(ident) or time.time() - vu_ > 4 * SILENCE_MAX",
+            "        if (False or time.time() - vu_ > 4 * SILENCE_MAX"))]),
+    dict(
+        nom="un inventaire incomplet efface le reste",
+        banc="banc_repartition.py",
+        imite="« diffusion_models » tarde pendant un rendu, et klein9b "
+              "disparait de la machine",
+        rougit="un inventaire arrive sans les dossiers de klein9b",
+        editions=[("serveur.py", brut(
+            "                neuf_[k_] = v_",
+            "                pass"))]),
+    dict(
+        nom="l'ancien releve l'emporte sur ce qui a repondu",
+        banc="banc_repartition.py",
+        imite="un modele retire de la machine y reste cru present, son dossier "
+              "a pourtant repondu vide",
+        rougit="temoin : un dossier qui a REPONDU vide fait foi",
+        editions=[("serveur.py", brut(
+            "            if k_ not in neuf_ and maintenant_ - vu_ <= INVENTAIRE_DISTANT_MAX:",
+            "            if maintenant_ - vu_ <= INVENTAIRE_DISTANT_MAX:"))]),
+    dict(
+        nom="un dossier muet est garde indefiniment",
+        banc="banc_repartition.py",
+        imite="le noeud GGUF ne se charge plus, ComfyUI rend 404, et les rendus "
+              "partent vers des .gguf que la machine ne sait plus lire",
+        rougit="un dossier que l'agent ne rapporte plus depuis plus d'INVENTAIRE_DISTANT_MAX",
+        editions=[("serveur.py", brut(
+            "            if k_ not in neuf_ and maintenant_ - vu_ <= INVENTAIRE_DISTANT_MAX:",
+            "            if k_ not in neuf_:"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  Une demande deja detaillee (ronde 11) — banc_demande_detaillee.py
+# ──────────────────────────────────────────────────────────────────────
+# 314 demandes de programme arretees sur « je n'ai pas reussi a etoffer ta
+# demande », 130 mots en mediane (releve du 9 novembre 2026).
+DEMANDE_DETAILLEE = [
+    dict(
+        nom="une demande detaillee est etoffee comme une autre",
+        banc="banc_demande_detaillee.py",
+        imite="la production du 9 novembre : 130 mots, le modele resume, et le "
+              "programme recoit une question",
+        rougit="LE CAS DU RELEVE : 130 mots — aucun appel au modele",
+        editions=[("serveur.py", brut(
+            "    if mots_ >= DEMANDE_DETAILLEE:",
+            "    if False:"))]),
+    dict(
+        nom="le seuil compte les mots du plan au lieu de ceux de l'utilisateur",
+        banc="banc_demande_detaillee.py",
+        imite="l'analyse resume 130 mots en deux, et la demande est etoffee — "
+              "puis arretee sur la question",
+        rougit="c'est la demande de l'UTILISATEUR qui compte, pas le plan",
+        editions=[("serveur.py", brut(
+            '    mots_ = len((texte or "").split())',
+            "    mots_ = len(depart.split())"))]),
+    dict(
+        nom="le seuil est franchi d'un mot trop tot",
+        banc="banc_demande_detaillee.py",
+        imite="« au moins 40 » devenu « plus de 40 » : une demande de 40 mots "
+              "repart vers la question",
+        rougit="au seuil (40 mots) : envoyee sans etoffer",
+        editions=[("serveur.py", brut(
+            "    if mots_ >= DEMANDE_DETAILLEE:",
+            "    if mots_ > DEMANDE_DETAILLEE:"))]),
+    dict(
+        nom="le resume de l'analyse part a la place de la demande detaillee",
+        banc="banc_demande_detaillee.py",
+        imite="130 mots resumes en deux par l'analyse : le resume part, sans "
+              "etre etoffe et sans question pour le dire",
+        rougit="c'est la demande de l'UTILISATEUR qui compte, pas le plan",
+        editions=[("serveur.py", brut(
+            "        if len(depart.split()) * 2 < mots_:",
+            "        if False:"))]),
+    dict(
+        nom="le texte de l'auteur remplace toujours le plan",
+        banc="banc_demande_detaillee.py",
+        imite="un plan qui avait garde l'essentiel est jete pour le texte brut",
+        rougit="temoin : un plan qui garde plus de la moitie de la demande part tel quel",
+        editions=[("serveur.py", brut(
+            "        if len(depart.split()) * 2 < mots_:",
+            "        if True:"))]),
+    dict(
+        nom="plus aucune demande n'est etoffee",
+        banc="banc_demande_detaillee.py",
+        imite="le seuil a zero : « un chat roux » part tel quel a un moteur "
+              "qui invente le reste",
+        rougit="temoin : une demande courte est toujours etoffee",
+        editions=[("serveur.py", brut(
+            '    if mots_ >= DEMANDE_DETAILLEE:',
+            '    if mots_ >= 0:'))]),
+]
+
+
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
@@ -16606,7 +16910,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
              + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES
-             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT + REGLE_PLACARD + MOTEUR_IMPOSSIBLE + MOTEURS_DISPONIBLES + MEDIA_PROGRAMMES + RELECTURE_DIX + MUSIQUE_NEGATIONS + TEMPO_STYLE_AUDIO + ANALYSE_NE_BLOQUE_PAS)
+             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT + REGLE_PLACARD + MOTEUR_IMPOSSIBLE + MOTEURS_DISPONIBLES + MEDIA_PROGRAMMES + RELECTURE_DIX + MUSIQUE_NEGATIONS + TEMPO_STYLE_AUDIO + ANALYSE_NE_BLOQUE_PAS + COURSE_DES_CARTES + FORMES_DU_PLAN + INVENTAIRE_VIVANT + DEMANDE_DETAILLEE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────
