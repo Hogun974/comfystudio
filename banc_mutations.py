@@ -503,8 +503,29 @@ BESOINS = {
     "banc_noms_sorties.py": ["banc_noms_sorties.py"] + fichiers_du_conteneur(),
     # Les formes du plan : il importe serveur.py et rien d'autre du depot.
     "banc_formes_plan.py": ["banc_formes_plan.py"] + fichiers_du_conteneur(),
+    # L'image jointe : il importe serveur.py et rien d'autre du depot — pas
+    # meme aiguilleur.json, il met le classifieur hors jeu en toutes lettres.
+    "banc_image_jointe.py": ["banc_image_jointe.py"] + fichiers_du_conteneur(),
     # Une demande deja detaillee : il importe serveur.py et rien d'autre.
     "banc_demande_detaillee.py": ["banc_demande_detaillee.py"] + fichiers_du_conteneur(),
+    # L'analyse sans objet : il importe serveur.py et rien d'autre du depot.
+    # Depuis la relecture du 10 novembre 2026 il mesure aussi la langue des
+    # demandes : les cinq corpus etiquetes et le banc traduit en quatre langues.
+    "banc_analyse_sans_objet.py": (["banc_analyse_sans_objet.py",
+                                    "corpus_aiguillage.jsonl", "corpus_llm.jsonl",
+                                    "corpus_llm2.jsonl", "banc_aiguillage.jsonl",
+                                    "banc_neuf.jsonl",
+                                    "mesures_langues/banc_langues.py"]
+                                   + fichiers_du_conteneur()),
+    # Le repli par mots-cles : serveur.py, les cinq corpus etiquetes et le banc
+    # traduit sur lesquels il mesure secours() — sans eux il meurt a
+    # l'ouverture.
+    "banc_repli_mots_cles.py": (["banc_repli_mots_cles.py",
+                                 "corpus_aiguillage.jsonl", "corpus_llm.jsonl",
+                                 "corpus_llm2.jsonl", "banc_aiguillage.jsonl",
+                                 "banc_neuf.jsonl",
+                                 "mesures_langues/banc_langues.py"]
+                                + fichiers_du_conteneur()),
     # agent_noeud.py N'ETAIT COPIE PAR AUCUN BANC, et c'est ce qui rendait
     # PERIMEES les deux mutations qui le visaient — « MUTATION PERIMEE,
     # agent_noeud.py n'est pas copie pour banc_repartition.py ». Aucune de ses
@@ -562,6 +583,12 @@ BESOINS = {
     # degenerees d'un modele, et non seulement que la route les porte.
     "banc_cerveaux.py": (["banc_cerveaux.py", "web/admin.html"]
                          + fichiers_du_conteneur()[1:]),
+    # La regle du pret (10 novembre 2026) : il importe serveur.py, et relit
+    # web/admin.html pour la ligne « modele de langage non utilise ». Pas
+    # agent_noeud.py : le banc joue lui-meme le tour de l'agent, par les
+    # vraies routes du studio.
+    "banc_pret.py": (["banc_pret.py", "web/admin.html"]
+                     + fichiers_du_conteneur()[1:]),
     # banc_variantes.py relit web/index.html pour DEUX noms de champ, depuis
     # que le releve de la phrase du journal (RE_DEVIS) a laisse la place a la
     # lecture d'un champ : MARQUE_DEVIS et MARQUE_ARRET_DIFFERE. Sans cette
@@ -2914,6 +2941,670 @@ ADULTE = [
 
 
 # ──────────────────────────────────────────────────────────────────────
+#  garde_fou() — la relecture de la ronde 12 (10 novembre 2026)
+# ──────────────────────────────────────────────────────────────────────
+# Une relecture independante a prouve que le garde-fou laissait passer des
+# formulations ordinaires : l'age en lettres ou a tirets, « petite fille »,
+# « little boy », « ein nacktes Kind », et tout texte ecrit autrement qu'attendu
+# (accents decomposes, espace sans chasse, pleine chasse, « enf4nt »). Chaque
+# garde posee ce jour-la a sa mutation, dans LES DEUX SENS comme la liste
+# ADULTE : la garde qu'on retire (un trou rouvert) et la garde trop gourmande
+# (une demande innocente refusee, ou un mineur lu la ou il n'y en a pas).
+#
+# Elles sont ancrees sur les tables et les motifs, pas sur la liste des
+# lectures : la derniere lecture de _lectures() les defait toutes a la fois, si
+# bien que retirer UNE lecture de la liste ne rouvre rien — et c'est voulu.
+# Trois cas du banc eprouvent l'ordre des lectures a part (« tiret dans un mot
+# accentue », « chiffre et tiret », « tout a la fois »).
+#
+# SENS INVERSE : le banc d'AVANT ne peut pas tourner sur le serveur.py
+# d'aujourd'hui mute — il ne connait aucun de ces cas — et le banc d'aujourd'hui
+# ne peut pas tourner sur le serveur.py d'avant, qui n'a pas _lectures(). La
+# preuve inverse a donc ete prise autrement, et elle est ecrite dans
+# banc_adulte.py : des quatre-vingt-neuf cas « doit etre refuse » ajoutes ce
+# jour-la, le garde_fou() de e192d6e en refusait UN, celui qui est la pour le
+# verifier ; et il ne refusait aucun des temoins « doit passer », ni ne lisait
+# de mineur dans aucun des cinquante textes ou il ne doit pas y en avoir.
+GARDE_FOU_R12 = [
+    # ── la lecture ───────────────────────────────────────────────────────
+    dict(
+        nom="garde_fou() relit le texte tel qu'il arrive",
+        banc="banc_adulte.py",
+        imite="la mise en lectures retiree de garde_fou() : les motifs sont "
+              "intacts, les lectures aussi, et plus personne ne les appelle — "
+              "un « bébé » aux accents decomposes repasse",
+        rougit="NON REFUSE [accents decomposes]",
+        editions=[("serveur.py", brut(
+            '    joint = _lectures(" ".join(t for t in textes if t))',
+            '    joint = " ".join(t for t in textes if t)'))]),
+    dict(
+        nom="adulte() relit le texte tel qu'il arrive",
+        banc="banc_adulte.py",
+        imite="« nude » en pleine chasse repart chez un fournisseur distant",
+        rougit="adulte NON reconnu [pleine chasse]",
+        editions=[("serveur.py", brut(
+            '    if _SEXUEL.search(_lectures(texte)):',
+            '    if _SEXUEL.search(texte or ""):'))]),
+    dict(
+        nom="la forme canonique NFKC est retiree des lectures",
+        banc="banc_adulte.py",
+        imite="les lettres de pleine chasse, cerclees ou grasses ne sont plus "
+              "ramenees a des lettres ordinaires",
+        rougit="NON REFUSE [pleine chasse]",
+        editions=[("serveur.py", brut(
+            'unicodedata.normalize("NFKC", _sans_invisibles(t))',
+            '_sans_invisibles(t)'))]),
+    dict(
+        nom="les caracteres invisibles restent dans le texte lu",
+        banc="banc_adulte.py",
+        imite="une espace sans chasse au milieu du mot, et le motif ne le lit "
+              "plus",
+        rougit="NON REFUSE [espace sans chasse]",
+        editions=[("serveur.py", brut(
+            'unicodedata.normalize("NFKC", _sans_invisibles(t))',
+            'unicodedata.normalize("NFKC", t)'))]),
+    dict(
+        nom="seule la categorie Cf est tenue pour invisible",
+        banc="banc_adulte.py",
+        imite="la « lettre » vide du coreen n'est pas un caractere de format : "
+              "c'est une lettre pour Unicode, et elle coupe le mot sans se voir",
+        rougit="NON REFUSE [lettre vide du coreen]",
+        editions=[("serveur.py", brut(
+            '                   and c not in _INVISIBLES_HORS_CF' + chr(10), ""))]),
+    dict(
+        nom="les signes poses sur les lettres ne sont plus retires",
+        banc="banc_adulte.py",
+        imite="un trema de trop sur une lettre qui n'en porte jamais : la "
+              "composition le garde, et « enfant » ne se lit plus",
+        rougit="NON REFUSE [trema de trop]",
+        editions=[("serveur.py", brut(
+            '        tout = _sans_marques(t)', '        tout = t'))]),
+    dict(
+        nom="le texte brut n'est plus la premiere lecture",
+        banc="banc_adulte.py",
+        imite="la forme canonique deplie le signe de marque deposee en « TM », "
+              "colle au mot : un texte refuse la veille passe — la correction "
+              "aurait ouvert un trou",
+        rougit="NON REFUSE [signe de marque]",
+        editions=[("serveur.py", brut(
+            '    vues = [brut_, t, ', '    vues = [t, '))]),
+    dict(
+        nom="les chiffres ne sont plus rendus a leurs lettres",
+        banc="banc_adulte.py",
+        imite="« enf4nt » : la substitution la plus courante de toutes",
+        rougit="NON REFUSE [chiffre pour lettre]",
+        editions=[("serveur.py", brut(
+            '        return j.translate(table)', '        return j'))]),
+    dict(
+        nom="le « 1 » ne vaut plus « i »",
+        banc="banc_adulte.py",
+        imite="une seule table, celle ou le 1 est un « l » : « ch1ld » se lit "
+              "« chlld »",
+        rougit="NON REFUSE [un pour i]",
+        editions=[("serveur.py", brut(
+            '_CHIFFRES_I = str.maketrans("013457", "oieast")',
+            '_CHIFFRES_I = str.maketrans("013457", "oleast")'))]),
+    dict(
+        nom="le « 1 » ne vaut plus « l »",
+        banc="banc_adulte.py",
+        imite="une seule table, celle ou le 1 est un « i » : « 1oli » se lit "
+              "« ioli »",
+        rougit="NON REFUSE [un pour l]",
+        editions=[("serveur.py", brut(
+            '_CHIFFRES_L = str.maketrans("013457", "oleast")',
+            '_CHIFFRES_L = str.maketrans("013457", "oieast")'))]),
+    dict(
+        nom="un chiffre est rendu des la premiere lettre du jeton",
+        banc="banc_adulte.py",
+        imite="la garde des deux lettres retiree : un code de couleur, « #4d0 », "
+              "se lit « ado »",
+        rougit="MINEUR LU A TORT : « fond de couleur #4d0 »",
+        editions=[("serveur.py", brut(
+            '        if j.isalpha() or sum(c.isalpha() for c in j) < 2:',
+            '        if j.isalpha():'))]),
+    dict(
+        nom="l'arobase n'est plus lue comme un « a »",
+        banc="banc_adulte.py",
+        imite="« enf@nt »",
+        rougit="NON REFUSE [arobase pour a]",
+        editions=[("serveur.py", brut(
+            r'_SIGNE_ENTRE_LETTRES = re.compile(r"(?<=[^\W\d_])[@$](?=[^\W\d_])")',
+            r'_SIGNE_ENTRE_LETTRES = re.compile(r"(?<=[^\W\d_])[$](?=[^\W\d_])")'))]),
+    dict(
+        nom="les sosies cyrilliques ne sont plus ramenes au latin",
+        banc="banc_adulte.py",
+        imite="un « c » cyrillique en tete de « child » : identique a l'oeil",
+        rougit="NON REFUSE [sosie cyrillique]",
+        editions=[("serveur.py", brut('t.translate(_SOSIES))', 't)'))]),
+    dict(
+        nom="le tiret qui coupe un mot n'est plus retire",
+        banc="banc_adulte.py",
+        imite="« en-fant », et avec lui « under-age », « school-girl »",
+        rougit="NON REFUSE [mot coupe d'un tiret]",
+        editions=[("serveur.py", brut(
+            r'[-\U00002010-\U00002015.\xb7\U00002022](?=[^\W\d_])")',
+            r'[\U00002010-\U00002015.\xb7\U00002022](?=[^\W\d_])")'))]),
+    dict(
+        nom="un mot epele n'est plus recolle",
+        banc="banc_adulte.py",
+        imite="« e n f a n t » : la suite exigee passe de trois caracteres a "
+              "dix, et aucun mot n'en a autant",
+        rougit="NON REFUSE [mot epele]",
+        editions=[("serveur.py", brut(
+            r'(?:[ ._*/|\-\xb7][^\W_]){2,}(?![^\W_])")',
+            r'(?:[ ._*/|\-\xb7][^\W_]){9,}(?![^\W_])")'))]),
+    dict(
+        nom="les lectures gardent leurs espaces multiples",
+        banc="banc_adulte.py",
+        imite="les assertions de duree attendent UNE espace : avec deux, "
+              "« depuis  huit ans » redevient un age",
+        rougit="MINEUR LU A TORT : « un couple marie depuis  huit ans »",
+        editions=[("serveur.py", brut(
+            'dict.fromkeys(_BLANCS.sub(" ", v) for v in vues)',
+            'dict.fromkeys(vues)'))]),
+    # ── les ages ─────────────────────────────────────────────────────────
+    dict(
+        nom="le francais ne lit plus « huit » ans",
+        banc="banc_adulte.py",
+        imite="l'age en lettres : la forme la plus courante en francais ecrit",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « une fille de huit ans, nue »",
+        editions=[("serveur.py", brut(
+            r'fr=r"(?:deux|trois|quatre|cinq|six|sept|huit|neuf|',
+            r'fr=r"(?:deux|trois|quatre|cinq|six|sept|neuf|'))]),
+    dict(
+        nom="l'anglais ne lit plus « eight » year old",
+        banc="banc_adulte.py",
+        imite="l'age en lettres, en anglais",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « a naked eight year old girl »",
+        editions=[("serveur.py", brut(
+            r'en=r"(?:one|two|three|four|five|six|seven|eight|nine|',
+            r'en=r"(?:one|two|three|four|five|six|seven|nine|'))]),
+    dict(
+        nom="l'allemand ne lit plus « acht » Jahre",
+        banc="banc_adulte.py",
+        imite="l'age en lettres, en allemand : « von acht Jahren »",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « ein nacktes Mädchen von acht Jahren »",
+        editions=[("serveur.py", brut(
+            r'nf|sechs|sieben|acht|neun|zehn|elf"',
+            r'nf|sechs|sieben|neun|zehn|elf"'))]),
+    dict(
+        nom="l'espagnol ne lit plus « ocho » años",
+        banc="banc_adulte.py",
+        imite="l'age en lettres, en espagnol",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « una chica desnuda de ocho años »",
+        editions=[("serveur.py", brut(
+            r'es=r"(?:tres|cuatro|cinco|seis|siete|ocho|nueve|',
+            r'es=r"(?:tres|cuatro|cinco|seis|siete|nueve|'))]),
+    dict(
+        nom="le portugais ne lit plus « oito » anos",
+        banc="banc_adulte.py",
+        imite="l'age en lettres, en portugais",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « uma garota nua de oito anos »",
+        editions=[("serveur.py", brut(
+            r'|quatro|sete|oito|nove|dez|', r'|quatro|sete|nove|dez|'))]),
+    dict(
+        nom="l'italien ne lit plus « otto » anni",
+        banc="banc_adulte.py",
+        imite="l'age en lettres, en italien",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « una ragazza nuda di otto anni »",
+        editions=[("serveur.py", brut(
+            r'it=r"(?:due|tre|quattro|cinque|sei|sette|otto|nove|',
+            r'it=r"(?:due|tre|quattro|cinque|sei|sette|nove|'))]),
+    dict(
+        nom="« dos años » n'a plus sa ligne a lui",
+        banc="banc_adulte.py",
+        imite="la ligne de « dos » retiree, parce qu'elle a l'air d'un doublon "
+              "de la ligne espagnole : un enfant de deux ans n'a plus d'age",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « una chica desnuda de dos años »",
+        editions=[("serveur.py", brut('    dos=r"dos",', '    dos=r"dosx",'))]),
+    dict(
+        nom="« dos anos » sans tilde est lu comme un age",
+        banc="banc_adulte.py",
+        imite="la simplification evidente — « a[ñn]os » comme partout ailleurs "
+              "— prend le portugais « dos anos 50 » pour deux ans",
+        rougit="MINEUR LU A TORT : « a moda dos anos 50 »",
+        editions=[("serveur.py", brut(
+            r'unite=r"añ(?:os?|itos?)",', r'unite=r"a[ñn](?:os?|itos?)",'))]),
+    dict(
+        nom="le second mot d'un nombre compose a tiret est lu seul",
+        banc="banc_adulte.py",
+        imite="« vingt-huit ans » : on y lit « huit ans », et une femme de "
+              "vingt-huit ans devient une enfant",
+        rougit="MINEUR LU A TORT : « une femme de vingt-huit ans »",
+        editions=[("serveur.py", brut(
+            '")" + _PAS_DANS_UN_COMPOSE + _pas_apres(*composes)',
+            '")" + _pas_apres(*composes)'))]),
+    dict(
+        nom="le second mot d'un nombre compose sans tiret est lu seul",
+        banc="banc_adulte.py",
+        imite="« vingt huit ans », ecrit sans son tiret",
+        rougit="MINEUR LU A TORT : « une femme de vingt huit ans »",
+        editions=[("serveur.py", brut(
+            '_PAS_DANS_UN_COMPOSE + _pas_apres(*composes)' + chr(10),
+            '_PAS_DANS_UN_COMPOSE' + chr(10)))]),
+    dict(
+        nom="un age en lettres est lu meme apres « depuis »",
+        banc="banc_adulte.py",
+        imite="la garde des durees retiree : « marie depuis huit ans » dit un "
+              "age",
+        rougit="MINEUR LU A TORT : « un couple marie depuis huit ans »",
+        editions=[("serveur.py", brut(
+            '            + _pas_apres(*durees) + nombre + _ENTRE + unite',
+            '            + nombre + _ENTRE + unite'))]),
+    dict(
+        nom="un age en lettres est lu meme devant « plus tard »",
+        banc="banc_adulte.py",
+        imite="la garde des suites retiree : « deux ans plus tard » dit un age",
+        rougit="MINEUR LU A TORT : « deux ans plus tard »",
+        editions=[("serveur.py", brut(
+            '            + "(?!" + _ENTRE + "(?:" + suites + "))")',
+            '            )'))]),
+    dict(
+        nom="l'assertion de duree lit deux lettres au lieu d'un mot",
+        banc="banc_adulte.py",
+        imite="sans frontiere devant le mot, « en » (« en huit ans ») mord sur "
+              "« bien » : « elle a bien huit ans » n'est plus un age",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « elle a bien huit ans, toute nue »",
+        editions=[("serveur.py", brut(
+            r'return "".join(r"(?<!\b" + m + " )" for m in mots)',
+            r'return "".join(r"(?<!" + m + " )" for m in mots)'))]),
+    dict(
+        nom="l'age anglais ne se lit plus a travers les tirets",
+        banc="banc_adulte.py",
+        imite="« 8-year-old », la graphie NORMALE de l'anglais, passait : "
+              "seule l'espace etait admise entre le nombre et « year »",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « a nude 8-year-old girl »",
+        editions=[("serveur.py", brut(
+            r'    _AGE_ANGLAIS + _COLLE + r"(?:years?|yrs?)" + _COLLE + r"olds?"',
+            r'    _AGE_ANGLAIS + r"\s*(?:years?|yrs?)\s*olds?"'))]),
+    dict(
+        nom="« 8yo » n'est plus un age",
+        banc="banc_adulte.py",
+        imite="l'abreviation des moteurs a etiquettes et des annonces",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « nude girl, 8yo »",
+        editions=[("serveur.py", brut(
+            r'    _AGE_EN_CHIFFRES + _COLLE + r"y\.?/?o",' + chr(10), ""))]),
+    dict(
+        nom="« aged 8 » n'est plus un age",
+        banc="banc_adulte.py",
+        imite="l'age dit sans « years old »",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « nude girl aged 8 »",
+        editions=[("serveur.py", brut(
+            r'    + r"age[ds]?[\s_:-]+(?:of"', r'    + r"agez[ds]?[\s_:-]+(?:of"'))]),
+    dict(
+        nom="« Dragon Age 2 » dit un enfant de deux ans",
+        banc="banc_adulte.py",
+        imite="le titre retire de la garde : « age » suivi d'un chiffre n'est "
+              "pas toujours un age, et ce studio dessine des jeux",
+        rougit="MINEUR LU A TORT : « Dragon Age 2 »",
+        editions=[("serveur.py", brut(
+            '    _pas_apres("dragon", "ice", "stone",',
+            '    _pas_apres("ice", "stone",'))]),
+    dict(
+        nom="un whisky de douze ans d'age anglais est un enfant",
+        banc="banc_adulte.py",
+        imite="la garde de la bouteille retiree des formes neuves : « a "
+              "twelve-year-old scotch »",
+        rougit="MINEUR LU A TORT : « a twelve-year-old scotch »",
+        editions=[("serveur.py", brut(
+            'r"olds?"' + chr(10) + '    + "(?!" + _ENTRE + _BOUTEILLE + ")",',
+            'r"olds?",'))]),
+    dict(
+        nom="« twenty eight year old » est lu « eight year old »",
+        banc="banc_adulte.py",
+        imite="la dizaine retiree de la garde anglaise des nombres composes",
+        rougit="MINEUR LU A TORT : « a twenty eight year old woman »",
+        editions=[("serveur.py", brut(
+            '    + _pas_apres("twenty", "thirty",', '    + _pas_apres("thirty",'))]),
+    dict(
+        nom="l'allemand s'arrete de nouveau a « alt »",
+        banc="banc_adulte.py",
+        imite="« 8 Jahre altes Mädchen » : l'adjectif se decline, et la forme "
+              "d'avant ne lisait que « alt » suivi d'une frontiere",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « ein nacktes 8 Jahre altes Mädchen »",
+        editions=[("serveur.py", brut(
+            r'r"(?:alt|jung)(?:e[rsnm]?)?"', r'r"(?:alt|jung)"'))]),
+    dict(
+        nom="« achtjährig » n'est plus un age",
+        banc="banc_adulte.py",
+        imite="l'adjectif d'age allemand, en lettres comme en chiffres",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « ein nacktes achtjähriges Mädchen »",
+        editions=[("serveur.py", brut(
+            r'    + r"j[äa]hrig\w*",', r'    + r"jx[äa]hrig\w*",'))]),
+    dict(
+        nom="« von 8 Jahren » n'est plus un age",
+        banc="banc_adulte.py",
+        imite="l'age allemand dit par « von » ou « mit »",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « ein nacktes Mädchen von 8 Jahren »",
+        editions=[("serveur.py", brut(
+            r'    + r"(?:von|mit)" + _ENTRE + _AGE_ALLEMAND',
+            r'    + r"(?:vonx|mitx)" + _ENTRE + _AGE_ALLEMAND'))]),
+    dict(
+        nom="une peine de dix ans est un enfant de dix ans",
+        banc="banc_adulte.py",
+        imite="la garde allemande des durees retiree : « eine Haftstrafe von "
+              "zehn Jahren »",
+        rougit="MINEUR LU A TORT : « eine Haftstrafe von zehn Jahren »",
+        editions=[("serveur.py", brut(
+            '    _pas_apres("laufe", "verlauf", "zeitraum", "dauer", "haft", "strafe",'
+            + chr(10) +
+            '               "haftstrafe", "freiheitsstrafe", "garantie", "innerhalb",'
+            + chr(10) + '               "abstand", "pause")' + chr(10)
+            + '    + r"(?:von|mit)"', '    r"(?:von|mit)"'))]),
+    dict(
+        nom="les locutions ne se lisent plus a travers un souligne",
+        banc="banc_adulte.py",
+        imite="les moteurs a etiquettes collent par des soulignes : "
+              "« 8_years_old », « little_girl »",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « nude, little_girl »",
+        editions=[("serveur.py", brut(
+            r'_ENTRE = r"[\s_-]+"', r'_ENTRE = r"[\s-]+"'))]),
+    # ── les noms ─────────────────────────────────────────────────────────
+    dict(
+        nom="« petite fille » n'est plus un mineur",
+        banc="banc_adulte.py",
+        imite="la locution la plus courante du francais pour dire une enfant",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « une petite fille nue »",
+        editions=[("serveur.py", brut(
+            r'    r"p(?:e|[' + "'" + r'\U00002019])?tite?s?" + _ENTRE + r"(?:filles?|gar[cç]ons?)",'
+            + chr(10), ""))]),
+    dict(
+        nom="« little boy » n'est plus un mineur",
+        banc="banc_adulte.py",
+        imite="la meme locution en anglais",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « a naked little boy »",
+        editions=[("serveur.py", brut(
+            r'    r"(?:little|small|young)" + _ENTRE + r"(?:girl|boy)s?",'
+            + chr(10), ""))]),
+    dict(
+        nom="« teenage » n'est plus un mineur",
+        banc="banc_adulte.py",
+        imite="« teen » s'arrete avant « age » et la racine d'avant exigeait "
+              "« teenager » : « a nude teenage girl » passait",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « a nude teenage girl »",
+        editions=[("serveur.py", brut(
+            '    r"teenage", r"newborn",', '    r"newborn",'))]),
+    dict(
+        nom="« baby » n'est plus un mineur",
+        banc="banc_adulte.py",
+        imite="le mot anglais le plus simple, absent du motif",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « a naked baby »",
+        editions=[("serveur.py", brut('    r"baby(?!"', '    r"babyx(?!"'))]),
+    dict(
+        nom="« baby doll » est un bebe",
+        banc="banc_adulte.py",
+        imite="« baby » sans sa garde : une nuisette fait refuser une demande "
+              "adulte",
+        rougit="MINEUR LU A TORT : « baby doll lingerie »",
+        editions=[("serveur.py", brut(
+            r'    r"baby(?!" + _COLLE + r"(?:doll|', r'    r"baby(?!" + _COLLE + r"(?:'))]),
+    dict(
+        nom="« un beau gosse » est un enfant",
+        banc="banc_adulte.py",
+        imite="« gosse » sans sa garde : un adulte seduisant est refuse torse "
+              "nu",
+        rougit="MINEUR LU A TORT : « un beau gosse »",
+        editions=[("serveur.py", brut(
+            '    _pas_apres("beau", "beaux", "belle", "belles") + r"gosses?",',
+            '    r"gosses?",'))]),
+    dict(
+        nom="les etiquettes des moteurs a etiquettes disparaissent",
+        banc="banc_adulte.py",
+        imite="« youjo », « kodomo » : le vocabulaire des moteurs danbooru",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « youjo, nude »",
+        editions=[("serveur.py", brut(
+            '    r"kodomo", r"youjo", r"randoseru",' + chr(10), ""))]),
+    dict(
+        nom="« Kind » n'est plus lu apres un determinant allemand",
+        banc="banc_adulte.py",
+        imite="« ein Kind in sexy Pose » : le determinant est seul a dire que "
+              "le texte est allemand",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « ein Kind in sexy Pose »",
+        editions=[("serveur.py", brut(
+            r'|unschuldiges)" + _ENTRE + r"kind",',
+            r'|unschuldiges)" + _ENTRE + r"kindx",'))]),
+    dict(
+        nom="« Kind » n'est plus lu devant un mot allemand du nu",
+        banc="banc_adulte.py",
+        imite="« Kind, nackt » : une paire de termes, sans determinant",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « Kind, nackt »",
+        editions=[("serveur.py", brut(
+            r'    r"kind(?=[\s\S]{0,300}?" + _BORD + _NU_ALLEMAND + ")",' + chr(10), ""))]),
+    dict(
+        nom="« Kind » n'est plus lu apres un mot allemand du nu",
+        banc="banc_adulte.py",
+        imite="« nackt, Kind » : la meme paire dans l'autre ordre",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « nackt, Kind »",
+        editions=[("serveur.py", brut(
+            r'    _NU_ALLEMAND + r"[\s\S]{0,300}?" + _BORD + r"kind",' + chr(10), ""))]),
+    dict(
+        nom="« kind » entre dans le motif sans son contexte",
+        banc="banc_adulte.py",
+        imite="la simplification evidente : « kind » est un mot anglais, et "
+              "« a kind and sexy smile » est refuse",
+        rougit="REFUSE A TORT : « a kind and sexy smile, adult woman »",
+        editions=[("serveur.py", brut(
+            '    r"kindern", r"kindes",', '    r"kind", r"kindern", r"kindes",'))]),
+    dict(
+        nom="le datif « Kindern » n'est plus lu",
+        banc="banc_adulte.py",
+        imite="« mit nackten Kindern » : « kinder » est un mot strict, il "
+              "s'arrete avant le « n »",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « mit nackten Kindern »",
+        editions=[("serveur.py", brut(
+            '    r"kindern", r"kindes",', '    r"kindes",'))]),
+    dict(
+        nom="« eine kleine junge Frau » est un petit garcon",
+        banc="banc_adulte.py",
+        imite="« kleiner Junge » sans sa garde : « junge » est aussi "
+              "l'adjectif, et une femme menue est refusee",
+        rougit="MINEUR LU A TORT : « eine kleine junge Frau »",
+        editions=[("serveur.py", brut(
+            r'    r"|bub(?:e|en)?)(?!" + _ENTRE + r"(?:frau|dame|',
+            r'    r"|bub(?:e|en)?)(?!" + _ENTRE + r"(?:dame|'))]),
+    dict(
+        nom="« una nina » sans tilde n'est plus lue",
+        banc="banc_adulte.py",
+        imite="ce que tape un clavier sans « ñ »",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « una nina desnuda »",
+        editions=[("serveur.py", brut(
+            '    + r"nin[oa]",', '    + r"ninx[oa]",'))]),
+    dict(
+        nom="« nina » entre dans le motif sans son determinant",
+        banc="banc_adulte.py",
+        imite="la simplification evidente : « Nina » est un prenom, et une "
+              "adulte qui le porte est refusee",
+        rougit="REFUSE A TORT : « Nina, une femme adulte, portrait nu »",
+        editions=[("serveur.py", brut(
+            '    r"ninas", r"crí[oa]s?",', '    r"nina", r"ninas", r"crí[oa]s?",'))]),
+    dict(
+        nom="« bimba » n'est plus un mineur",
+        banc="banc_adulte.py",
+        imite="la petite fille, en italien courant",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « una bimba nuda »",
+        editions=[("serveur.py", brut(
+            '    r"bimb[aie]", r"bimbett[oaie]",', '    r"bimbett[oaie]",'))]),
+    dict(
+        nom="« bimbo » entre avec « bimba »",
+        banc="banc_adulte.py",
+        imite="la racine complete : en anglais « a bimbo » est une adulte",
+        rougit="MINEUR LU A TORT : « a bimbo »",
+        editions=[("serveur.py", brut('r"bimb[aie]"', 'r"bimb[oaie]"'))]),
+    dict(
+        nom="« moleque » n'est plus un mineur",
+        banc="banc_adulte.py",
+        imite="le gamin, en portugais du Bresil",
+        rougit="NON REFUSE (rien ne matche « mineur ») : « um moleque nu »",
+        editions=[("serveur.py", brut(
+            '    r"moleque", r"pirralh"]', '    r"pirralh"]'))]),
+    dict(
+        nom="« le nouveau ne vient pas » est un nouveau-ne",
+        banc="banc_adulte.py",
+        imite="la forme sans accent ni tiret admise : une phrase ordinaire dit "
+              "un nourrisson",
+        rougit="MINEUR LU A TORT : « le nouveau ne vient pas »",
+        editions=[("serveur.py", brut(
+            r'    r"nouveaux?(?:-n[ée]e?s?|[\s_]née?s?)",',
+            r'    r"nouveaux?[\s_-]?n[ée]e?s?",'))]),
+    dict(
+        nom="« Kindergärtnerin » est une enfant de maternelle",
+        banc="banc_adulte.py",
+        imite="la lecture sans accents amene l'institutrice allemande sur le "
+              "mot anglais « kindergartner »",
+        rougit="MINEUR LU A TORT : « eine Kindergärtnerin »",
+        editions=[("serveur.py", brut(
+            'r"kindergart(?:e)?ner(?!in)"', 'r"kindergart(?:e)?ner"'))]),
+    # ── « nudo » ─────────────────────────────────────────────────────────
+    dict(
+        nom="l'italien « nudo » redevient invisible",
+        banc="banc_adulte.py",
+        imite="« un bambino nudo » passait quand « una bambina nuda » etait "
+              "refusee : le masculin manquait",
+        rougit="NON REFUSE (rien ne matche « sexuel ») : « un bambino nudo »",
+        editions=[("serveur.py", brut(
+            'r"esplicit[oa]",' + chr(10) + '          _NUDO_ITALIEN])',
+            'r"esplicit[oa]"])'))]),
+    dict(
+        nom="« nudo » compte meme apres un determinant espagnol",
+        banc="banc_adulte.py",
+        imite="la garde du determinant retiree : « un niño hace un nudo » est "
+              "une demande adulte, et refusee",
+        rougit="faux positif : « un niño hace un nudo » pris pour « nudo »",
+        editions=[("serveur.py", brut(
+            '    _pas_apres("un", "el", "del", "al", "este", "ese", "su", "mi", "tu",'
+            + chr(10)
+            + '               "cada", "otro", "doble", "gran", "il", "a", "hace", "hacer")'
+            + chr(10) + '    + r"nudo(?!"', '    r"nudo(?!"'))]),
+    dict(
+        nom="« nudo de corbata » compte comme un nu",
+        banc="banc_adulte.py",
+        imite="la garde de la suite retiree : le noeud nomme par ce qui le suit",
+        rougit="faux positif : « nudo de corbata » pris pour « nudo »",
+        editions=[("serveur.py", brut(
+            r'(?:marinero|de|del|en|gordiano|', r'(?:marinero|del|en|gordiano|'))]),
+    # ── les mots que seul le garde-fou lit ───────────────────────────────
+    dict(
+        nom="garde_fou() ne lit plus que le motif d'adulte()",
+        banc="banc_adulte.py",
+        imite="le second motif retire de la conjonction : trente paires sur "
+              "trente repassent, « child, blowjob » en tete",
+        rougit="NON REFUSE (rien ne matche « sexuel ») : « child, blowjob »",
+        editions=[("serveur.py", brut(
+            '    if _MINEUR.search(joint) and (_SEXUEL.search(sans_locutions)' + chr(10)
+            + '                                  or _SEXUEL_GARDE.search(sans_locutions)):',
+            '    if _MINEUR.search(joint) and _SEXUEL.search(sans_locutions):'))]),
+    dict(
+        nom="un refus du a un mot cru conseille d'ecrire « fille ou garcon »",
+        banc="banc_adulte.py",
+        imite="les mots lus ne sont comptes que dans _SEXUEL : pour « child, "
+              "blowjob » l'ensemble est vide, et l'ensemble vide est inclus "
+              "dans celui du genre",
+        rougit="REFUS PRIS POUR UNE QUESTION DE GENRE : « child, blowjob »",
+        editions=[("serveur.py", brut(
+            'for motif_ in (_SEXUEL, _SEXUEL_GARDE)', 'for motif_ in (_SEXUEL,)'))]),
+    dict(
+        nom="« deshabille » n'est plus lu a cote d'un enfant",
+        banc="banc_adulte.py",
+        imite="le voisin le plus proche de « nu », absent de _SEXUEL",
+        rougit="NON REFUSE (rien ne matche « sexuel ») : « une enfant déshabillée »",
+        editions=[("serveur.py", brut(
+            '        r"d[ée]shabill", r"d[ée]nud",', '        r"d[ée]nud",'))]),
+    dict(
+        nom="le chat anglais fait refuser l'enfant qui le caresse",
+        banc="banc_adulte.py",
+        imite="« pussy » sans sa garde : « a child petting a pussy cat »",
+        rougit="REFUSE A TORT : « a child petting a pussy cat »",
+        editions=[("serveur.py", brut(
+            r'r"puss(?:y|ies)(?!" + _COLLE + r"(?:cat|willow|foot))"',
+            r'r"puss(?:y|ies)"'))]),
+    dict(
+        nom="un enfant sans vetements chauds est un enfant nu",
+        banc="banc_adulte.py",
+        imite="« sans vetements » sans la garde de ce qui suit : une affiche "
+              "d'entraide est refusee",
+        rougit="REFUSE A TORT : « un enfant sans vêtements chauds dans la neige »",
+        editions=[("serveur.py", brut(
+            r'|clothes|clothing)(?!" + _ENTRE + r"(?:chauds?|d[',
+            r'|clothes|clothing)(?!" + _ENTRE + r"(?:d['))]),
+    dict(
+        nom="« kinky » entre dans les mots du garde-fou",
+        banc="banc_adulte.py",
+        imite="un mot ecarte expres : il dit aussi des cheveux crepus, et « a "
+              "child with kinky hair » serait refuse",
+        rougit="REFUSE A TORT : « a child with kinky hair »",
+        editions=[("serveur.py", brut(
+            '    mots=[r"lewd", r"ecchi",', '    mots=[r"kinky", r"lewd", r"ecchi",'))]),
+    dict(
+        nom="« viol » devient une racine",
+        banc="banc_adulte.py",
+        imite="la racine prend « violon », « violet », « violence » : un "
+              "enfant qui joue du violon est refuse",
+        rougit="REFUSE A TORT : « un enfant joue du violon »",
+        editions=[("serveur.py", brut('r"viols?", ', r'r"viol\w*", '))]),
+    # ── la ou « nu » ne dit pas la nudite ────────────────────────────────
+    # Dans les deux sens : l'exception qu'on retire (une illustration
+    # ordinaire refusee), et l'exception qui deborde (elle avale un « nue »
+    # qui n'est pas le sien).
+    dict(
+        nom="« pieds nus » compte de nouveau pour la moitie sexuelle",
+        banc="banc_adulte.py",
+        imite="les locutions ne sont plus retirees avant la lecture : une "
+              "petite fille pieds nus sur la plage est refusee, comme l'etait "
+              "deja « un enfant pieds nus » avant la relecture",
+        rougit="REFUSE A TORT : « une petite fille pieds nus sur la plage »",
+        editions=[("serveur.py", brut(
+            '    sans_locutions = _sans_locutions(joint)',
+            '    sans_locutions = joint'))]),
+    dict(
+        nom="une locution blanchit toute la phrase",
+        banc="banc_adulte.py",
+        imite="l'exception ecrite a l'envers — « s'il y a une locution, le nu "
+              "ne compte pas » au lieu de « la locution ne compte pas » : "
+              "« petite fille nue, pieds nus » passe, par son « pieds nus »",
+        rougit="NON REFUSE, une locution a blanchi la phrase : « petite fille nue, pieds nus »",
+        editions=[("serveur.py", brut(
+            '    sans_locutions = _sans_locutions(joint)',
+            '    sans_locutions = "" if _NU_SANS_NUDITE.search(joint) else joint'))]),
+    dict(
+        nom="une locution coordonnee a une partie du corps est retiree quand meme",
+        banc="banc_adulte.py",
+        imite="la garde de la coordination retiree : dans « torse et pieds "
+              "nus » l'adjectif vaut aussi pour le torse, et ce que « torse "
+              "nu » faisait refuser passe — la limite recule",
+        rougit="NON REFUSE, une locution a blanchi la phrase : « une petite fille torse et pieds nus »",
+        editions=[("serveur.py", brut(
+            '        if lie and ("," not in lie.group(1)',
+            '        if False and lie and ("," not in lie.group(1)'))]),
+    dict(
+        nom="une apposition apres un nom du corps garde sa locution",
+        banc="banc_adulte.py",
+        imite="la virgule sans liaison traitee comme une coordination : « un "
+              "enfant a plat ventre, pieds nus dans l'herbe » est refuse",
+        rougit="REFUSE A TORT : « un enfant a plat ventre, pieds nus dans l'herbe »",
+        editions=[("serveur.py", brut(
+            '        if lie and ("," not in lie.group(1)' + chr(10)
+            + '                    or _UNE_LIAISON.search(lie.group(1))):',
+            '        if lie:'))]),
+    dict(
+        nom="l'accord de « pieds nus » n'est plus exige",
+        banc="banc_adulte.py",
+        imite="l'adjectif admis a toutes ses formes : « pieds nue » est avale, "
+              "alors que « nue » y dit la fillette et non ses pieds",
+        rougit="NON REFUSE, une locution a blanchi la phrase : « une petite fille pieds nue »",
+        editions=[("serveur.py", brut(
+            r'r"pieds?[\s_-]nus?|bras[\s_-]nus?|', r'r"pieds?[\s_-]nue?s?|bras[\s_-]nus?|'))]),
+    dict(
+        nom="« nu pieds » sans tiret est pris pour « nu-pieds »",
+        banc="banc_adulte.py",
+        imite="le tiret rendu facultatif : « un enfant nu pieds dans l'eau » — "
+              "nu, les pieds dans l'eau — passe",
+        rougit="NON REFUSE, une locution a blanchi la phrase : « un enfant nu pieds dans l'eau »",
+        editions=[("serveur.py", brut(
+            r'r"|nus?-pieds?|nu-t[êe]te|', r'r"|nus?[\s-]pieds?|nu-t[êe]te|'))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
 #  verifier_formulations.py — le dernier banc sans mutation
 # ──────────────────────────────────────────────────────────────────────
 # Le plus vieux banc du depot, 64 formulations, et le seul jamais eprouve. Ce
@@ -3002,8 +3693,14 @@ FORMULATIONS = [
               "couleurs » partait en description. Le raccourci de lecture est "
               "place AVANT le detourage et l'agrandissement — ce qu'il avale, "
               "aucun autre ne le voit, et l'utilisateur recoit un paragraphe au "
-              "lieu de l'image qu'il demandait",
-        rougit="« analyse cette photo et corrige les couleurs »",
+              "lieu de l'image qu'il demandait. DEPUIS LE 10 NOVEMBRE 2026 la "
+              "phrase d'origine ne mesure plus cette liste : « et corrige » "
+              "est un imperatif en tete de proposition, et "
+              "ordonne_une_transformation() l'arrete avant elle — la mutation "
+              "restait verte. « tu eclaircis » n'est pas a une place "
+              "d'imperatif, et la phrase tient en une proposition "
+              "(une_seule_lecture) : elle ne franchit que _PAS_LIRE",
+        rougit="« explique pourquoi tu eclaircis un peu ici »",
         editions=[("serveur.py", brut(
             r'    r"|\b(corrige|supprime|efface|recadre|eclairci[st]?|assombri[st]?|floute?s?|"'
             + chr(10)
@@ -3075,8 +3772,13 @@ FORMULATIONS = [
               "seconde garde le voit deja — le piege des gardes qui se "
               "recouvrent, pour la quatrieme fois. « vire » n'est dans aucune "
               "des deux listes de _PAS_LIRE : la phrase ne franchit alors QUE "
-              "la garde d'ambiguite, et c'est elle seule qu'on mesure ici",
-        rougit="« decris cette image puis vire le fond »",
+              "la garde d'ambiguite, et c'est elle seule qu'on mesure ici. ET "
+              "UNE CINQUIEME FOIS le 10 novembre 2026 : « puis vire » est un "
+              "ordre de retrait, que ordonne_une_transformation() arrete "
+              "desormais avant la garde d'ambiguite — la mutation restait "
+              "verte. « sur fond transparent » n'ordonne rien, n'ouvre pas de "
+              "seconde proposition et ne reveille que le detourage",
+        rougit="« decris cette image sur fond transparent »",
         editions=[("serveur.py", brut(
             "    if not _LIRE.search(nu):" + chr(10)
             + "        return False" + chr(10)
@@ -7630,11 +8332,16 @@ CONSOLE_SUITE = [
               "delai complet — trois minutes pendant lesquelles la console "
               "semble figee, pour une reponse qu'on connaissait d'avance",
         rougit="une machine qui ne repond pas rend 409",
+        # RE-ANCREE le 10 novembre 2026 : le garde ne lit plus « repond » seul,
+        # il passe par cerveau_ferme() — la regle du pret, qui refuse aussi la
+        # pause et l'agent muet. C'est toujours lui que cette mutation retire.
         editions=[
             ("serveur.py", brut(
-                '    if not e.get("repond"):\n'
-                '        return web.json_response({"erreur": "cette machine ne repond pas"},\n'
-                "                                 status=409)\n",
+                "    ferme_essai_ = cerveau_ferme(ident)\n"
+                "    if ferme_essai_:\n"
+                "        return web.json_response(\n"
+                '            {"erreur": dire_cerveau_ferme(ident, ferme_essai_)\n'
+                "                       + \" : l'essai n'est pas lance\"}, status=409)\n",
                 "")),
         ]),
     dict(
@@ -11826,9 +12533,10 @@ GARDE_IMAGE = [
         imite="la vision juge, et personne n'ecoute : l'image adulte part quand "
               "meme chez le fournisseur",
         rougit="une image jugee adulte ne part pas au nuage",
+        # RE-ANCREE le 10 novembre 2026 : la branche « retenue » la precede.
         editions=[("serveur.py", brut(
-            '            if verdict != "saine" and verdict != "non jugee":',
-            '            if False:'))]),
+            '            elif verdict != "saine" and verdict != "non jugee":',
+            '            elif False:'))]),
     dict(
         nom="un jugement illisible laisse sortir l'image",
         banc="banc_refaire.py",
@@ -11846,12 +12554,12 @@ GARDE_IMAGE = [
               "modele : un studio sans carte, tout au nuage, ne peut plus "
               "retoucher une seule image",
         rougit="sans aucun modele de vision joignable, l'image part",
+        # RE-ANCREE le 10 novembre 2026 : le « except » juge d'abord si la
+        # regle du pret a ferme le modele qui sait voir (« retenue »).
         editions=[("serveur.py", brut(
-            "    except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError):" + chr(10)
-            + '        return "non jugee"' + chr(10) + "    try:" + chr(10)
+            '        return "non jugee"' + chr(10) + "    try:" + chr(10)
             + "        adulte_",
-            "    except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError):" + chr(10)
-            + '        return "adulte"' + chr(10) + "    try:" + chr(10)
+            '        return "adulte"' + chr(10) + "    try:" + chr(10)
             + "        adulte_"))]),
     dict(
         nom="le garde-fou ne dit plus comment demander le genre",
@@ -13120,6 +13828,12 @@ OLLAMA_DEGENERE = [
         editions=[("serveur.py", brut(
             "            del _DECHARGE_DEGENERE[cle_]",
             "            pass"))]),
+    # RE-ANCREE le 10 novembre 2026, sans changer de sens : les deux gardes ne
+    # lisent plus la pause seule, ils passent par cerveau_ferme() — la regle
+    # du pret, qui etend « on n'y touche pas » a ComfyUI ferme et a l'agent
+    # muet (ces deux etats-la sont gardes par REGLE_DU_PRET, sur banc_pret.py).
+    # LES DEUX EDITIONS ENSEMBLE, comme avant : les gardes se recouvrent, et
+    # retirer celui de reparer_degenere seul laisse liberer_modele_a refuser.
     dict(
         nom="le dechargement ne regarde plus la pause",
         banc="banc_cerveaux.py",
@@ -13127,14 +13841,14 @@ OLLAMA_DEGENERE = [
               "ce que la pause interdit, au nom d'une reparation",
         rougit="une machine passee en pause n'est pas dechargee",
         editions=[("serveur.py", brut(
-            '    if ident and (noeud(ident) or {}).get("pause"):' + chr(10)
+            "    if ferme:" + chr(10)
             + "        # Son proprietaire",
             "    if False:" + chr(10) + "        # Son proprietaire")),
                   ("serveur.py", brut(
-            '    if ident and (noeud(ident) or {}).get("pause"):' + chr(10)
-            + "        # Une machine en pause n'a rien",
+            "    if cerveau_ferme(noeud_du_cerveau(url)):" + chr(10)
+            + "        # Une machine fermee n'a rien",
             "    if False:" + chr(10)
-            + "        # Une machine en pause n'a rien"))]),
+            + "        # Une machine fermee n'a rien"))]),
     dict(
         nom="on retente au meme endroit meme sans dechargement",
         banc="banc_cerveaux.py",
@@ -15011,6 +15725,625 @@ RETOUCHE_JOINTE = [
             + "            consigne_de_retouche(plan, texte)",
             "        if False:" + chr(10)
             + "            consigne_de_retouche(plan, texte)"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  L'image jointe, la lecture et le detourage (ronde 12) —
+#  banc_image_jointe.py et verifier_formulations.py
+# ──────────────────────────────────────────────────────────────────────
+# Mesure du 9 novembre 2026, une image jointe, deux modeles d'analyse :
+# « mets-lui un ciel etoile » sortait « detourer », « lis cette image et
+# dis-moi ses couleurs » « retoucher_sujet ». Trois regles : la lecture
+# reconnue a l'ecrit (les cinq premieres), la lecture du modele qu'aucune cle
+# ne recouvre (les cinq suivantes), le detourage que les mots dementent (les
+# sept dernieres).
+IMAGE_JOINTE = [
+    dict(
+        nom="le raccourci de lecture ne connait pas « lis »",
+        banc="verifier_formulations.py",
+        imite="l'etat du 9 novembre : « lis le texte ecrit dessus » part au "
+              "modele, qui rend la cle d'un moteur de retouche",
+        rougit="« lis le texte ecrit dessus »",
+        editions=[("serveur.py", brut(
+            r'    r"|(?:(?:^\s*|[.!?;,:]\s*"' + chr(10)
+            + r'    r"|\b(?:et|puis|ensuite|alors|maintenant|bonjour|salut|stp|svp|plait)\s+)lis"'
+            + chr(10)
+            + r'    r"|\b(?:(?:peux|pourrais)[- ]tu|tu\s+(?:peux|pourrais))\s+(?:me\s+)?lire)"'
+            + chr(10)
+            + r'    r"[- ](?:moi|nous|le|la|les|l.|ce|cet|cette|ca|tout)\b"'
+            + chr(10),
+            ""))]),
+    dict(
+        nom="« lis » se passe de son complement",
+        banc="verifier_formulations.py",
+        imite="le mot seul en tete de demande : des lis en bouquet joints a "
+              "une image sont pris pour une demande de lecture, et "
+              "l'utilisateur recoit un paragraphe",
+        rougit="« lis blancs en bouquet »",
+        editions=[("serveur.py", brut(
+            r'    r"[- ](?:moi|nous|le|la|les|l.|ce|cet|cette|ca|tout)\b"',
+            r'    r"\b"'))]),
+    dict(
+        nom="« dis-moi » se passe de son complement",
+        banc="verifier_formulations.py",
+        imite="« dis-moi si c'est mieux en rouge » demande un essai et "
+              "recevait une description",
+        rougit="« dis-moi si c'est mieux en rouge »",
+        editions=[("serveur.py", brut(
+            r'    r"|\bdis[- ](?:moi|nous)\s+(?:ce\s+qu|quel|ses\s|les\s|la\s|le\s|combien\b|s.il\s+y\s+a)"',
+            r'    r"|\bdis[- ](?:moi|nous)\b"'))]),
+    dict(
+        nom="« qu'est-ce qu'on voit » repart au modele",
+        banc="banc_image_jointe.py",
+        imite="l'etat du 9 novembre : une lecture avec le moteur flux1 chez "
+              "un modele, une question en anglais chez l'autre",
+        rougit="« qu'est-ce qu'on voit sur cette image ? » : lecture sans appel",
+        editions=[("serveur.py", brut(
+            r'    r"|\bqu.?est[- ]ce\s+qu.?(?:on\s+voit|il\s+y\s+a)\b"' + chr(10),
+            ""))]),
+    dict(
+        nom="les couleurs ne sont pas une lecture",
+        banc="verifier_formulations.py",
+        imite="« quelles sont les couleurs de cette image ? » part au "
+              "modele, comme la demande du 9 novembre",
+        rougit="« quelles sont les couleurs de cette image ? »",
+        editions=[("serveur.py", brut(
+            r'    r"|(?:^\s*|[.!?;:]\s*|\b(?:et|puis)\s+)(?:de\s+|c.est\s+)?"'
+            + chr(10)
+            + r'    r"quelles?\s+(?:sont\s+|est\s+)?(?:les\s+|ses\s+|la\s+)?couleurs?\b"'
+            + chr(10)
+            + r'    r"(?!\s+(?:tu|vous|on|que|qu.)\b)")',
+            '    r"")'))]),
+    dict(
+        nom="la cle d'un moteur recouvre la lecture que le modele annonce",
+        banc="banc_image_jointe.py",
+        imite="l'etat du 9 novembre : la lecture ne tient que si la cle, mise "
+              "au hasard, est celle d'un moteur d'image — « retoucher_sujet » "
+              "en fait une retouche",
+        rougit="le modele dit lecture avec la cle « retoucher_sujet »",
+        editions=[("serveur.py", brut(
+            '    elif (intention == "lecture" and a_une_image == "image"',
+            '    elif (False and a_une_image == "image"'))]),
+    dict(
+        nom="la lecture annoncee l'emporte meme quand les mots ordonnent une retouche",
+        banc="banc_image_jointe.py",
+        imite="« regarde cette photo et corrige les couleurs » rendu lecture "
+              "avec la cle « edition » : une description a la place de la "
+              "retouche demandee",
+        rougit="les mots ordonnent une transformation (« corrige »)",
+        editions=[("serveur.py", brut(
+            "          and not ordonne_une_transformation(texte)):",
+            "          and True):"))]),
+    dict(
+        nom="les verbes anglais n'ordonnent pas une transformation",
+        banc="banc_image_jointe.py",
+        imite="les verbes de retrait ne parlent que francais : « look at it "
+              "and remove the hat » rendu lecture devient une description",
+        rougit="en anglais aussi (« remove »)",
+        editions=[("serveur.py", brut(
+            '    r"|remove|erase|delete|crop|cut|clean"' + chr(10),
+            ""))]),
+    dict(
+        nom="une video jointe passe pour une image a lire",
+        banc="banc_image_jointe.py",
+        imite="« a_une_image » lu comme un booleen : une video jointe dont le "
+              "modele dit « lecture » avec la cle « fluidifier » est refusee "
+              "au lieu d'etre fluidifiee",
+        rougit="une video jointe n'est pas une image a lire",
+        editions=[("serveur.py", brut(
+            '    elif (intention == "lecture" and a_une_image == "image"',
+            '    elif (intention == "lecture" and a_une_image'))]),
+    dict(
+        nom="la lecture gardee conserve la cle qui la recouvrait",
+        banc="banc_image_jointe.py",
+        imite="la lecture part avec « retoucher_sujet » pour moteur, et sans "
+              "cle du tout quand le modele n'en a pas rendu : executer() lit "
+              "plan[\"modele\"]",
+        rougit="et la lecture gardee part sans moteur",
+        editions=[("serveur.py", brut(
+            '        if cle not in CATALOGUE or CATALOGUE[cle]["type"] != "image":'
+            + chr(10) + '            plan["modele"] = None',
+            "        if False:"
+            + chr(10) + '            plan["modele"] = None'))]),
+    dict(
+        nom="un detourage rendu par le modele n'est jamais dementi",
+        banc="banc_image_jointe.py",
+        imite="l'etat du 9 novembre : « mets-lui un ciel etoile », la cle "
+              "« detourer », et le fond rendu transparent",
+        rougit="LE CAS DU 9 NOVEMBRE : « mets-lui un ciel etoile »",
+        editions=[("serveur.py", brut(
+            "            and pose_sans_detourer(texte)):",
+            "            and False):"))]),
+    dict(
+        nom="les mots du detourage ne retiennent plus la regle",
+        banc="banc_image_jointe.py",
+        imite="le verbe seul : « put it on a transparent background » pose "
+              "quelque chose, et le detourage demande part au moteur d'edition",
+        rougit="un verbe qui pose AVEC un mot de detourage",
+        editions=[("serveur.py", brut(
+            "    return (_ordres(texte)[0]" + chr(10)
+            + '            and not _MOTS_DETOURAGE.search(sans_accents(texte or "")))',
+            "    return (_ordres(texte)[0])"))]),
+    dict(
+        nom="les mots du detourage ne se lisent qu'en francais",
+        banc="banc_image_jointe.py",
+        imite="les verbes parlent anglais, les noms non : « give it a plain "
+              "white background » devient une retouche",
+        rougit="les mots du detourage se lisent en anglais",
+        editions=[("serveur.py", brut(
+            '    r"|background|backdrop|cut.?out"' + chr(10),
+            ""))]),
+    dict(
+        nom="les verbes qui retirent dementent un detourage",
+        banc="banc_image_jointe.py",
+        imite="tout ordre compte pour une pose : « delete everything except "
+              "the character », un detourage, part au moteur d'edition",
+        rougit="un verbe qui RETIRE ne dement pas un detourage",
+        editions=[("serveur.py", brut(
+            "    return (_ordres(texte)[0]",
+            "    return (any(_ordres(texte)[:2])"))]),
+    dict(
+        nom="« give » se passe de son pronom",
+        banc="banc_image_jointe.py",
+        imite="le verbe nu, comme dans _RETOUCHE_JOINTE : « give me just the "
+              "dog », le chien seul, part au moteur d'edition",
+        rougit="« give » sans son pronom ne pose rien",
+        editions=[("serveur.py", brut(
+            r'    r"|give\s+(?:it|him|her|them)")',
+            r'    r"|give")'))]),
+    dict(
+        nom="une video jointe part au moteur d'edition a la place d'un detourage",
+        banc="banc_image_jointe.py",
+        imite="« a_une_image » lu comme un booleen, la faute du 5 novembre "
+              "une seconde fois",
+        rougit="une video jointe n'est pas une image a retoucher : la regle du "
+               "detourage",
+        editions=[("serveur.py", brut(
+            '    if (a_une_image == "image" and plan["intention"] == "detourer"',
+            '    if (a_une_image and plan["intention"] == "detourer"'))]),
+    dict(
+        nom="la retouche tiree d'un detourage garde le prompt de la decoupe",
+        banc="banc_image_jointe.py",
+        imite="la bascule sans la consigne : le moteur d'edition recoit ce "
+              "que le modele avait ecrit pour un detourage, pas « mets-lui un "
+              "ciel etoile »",
+        rougit="et la retouche part avec la phrase de l'utilisateur",
+        editions=[("serveur.py", brut(
+            '        plan["raison"] = "image jointe et consigne de retouche, pas un detourage"'
+            + chr(10) + "        consigne_de_retouche(plan, texte)",
+            '        plan["raison"] = "image jointe et consigne de retouche, pas un detourage"'))]),
+]
+
+
+# LA RELECTURE DU 10 NOVEMBRE 2026 des trois regles d'au-dessus : des
+# retouches sortaient « lecture » sans appel (« peins le mur, n'importe quelle
+# couleur », « une fleur de lis le long du bord »), le detourage dementi
+# manquait « mets lui » sans trait d'union et renversait « turn this into a
+# sticker », et un mot lu n'importe ou (« que FAIT le personnage ? ») passait
+# pour un ordre. Un ordre est un imperatif a sa place, dans quatre langues.
+IMAGE_JOINTE_RELUE = [
+    dict(
+        nom="« lis » se lit hors de sa place de verbe",
+        banc="verifier_formulations.py",
+        imite="le mot n'importe ou dans la phrase : « une fleur de lis le long "
+              "du bord gauche », une retouche, sort en lecture sans appel",
+        rougit="« une fleur de lis le long du bord gauche »",
+        editions=[("serveur.py", brut(
+            r'    r"|(?:(?:^\s*|[.!?;,:]\s*"' + chr(10)
+            + r'    r"|\b(?:et|puis|ensuite|alors|maintenant|bonjour|salut|stp|svp|plait)\s+)lis"',
+            r'    r"|(?:\blis"'))]),
+    dict(
+        nom="« quelle couleur » se passe de sa tournure de question",
+        banc="verifier_formulations.py",
+        imite="les deux mots n'importe ou : « n'importe quelle couleur fera "
+              "l'affaire » sort en lecture sans appel",
+        rougit="« n'importe quelle couleur fera l'affaire »",
+        editions=[("serveur.py", brut(
+            r'    r"|(?:^\s*|[.!?;:]\s*|\b(?:et|puis)\s+)(?:de\s+|c.est\s+)?"',
+            r'    r"|\b(?:de\s+|c.est\s+)?"'))]),
+    dict(
+        nom="« quelle couleur tu veux » passe pour une question",
+        banc="verifier_formulations.py",
+        imite="la question sans regarder ce qui la suit : « quelle couleur tu "
+              "veux » laisse le choix, elle ne demande rien",
+        rougit="« quelle couleur tu veux »",
+        editions=[("serveur.py", brut(
+            r'    r"(?!\s+(?:tu|vous|on|que|qu.)\b)")',
+            '    r"")'))]),
+    dict(
+        nom="le raccourci de lecture tire malgre un ordre de transformation",
+        banc="verifier_formulations.py",
+        imite="_PAS_LIRE seul, qui ne connait ni « inverse » ni « colore » : "
+              "« colore le ciel comme je le decris ici » rend un paragraphe. "
+              "Une seule proposition, pour que la garde des demandes "
+              "composees ne l'arrete pas a sa place",
+        rougit="« colore le ciel comme je le decris ici »",
+        editions=[("serveur.py", brut(
+            "    if ordonne_une_transformation(texte) or _DOUTE_LIRE.search(nu):",
+            "    if _DOUTE_LIRE.search(nu):"))]),
+    dict(
+        nom="le doute ne va plus au modele",
+        banc="verifier_formulations.py",
+        imite="« dis-moi ce que ca donne avec un ciel rouge » a la forme "
+              "d'une question et demande une image : elle recevait un texte",
+        rougit="« dis-moi ce que ca donne avec un ciel rouge »",
+        editions=[("serveur.py", brut(
+            "    if ordonne_une_transformation(texte) or _DOUTE_LIRE.search(nu):",
+            "    if ordonne_une_transformation(texte):"))]),
+    dict(
+        nom="le conditionnel n'est plus un doute",
+        banc="verifier_formulations.py",
+        imite="« quelles couleurs iraient le mieux ici ? » demande un essai, "
+              "et sortait en lecture sans appel",
+        rougit="« quelles couleurs iraient le mieux ici ? »",
+        editions=[("serveur.py", brut(
+            r'    r"|\b(?:donne|ressemble|se|i|rend|fe|pour|dev|au)rai(?:t|ent)\b")',
+            '    r"")'))]),
+    dict(
+        nom="l'apostrophe typographique n'est pas lue",
+        banc="verifier_formulations.py",
+        imite="les motifs ecrits avec l'apostrophe du clavier : la question "
+              "tapee sur un telephone repart au modele",
+        rougit="Qu" + chr(0x2019) + "est-ce que c",
+        editions=[("serveur.py", brut(
+            '    nu = sans_accents(texte or "").replace(chr(0x2019), "\'")'
+            + chr(10) + "    if len(nu) > 90",
+            '    nu = sans_accents(texte or "")'
+            + chr(10) + "    if len(nu) > 90"))]),
+    dict(
+        nom="un verbe se lit n'importe ou dans la phrase",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : « tell me what would make it "
+              "better », une question, compte pour un ordre et la lecture "
+              "annoncee devient une retouche",
+        rougit="« tell me what would make it better »",
+        editions=[("serveur.py", brut(
+            r'    r"(?:^\s*|[.!?;,:\xbf\xa1]\s*"',
+            r'    r"(?:\b|^\s*|[.!?;,:\xbf\xa1]\s*"'))]),
+    dict(
+        nom="les mots de _PAS_LIRE comptent pour des ordres",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : « que fait le personnage ? » et "
+              "« dans quel style est peinte cette image ? » perdent leur "
+              "lecture pour un mot",
+        rougit="« que fait le personnage sur cette photo ? »",
+        editions=[("serveur.py", brut(
+            "    return any(_ordres(texte))",
+            "    return any(_ordres(texte)) or bool("
+            '_PAS_LIRE.search(sans_accents(texte or "")))'))]),
+    dict(
+        nom="« fais une description » passe pour un ordre",
+        banc="banc_image_jointe.py",
+        imite="« fais » nu : « fais-moi une description de cette image » "
+              "demande des mots, et la lecture annoncee devient une retouche",
+        rougit="« fais-moi une description de cette image »",
+        editions=[("serveur.py", brut(
+            r'    r"|fais(?![- ](?:moi\s+|nous\s+)?(?:une?\s+|la\s+|le\s+)?"'
+            + chr(10)
+            + r'    r"(?:description|analyse|resume|liste|lecture|commentaire|inventaire|point))")',
+            r'    r"|fais")'))]),
+    dict(
+        nom="« rajoute » n'est pas un ordre",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : « rajoute un chapeau au chat », "
+              "que le modele dit lecture avec la cle « edition », reste une "
+              "lecture — la retouche est perdue",
+        rougit="« rajoute un chapeau au chat » ordonne",
+        editions=[("serveur.py", brut(
+            r'    r"(?:ajout|rajout|chang|remplac|transform|modifi|recolor|colori|color|corrig"',
+            r'    r"(?:ajout|chang|remplac|transform|modifi|recolor|colori|color|corrig"'))]),
+    dict(
+        nom="l'imperatif allemand n'est pas lu",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : « Mach den Himmel dunkler » "
+              "rendu lecture avec la cle « edition » reste une lecture",
+        rougit="« Mach den Himmel dunkler » ordonne",
+        editions=[("serveur.py", brut(
+            r'_POSE_DE = (r"mache?|fue?ge?|ae?ndere?|ersetze?|setze|tausche?|verwandle|verdunkle"',
+            r'_POSE_DE = (r"zzzz"'))]),
+    dict(
+        nom="l'imperatif espagnol n'est pas lu",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : « pon un sombrero al gato » "
+              "rendu lecture avec la cle « edition » reste une lecture",
+        rougit="« pon un sombrero al gato » ordonne",
+        editions=[("serveur.py", brut(
+            r'_POSE_ES = (r"(?:haz|pon|anade|agrega|cambia|reemplaza|sustituye|pinta|colorea"',
+            r'_POSE_ES = (r"(?:zzzz"'))]),
+    dict(
+        nom="la formule de demande francaise n'ouvre pas un ordre",
+        banc="banc_image_jointe.py",
+        imite="l'imperatif seul : « tu peux lui mettre un chapeau ? » et "
+              "« peux-tu changer le ciel » ne sont plus des ordres",
+        rougit="« bonjour, tu peux lui mettre un chapeau ? » ordonne",
+        editions=[("serveur.py", brut(
+            r'    r"|\b(?:(?:peux|pourrais|veux|voudrais)[- ]tu|tu\s+(?:peux|pourrais)"'
+            + chr(10)
+            + r'    r"|il\s+(?:faut|faudrait)|je\s+(?:veux|voudrais)|j.aimerais|merci\s+de)\s+"'
+            + chr(10)
+            + r'    r"(?:(?:me|lui|leur|la|le|les|y)\s+)?"' + chr(10),
+            ""))]),
+    dict(
+        nom="la formule de demande anglaise n'ouvre pas un ordre",
+        banc="banc_image_jointe.py",
+        imite="l'imperatif seul : « could you make the sky darker » rendu "
+              "lecture avec la cle « edition » reste une lecture",
+        rougit="« could you make the sky darker » ordonne",
+        editions=[("serveur.py", brut(
+            r'    r"|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?"' + chr(10),
+            ""))]),
+    dict(
+        nom="un verbe inconnu et son pronom ne sont pas un ordre",
+        banc="banc_image_jointe.py",
+        imite="la liste des verbes seule : « lis le texte puis copie-le a "
+              "droite » sort en lecture sans appel",
+        rougit="un verbe inconnu et son pronom accroche (« copie-le »)",
+        editions=[("serveur.py", brut(
+            r'    r"[a-z]{3,}-(?:le|les|lui|leur|y)\b"',
+            r'    r"zzzz"'))]),
+    dict(
+        nom="« cette image-la » passe pour un ordre",
+        banc="banc_image_jointe.py",
+        imite="« -la » lu comme un pronom : c'est aussi l'adverbe de « cette "
+              "image-la », et la lecture annoncee devient une retouche",
+        rougit="« cette image-la » n'ordonne rien",
+        editions=[("serveur.py", brut(
+            r'    r"[a-z]{3,}-(?:le|les|lui|leur|y)\b"',
+            r'    r"[a-z]{3,}-(?:la|le|les|lui|leur|y)\b"'))]),
+    dict(
+        nom="« donne lui » exige son trait d'union",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : la forme la plus tapee, sans "
+              "trait d'union, reste un detourage",
+        rougit="« donne lui des lunettes » rendu « detourer »",
+        editions=[("serveur.py", brut(
+            r'    r"|donne[- ](?:lui|leur)"',
+            r'    r"|donne-(?:lui|leur)"'))]),
+    dict(
+        nom="« mets » exige son pronom accroche",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : « mets lui un ciel etoile » et "
+              "« mets un ciel etoile derriere » restent des detourages",
+        rougit="« mets un ciel etoile derriere » rendu « detourer »",
+        editions=[("serveur.py", brut(
+            r'    r"|(?:re)?mets|(?:re)?mettre|rends|rendre|(?:re)?peins|(?:re)?peindre|teins"',
+            r'    r"|(?:re)?mets-(?:lui|leur|y)|(?:re)?mettre|rends|rendre|(?:re)?peins|(?:re)?peindre|teins"'))]),
+    dict(
+        nom="une negation qui suit le verbe ordonne quand meme",
+        banc="banc_image_jointe.py",
+        imite="« change rien, garde juste le chat » : le verbe est en tete, "
+              "et le detourage demande part au moteur d'edition",
+        rougit="une negation n'ordonne pas",
+        editions=[("serveur.py", brut(
+            '    nu = _NIE.sub(" _ ", sans_accents(texte or "").replace(chr(0x2019), "\'"))',
+            '    nu = sans_accents(texte or "").replace(chr(0x2019), "\'") + " "'))]),
+    dict(
+        nom="ce qu'on ote d'une negation met le mot suivant en tete",
+        banc="banc_image_jointe.py",
+        imite="une espace a la place de la negation : « le chien, sans rien "
+              "ajouter » devient « le chien, ajouter », un ordre",
+        rougit="ni « garde seulement le chien, sans rien ajouter »",
+        editions=[("serveur.py", brut(
+            '    nu = _NIE.sub(" _ ", sans_accents(',
+            '    nu = _NIE.sub(" ", sans_accents('))]),
+    dict(
+        nom="isoler, extraire, alpha et autocollant ne disent pas un detourage",
+        banc="banc_image_jointe.py",
+        imite="l'etat d'avant la relecture : « turn this into a sticker » et "
+              "« ajoute un canal alpha autour du sujet » partent au moteur "
+              "d'edition",
+        rougit="« turn this into a sticker » porte un mot de detourage",
+        editions=[("serveur.py", brut(
+            r'    r"|\bisol|extrai|extract|\balpha\b|sticker|autocollant"' + chr(10),
+            ""))]),
+    dict(
+        nom="les mots du detourage ne se lisent ni en allemand ni en espagnol",
+        banc="banc_image_jointe.py",
+        imite="les verbes parlent quatre langues, les noms deux : « pon un "
+              "fondo blanco » part au moteur d'edition",
+        rougit="« pon un fondo blanco » porte un mot de detourage",
+        editions=[("serveur.py", brut(
+            r'    r"|hintergrund|freistell|ausschneid|\bfondo\b|recort")',
+            '    r"")'))]),
+]
+
+
+# LA SECONDE RELECTURE DU 10 NOVEMBRE 2026 : une liste de verbes ne ferme pas
+# la classe des retouches. 22 demandes composees sur 44 sortaient encore
+# « lecture sans appel » (« decris l'image, je la veux plus lumineuse »,
+# « dis-moi ce que tu vois et vieillis le personnage ») ; le raccourci exige
+# desormais UNE SEULE proposition de lecture (une_seule_lecture).
+UNE_SEULE_LECTURE = [
+    dict(
+        nom="une demande composee est lue sans appel",
+        banc="verifier_formulations.py",
+        imite="l'etat d'avant la seconde relecture : « vieillis » n'est dans "
+              "aucune liste, et la retouche demandee rend un paragraphe",
+        rougit="« dis-moi ce que tu vois et vieillis le personnage »",
+        editions=[("serveur.py", brut(
+            "    if not une_seule_lecture(nu):",
+            "    if False:"))]),
+    dict(
+        nom="la ponctuation n'ouvre pas une seconde proposition",
+        banc="verifier_formulations.py",
+        imite="la demande coupee aux seules coordinations : « que vois-tu ? "
+              "le chat doit devenir un chien » reste une lecture",
+        rougit="« que vois-tu ? le chat doit devenir un chien »",
+        editions=[("serveur.py", brut(
+            r'    r"(\s*[.!?;:,]+\s*"',
+            r'    r"(\x00"'))]),
+    dict(
+        nom="une coordination n'ouvre pas une seconde proposition",
+        banc="verifier_formulations.py",
+        imite="la demande coupee a la seule ponctuation : « analyse ce "
+              "portrait puis blanchis les dents » reste une lecture",
+        rougit="« analyse ce portrait puis blanchis les dents »",
+        editions=[("serveur.py", brut(
+            r'    r"|\s+(?:et|puis|ensuite|mais|sauf|and|then|but)\s+"' + chr(10),
+            ""))]),
+    dict(
+        nom="« je veux » n'ouvre pas une seconde proposition",
+        banc="verifier_formulations.py",
+        imite="la suite ecrite sans virgule, comme on tape sur un telephone : "
+              "« decris cette photo je veux la meme en hiver » reste une "
+              "lecture",
+        rougit="« decris cette photo je veux la meme en hiver »",
+        editions=[("serveur.py", brut(
+            r'''    r"|\s+(?=(?:je|j')\s*(?:(?:la|le|les|l'|en)\s*)?"''' + chr(10)
+            + r'    r"(?:veux|voudrais|souhaite|aimerais|prefere)\b"' + chr(10)
+            + r'    r"|i\s+want\b|i\s+would\b|ich\s+will\b|ich\s+moe?chte\b|quiero\b|quisiera\b))")',
+            '    r")")'))]),
+    dict(
+        nom="« i want » n'ouvre pas une seconde proposition",
+        banc="verifier_formulations.py",
+        imite="la formule francaise seule : « decris-la i want it brighter » "
+              "reste une lecture",
+        rougit="« decris-la i want it brighter »",
+        editions=[("serveur.py", brut(
+            r'    r"|i\s+want\b|i\s+would\b|ich\s+will\b|ich\s+moe?chte\b|quiero\b|quisiera\b))")',
+            '    r"))")'))]),
+    dict(
+        nom="une politesse passe pour une seconde proposition",
+        banc="verifier_formulations.py",
+        imite="la garde trop stricte : « decris l'image, s'il te plait » perd "
+              "son raccourci, et chaque lecture polie coute un appel",
+        rougit="« decris l'image, s'il te plait »",
+        editions=[("serveur.py", brut(
+            "        if not morceau or _POLI.fullmatch(morceau):",
+            "        if not morceau:"))]),
+    dict(
+        nom="« regarde cette photo » passe pour une seconde proposition",
+        banc="verifier_formulations.py",
+        imite="regarder ouvre la lecture : « regarde cette photo et dis-moi "
+              "ce qui s'y passe » etait lue sans appel avant la garde, et "
+              "l'aurait perdue",
+        rougit="« regarde cette photo et dis-moi ce qui s'y passe »",
+        editions=[("serveur.py", brut(
+            r'    r"|(?:regarde|observe)\b[^.!?;:,]{0,30})")',
+            '    r")")'))]),
+    dict(
+        nom="un second objet de la meme lecture ouvre une seconde proposition",
+        banc="verifier_formulations.py",
+        imite="« et » lu comme une coordination de propositions : « dis-moi "
+              "ce qu'on voit sur cette image et ses couleurs » perd son "
+              "raccourci",
+        rougit="« dis-moi ce qu'on voit sur cette image et ses couleurs »",
+        editions=[("serveur.py", brut(
+            "        if (_OBJET_LU.match(morceau)",
+            "        if (False"))]),
+    dict(
+        nom="« la meme » passe pour un objet de la lecture",
+        banc="verifier_formulations.py",
+        imite="un article defini et un nom qu'on lit : « decris cette photo "
+              "et la meme scene de nuit » commande une image et recoit un "
+              "paragraphe",
+        rougit="« decris cette photo et la meme scene de nuit »",
+        editions=[("serveur.py", brut(
+            r'    r"(?!(?:la|le|les)\s+memes?\b)"' + chr(10),
+            ""))]),
+    dict(
+        nom="tout nom derriere un article est un objet de la lecture",
+        banc="verifier_formulations.py",
+        imite="l'article seul : « decris l'image, le fond flou » commande un "
+              "flou et recoit un paragraphe",
+        rougit="« decris l'image, le fond flou »",
+        editions=[("serveur.py", brut(
+            r'''    r"|(?:le|la|les|l')\s*(?:\w+\s+){0,2}?(?:couleurs?|formes?|textes?|details?"''',
+            r'''    r"|(?:le|la|les|l')\s*(?:\w+\s+){0,2}?(?:\w+|couleurs?|formes?|textes?|details?"'''))]),
+    dict(
+        nom="un objet de la lecture peut porter un verbe de commande",
+        banc="verifier_formulations.py",
+        imite="« decris l'image et le texte doit disparaitre » commence comme "
+              "un objet et finit en commande",
+        rougit="« decris l'image et le texte doit disparaitre »",
+        editions=[("serveur.py", brut(
+            r'    r"(?!.*\b(?:doit|doivent|devient|deviennent|sera|seront|soit|soient"'
+            + chr(10)
+            + r'    r"|devrait|devraient|faut|plus|moins|sans|avec)\b)"' + chr(10),
+            ""))]),
+    dict(
+        nom="un objet de la lecture peut porter un rendu",
+        banc="verifier_formulations.py",
+        imite="« decris la photo et ses cheveux en bleu » : le possessif "
+              "ouvre un objet, « en bleu » en fait une commande",
+        rougit="« decris la photo et ses cheveux en bleu »",
+        editions=[("serveur.py", brut(
+            r'    r"(?!.*\ben\s+(?!arriere|premier|haut|bas|fond|detail))")',
+            '    r"")'))]),
+    dict(
+        nom="un objet de la lecture n'a plus de longueur",
+        banc="verifier_formulations.py",
+        imite="un objet est court ; une proposition entiere qui commence par "
+              "« les couleurs » passe pour lui",
+        rougit="« decris l'image et les couleurs du ciel virent au rouge sang "
+               "maintenant »",
+        editions=[("serveur.py", brut(
+            "                and len(morceau.split()) <= _OBJET_LU_MOTS):",
+            "                and True):"))]),
+    dict(
+        nom="ce qu'on se fait donner n'est plus un objet de la lecture",
+        banc="verifier_formulations.py",
+        imite="« analyse cette image et donne moi les details » etait lue "
+              "sans appel avant la garde, et l'aurait perdue",
+        rougit="« analyse cette image et donne moi les details »",
+        editions=[("serveur.py", brut(
+            r'        morceau = re.sub(r"^(?:donne|indique|precise)[- ]moi\s+", "", morceau)',
+            "        pass"))]),
+    dict(
+        nom="la coordination en tete de morceau cache l'objet",
+        banc="verifier_formulations.py",
+        imite="la ponctuation coupe avant « et » : « qu'est-ce qu'on voit ? "
+              "et ses couleurs ? » perd son raccourci",
+        rougit="« qu'est-ce qu'on voit ? et ses couleurs ? »",
+        editions=[("serveur.py", brut(
+            r'        morceau = re.sub(r"^et\s+", "", morceau.strip())',
+            "        morceau = morceau.strip()"))]),
+    dict(
+        nom="« avec » n'est plus un doute",
+        banc="verifier_formulations.py",
+        imite="sans virgule, la demande tient en un morceau : « raconte ce "
+              "que tu vois avec un chapeau sur la tete du monsieur » est lue "
+              "sans appel",
+        rougit="« raconte ce que tu vois avec un chapeau sur la tete du monsieur »",
+        editions=[("serveur.py", brut(
+            r'    r"|\bavec\s+(?!precision|soin|details?\b|le\s+plus\b|beaucoup|quelques"'
+            + chr(10)
+            + r'    r"|tou(?:s|tes)\b|humour|tes\s+mots|des\s+(?:mots|details)|un\s+maximum|autant)"'
+            + chr(10),
+            ""))]),
+    dict(
+        nom="« avec precision » est un doute",
+        banc="verifier_formulations.py",
+        imite="« avec » tout court : « decris cette image avec precision », "
+              "qui dit comment lire, perd son raccourci",
+        rougit="« decris cette image avec precision »",
+        editions=[("serveur.py", brut(
+            r'    r"|\bavec\s+(?!precision|soin|details?\b|le\s+plus\b|beaucoup|quelques"'
+            + chr(10)
+            + r'    r"|tou(?:s|tes)\b|humour|tes\s+mots|des\s+(?:mots|details)|un\s+maximum|autant)"',
+            r'    r"|\bavec\s+"'))]),
+    dict(
+        nom="un rendu reclame n'est plus un doute",
+        banc="verifier_formulations.py",
+        imite="« decris la scene plus sombre », sans virgule : une image plus "
+              "sombre demandee, un paragraphe rendu",
+        rougit="« decris la scene plus sombre »",
+        editions=[("serveur.py", brut(
+            r'    r"|\bplus\s+(?:sombre|claire?|lumineu|contraste|nette?|floue?|grande?|petite?"'
+            + chr(10)
+            + r'    r"|chaude?|froide?|vi(?:f|ve)|sature|dou(?:x|ce)|joli|beau|belle|realiste)"'
+            + chr(10),
+            ""))]),
+    dict(
+        nom="une tournure de maniere n'est plus un doute",
+        banc="verifier_formulations.py",
+        imite="« raconte la scene facon Pixar » : « facon » n'etait dans "
+              "aucune liste, et la demande sortait en lecture sans appel",
+        rougit="« raconte la scene facon Pixar »",
+        editions=[("serveur.py", brut(
+            r'    r"|\bfacon\b|\ben\s+mode\b|\ba\s+la\s+sauce\b"' + chr(10),
+            ""))]),
 ]
 
 
@@ -16894,13 +18227,1170 @@ DEMANDE_DETAILLEE = [
         editions=[("serveur.py", brut(
             '    if mots_ >= DEMANDE_DETAILLEE:',
             '    if mots_ >= 0:'))]),
+    # ── la seconde relecture du 10 novembre 2026 : le texte de l'auteur ne
+    #    remplace un resume que si garde_fou() sait le relire ──
+    dict(
+        nom="le texte de l'auteur revient quelle que soit sa langue",
+        banc="banc_demande_detaillee.py",
+        imite="la production depuis la ronde 11 : 79 mots de neerlandais, un "
+              "resume que le garde-fou a lu, et c'est le texte entier, que "
+              "rien n'a relu, qui part au moteur",
+        rougit="LE CAS DE LA RELECTURE : 79 mots de neerlandais",
+        editions=[("serveur.py", brut(
+            '            if (langue_de_la_demande(texte)[0] == "lue"\n'
+            "                    and not _lettre_hors_latin(texte)):",
+            "            if (True\n"
+            "                    and not _lettre_hors_latin(texte)):"))]),
+    dict(
+        nom="le texte de l'auteur revient des que sa langue n'est pas prouvee etrangere",
+        banc="banc_demande_detaillee.py",
+        imite="« lue » relache en « pas autre » : des etiquettes, une langue "
+              "absente des listes reviennent a la place du resume relu",
+        rougit="des etiquettes dont rien ne prouve la langue",
+        editions=[("serveur.py", brut(
+            '            if (langue_de_la_demande(texte)[0] == "lue"\n'
+            "                    and not _lettre_hors_latin(texte)):",
+            '            if (langue_de_la_demande(texte)[0] != "autre"\n'
+            "                    and not _lettre_hors_latin(texte)):"))]),
+    dict(
+        nom="le texte de l'auteur revient avec ses lettres non latines",
+        banc="banc_demande_detaillee.py",
+        imite="un mot grec dans une demande francaise « lue » : le texte "
+              "revient a la place du resume, avec le mot que rien n'a lu",
+        rougit="une seule lettre non latine dans une demande francaise",
+        editions=[("serveur.py", brut(
+            '            if (langue_de_la_demande(texte)[0] == "lue"\n'
+            "                    and not _lettre_hors_latin(texte)):",
+            '            if (langue_de_la_demande(texte)[0] == "lue"):'))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  L'analyse sans objet (ronde 12) — banc_analyse_sans_objet.py
+# ──────────────────────────────────────────────────────────────────────
+# Releve du 9 novembre 2026 : des demandes de programme de 130 a 175 mots,
+# « moteur: klein9b », payaient 10 a 14 s d'analyse (74 s au NAS) pour un plan
+# que le moteur impose ecrasait. Une mutation par garde de
+# serveur.analyse_sans_objet : chacune ouvre le chemin sans modele a un cas
+# ou l'analyse decide encore quelque chose, et c'est son temoin qui rougit.
+ANALYSE_SANS_OBJET = [
+    dict(
+        nom="la demande ou tout est decide passe quand meme par l'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="la production du 9 novembre : 130 mots, klein9b impose, et 10 a "
+              "14 s de modele de langage pour un plan ecrase",
+        rougit="LE CAS DU RELEVE : 130 mots, klein9b impose, taille donnee",
+        editions=[("serveur.py", brut(
+            "    if sans_analyse:",
+            "    if False:"))]),
+    dict(
+        nom="le chemin sans analyse ne dit pas pourquoi",
+        banc="banc_analyse_sans_objet.py",
+        imite="le fil passe de la file au rendu sans un mot : rien ne "
+              "distingue ce chemin d'une analyse perdue",
+        rougit="et le fil dit pourquoi, avec le moteur et le nombre de mots",
+        editions=[("serveur.py", brut(
+            "        journal(tid, pourquoi_)",
+            "        pass"))]),
+    dict(
+        nom="un moteur seulement herite se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="un moteur regle trois demandes plus tot fait partir la demande "
+              "sans analyse, alors qu'il devait pouvoir ceder",
+        rougit="temoin : moteur seulement HERITE de la conversation",
+        editions=[("serveur.py", brut(
+            "    if not modele_choisi or moteur_distant:",
+            "    if moteur_distant:"))]),
+    dict(
+        nom="un moteur distant impose se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="sans le classement de l'analyse, une demande adulte que les "
+              "motifs ne reconnaissent pas part chez le fournisseur",
+        rougit="temoin : moteur DISTANT impose",
+        editions=[("serveur.py", brut(
+            "    if not modele_choisi or moteur_distant:",
+            "    if not modele_choisi:"))]),
+    dict(
+        nom="un moteur qui ne lit que l'anglais se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="realvis impose : la demande partait sans analyse vers un moteur "
+              "qui attend une traduction",
+        rougit="temoin : moteur non multilingue (realvis)",
+        editions=[("serveur.py", brut(
+            '    if moteur_.get("type") != "image" or not moteur_.get("multilingue"):',
+            '    if moteur_.get("type") != "image":'))]),
+    dict(
+        nom="un moteur de video se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="wan5b impose : le nombre d'images et la cadence, que l'analyse "
+              "regle, restent a leur defaut",
+        rougit="temoin : moteur multilingue qui n'est pas un moteur d'image",
+        editions=[("serveur.py", brut(
+            '    if moteur_.get("type") != "image" or not moteur_.get("multilingue"):',
+            '    if not moteur_.get("multilingue"):'))]),
+    dict(
+        nom="une image jointe n'empeche plus de se passer d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="une image jointe et un moteur impose : la consigne de retouche "
+              "n'est plus lue par personne",
+        rougit="temoin : image jointe",
+        editions=[("serveur.py", brut(
+            "    if image:\n        return False\n    if len((texte",
+            "    if len((texte"))]),
+    dict(
+        nom="une demande courte a moteur impose se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="« un chat roux », moteur impose : plus de plan, donc plus rien "
+              "de ce que l'analyse ecrit pour une demande courte",
+        rougit="temoin : demande courte",
+        editions=[("serveur.py", brut(
+            '    if len((texte or "").split()) < DEMANDE_DETAILLEE:',
+            "    if False:"))]),
+    dict(
+        nom="le format n'est plus laisse au modele quand aucune taille n'est donnee",
+        banc="banc_analyse_sans_objet.py",
+        imite="sans taille, c'est l'analyse qui propose le format : toute "
+              "image sort en 1216x832, sans que la demande ait ete lue",
+        rougit="temoin : sans taille",
+        editions=[("serveur.py", brut(
+            "    if taille not in TAILLES and not _taille_ecrite_d_image(texte):",
+            "    if False:"))]),
+    dict(
+        nom="une conversation deja engagee se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="« la meme scene, de nuit… » en cent mots : le tour precedent "
+              "n'est plus relu, la demande part seule",
+        rougit="temoin : la conversation a deja un echange",
+        editions=[("serveur.py", brut(
+            '    if any(t.get("etat") in ("fini", "question")',
+            '    if any(t.get("etat") in ()'))]),
+    dict(
+        nom="une sortie precedente n'empeche plus de se passer d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="une image retenue dans la conversation, et la demande qui "
+              "pouvait la retoucher part comme une image neuve sans etre lue",
+        rougit="temoin : une sortie precedente dans la conversation",
+        editions=[("serveur.py", brut(
+            '    if (conv or {}).get("derniere_sortie"):\n        return False\n',
+            ""))]),
+    dict(
+        nom="la preuve de langue n'est plus exigee pour le raccourci",
+        banc="banc_analyse_sans_objet.py",
+        imite="la premiere relecture : quarante mots de neerlandais, que "
+              "garde_fou() ne lit pas, partent sans la reecriture du modele",
+        rougit="LE CAS DE LA RELECTURE : quarante mots de neerlandais",
+        editions=[("serveur.py", brut(
+            '    if langue_de_la_demande(texte)[0] != "lue":',
+            "    if False:"))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  La langue de la demande (ronde 12, relecture) — banc_analyse_sans_objet.py
+# ──────────────────────────────────────────────────────────────────────
+# Relecture du 10 novembre 2026 : quarante mots de neerlandais finissant par
+# « met een naakt kind van acht jaar », klein9b impose, taille donnee, rendus
+# sans un appel — garde_fou() ne lit que six langues, et c'est la reecriture
+# francaise du modele qui faisait refuser. Une mutation par garde : celles du
+# test de langue, celles du raccourci, celles du chemin sans modele.
+LANGUE_DE_LA_DEMANDE = [
+    dict(
+        nom="une langue dont rien n'est prouve prend le raccourci",
+        banc="banc_analyse_sans_objet.py",
+        imite="le raccourci s'ouvre des qu'on n'a pas la preuve du contraire : "
+              "des etiquettes, une demande courte, une langue absente des "
+              "listes partent sans que rien ne les ait lues",
+        rougit="temoin : du francais en etiquettes, sans mots-outils",
+        editions=[("serveur.py", brut(
+            '    if langue_de_la_demande(texte)[0] != "lue":',
+            '    if langue_de_la_demande(texte)[0] == "autre":'))]),
+    dict(
+        nom="un mot-outil sur cinq n'est plus exige",
+        banc="banc_analyse_sans_objet.py",
+        imite="la preuve s'affaiblit : six mots-outils perdus dans des "
+              "etiquettes suffisent a dire « lue »",
+        rougit="temoin : du francais en etiquettes, sans mots-outils",
+        editions=[("serveur.py", brut(
+            "LANGUE_PART = 0.20 ",
+            "LANGUE_PART = 0.0  "))]),
+    dict(
+        nom="six mots-outils differents ne sont plus exiges",
+        banc="banc_analyse_sans_objet.py",
+        imite="« de », « le », « la », « sur » repetes suffisent a prouver une "
+              "langue — ce sont ceux que le catalan et l'occitan partagent",
+        rougit="temoin : quatre mots-outils toujours les memes",
+        editions=[("serveur.py", brut(
+            "LANGUE_MOTS = 6 ",
+            "LANGUE_MOTS = 1 "))]),
+    dict(
+        nom="une langue voisine passe pour une langue lue",
+        banc="banc_analyse_sans_objet.py",
+        imite="sans la comparaison des mots propres, le catalan a assez de "
+              "mots-outils espagnols pour etre « lu » : il part sans appel",
+        rougit="temoin : du catalan aux mots propres clairsemes",
+        editions=[("serveur.py", brut(
+            "\n                and all(l_emporte(lue, v) for v in _LANGUES_VOISINES)):",
+            "):"))]),
+    dict(
+        nom="une phrase etrangere dans une demande francaise n'est pas vue",
+        banc="banc_analyse_sans_objet.py",
+        imite="cent mots de francais puis « met een naakt kind van acht "
+              "jaar » : la demande entiere est « lue », le raccourci s'ouvre",
+        rougit="temoin : une phrase neerlandaise au bout d'une demande francaise",
+        editions=[("serveur.py", brut(
+            '        doute = doute or verdict[0] == "doute"',
+            "        pass"))]),
+    dict(
+        nom="le meme mot deux fois fait douter d'une langue",
+        banc="banc_analyse_sans_objet.py",
+        imite="« dans le style de Van Gogh et de Van Dyck » fait soupconner "
+              "du neerlandais : la demande francaise perd son raccourci",
+        rougit="deux « Van » dans une demande francaise ne sont pas un doute",
+        editions=[("serveur.py", brut(
+            "        return (len(set(a_)) >= 2",
+            "        return (len(a_) >= 2"))]),
+    dict(
+        nom="une ecriture non latine n'est plus une preuve",
+        banc="banc_analyse_sans_objet.py",
+        imite="du russe, aucun cerveau : aucun mot latin a compter, rien de "
+              "prouve, et la demande part par mots-cles sans avoir ete lue",
+        rougit="de meme pour une ecriture non latine",
+        editions=[("serveur.py", brut(
+            "    if hors_latin >= LANGUE_LETTRES:\n"
+            '        return "autre", ""\n',
+            ""))]),
+    dict(
+        nom="une demande qui veut du texte dans l'image se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="« un panneau ou est ecrit OUVERT » part avec le negatif par "
+              "defaut, qui commence par « text, letters, writing »",
+        rougit="temoin : la demande veut du TEXTE dans l'image",
+        editions=[("serveur.py", brut(
+            "    if _TEXTE_VISIBLE.search(texte):\n"
+            "        return False\n"
+            "    if langue_de_la_demande",
+            "    if langue_de_la_demande"))]),
+    dict(
+        nom="une taille ecrite hors des bornes d'une image ouvre le raccourci",
+        banc="banc_analyse_sans_objet.py",
+        imite="« capteur 6000x4000 » dans la description d'un appareil photo "
+              "compte pour une taille donnee, et l'analyse est sautee",
+        rougit="temoin : « capteur 6000x4000 » n'est pas la taille",
+        editions=[("serveur.py", brut(
+            "    return all(512 <= int(cote) <= 1920 for cote in m.groups())",
+            "    return True"))]),
+    dict(
+        nom="une mesure en millimetres ouvre le raccourci",
+        banc="banc_analyse_sans_objet.py",
+        imite="« un tirage papier de 600x800 mm » compte pour une taille "
+              "d'image, et l'analyse est sautee",
+        rougit="temoin : « tirage papier de 600x800 mm » n'est pas la taille",
+        editions=[("serveur.py", brut(
+            "    if not m or _UNITE_DE_LONGUEUR.match(texte, m.end()):",
+            "    if not m:"))]),
+    dict(
+        nom="une langue non lue part par mots-cles quand le cerveau manque",
+        banc="banc_analyse_sans_objet.py",
+        imite="la relecture du 10 novembre : du neerlandais, moteur impose, "
+              "analyse coupee — rendu tel quel, sans que rien ne l'ait lu",
+        rougit="L'ANALYSE COUPEE : du neerlandais, moteur impose, aucun cerveau",
+        editions=[("serveur.py", brut(
+            "            exiger_un_modele(texte)\n"
+            '            journal(tid, f"Ollama indisponible',
+            '            journal(tid, f"Ollama indisponible'))]),
+    dict(
+        nom="une langue non lue part par mots-cles apres deux reponses mal formees",
+        banc="banc_analyse_sans_objet.py",
+        imite="le modele rend deux fois autre chose qu'un plan : la demande "
+              "neerlandaise part par mots-cles, sans reecriture a relire",
+        rougit="deux reponses mal formees ne sont pas une lecture",
+        editions=[("serveur.py", brut(
+            "        exiger_un_modele(texte)\n"
+            '        journal(tid, "aiguillage par mots-cles")',
+            '        journal(tid, "aiguillage par mots-cles")'))]),
+    dict(
+        nom="la borne du moteur impose coupe l'analyse d'une langue non lue",
+        banc="banc_analyse_sans_objet.py",
+        imite="quarante-cinq secondes d'attente et l'analyse du neerlandais "
+              "est coupee comme une autre : elle n'aura jamais ete lue",
+        rougit="LA BORNE DU MOTEUR IMPOSE ne court pas pour elle",
+        editions=[("serveur.py", brut(
+            '            if (langue_de_la_demande(texte)[0] == "autre"\n'
+            "                    and (TACHES.get(tid)",
+            "            if (False\n"
+            "                    and (TACHES.get(tid)"))]),
+    dict(
+        nom="toute demande dont la langue n'est pas prouvee est arretee sans cerveau",
+        banc="banc_analyse_sans_objet.py",
+        imite="la regle retournee : « un chat roux sur un toit », trop court "
+              "pour prouver sa langue, est refuse des qu'Ollama est arrete",
+        rougit="temoin : « un chat roux sur un toit », dont rien ne prouve la langue",
+        editions=[("serveur.py", brut(
+            '    if langue_de_la_demande(texte)[0] == "autre":\n'
+            "        raise RefusMoteur(PHRASE_LANGUE_NON_LUE",
+            '    if langue_de_la_demande(texte)[0] != "lue":\n'
+            "        raise RefusMoteur(PHRASE_LANGUE_NON_LUE"))]),
+    # ── la seconde relecture : le reglage, le garde de doute, la preuve ──
+    dict(
+        nom="le raccourci s'ouvre sans le reglage",
+        banc="banc_analyse_sans_objet.py",
+        imite="le raccourci redevient le comportement de tous les studios : "
+              "la relecture par le modele, filet de la limite dure, disparait "
+              "sans que personne l'ait decide",
+        rougit="ETEINT PAR DEFAUT : le cas du releve",
+        editions=[("serveur.py", brut(
+            "    if not ANALYSE_SANS_OBJET:\n"
+            "        return False\n"
+            "    moteur_ = ",
+            "    moteur_ = "))]),
+    dict(
+        nom="le reglage du raccourci est allume par defaut",
+        banc="banc_analyse_sans_objet.py",
+        imite="« eteint sauf 1 » devenu « allume sauf 0 » : un studio qui n'a "
+              "rien regle saute l'analyse",
+        rougit="STUDIO_ANALYSE_SANS_OBJET absent : le reglage vaut",
+        editions=[("serveur.py", brut(
+            'ANALYSE_SANS_OBJET = (os.environ.get("STUDIO_ANALYSE_SANS_OBJET") or "") == "1"',
+            'ANALYSE_SANS_OBJET = (os.environ.get("STUDIO_ANALYSE_SANS_OBJET") or "") != "0"'))]),
+    dict(
+        nom="une lettre non latine n'est plus un doute",
+        banc="banc_analyse_sans_objet.py",
+        imite="un mot grec ou « pleine chasse » dans une demande francaise "
+              "« lue » : les motifs ne le lisent pas, le raccourci s'ouvre",
+        rougit="temoin : UNE lettre grecque dans une demande « lue »",
+        editions=[("serveur.py", brut(
+            "    if _lettre_hors_latin(texte) or _MINEUR.search(_lectures(texte)):",
+            "    if _MINEUR.search(_lectures(texte)):"))]),
+    dict(
+        nom="le doute lit le texte brut, pas les lectures du garde-fou",
+        banc="banc_analyse_sans_objet.py",
+        imite="un caractere invisible au milieu du mot : le motif ne mord "
+              "plus, le raccourci s'ouvre sur une demande qui parle d'un "
+              "mineur",
+        rougit="un caractere invisible dans le mot ne leve pas le doute",
+        editions=[("serveur.py", brut(
+            "    if _lettre_hors_latin(texte) or _MINEUR.search(_lectures(texte)):",
+            "    if _lettre_hors_latin(texte) or _MINEUR.search(texte):"))]),
+    dict(
+        nom="une demande qui parle d'un enfant se passe d'analyse",
+        banc="banc_analyse_sans_objet.py",
+        imite="« un enfant » sans mot sexuel que les motifs connaissent : le "
+              "raccourci s'ouvre, et le modele ne relit plus ce qui l'entoure",
+        rougit="temoin : la demande parle d'un enfant, sans rien de sexuel",
+        editions=[("serveur.py", brut(
+            "    if _lettre_hors_latin(texte) or _MINEUR.search(_lectures(texte)):",
+            "    if _lettre_hors_latin(texte):"))]),
+    dict(
+        nom="seules quelques ecritures comptent pour non latines",
+        banc="banc_analyse_sans_objet.py",
+        imite="le retour a _PLAGES_NON_LATINES : le grec, le thai, le "
+              "devanagari, la pleine chasse redeviennent du « latin »",
+        rougit="temoin : UNE lettre grecque dans une demande « lue »",
+        editions=[("serveur.py", brut(
+            '               and not unicodedata.name(c, "").startswith("LATIN")',
+            "               and any(a <= ord(c) <= b"
+            " for a, b in _PLAGES_NON_LATINES)"))]),
+    dict(
+        nom="un seul mot etranger prouve une langue non lue",
+        banc="banc_analyse_sans_objet.py",
+        imite="la relecture du 10 novembre : « Portrait de Dan, torse nu » "
+              "pris pour du neerlandais, et « ecris-la en francais » repondu a "
+              "quelqu'un qui ecrit en francais",
+        rougit="« Portrait de Dan, torse nu",
+        editions=[("serveur.py", brut(
+            "LANGUE_PREUVE = 3 ",
+            "LANGUE_PREUVE = 1 "))]),
+    dict(
+        nom="les mots ambigus prouvent une langue non lue",
+        banc="banc_analyse_sans_objet.py",
+        imite="« dan », « van », « men », « till », « bu », « ki » comptent "
+              "de nouveau comme des mots propres : les noms propres font "
+              "refuser des demandes francaises et anglaises",
+        rougit="« Dan, Ada, Yang, portrait de groupe » : trois prenoms",
+        editions=[("serveur.py", brut(
+            "    v_: _MOTS_OUTILS[v_] - _MOTS_AMBIGUS\n",
+            "    v_: _MOTS_OUTILS[v_]\n"))]),
+    dict(
+        nom="deux mots surs ne sont plus exiges pour prouver une voisine",
+        banc="banc_analyse_sans_objet.py",
+        imite="trois mots ambigus suffisent : trois prenoms qui sont aussi "
+              "des mots indonesiens font refuser une demande francaise",
+        rougit="« Dan, Ada, Yang, portrait de groupe » : trois prenoms",
+        editions=[("serveur.py", brut(
+            "        if (len(surs) >= LANGUE_PREUVE - 1 and",
+            "        if (len(surs) >= 0 and"))]),
+    dict(
+        nom="les mots ambigus ne viennent plus a l'appui de deux mots surs",
+        banc="banc_analyse_sans_objet.py",
+        imite="le neerlandais pauvre en mots-outils de la premiere relecture "
+              "— « voor », « een », « met », « van » — n'est plus prouve, et "
+              "repart par mots-cles quand aucun modele ne repond",
+        rougit="et pour le neerlandais de la premiere relecture",
+        editions=[("serveur.py", brut(
+            "        if (len(surs) >= LANGUE_PREUVE - 1 and",
+            "        if (len(surs) >= LANGUE_PREUVE and"))]),
+    dict(
+        nom="la part minimale n'est plus exigee pour prouver une voisine",
+        banc="banc_analyse_sans_objet.py",
+        imite="trois titres neerlandais disperses dans quarante mots "
+              "d'etiquettes anglaises font refuser la demande",
+        rougit="temoin : trois titres neerlandais disperses",
+        editions=[("serveur.py", brut(
+            "                and compte[voisine] >= LANGUE_PART * len(mots)\n"
+            "                and all(len(siens)",
+            "                and all(len(siens)"))]),
+    dict(
+        nom="une voisine est prouvee meme quand une langue lue l'emporte",
+        banc="banc_analyse_sans_objet.py",
+        imite="deux titres neerlandais et « Van Gogh » dans une demande "
+              "francaise pleine de « de » : refusee faute de cerveau",
+        rougit="temoin : deux titres neerlandais et Van Gogh",
+        editions=[("serveur.py", brut(
+            "                and all(len(siens) >= LANGUE_MARGE * len(propres(l_, voisine))\n"
+            "                        for l_ in LANGUES_LUES)):",
+            "                and True):"))]),
+    dict(
+        nom="un seul caractere non latin prouve une autre ecriture",
+        banc="banc_analyse_sans_objet.py",
+        imite="« le kanji 力 tatoue sur l'epaule » : une demande francaise "
+              "refusee des qu'aucun modele ne repond",
+        rougit="temoin : un seul caractere d'une autre ecriture",
+        editions=[("serveur.py", brut(
+            "LANGUE_LETTRES = 4 ",
+            "LANGUE_LETTRES = 1 "))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  Le repli par mots-cles (ronde 12) — banc_repli_mots_cles.py
+# ──────────────────────────────────────────────────────────────────────
+# Mesure du 10 novembre 2026 sur le chemin de l'analyse coupee (206 demandes a
+# moteur impose en 72 h) : « son tablier » lu comme une musique, « un animal »
+# comme une video, et l'image rendue en 512x512 ou en 1280x704.
+REPLI_MOTS_CLES = [
+    dict(
+        nom="l'image imposee garde les dimensions d'une musique",
+        banc="banc_repli_mots_cles.py",
+        imite="la production : analyse coupee, la demande est lue comme une "
+              "musique, et klein9b rend une image de 512x512",
+        rougit="une demande lue comme une MUSIQUE par le repli",
+        editions=[("serveur.py", brut(
+            '                if avant_force in ("audio", "video", "video_image"):',
+            "                if False:"))]),
+    dict(
+        nom="l'image imposee garde les dimensions d'une video",
+        banc="banc_repli_mots_cles.py",
+        imite="la moitie de la correction : la musique est traitee, la video "
+              "non, et l'image sort en 1280x704",
+        rougit="une demande lue comme une VIDEO par le repli",
+        editions=[("serveur.py", brut(
+            '                if avant_force in ("audio", "video", "video_image"):',
+            '                if avant_force in ("audio",):'))]),
+    dict(
+        nom="toute bascule sous un moteur impose perd son format",
+        banc="banc_repli_mots_cles.py",
+        imite="la correction trop large : un portrait que l'analyse proposait "
+              "en hauteur, bascule en retouche par le code, sort en 1216x832",
+        rougit="temoin : une analyse basculee en retouche par le code garde son format",
+        editions=[("serveur.py", brut(
+            '                if avant_force in ("audio", "video", "video_image"):',
+            '                if avant_force != "image":'))]),
+    dict(
+        nom="le possessif son redevient une musique",
+        banc="banc_repli_mots_cles.py",
+        imite="le repli d'avant : « son tablier », « une plus grande maison » "
+              "partent en musique des que le modele ne repond pas",
+        rougit="« son tablier » n'est pas une musique",
+        editions=[("serveur.py", brut(
+            '    r"\\b(?:un|le|du|ce|des|les|ces)\\s+sons?\\b|"',
+            '    r"son |"'))]),
+    dict(
+        nom="un son de cloche n'est plus une musique",
+        banc="banc_repli_mots_cles.py",
+        imite="« son » retire au lieu d'etre lu de plus pres : « un son de "
+              "cloche », « le son des vagues » deviennent des images",
+        rougit="« un son de » : audio",
+        editions=[("serveur.py", brut(
+            '    r"\\b(?:un|le|du|ce|des|les|ces)\\s+sons?\\b|"',
+            '    r"bande[ -]son\\b|"'))]),
+    dict(
+        nom="un animal redevient une video",
+        banc="banc_repli_mots_cles.py",
+        imite="le repli d'avant : « anim » sans frontiere, et « un animal » "
+              "part chez Wan pour six minutes",
+        rougit="« un animal » n'est pas une video",
+        editions=[("serveur.py", brut(
+            r'_SECOURS_VIDEO = re.compile(r"vid[ée]o|\bclips?\b(?![- ]art)")',
+            r'_SECOURS_VIDEO = re.compile(r"vid[ée]o|\bclips?\b(?![- ]art)|anim")'))]),
+    dict(
+        nom="une eclipse redevient un clip",
+        banc="banc_repli_mots_cles.py",
+        imite="« clip » sans frontiere de mot : « une eclipse de lune » part "
+              "en video",
+        rougit="« eclipse » : image",
+        editions=[("serveur.py", brut(
+            r'_SECOURS_VIDEO = re.compile(r"vid[ée]o|\bclips?\b(?![- ]art)")',
+            r'_SECOURS_VIDEO = re.compile(r"vid[ée]o|clips?(?![- ]art)")'))]),
+    # ── la seconde relecture : un style n'est pas une animation ──
+    dict(
+        nom="un clip-art redevient un clip",
+        banc="banc_repli_mots_cles.py",
+        imite="« un clip-art de sapin de Noel » part en video chez Wan",
+        rougit="image : « un clip-art de sapin de Noël »",
+        editions=[("serveur.py", brut(
+            r'_SECOURS_VIDEO = re.compile(r"vid[ée]o|\bclips?\b(?![- ]art)")',
+            r'_SECOURS_VIDEO = re.compile(r"vid[ée]o|\bclips?\b")'))]),
+    dict(
+        nom="une photo en dessin anime redevient une animation",
+        banc="banc_repli_mots_cles.py",
+        imite="la relecture du 10 novembre : « version dessin anime de cette "
+              "photo », image jointe, anime la photo au lieu de la retoucher",
+        rougit="image jointe, retouche : « version dessin anime de cette photo »",
+        editions=[("serveur.py", brut(
+            r'    r"\bdessins?\s+anim[eé]e?s?\b|"' + chr(10),
+            ""))]),
+    dict(
+        nom="le style animation redevient une video",
+        banc="banc_repli_mots_cles.py",
+        imite="« personnage style animation 3D Pixar, fond uni » part en "
+              "video : six minutes de carte pour une image",
+        rougit="image : « personnage style animation 3D Pixar, fond uni »",
+        editions=[("serveur.py", brut(
+            r'    r"\b(?:style|fa[cç]on|genre)\s+(?:de\s+|d' + "'"
+            + r')?(?:(?:film|s[ée]rie)\s+d' + "'" + r')?anim\w*|"' + chr(10),
+            ""))]),
+    dict(
+        nom="comme dans un film d'animation redevient une video",
+        banc="banc_repli_mots_cles.py",
+        imite="« un loup dessine comme dans un film d'animation » part en "
+              "video",
+        rougit="image : « un loup dessiné comme dans un film d'animation »",
+        editions=[("serveur.py", brut(
+            r'    r"\b(?:comme\s+dans\s+(?:un|une|les?|des)|d' + "'"
+            + r'une?|de)\s+(?:film|s[ée]rie)s?"' + chr(10)
+            + r'    r"\s+d' + "'" + r'animation\b|"' + chr(10),
+            ""))]),
+    dict(
+        nom="animated style redevient une video",
+        banc="banc_repli_mots_cles.py",
+        imite="« Pixar animated style portrait of a grandmother » part en "
+              "video",
+        rougit="image : « Pixar animated style portrait of a grandmother »",
+        editions=[("serveur.py", brut(
+            r'    r"\banimated\s+(?:\w+\s+)?(?:style|movie|film|series|show|cartoon|"' + chr(10)
+            + r'    r"character|feature)s?\b|"' + chr(10),
+            ""))]),
+    dict(
+        nom="animation style redevient une video",
+        banc="banc_repli_mots_cles.py",
+        imite="« a knight, animation style, flat colors » part en video",
+        rougit="image : « a knight, animation style, flat colors »",
+        editions=[("serveur.py", brut(
+            r'    r"\banimation\s+(?:style|movie|film|studio)s?\b|"' + chr(10),
+            ""))]),
+    dict(
+        nom="un logo anime par la passion redevient une video",
+        banc="banc_repli_mots_cles.py",
+        imite="« anime par », « anime et » disent qui anime la scene : sans "
+              "eux, « un logo anime par la passion du vin » part en video",
+        rougit="image : « un logo animé par la passion du vin »",
+        editions=[("serveur.py", brut(
+            r'    r"\banim\w*\s+(?:par|by|et)\b")',
+            r'    r"\banimxx\b")'))]),
+    dict(
+        nom="anime une scene n'est plus une video",
+        banc="banc_repli_mots_cles.py",
+        imite="« anim » retire au lieu d'etre lu de plus pres : l'imperatif "
+              "« anime une scene de bataille » rend une image fixe",
+        rougit="« anime une scene » : video",
+        editions=[("serveur.py", brut(
+            r'    r"\banim(?:e|es|ez|er)[ -](?:',
+            r'    r"\banim(?:es|ez|er)[ -](?:'))]),
+    dict(
+        nom="son de pluie en tete de demande n'est plus une musique",
+        banc="banc_repli_mots_cles.py",
+        imite="la relecture du 10 novembre : « son de pluie sur un toit », "
+              "sans article, rendu en image",
+        rougit="« son de » en tete de demande : audio",
+        editions=[("serveur.py", brut(
+            '    r"^\\W*sons?\\s+d[e\']")',
+            '    r"bande[ -]son\\b")'))]),
+    dict(
+        nom="animer ne se lit plus en anglais ni en allemand",
+        banc="banc_repli_mots_cles.py",
+        imite="la relecture du 10 novembre : « animate a cat running », « eine "
+              "animierte Sequenz » rendus en image fixe — la video recule de "
+              "7 a 5 sur 10 dans les deux langues",
+        rougit="en, « video » :",
+        editions=[("serveur.py", brut(
+            r'    r"\banimat(?:e|es|ed|ing)\b|\banimier\w*|"' + chr(10),
+            ''))]),
+    dict(
+        nom="animer ne se lit plus en espagnol",
+        banc="banc_repli_mots_cles.py",
+        imite="la relecture du 10 novembre : « una animacion de un logo » "
+              "rendue en image fixe — la video recule en espagnol",
+        rougit="es, « video » :",
+        editions=[("serveur.py", brut(
+            r'    r"\banimations?\b|\banimationen\b|\banimaci[oó]n(?:es)?\b|"',
+            r'    r"\banimations?\b|\banimationen\b|"'))]),
+    dict(
+        nom="une boucle animee n'est plus une video",
+        banc="banc_repli_mots_cles.py",
+        imite="la relecture du 10 novembre : « une boucle animee », « un logo "
+              "anime » rendus en image fixe",
+        rougit="« une boucle animee » : video",
+        editions=[("serveur.py", brut(
+            r'    r"storyboard)s?\s+anim(?:[eé]e?s?|ad[oa]s?|at[oaie])\b|"',
+            r'    r"storyboard)s?\s+animation\b|"'))]),
+    dict(
+        nom="animier dieses Foto n'anime plus la photo jointe",
+        banc="banc_repli_mots_cles.py",
+        imite="la relecture du 10 novembre, image jointe : le verbe n'est lu "
+              "qu'en francais, et « animier bitte dieses Foto » rend une video "
+              "neuve sans la photo",
+        rougit="image jointe, allemand :",
+        editions=[("serveur.py", brut(
+            "    if a_une_image and (_SECOURS_ANIMER_JOINTE.search(sans_style)\n"
+            "                        or _SECOURS_ANIMER.search(sans_style)):",
+            "    if a_une_image and _SECOURS_ANIMER_JOINTE.search(sans_style):"))]),
+    dict(
+        nom="que cette photo devienne animada n'anime plus la photo",
+        banc="banc_repli_mots_cles.py",
+        imite="avec une image jointe, l'adjectif espagnol seul n'est plus lu : "
+              "« quiero que esta foto se vuelva animada » retouche la photo",
+        rougit="image jointe, espagnol, l'adjectif :",
+        editions=[("serveur.py", brut(
+            r'    r"\banim(?:ad[oa]s?|at[oaie])\b")',
+            r'    r"\banimations?\b")'))]),
+    dict(
+        nom="animee par le vent devient un style",
+        banc="banc_repli_mots_cles.py",
+        imite="« anime » sans frontiere dans la branche de Pony, qui n'etait "
+              "jamais atteinte avant : « une foret animee par le vent » part "
+              "sur un moteur a etiquettes",
+        rougit="le style « anime » va a Pony, « animee par le vent » non",
+        editions=[("serveur.py", brut(
+            r'    if re.search(r"manga|\banime\b|illustration|dessin|fan.?art", t):',
+            r'    if re.search(r"manga|anime|illustration|dessin|fan.?art", t):'))]),
+]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  La regle du pret (ronde 12, 10 novembre 2026) — banc_pret.py
+# ──────────────────────────────────────────────────────────────────────
+# « Comfy studio ne devrait pas avoir le droit d'appeler ollama sur un noeud
+# dont le comfy n'est pas lance ou en pause (meme s'il est disponible) ». Le
+# 9 novembre 2026, quatre analyses ont charge 5,7 Go sur la carte du PC,
+# ComfyUI ferme.
+#
+# UNE MUTATION PAR GARDE, et les gardes SE RECOUVRENT A DESSEIN : le choix des
+# cerveaux, le garde d'apres l'attente et la porte de _ollama_local refusent
+# tous trois la meme machine. Retirer l'un d'eux ne fait donc partir AUCUN
+# appel vers elle — c'est le but — et « le faux Ollama n'a rien recu » ne
+# rougirait sur aucune. Chacune vise donc la verification qui ne tient qu'a
+# SON garde : la liste rendue, la ligne du fil, la reprise apres dechargement.
+# banc_pret.py lance de vrais petits serveurs sur 127.0.0.1 : trois secondes.
+REGLE_DU_PRET = [
+    dict(
+        nom="ComfyUI ferme ne ferme plus le pret",
+        banc="banc_pret.py",
+        imite="l'etat du 9 novembre : l'agent annonce « comfy: False », son "
+              "Ollama repond, et le studio y charge 5,7 Go",
+        rougit="ComfyUI ferme + Ollama joignable : AUCUN appel de generation "
+               "ne part",
+        editions=[("serveur.py", brut(
+            '    return "ferme" if e.get("annonce") else "muet"',
+            '    return ""'))]),
+    dict(
+        nom="un agent muet prete encore son Ollama",
+        banc="banc_pret.py",
+        imite="la production du 10 novembre : agent et ComfyUI arretes sur le "
+              "PC, « repond » reste vrai en memoire, et son Ollama est appele",
+        rougit="AGENT MUET, Ollama joignable",
+        editions=[("serveur.py", brut(
+            '    if maintenant - (e.get("vu") or 0) >= SILENCE_PRET:',
+            "    if False:"))]),
+    dict(
+        nom="le choix des cerveaux ne regarde plus le pret",
+        banc="banc_pret.py",
+        imite="l'Ollama d'une machine fermee reste dans la liste : l'analyse "
+              "attend sa carte, puis se fait refuser a la porte",
+        rougit="ComfyUI ferme : l'Ollama du PC sort de la liste des cerveaux",
+        editions=[("serveur.py", brut(
+            "        if cerveau_ferme(noeud_du_cerveau(url)):",
+            "        if False:"))]),
+    dict(
+        nom="la fermeture pendant l'attente de la carte n'est plus regardee",
+        banc="banc_pret.py",
+        imite="une demi-heure derriere un rendu, ComfyUI ferme entre-temps : "
+              "seul le filtre d'avant l'attente avait parle",
+        rougit="et le fil dit que c'est pendant l'attente que ComfyUI s'est "
+               "ferme",
+        editions=[("serveur.py", brut(
+            "        if ferme_attente_:" + chr(10),
+            "        if False:" + chr(10)))]),
+    dict(
+        nom="la porte de l'appel est ouverte",
+        banc="banc_pret.py",
+        imite="la reprise apres dechargement et la relance apres plantage "
+              "repartent sur une machine qui vient de reprendre sa carte",
+        rougit="ComfyUI se ferme entre le dechargement qui repare et la "
+               "reprise",
+        editions=[("serveur.py", brut(
+            "    if ferme_porte_:", "    if False:"))]),
+    dict(
+        nom="la course attend la carte d'une machine fermee",
+        banc="banc_pret.py",
+        imite="l'analyse court pour une carte sur laquelle elle ne lancera "
+              "rien, et annonce au fil une course qui n'en est pas une",
+        rougit="une machine qui a ferme ComfyUI n'entre plus dans la course",
+        editions=[("serveur.py", brut(
+            "        if not i or i in vus_ or cerveau_ferme(i):",
+            "        if not i or i in vus_:"))]),
+    dict(
+        nom="une machine fermee compte comme un repli",
+        banc="banc_pret.py",
+        imite="« on reessaie ailleurs », et l'ailleurs est une machine dont "
+              "ComfyUI est ferme : la boucle la saute, le fil a menti",
+        rougit="une machine qui a ferme ComfyUI n'est pas comptee comme un "
+               "repli",
+        editions=[("serveur.py", brut(
+            "                         and not cerveau_ferme(noeud_du_cerveau(u))"
+            + chr(10), ""))]),
+    dict(
+        nom="une reponse degeneree fait reparer une machine fermee",
+        banc="banc_pret.py",
+        imite="la reparation qui ne regarde pas le pret : un dechargement est "
+              "compte et tente sur une machine dont ComfyUI vient de se "
+              "fermer, et le fil annonce qu'il « n'a pas abouti »",
+        rougit="le fil dit qu'on n'y touche pas, et aucun dechargement n'est "
+               "compte",
+        editions=[("serveur.py", brut(
+            "    if ferme:" + chr(10)
+            + "        # Son proprietaire",
+            "    if False:" + chr(10) + "        # Son proprietaire"))]),
+    dict(
+        nom="un dechargement part vers une machine fermee",
+        banc="banc_pret.py",
+        imite="« decharger ne calcule rien » : la fin de rafale envoie "
+              "keep_alive 0 a l'Ollama d'une machine fermee, et decharge le "
+              "modele dont son proprietaire se sert",
+        rougit="rien n'est envoye a une machine fermee, pas meme un "
+               "dechargement",
+        editions=[("serveur.py", brut(
+            "    if cerveau_ferme(noeud_du_cerveau(url)):" + chr(10)
+            + "        # Une machine fermee n'a rien",
+            "    if False:" + chr(10)
+            + "        # Une machine fermee n'a rien"))]),
+    dict(
+        nom="une machine fermee prete encore par son agent",
+        banc="banc_pret.py",
+        imite="le detour qui ne lit que « llm » : l'agent annonce son modele "
+              "ComfyUI ferme, et le repli le lui emprunte",
+        rougit="n'est plus de celles qui le pretent par leur agent",
+        editions=[("serveur.py", brut(
+            '        if cerveau_ferme(x["id"]):', "        if False:"))]),
+    dict(
+        nom="poser_a depose pour une machine fermee",
+        banc="banc_pret.py",
+        imite="la question deposee apres l'attente de la carte, sans relire "
+              "l'etat de la machine : son agent la servira",
+        rougit="poser_a ne depose rien pour une machine dont ComfyUI est ferme",
+        editions=[("serveur.py", brut(
+            "        if ferme_depot_:", "        if False:"))]),
+    dict(
+        nom="la question deja deposee est remise a l'agent",
+        banc="banc_pret.py",
+        imite="deposee quand la machine pretait, remise apres qu'elle a "
+              "ferme : l'agent appelle son Ollama sans rien demander",
+        rougit="une question deposee AVANT la fermeture n'est pas remise a "
+               "l'agent",
+        editions=[("serveur.py", brut(
+            "    if ferme_remise_:", "    if False:"))]),
+    dict(
+        nom="l'essai de la console part sur une machine en pause",
+        banc="banc_pret.py",
+        imite="l'essai qui ne regardait que « repond » : un clic dans /admin "
+              "charge le modele sur la carte de quelqu'un qui joue",
+        rougit="l'essai de /admin n'est pas lance sur une machine EN PAUSE",
+        editions=[("serveur.py", brut(
+            "    if ferme_essai_:", "    if False:"))]),
+    dict(
+        nom="la raison est redite a chaque appel de la demande",
+        banc="banc_pret.py",
+        imite="trois ou quatre lignes identiques dans le fil de chaque "
+              "demande, tant que le PC n'est pas prete",
+        rougit="UNE SEULE fois pour les trois appels de la demande",
+        editions=[("serveur.py", brut(
+            "        journal_une_fois(tid, _pourquoi_aucun_cerveau())",
+            "        journal(tid, _pourquoi_aucun_cerveau())"))]),
+    dict(
+        nom="la raison est dite meme quand un autre cerveau repond",
+        banc="banc_pret.py",
+        imite="une ligne dans le fil de chaque demande tant que le PC est "
+              "eteint — la moitie du temps : du bruit, que plus personne ne "
+              "lit le jour ou la demande part vraiment aux mots-cles",
+        rougit="et quand un autre cerveau repond, RIEN dans le fil de la "
+               "demande",
+        editions=[("serveur.py", brut(
+            "    if not cerveaux:" + chr(10)
+            + "        journal_une_fois(tid, _pourquoi_aucun_cerveau())",
+            "    if True:" + chr(10)
+            + "        journal_une_fois(tid, _pourquoi_aucun_cerveau())"))]),
+    dict(
+        nom="sans cerveau, le fil reparle d'un modele injoignable",
+        banc="banc_pret.py",
+        imite="« un modele du parc injoignable — on cherche une machine » "
+              "pour un Ollama qui repond et une regle qui le ferme",
+        rougit="et ne parle pas d'un modele « injoignable »",
+        editions=[("serveur.py", brut(
+            "    if not (isinstance(panne, CerveauFerme) and not noeuds_a_llm()):",
+            "    if True:"))]),
+    dict(
+        nom="au reveil, une machine pas encore entendue est tenue pour fermee",
+        banc="banc_pret.py",
+        imite="le studio redemarre, reprend sa file, et toutes les demandes "
+              "partent aux mots-cles dix secondes avant l'annonce du NAS",
+        rougit="AU REVEIL DU STUDIO, l'analyse attend le premier battement",
+        editions=[("serveur.py", brut(
+            "    await attendre_les_annonces()", "    pass"))]),
+    # ── la relecture du 10 novembre 2026 : six defauts, leurs gardes ──
+    # 1. Le reveil : une demande de question ou de travail n'est pas une
+    #    annonce, et l'echeance court depuis que le studio sert.
+    dict(
+        nom="une demande de question vaut une annonce",
+        banc="banc_pret.py",
+        imite="le defaut releve : l'agent vient chercher une question avant "
+              "son premier battement, l'attente du reveil s'arrete, et les "
+              "demandes reprises de la file partent aux mots-cles",
+        rougit="une demande de question recue avant la premiere annonce ne "
+               "defait pas l'attente du reveil",
+        editions=[("serveur.py", brut(
+            '    return est_agent(ident) and not e.get("annonce") '
+            'and not e.get("repond")',
+            '    return est_agent(ident) and not e.get("vu")'))]),
+    dict(
+        nom="une machine pas encore annoncee est dite ComfyUI ferme",
+        banc="banc_pret.py",
+        imite="« PC : ComfyUI n'y tourne pas » ecrit dans le fil d'une machine "
+              "dont on n'a recu aucune annonce : on n'en sait rien",
+        rougit="passe ATTENTE_ANNONCES (une trentaine de secondes)",
+        editions=[("serveur.py", brut(
+            '    return "ferme" if e.get("annonce") else "muet"',
+            '    return "ferme"'))]),
+    dict(
+        nom="l'annonce n'est plus horodatee a part",
+        banc="banc_pret.py",
+        imite="le champ que seule la route d'annonce pose disparait : une "
+              "machine annoncee « comfy: False » reste « pas encore "
+              "annoncee », et chaque analyse l'attend jusqu'a l'echeance",
+        rougit="la premiere ANNONCE clot l'attente",
+        editions=[("serveur.py", brut(
+            '    etat["annonce"] = time.time()', "    pass"))]),
+    dict(
+        nom="l'echeance du reveil court depuis l'import",
+        banc="banc_pret.py",
+        imite="huit secondes de releve bloquant par Ollama eteint, avant que "
+              "le studio serve : l'attente est consommee quand le premier "
+              "agent peut enfin le joindre",
+        rougit="l'echeance de l'attente court depuis que le studio SERT",
+        editions=[("serveur.py", brut(
+            "(SERVI_DEPUIS[0] or DEMARRE)", "DEMARRE"))]),
+    dict(
+        nom="le studio ne note pas quand il se met a servir",
+        banc="banc_pret.py",
+        imite="SERVI_DEPUIS reste a zero en production : l'echeance retombe "
+              "sur l'import sans que rien ne le dise",
+        rougit="demarrer_file() note l'instant ou le studio se met a servir",
+        editions=[("serveur.py", brut(
+            "    SERVI_DEPUIS[0] = time.time()", "    pass"))]),
+    # 2. La machine du studio : seule la pause y ferme le cerveau.
+    dict(
+        nom="sur la machine du studio, ComfyUI ferme ferme le cerveau",
+        banc="banc_pret.py",
+        imite="la premiere version : carte vue une fois, ComfyUI local ferme, "
+              "plus aucun cerveau — l'analyse part aux mots-cles juste avant "
+              "que le studio relance ComfyUI pour le rendu",
+        rougit="machine du studio, ComfyUI ferme ou ouvert, carte deja vue ou "
+               "jamais : son Ollama sert",
+        editions=[("serveur.py", brut(
+            "    if not est_agent(ident):" + chr(10) + '        return ""'
+            + chr(10) + "    e = ETAT_NOEUDS.get(ident) or {}" + chr(10)
+            + "    maintenant = time.time()",
+            "    e = ETAT_NOEUDS.get(ident) or {}" + chr(10)
+            + "    maintenant = time.time()"))]),
+    dict(
+        nom="l'Ollama ecrit par l'adresse du reseau n'est pas celui du studio",
+        banc="banc_pret.py",
+        imite="la regle qui depend de la facon d'ECRIRE l'adresse : par "
+              "localhost la pause ferme, par 192.168.… la porte reste ouverte",
+        rougit="et l'Ollama est reconnu comme celui de la machine du studio",
+        editions=[("serveur.py", brut(
+            "    return _ollama_ici(url) or hote in ADRESSES_MACHINE "
+            "or hote == ici",
+            "    return _ollama_ici(url)"))]),
+    dict(
+        nom="la pause de la machine du studio ne ferme pas son Ollama",
+        banc="banc_pret.py",
+        imite="l'Ollama d'ici n'est rattache a rien : la seule chose qui "
+              "ferme le cerveau de la machine du studio ne le ferme plus",
+        rougit="en pause, la machine du studio ne prete pas son Ollama",
+        editions=[("serveur.py", brut(
+            "    if _ollama_de_cette_machine(url):" + chr(10)
+            + '        return noeud_local()["id"]',
+            "    if False:" + chr(10)
+            + '        return noeud_local()["id"]'))]),
+    # 3. La fenetre : un silence propre au pret.
+    dict(
+        nom="le silence du pret reprend SILENCE_MAX",
+        banc="banc_pret.py",
+        imite="la fenetre fermee sur l'agent et ComfyUI : quarante-quatre "
+              "secondes plus tard, le PC prete encore son Ollama",
+        rougit="le PC cesse de preter son Ollama au bout de SILENCE_PRET",
+        editions=[("serveur.py", brut(
+            '    if maintenant - (e.get("vu") or 0) >= SILENCE_PRET:',
+            '    if maintenant - (e.get("vu") or 0) >= SILENCE_MAX:'))]),
+    dict(
+        nom="une annonce trop vieille vaut encore permission",
+        banc="banc_pret.py",
+        imite="le fil d'annonce s'est tu, celui des questions tourne : « vu » "
+              "reste frais, et « repond » garde le oui d'il y a dix minutes",
+        rougit="sans annonce ni battement de progression depuis SILENCE_MAX, "
+               "ne prete plus",
+        # RE-ANCREE a la seconde relecture : un battement de progression vaut
+        # une annonce, c'est l'absence des deux qui retire la permission.
+        editions=[("serveur.py", brut(
+            "    if parle_ and maintenant - parle_ >= SILENCE_MAX:",
+            "    if False:"))]),
+    dict(
+        nom="une machine qui rend passe pour muette quand son annonce tarde",
+        banc="banc_pret.py",
+        imite="un agent d'avant le fil d'annonce, ou un fil retenu dans le "
+              "listage des modeles : en plein rendu, « son agent ne s'annonce "
+              "plus », et l'analyse suivante part aux mots-cles",
+        rougit="une machine qui REND n'est pas muette",
+        editions=[("serveur.py", brut(
+            '    parle_ = max(e.get("annonce") or 0, e.get("progres") or 0)',
+            '    parle_ = e.get("annonce") or 0'))]),
+    dict(
+        nom="le battement de progression n'est plus horodate",
+        banc="banc_pret.py",
+        imite="la route de progression ne note pas l'heure : la regle n'a "
+              "plus que l'annonce pour savoir que ComfyUI tourne",
+        rougit="une machine qui REND n'est pas muette",
+        editions=[("serveur.py", brut(
+            "                     progres=time.time())",
+            "                     progres=0)"))]),
+    # ── la seconde relecture du 10 novembre 2026 ──
+    # ComfyUI ferme n'est pas une machine occupee, ni une machine eteinte.
+    dict(
+        nom="une machine dont ComfyUI est ferme passe pour occupee",
+        banc="banc_pret.py",
+        imite="« PC : ComfyUI n'y tourne pas », puis « PC travaille — ta "
+              "demande attend son tour » pendant trente minutes",
+        rougit="n'est pas « occupee »",
+        editions=[("serveur.py", brut(
+            '            if comfy_dit_ferme(x["id"]):',
+            "            if False:"))]),
+    dict(
+        nom="ComfyUI ferme : le refus dit de rallumer la machine",
+        banc="banc_pret.py",
+        imite="« Rallume-la, ou verifie son agent » pour une machine allumee "
+              "dont l'agent vient de repondre",
+        rougit="et le refus dit quoi faire — « relance ComfyUI sur cette "
+               "machine »",
+        editions=[("serveur.py", brut(
+            "    if fermees:", "    if False:"))]),
+    dict(
+        nom="sans autre machine, le refus accuse l'agent qui vient de parler",
+        banc="banc_pret.py",
+        imite="le PC seul au parc, ComfyUI ferme : « aucune des machines "
+              "declarees ne repond : leur agent tourne-t-il ? »",
+        rougit="une demande que seul le PC sait rendre, ComfyUI ferme",
+        editions=[("serveur.py", brut(
+            "            if comfy_fermes_capables(cle):",
+            "            if False:"))]),
+    dict(
+        nom="une machine pas encore annoncee passe pour ComfyUI ferme",
+        banc="banc_pret.py",
+        imite="au reveil du studio, « repond » est faux pour tout le monde : "
+              "la demande n'attend plus la machine qui allait s'annoncer",
+        rougit="TEMOIN : au reveil du studio, une machine qui ne s'est pas "
+               "encore annoncee est toujours attendue",
+        editions=[("serveur.py", brut(
+            '    return est_agent(ident) and bool(e.get("annonce")) '
+            'and not e.get("repond")',
+            '    return est_agent(ident) and not e.get("repond")'))]),
+    dict(
+        nom="un agent qui s'est tu depuis : le refus dit encore de relancer "
+            "ComfyUI",
+        banc="banc_pret.py",
+        imite="la derniere annonce disait « comfy: False », puis plus rien "
+              "depuis une heure : on ne sait plus rien de la machine",
+        rougit="TEMOIN : si l'agent s'est tu depuis",
+        editions=[("serveur.py", brut(
+            '        if time.time() - (e.get("vu") or 0) >= SILENCE_MAX:'
+            + chr(10) + "            continue" + chr(10)
+            + "        if besoin > _vram_utile(ident):",
+            "        if besoin > _vram_utile(ident):"))]),
+    dict(
+        nom="une machine declaree, en pause, garde son Ollama",
+        banc="banc_pret.py",
+        imite="le rattachement par nom d'hote retire : la pause d'une machine "
+              "de noeuds.json ne ferme rien, et le studio avertit qu'il ne "
+              "sait pas a qui est l'Ollama",
+        rougit="une machine declaree par son adresse, EN PAUSE",
+        editions=[("serveur.py", brut(
+            '.hostname or "").lower()):' + chr(10)
+            + '            return x["id"]',
+            '.hostname or "").lower()):' + chr(10)
+            + "            continue"))]),
+    # 4. L'erreur dite a l'utilisateur.
+    dict(
+        nom="l'image que la regle empeche de lire renvoie a ollama pull",
+        banc="banc_pret.py",
+        imite="« Il faut un modele qui sache voir, par exemple : ollama pull "
+              "qwen2.5vl:7b » sous une image que le PC, ferme, aurait lue",
+        rougit="image a lire, ComfyUI ferme sur la seule machine qui sait voir",
+        editions=[("serveur.py", brut(
+            "            except CerveauFerme as e:",
+            "            except ZeroDivisionError as e:"))]),
+    dict(
+        nom="la chanson que la regle empeche d'ecrire dit de relancer",
+        banc="banc_pret.py",
+        imite="trois essais « appel impossible », des paroles vides, et "
+              "« relance la demande » : relancer n'ecrira rien",
+        rougit="paroles a ecrire, ComfyUI ferme",
+        editions=[("serveur.py", brut(
+            "        except CerveauFerme:" + chr(10)
+            + "            # Ferme par la regle du pret",
+            "        except ZeroDivisionError:" + chr(10)
+            + "            # Ferme par la regle du pret"))]),
+    dict(
+        nom="l'erreur des paroles sort telle quelle, sans le geste",
+        banc="banc_pret.py",
+        imite="CerveauFerme remonte nue jusqu'au fil : la raison sans ce "
+              "qu'on peut y faire, et sans dire que ce sont les paroles",
+        rougit="paroles a ecrire, agent muet",
+        editions=[("serveur.py", brut(
+            "    except CerveauFerme as e:" + chr(10)
+            + "        # LE MODELE QUI ECRIT",
+            "    except ZeroDivisionError as e:" + chr(10)
+            + "        # LE MODELE QUI ECRIT"))]),
+    dict(
+        nom="les couplets avalent la fermeture",
+        banc="banc_pret.py",
+        imite="ComfyUI ferme apres le refrain : trois essais de couplets pour "
+              "rien, puis « pas de couplet exploitable »",
+        rougit="ComfyUI se ferme apres le refrain",
+        editions=[("serveur.py", brut(
+            "        except CerveauFerme:" + chr(10)
+            + "            raise               # comme pour le refrain",
+            "        except ZeroDivisionError:" + chr(10)
+            + "            raise               # comme pour le refrain"))]),
+    # 5. L'image jointe qui partirait au nuage.
+    dict(
+        nom="l'image que personne n'a pu regarder part au nuage",
+        banc="banc_pret.py",
+        imite="le PC ferme, « non jugee » redevient l'etat ordinaire : toute "
+              "image jointe part chez le fournisseur sans avoir ete regardee",
+        rougit="image jointe, ComfyUI ferme sur la machine qui sait voir",
+        editions=[("serveur.py", brut(
+            '            return "retenue"', '            return "non jugee"'))]),
+    dict(
+        nom="une autre machine qui echoue laisse sortir l'image",
+        banc="banc_pret.py",
+        imite="le NAS repond mal, le PC qui aurait su juger est ferme : ce "
+              "n'est pas CerveauFerme qui remonte, et l'image part",
+        rougit="et si une autre machine echoue pendant que le PC, ferme, "
+               "aurait su juger",
+        editions=[("serveur.py", brut(
+            "        if isinstance(e, CerveauFerme) or voyant_ferme():",
+            "        if isinstance(e, CerveauFerme):"))]),
+    dict(
+        nom="le rendu ne regarde pas le verdict « retenue »",
+        banc="banc_refaire.py",
+        imite="l'image retenue passe par la branche d'a cote : le fil dit "
+              "« jugee adulte » d'une image que personne n'a regardee",
+        rougit="le modele de vision ferme par la regle du pret : l'image "
+               "jointe ne part PAS au nuage",
+        editions=[("serveur.py", brut(
+            '            if verdict == "retenue":',
+            "            if False:"))]),
+    # 6. Le rattachement.
+    dict(
+        nom="deux machines a la meme adresse : la premiere trouvee",
+        banc="banc_pret.py",
+        imite="des agents derriere un mandataire : la pause du PC ferme "
+              "l'Ollama du NAS, celle du NAS ne ferme rien",
+        rougit="deux machines qui s'annoncent depuis la meme adresse",
+        editions=[("serveur.py", brut(
+            "            if len(memes) > 1:", "            if False:"))]),
+    dict(
+        nom="un Ollama sans machine n'est plus signale",
+        banc="banc_pret.py",
+        imite="la regle ne s'applique pas a cet Ollama, et rien ne le dit : "
+              "on le croit protege",
+        rougit="un Ollama rattache a aucune machine alors que le parc a des "
+               "agents est signale",
+        editions=[("serveur.py", brut(
+            "    if not REGISTRE:" + chr(10) + "        return []" + chr(10)
+            + "    lignes = []",
+            "    if True:" + chr(10) + "        return []" + chr(10)
+            + "    lignes = []"))]),
+    dict(
+        nom="la route de la console ne porte plus l'avertissement du pret",
+        banc="banc_pret.py",
+        imite="la ligne ecrite par le serveur, et personne pour la servir",
+        rougit="/admin porte cette ligne et l'affiche",
+        editions=[("serveur.py", brut(
+            '                              "avertissements_pret": '
+            "avertissements_du_pret()," + chr(10), ""))]),
+    dict(
+        nom="la console n'affiche plus l'avertissement du pret",
+        banc="banc_pret.py",
+        imite="le serveur le dit, la page ne le montre pas",
+        rougit="/admin porte cette ligne et l'affiche",
+        editions=[("web/admin.html", brut(
+            '    <div id="pretAvertit"></div>' + chr(10), ""))]),
+    dict(
+        nom="la route de la console ne porte plus l'etat du pret",
+        banc="banc_pret.py",
+        imite="une machine en pause a cote d'un Ollama qui repond : la console "
+              "laisse croire que le studio s'en sert",
+        rougit="et l'etat du pret y est porte, machine par machine",
+        editions=[("serveur.py", brut(
+            '                      "cerveau_ferme": etat_du_pret(x["id"]),'
+            + chr(10), ""))]),
+    dict(
+        nom="la console n'affiche plus qu'une machine ne prete pas",
+        banc="banc_pret.py",
+        imite="le serveur le sait, la page ne le montre pas",
+        rougit="la console d'administration l'affiche sur la ligne de la "
+               "machine",
+        editions=[("web/admin.html", brut(
+            '      ? `<div class="perime" data-pret="${ech(n.cerveau_ferme)}">'
+            "modèle de langage non utilisé — ${pret}</div>`",
+            '      ? ""'))]),
+    dict(
+        nom="l'ecran de mise en route accuse le reseau",
+        banc="banc_pret.py",
+        imite="« aucun modele de langage joignable sur http://… » pour un "
+              "Ollama qui repond : on cherche un cable, il fallait lancer "
+              "ComfyUI",
+        rougit="l'ecran de mise en route ne dit pas « aucun modele joignable »",
+        editions=[("serveur.py", brut(
+            "    fermes = cerveaux_fermes()" + chr(10) + "    if fermes:",
+            "    fermes = []" + chr(10) + "    if fermes:"))]),
 ]
 
 
 MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE + FACTEUR_ADMIN + CONTENEUR + PAGE + REPARTITION + LIBERATION + VARIANTES + CERVEAUX + COUT
              + CATALOGUE + ATTENTE + DUREES + ADULTE + REFAIRE + FORMULATIONS
+             + IMAGE_JOINTE + IMAGE_JOINTE_RELUE + UNE_SEULE_LECTURE
              + MULTILINGUE + PROSE + LANGUES + PAGE_LANGUES + MOITIES_SERVEUR
-             + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE
+             + FACTEUR + FACTEUR_MFA + DEMARRAGE + QR + ADVERSE + GARDE_FOU_R12
              + MAJ_AGENT + RENDU_AGENT + DISQUE_AGENT + PROGRESSION_AGENT
              + NOEUD + VERSION + BOUCLE_AGENT + SECURITE_SEPT
              + COMPREHENSION_SEPT + CLES_ACCES + RAPPELS + PROTOCOLE_MCP
@@ -16910,7 +19400,7 @@ MUTATIONS = (FICHIERS + FICHIERS_SUITE + SEANCE + CONSOLE_SUITE + AVIS + CONSOLE
              + RELECTURE_EXPIRATION + REESSAI + RENOUVELER + USAGE_CLES
              + RELECTURE_RENOUVELER + OPERATIONS_CLE + EXEMPLES_N8N
              + CONTRAT_RELU + RELECTURE_OPERATIONS + CLOUD_RETOUCHE + OLLAMA_DEGENERE + RAPPELS_COURSE + SUIVI_CLES
-             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT + REGLE_PLACARD + MOTEUR_IMPOSSIBLE + MOTEURS_DISPONIBLES + MEDIA_PROGRAMMES + RELECTURE_DIX + MUSIQUE_NEGATIONS + TEMPO_STYLE_AUDIO + ANALYSE_NE_BLOQUE_PAS + COURSE_DES_CARTES + FORMES_DU_PLAN + INVENTAIRE_VIVANT + DEMANDE_DETAILLEE)
+             + QUARANTAINE_MODELES + QUOTAS_FAMILLES + API_OPENAI + SANS_QUESTION + INTERFACE_ENTETE + INTERFACE_SAISIE + INTERFACE_APPLI + INTERFACE_MEDIA + RETOUCHE_JOINTE + ADMIN_ENTREES + NOMS_SORTIES + REESSAI_OPENAI + CONTEXTE_ANALYSE + ATTENTE_PROXY + FIN_DE_REPONSE + PAGE_HTTPS + RELECTURE_HUIT + REGLE_PLACARD + MOTEUR_IMPOSSIBLE + MOTEURS_DISPONIBLES + MEDIA_PROGRAMMES + RELECTURE_DIX + MUSIQUE_NEGATIONS + TEMPO_STYLE_AUDIO + ANALYSE_NE_BLOQUE_PAS + COURSE_DES_CARTES + FORMES_DU_PLAN + INVENTAIRE_VIVANT + DEMANDE_DETAILLEE + ANALYSE_SANS_OBJET + REPLI_MOTS_CLES + REGLE_DU_PRET + LANGUE_DE_LA_DEMANDE)
 
 
 # ── Jouer une mutation ────────────────────────────────────────────────

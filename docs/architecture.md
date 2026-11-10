@@ -147,6 +147,34 @@ n'existait pas.
 L'interface continue de fonctionner : un aiguillage par mots-clés prend le
 relais. Le prompt n'est alors ni traduit ni enrichi, mais rien ne casse.
 
+C'est aussi le chemin d'une analyse trop lente ou coupée
+(`STUDIO_ANALYSE_DELAI`, `STUDIO_ANALYSE_IMPOSE_DELAI`). Ce repli lit quelques
+mots, et il les lit de près depuis le 10 novembre 2026 : « son » n'y est une
+musique qu'avec un article (« un son de cloche », « la bande-son ») — plus dans
+« son tablier » ni dans « une maison » —, « anim » n'y est une vidéo que là où
+il dit animer : le nom (« animation », « animación »), le verbe (« anime une
+scène », « animate », « animiere », « anima esta foto ») ou l'adjectif accolé à
+un nom de film (« séquence animée », « un logo animé », « teaser animado ») —
+plus dans « un animal » ni « une ville animée » —, et « clip » est un mot
+entier. Un **style** n'est pas une animation non plus : « en style dessin
+animé », « façon dessin animé », « Pixar animated style », « comme dans un
+film d'animation », « un logo animé par la passion du vin » restent des images
+(et, avec une image jointe, des retouches) — vingt de ces demandes sur
+vingt-deux partaient en vidéo avant le 10 novembre 2026. Mesuré sur les 847 demandes d'image, de vidéo et de musique des corpus
+du dépôt : 15 images sur 286 partaient en musique ou en vidéo, plus aucune ;
+217 musiques reconnues sur 280 et 231 vidéos sur 281, avant comme après. Et
+sur le banc traduit en quatre langues (`mesures_langues/`), aucune langue n'est
+sous son score d'avant : la vidéo reste à 7, 7, 7 et 8 sur 10 en français,
+anglais, allemand et espagnol, et l'image jointe qu'on demande d'animer est
+reconnue 5 fois sur 10 dans chacune, contre 5, 2, 2 et 0. Sous un **moteur
+d'image imposé**, une demande que le repli (ou le modèle) a lue comme une
+musique ou une vidéo ne garde plus ses dimensions : l'image sortait en 512x512
+ou en 1280x704, elle sort en 1216x832 quand aucune taille n'est donnée.
+
+Une exception, depuis le même jour : une demande écrite dans une langue que le
+garde-fou ne lit pas **ne passe pas par ce repli**. Elle attend le modèle, et
+s'arrête s'il n'y en a pas — voir [Contenu adulte](contenu-adulte.md).
+
 ## Poser une question plutôt que deviner
 
 Une demande qui ne dit pas quoi produire ne déclenche aucune génération : le

@@ -43,6 +43,22 @@ def demande_de(n):
 
 appels = []
 reponse_ecriture = ["un jeton rond"]       # ce que rend le modele qui ecrit
+resume_du_plan = [None]                    # le prompt du plan, s'il resume
+
+# LE CAS DE LA SECONDE RELECTURE (10 novembre 2026) : 79 mots de neerlandais,
+# que les motifs de garde_fou() ne lisent pas, et le resume francais qu'en
+# fait l'analyse — trois phrases, comme son gabarit le lui demande, sans le
+# detail.
+NEERLANDAIS = (
+    "Een oude vuurtoren op een rotsachtige kust bij zonsondergang, met hoge "
+    "golven die tegen de rotsen slaan en een kleine vissersboot in de verte. "
+    "De lucht is oranje en paars, er vliegen meeuwen boven het water en het "
+    "licht van de toren schijnt over de zee naar de horizon. Op het strand "
+    "staat een naakt kind van acht jaar. In de verte zijn donkere wolken te "
+    "zien en de wind waait hard over de duinen waar het gras buigt.")
+RESUME = ("Un vieux phare sur une cote rocheuse au coucher du soleil, avec de "
+          "hautes vagues et un petit bateau de peche au loin. Ciel orange et "
+          "violet, mouettes, nuages sombres et vent sur les dunes.")
 
 
 async def faux_modele(texte, image_b64=None, systeme=None, json_mode=True,
@@ -50,7 +66,8 @@ async def faux_modele(texte, image_b64=None, systeme=None, json_mode=True,
     appels.append("json" if json_mode else "texte")
     if json_mode:
         return json.dumps({"intention": "image", "modele": "klein9b",
-                           "prompt": texte, "raison": "image", "classement": "safe"},
+                           "prompt": resume_du_plan[0] or texte,
+                           "raison": "image", "classement": "safe"},
                           ensure_ascii=False)
     return reponse_ecriture[0]
 
@@ -121,6 +138,36 @@ async def directement():
         "temoin : un plan qui garde plus de la moitie de la demande part tel "
         "quel — le texte de l'auteur ne le remplace pas", f"{len(p['prompt'].split())} mots")
 
+    print("\n  ── le texte de l'auteur ne revient que s'il peut etre relu ──")
+    del appels[:]
+    tid = tache("detaillee-neerlandais")
+    p = await S.enrichir(plan_(RESUME), NEERLANDAIS, tid)
+    dit(not appels and p["prompt"] == RESUME,
+        "LE CAS DE LA RELECTURE : 79 mots de neerlandais resumes par l'analyse "
+        "— c'est le resume, que garde_fou() a lu, qui part, et pas le texte "
+        "que rien ne sait relire", f"prompt={p['prompt'][:40]!r}")
+    dit(any("resume de l'analyse qui part" in l for l in fil(tid))
+        and not any("telle que tu l'as ecrite" in l for l in fil(tid)),
+        "et le fil le dit simplement", str(fil(tid)[-1:]))
+
+    t = demande_de(130) + " avec le signe π grave au centre"
+    p = await S.enrichir(plan_("jeton rond"), t, tache("detaillee-grec"))
+    dit(p["prompt"] == "jeton rond",
+        "une seule lettre non latine dans une demande francaise : le resume "
+        "reste aussi", f"prompt={p['prompt'][:40]!r}")
+
+    etiquettes = ("portrait d'une guerriere naine, armure de plates cabossee, "
+                  "tresses rousses, cicatrice sur la joue, marteau de guerre, "
+                  "fond de forge rougeoyante, lumiere chaude, peinture "
+                  "numerique, tres detaille, cadrage buste, regard determine, "
+                  "braises, fumee, style fantasy, palette sombre, contraste "
+                  "fort, textures de metal, cuir use, fourrure, runes gravees")
+    p = await S.enrichir(plan_("guerriere naine"), etiquettes,
+                         tache("detaillee-etiquettes"))
+    dit(p["prompt"] == "guerriere naine",
+        "des etiquettes dont rien ne prouve la langue : le resume reste, "
+        "comme avant la ronde 11", f"prompt={p['prompt'][:40]!r}")
+
 
 def poser_parc():
     S.REGISTRE.clear()
@@ -169,6 +216,28 @@ async def de_bout_en_bout():
         dit(etat == "question" and not g_,
             "temoin : 20 mots et un enrichissement rate posent toujours la "
             "question", f"etat={etat}")
+
+        def prompt_parti(g_):
+            noeuds = json.loads(g_[0]) if g_ else {}
+            return next((n["inputs"]["text"] for _k, n in sorted(noeuds.items())
+                         if n.get("class_type") == "CLIPTextEncode"), None)
+
+        resume_du_plan[0] = RESUME
+        try:
+            etat, g_ = await demande(NEERLANDAIS, 3)
+            dit(etat == "fini" and prompt_parti(g_) == RESUME,
+                "de bout en bout : la demande neerlandaise resumee par "
+                "l'analyse est rendue avec ce resume — le texte de l'auteur, "
+                "que les motifs ne lisent pas, ne part pas au moteur",
+                f"etat={etat}, prompt={(prompt_parti(g_) or '')[:40]!r}")
+            t = demande_de(130)
+            etat, g_ = await demande(t, 4)
+            dit(etat == "fini" and prompt_parti(g_) == t,
+                "temoin : la meme analyse qui resume une demande FRANCAISE — "
+                "c'est le texte de l'auteur qui part, la regle de la ronde 11",
+                f"etat={etat}, prompt={(prompt_parti(g_) or '')[:40]!r}")
+        finally:
+            resume_du_plan[0] = None
     finally:
         S.soumettre_robuste = garde
 

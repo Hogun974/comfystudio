@@ -131,7 +131,17 @@ async def decide(texte, sortie="deja_la.png"):
     conv = {"derniere_sortie": sortie, "tours": []}
     muet = io.StringIO()
     with contextlib.redirect_stdout(muet):
-        plan = await S.aiguiller(texte, tid, conv)
+        try:
+            plan = await S.aiguiller(texte, tid, conv)
+        except S.RefusMoteur as refus:
+            # DEPUIS LE 10 NOVEMBRE 2026, le repli par mots-cles se refuse a
+            # une demande dont la langue n'est pas lue par garde_fou() — une
+            # ecriture non latine, ici, puisque le modele de ce banc ne
+            # repond jamais. Ce banc compte les appels, pas ce que le repli
+            # decide : on rend le code du refus, et rien d'autre ne passe.
+            if refus.marque.get("cle") != "panne.langue_non_lue":
+                raise
+            plan = {"intention": "langue_non_lue"}
     lignes = [e["msg"] for e in S.TACHES[tid]["etapes"]]
     return plan.get("intention"), APPELS["modele"] > 0, lignes
 

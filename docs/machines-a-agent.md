@@ -295,7 +295,10 @@ l'expiration, et le réglage à zéro qui rétablit le refus immédiat d'avant �
 dans [Attendre le retour d'une machine en pause](attendre-une-machine.md).
 
 Une machine en pause **ne pense pas non plus** : si elle héberge un Ollama que
-le studio connaît, il ne lui pose aucune question. Voir [Plusieurs
+le studio connaît, il ne lui pose aucune question. Depuis le 10 novembre 2026,
+il en va de même d'une machine dont **ComfyUI est fermé** ou dont l'agent ne
+s'annonce plus, même si son Ollama répond : une machine ne prête son modèle de
+langage que si elle prête sa carte. Voir [Plusieurs
 Ollama](plusieurs-ollama.md).
 
 Elle **rend sa carte**, en revanche, et c'est exactement le cas pour lequel ce

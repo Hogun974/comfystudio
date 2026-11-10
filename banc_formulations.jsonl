@@ -82,3 +82,74 @@
 {"texte": "mets le clip en slow motion", "attendu": "fluidifier"}
 {"texte": "passe la sequence au ralenti", "attendu": "fluidifier"}
 {"texte": "mets-moi ca au ralenti", "attendu": "fluidifier"}
+{"texte": "lis cette image et dis-moi ses couleurs", "image": "image", "attendu": "lecture"}
+{"texte": "qu'est-ce qu'on voit sur cette image ?", "image": "image", "attendu": "lecture"}
+{"texte": "lis le texte ecrit dessus", "image": "image", "attendu": "lecture"}
+{"texte": "peux-tu lire ce qui est ecrit ?", "image": "image", "attendu": "lecture"}
+{"texte": "dis-moi ce qu'il y a sur cette photo", "image": "image", "attendu": "lecture"}
+{"texte": "quelles sont les couleurs de cette image ?", "image": "image", "attendu": "lecture"}
+{"texte": "qu'est-ce qu'il y a sur la photo ?", "image": "image", "attendu": "lecture"}
+{"texte": "lis cette image et dis-moi ses couleurs", "attendu": "aucun"}
+{"texte": "lis cette image et dis-moi ses couleurs", "image": "video", "attendu": "aucun"}
+{"texte": "un lis blanc dans un vase", "image": "image", "attendu": "aucun"}
+{"texte": "dis-moi si tu peux la rendre plus nette", "image": "image", "attendu": "aucun"}
+{"texte": "lis le texte et corrige les fautes", "image": "image", "attendu": "aucun"}
+{"texte": "quelles couleurs iraient mieux ? change-les", "image": "image", "attendu": "aucun"}
+{"texte": "mets-lui un ciel etoile", "image": "image", "attendu": "aucun"}
+{"texte": "peins le mur d'une autre couleur, n'importe quelle couleur", "image": "image", "attendu": "aucun"}
+{"texte": "repeins la voiture, peu importe quelle couleur", "image": "image", "attendu": "aucun"}
+{"texte": "habille-la autrement, quelle couleur tu veux", "image": "image", "attendu": "aucun"}
+{"texte": "une fleur de lis le long du bord gauche", "image": "image", "attendu": "aucun"}
+{"texte": "pose une fleur de lis la ou se trouve le logo", "image": "image", "attendu": "aucun"}
+{"texte": "dis-moi les couleurs puis inverse-les", "image": "image", "attendu": "aucun"}
+{"texte": "lis le texte et reecris-le en rouge", "image": "image", "attendu": "aucun"}
+{"texte": "dis-moi ce que ca donne avec un ciel rouge", "image": "image", "attendu": "aucun"}
+{"texte": "teins ses cheveux, n'importe quelle couleur vive", "image": "image", "attendu": "aucun"}
+{"texte": "passe la robe en rouge ou quelle couleur tu preferes", "image": "image", "attendu": "aucun"}
+{"texte": "dis-moi le resultat avec des lunettes de soleil", "image": "image", "attendu": "aucun"}
+{"texte": "lis le panneau et traduis-le en anglais sur l'image", "image": "image", "attendu": "aucun"}
+{"texte": "quelles couleurs ? essaie plus chaud", "image": "image", "attendu": "aucun"}
+{"texte": "montre-moi la meme, quelle couleur que soit la robe", "image": "image", "attendu": "aucun"}
+{"texte": "lis blancs en bouquet, lumiere douce", "image": "image", "attendu": "aucun"}
+{"texte": "n'importe quelle couleur fera l'affaire", "image": "image", "attendu": "aucun"}
+{"texte": "quelle couleur tu veux, peu importe", "image": "image", "attendu": "aucun"}
+{"texte": "quelles couleurs iraient le mieux ici ?", "image": "image", "attendu": "aucun"}
+{"texte": "dis-moi si c'est mieux en rouge", "image": "image", "attendu": "aucun"}
+{"texte": "lis le texte puis copie-le a droite", "image": "image", "attendu": "aucun"}
+{"texte": "Qu’est-ce que c’est ?", "image": "image", "attendu": "lecture"}
+{"texte": "tu peux lire le texte ?", "image": "image", "attendu": "lecture"}
+{"texte": "de quelle couleur est la voiture ?", "image": "image", "attendu": "lecture"}
+{"texte": "maintenant lis ce qui est ecrit dessus", "image": "image", "attendu": "lecture"}
+{"texte": "decris cette image, quelles couleurs ?", "image": "image", "attendu": "lecture"}
+{"texte": "analyse la lumiere, et toi tu eclaircis un peu", "image": "image", "attendu": "aucun"}
+{"texte": "decris cette image et je la veux sans fond", "image": "image", "attendu": "detourer"}
+{"texte": "dis-moi ce que tu vois et vieillis le personnage", "image": "image", "attendu": "aucun"}
+{"texte": "decris cette photo je veux la meme en hiver", "image": "image", "attendu": "aucun"}
+{"texte": "decris cette photo, je veux la meme en hiver", "image": "image", "attendu": "aucun"}
+{"texte": "decris l'image, je la veux plus lumineuse", "image": "image", "attendu": "aucun"}
+{"texte": "decris-la i want it brighter", "image": "image", "attendu": "aucun"}
+{"texte": "analyse ce portrait puis blanchis les dents", "image": "image", "attendu": "aucun"}
+{"texte": "que vois-tu ? le chat doit devenir un chien", "image": "image", "attendu": "aucun"}
+{"texte": "decris cette photo et la meme scene de nuit", "image": "image", "attendu": "aucun"}
+{"texte": "decris l'image et les couleurs du ciel virent au rouge sang maintenant", "image": "image", "attendu": "aucun"}
+{"texte": "decris l'image et le texte doit disparaitre", "image": "image", "attendu": "aucun"}
+{"texte": "decris la photo et ses cheveux en bleu", "image": "image", "attendu": "aucun"}
+{"texte": "decris l'image, le fond flou", "image": "image", "attendu": "aucun"}
+{"texte": "raconte ce que tu vois avec un chapeau sur la tete du monsieur", "image": "image", "attendu": "aucun"}
+{"texte": "decris la scene plus sombre", "image": "image", "attendu": "aucun"}
+{"texte": "raconte la scene facon Pixar", "image": "image", "attendu": "aucun"}
+{"texte": "colore le ciel comme je le decris ici", "image": "image", "attendu": "aucun"}
+{"texte": "explique pourquoi tu eclaircis un peu ici", "image": "image", "attendu": "aucun"}
+{"texte": "quelle couleur tu veux", "image": "image", "attendu": "aucun"}
+{"texte": "lis blancs en bouquet", "image": "image", "attendu": "aucun"}
+{"texte": "decris cette image sur fond transparent", "image": "image", "attendu": "detourer"}
+{"texte": "dis-moi ce qu'on voit sur cette image et ses couleurs", "image": "image", "attendu": "lecture"}
+{"texte": "decris l'image, s'il te plait", "image": "image", "attendu": "lecture"}
+{"texte": "bonjour, decris cette image, merci", "image": "image", "attendu": "lecture"}
+{"texte": "regarde cette photo et dis-moi ce qui s'y passe", "image": "image", "attendu": "lecture"}
+{"texte": "analyse cette image et donne moi les details", "image": "image", "attendu": "lecture"}
+{"texte": "qu'est-ce qu'on voit ? et ses couleurs ?", "image": "image", "attendu": "lecture"}
+{"texte": "decris cette image avec precision", "image": "image", "attendu": "lecture"}
+{"texte": "decris cette image en detail", "image": "image", "attendu": "lecture"}
+{"texte": "decris cette image en francais", "image": "image", "attendu": "lecture"}
+{"texte": "decris les couleurs, les formes et les textures", "image": "image", "attendu": "lecture"}

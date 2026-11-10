@@ -16,6 +16,11 @@ dessus quand le sien ne répond plus. Il ne peut pas l'appeler directement — u
 machine à agent n'a pas d'adresse — alors il **dépose la question** et l'agent
 vient la chercher : exactement le chemin des rendus, et rien de plus à exposer.
 
+**Seulement tant que la machine prête sa carte** (règle du 10 novembre 2026) :
+en pause, ComfyUI fermé ou agent muet, aucune question n'est déposée pour elle,
+et une question déjà déposée n'est pas remise à son agent. Voir [Plusieurs
+Ollama](plusieurs-ollama.md#une-machine-ne-prête-son-modèle-de-langage-que-si-elle-prête-sa-carte).
+
 Trois précautions, chacune pour une faute constatée :
 
 - **un fil séparé dans l'agent.** Sa boucle de travail reste bloquée pendant un

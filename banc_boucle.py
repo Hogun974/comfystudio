@@ -1113,7 +1113,12 @@ dit(len(_i.essais) > 20 and "studio muet (503)" in _i.dit,
 # bloquee pendant un rendu, et une question posee au milieu d'une video de
 # quatre minutes attendrait sa fin. C'est ce fil qui rend une machine a carte
 # utile au studio quand l'Ollama du studio est tombe.
-print("\n  ── le modele local, prete au studio quand le sien tombe ──")
+#
+# TANT QUE LA MACHINE PRETE SA CARTE, depuis le 10 novembre 2026 : le studio
+# ne depose plus de question, et n'en remet plus, pour une machine en pause ou
+# dont ComfyUI est ferme. La regle est tenue COTE STUDIO (cerveau_ferme, garde
+# par banc_pret.py) : ce fil-ci sert ce qu'on lui remet, comme avant.
+print("\n  ── le modele local, prete au studio tant que ComfyUI tourne ──")
 
 
 def servir(questions, generation=(200, {"response": "bonjour"}),

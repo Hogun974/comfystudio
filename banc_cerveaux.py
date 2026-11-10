@@ -19,6 +19,13 @@ Et une cinquieme, qui est une regle de surete : une image a lire ne part JAMAIS
 sur une machine sans modele de vision. Une description inventee est pire qu'une
 erreur, parce que rien ne la signale.
 
+UNE SIXIEME DEPUIS LE 10 NOVEMBRE 2026, qui etend la premiere : une machine
+dont ComfyUI est FERME ne pense pas non plus, meme si son Ollama repond — et,
+comme une machine en pause, on ne lui decharge rien. Elle a son banc,
+banc_pret.py, qui compte ce que de faux Ollama recoivent. Ici, le parc pose par
+poser() dit donc que ComfyUI repond (« repond », « vu ») : c'est la condition
+pour que ses machines pretent leur modele de langage.
+
 Aucun Ollama n'est joignable ici : on remplit le cache a la main.
 """
 import asyncio

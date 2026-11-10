@@ -705,6 +705,12 @@ TEXTES = {
     "panne.refus_mineurs_genre": {
         "fr": "demande refusée : contenu sexuel impliquant des mineurs. Si tu parlais du genre — une fête de dévoilement —, écris « fille ou garçon » plutôt que « sexe »",
         "en": "request refused: sexual content involving minors. If you meant the gender — a reveal party —, write “girl or boy” instead of “sex”"},
+    # ── ronde 12 : une langue que le garde-fou ne lit qu'avec un modele ──
+    # Les six langues nommees sont celles de serveur.LANGUES_LUES : le banc
+    # (banc_analyse_sans_objet.py) verifie que la phrase les cite toutes.
+    "panne.langue_non_lue": {
+        "fr": "je ne peux pas vérifier cette demande : elle est écrite dans une langue que je ne sais lire qu'avec un modèle de langage, et aucun n'est disponible en ce moment. Réessaie plus tard, ou écris-la en français, anglais, allemand, espagnol, italien ou portugais",
+        "en": "I cannot check this request: it is written in a language I can only read with a language model, and none is available right now. Try again later, or write it in French, English, German, Spanish, Italian or Portuguese"},
     # LES REFUS D'executer(), QUI PARTAIENT EN FRANCAIS DANS TOUTES LES
     # LANGUES. Ce sont des « raise » rattrapes par le filet, dont le texte
     # passait tel quel dans le {quoi} de panne.echec — et une valeur qui n'est
@@ -752,6 +758,17 @@ TEXTES = {
         "en": "{moteur}: no reachable machine can do it, but {machines} "
               "could. Wake it up, or check its agent — the state of each one "
               "is in /admin."},
+    # La machine est allumee, son agent repond, et il vient de dire que
+    # ComfyUI ne tourne pas : le geste n'est pas de la rallumer (10 novembre
+    # 2026, regle du pret — c'est l'etat ordinaire d'une machine dont le
+    # proprietaire a repris la carte).
+    "panne.moteur_comfy_ferme": {
+        "fr": "{moteur} : aucune machine joignable ne sait le faire en ce "
+              "moment, mais {machines} le sait — ComfyUI n'y tourne pas. "
+              "Relance ComfyUI sur cette machine, puis redemande.",
+        "en": "{moteur}: no reachable machine can do it right now, but "
+              "{machines} can — ComfyUI is not running there. Start ComfyUI "
+              "on that machine, then ask again."},
     "panne.vram_moteur_ailleurs": {
         "fr": "{moteur} reclame {vram} Go de VRAM : la plus grosse carte "
               "joignable en a {grosse}, mais il lui manque le modele.",
@@ -2422,6 +2439,18 @@ TEXTES = {
               "quand même.",
         "en": "no language model reachable at {ou}. Nothing is blocked: "
               "routing falls back to keywords, and the image still comes out."},
+    # NI ABSENT NI VIDE : la règle du 10 novembre 2026. L'Ollama répond, mais
+    # sa machine ne prête pas sa carte — ComfyUI fermé, agent arrêté, ou pause —
+    # et le studio n'y fait donc rien générer. Le remède n'est pas réseau.
+    "demarrage.cerveau.ferme": {
+        "fr": "le modèle de langage de {qui} n’est pas utilisé : ComfyUI n’y "
+              "tourne pas, ou la machine est en pause. Une machine ne prête "
+              "son modèle de langage que si elle prête sa carte. Rien ne "
+              "bloque : l’aiguillage se fait alors par mots-clés.",
+        "en": "the language model of {qui} is not used: ComfyUI is not "
+              "running there, or the machine is paused. A machine only lends "
+              "its language model when it lends its card. Nothing is blocked: "
+              "routing falls back to keywords."},
     "demarrage.cles.sans_cle": {
         "fr": ["{quoi} est confié à un fournisseur distant sans clé : le "
                "moteur n’est pas proposé et tout reste en local.",

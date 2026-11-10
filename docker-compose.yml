@@ -92,6 +92,13 @@ services:
       STUDIO_ANALYSE_DELAI: "${STUDIO_ANALYSE_DELAI:-}"
       STUDIO_ANALYSE_IMPOSE_DELAI: "${STUDIO_ANALYSE_IMPOSE_DELAI:-}"
       STUDIO_DEMANDE_DETAILLEE: "${STUDIO_DEMANDE_DETAILLEE:-}"
+      # ETEINT PAR DEFAUT, ET C'EST VOULU. « 1 » fait partir sans analyse les
+      # demandes d'image detaillees dont le moteur et la taille sont imposes :
+      # dix a quatorze secondes gagnees par demande de programme, contre la
+      # relecture de la demande par le modele de langage — un filet de la
+      # limite dure (contenu sexuel impliquant des mineurs) que les motifs
+      # seuls ne remplacent pas. Voir docs/reglages.md avant de l'allumer.
+      STUDIO_ANALYSE_SANS_OBJET: "${STUDIO_ANALYSE_SANS_OBJET:-}"
       STUDIO_LLM_GARDER: "${STUDIO_LLM_GARDER:-}"
       STUDIO_LLM_CONTEXTE: "${STUDIO_LLM_CONTEXTE:-}"
       STUDIO_PURGE_ORPHELINS: "${STUDIO_PURGE_ORPHELINS:-}"

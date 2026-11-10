@@ -21,7 +21,9 @@ machine](modele-de-langage-distant.md).)
 
 Trois règles, dans cet ordre :
 
-1. **Une machine en pause ne pense pas.** Son propriétaire s'en sert.
+1. **Une machine en pause ne pense pas.** Son propriétaire s'en sert. Une
+   machine dont ComfyUI est fermé non plus, depuis le 10 novembre 2026 — voir
+   [plus bas](#une-machine-ne-prête-son-modèle-de-langage-que-si-elle-prête-sa-carte).
 2. **Une carte libre passe devant une carte occupée.** Attendre deux minutes
    derrière un rendu quand une autre machine répond tout de suite n'a de sens
    pour personne.
@@ -45,6 +47,113 @@ Une adresse dont on ne reconnaît aucune machine du parc — l'Ollama du studio
 lui-même, ou une machine sans agent — n'a pas de carte connue : elle est traitée
 comme libre et de taille nulle. Aucune carte n'est alors réservée, puisqu'on ne
 saurait pas laquelle.
+
+## Une machine ne prête son modèle de langage que si elle prête sa carte
+
+Règle du 10 novembre 2026, donnée mot pour mot : « Comfy studio ne devrait pas
+avoir le droit d'appeler ollama sur un nœud dont le comfy n'est pas lancé ou en
+pause (même s'il est disponible) ».
+
+Sur **pc**, Ollama tourne en permanence ; ComfyUI et l'agent ne sont lancés que
+le temps de prêter la carte. Fermer ComfyUI, comme mettre la machine en pause,
+veut dire « la carte est à moi ». Le studio continuait pourtant d'appeler cet
+Ollama en direct : le 9 novembre 2026, quatre analyses y ont chargé 5,7 Go sur
+la carte, ComfyUI fermé. C'était même un choix — l'agent s'annonçait ComfyUI
+mort « pour prêter son modèle de langage » — et il est retourné.
+
+Le studio ne fait donc **rien générer** sur l'Ollama d'une machine :
+
+- **en pause** ;
+- dont **ComfyUI ne répond pas** — la dernière annonce de son agent dit
+  `comfy: False` ;
+- dont **l'agent ne donne plus signe de vie** depuis quinze secondes
+  (`SILENCE_PRET`), ou ne s'est pas annoncé depuis le réveil du studio, ou n'a
+  envoyé ni annonce ni battement de progression depuis quarante-cinq secondes
+  (un rendu en cours vaut une annonce : ComfyUI tourne, on ne peut pas mieux
+  le prouver) : sans l'un des deux, personne ne dit que ComfyUI tourne, il est
+  tenu pour fermé. Quinze
+  secondes et non les quarante-cinq de `SILENCE_MAX` : fermer la fenêtre de
+  l'agent arrête l'agent et ComfyUI ensemble, sans un dernier mot, et à
+  quarante-cinq le PC prêtait encore son Ollama quarante-quatre secondes après.
+  Un agent occupé continue de donner signe — une annonce toutes les dix
+  secondes dans son propre fil, une demande de question toutes les trois, un
+  battement de progression toutes les deux pendant un rendu.
+
+Cela vaut en direct, par l'agent, pour la lecture d'image, pour l'essai lancé
+depuis `/admin`, et pour une analyse qui **attendait la carte** quand ComfyUI
+s'est fermé : elle ne part pas. Un appel déjà en train de générer finit.
+
+**« ComfyUI fermé » ne vaut que pour les machines à agent.** Sur une machine à
+agent, c'est son propriétaire qui lance et ferme ComfyUI : fermé, il dit « la
+carte est à moi ». Sur la machine du studio, c'est le studio qui possède le
+cycle de vie de ComfyUI — il le relance lui-même pour le rendu : fermé, il ne
+dit rien. Seule la **pause** y ferme donc le cerveau, et de la même façon que la
+carte ait déjà été vue ou non, que l'Ollama soit écrit par `localhost` ou par
+l'adresse de la machine sur le réseau. (La première version y appliquait la
+règle entière, et elle dépendait de l'histoire : carte jamais vue, l'Ollama
+servait ; carte vue une fois, plus aucun cerveau, et l'analyse partait aux
+mots-clés juste avant que le studio relance ComfyUI.)
+
+**Au réveil du studio**, l'analyse attend la première *annonce* des agents, au
+plus trente secondes à compter du moment où le studio se met à servir. Une
+demande de travail ou de question — l'agent en envoie toutes les trois
+secondes — n'est pas une annonce : elle ne dit rien de ComfyUI. Passé ce délai,
+une machine qui ne s'est pas annoncée est tenue pour muette.
+
+**Quand la demande s'arrête pour cela** — une image à lire, des paroles à
+écrire, et la seule machine qui sache le faire est fermée —, l'erreur dit la
+raison et le geste : « PC (RTX 2080 Ti) : ComfyUI n'y tourne pas — son modèle de
+langage n'est pas utilisé ; relance ComfyUI sur cette machine, ou réessaie quand
+elle sera revenue ». Pas de conseil d'installation : le modèle est là.
+
+**Et pour le rendu lui-même** : une machine dont l'agent vient de dire
+`comfy: False` n'est pas « occupée ». La demande que seule cette machine sait
+rendre ne l'attend pas trente minutes sous « PC travaille — ta demande attend
+son tour » ; elle s'arrête tout de suite sur « … PC (RTX 2080 Ti) le sait —
+ComfyUI n'y tourne pas. Relance ComfyUI sur cette machine, puis redemande ».
+Une machine silencieuse dont le dernier mot était « je réponds », ou qui ne
+s'est pas encore annoncée après un redémarrage du studio, reste attendue comme
+avant.
+
+**Une image jointe ne part pas au nuage sans avoir été regardée** quand c'est la
+règle qui ferme le modèle de vision : « ce qui est adulte ne sort pas de la
+maison », et le doute non plus. Le rendu se fait alors à la maison. Seul un
+studio qui n'a aucun modèle de vision — tout au nuage — laisse partir l'image
+sans jugement, comme avant.
+
+**Une machine fermée, on n'y touche pas du tout** — pas même pour décharger un
+modèle (`keep_alive: 0`). Sur **pc**, son propriétaire se sert aussi d'Ollama
+pour lui-même, et un déchargement envoyé par le studio pourrait tomber sur le
+modèle qu'il emploie. C'était déjà la règle de la pause (« son propriétaire
+s'en sert : on ne lui décharge rien, même cassé ») ; elle vaut maintenant pour
+les trois états. Le modèle que le studio y avait chargé part tout seul, par son
+`keep_alive`. Seules les **lectures** restent permises : l'inventaire
+(`/api/tags`, `/api/ps`).
+
+**Un Ollama qui n'est rattaché à aucune machine n'est pas concerné** : un simple
+serveur de langage, sans carte de rendu, n'a pas de ComfyUI à lancer. Le
+rattachement se fait de trois façons : l'adresse d'où l'agent de la machine
+s'annonce (conservée dans `_parc.json`) ; pour la machine du studio, une
+adresse qui est la sienne ; et, pour une machine déclarée dans `noeuds.json`,
+le nom d'hôte que son Ollama partage avec son ComfyUI. Ces deux derniers ne
+servent qu'à la pause et à dire à qui l'Ollama appartient — et il faut dire ce
+qui est vrai aujourd'hui : `/admin` ne met en pause que les machines à agent,
+donc ni la machine du studio ni une machine de `noeuds.json` ne peuvent l'être
+par l'interface. **Le rattachement a ses limites, et le studio les dit** : un
+agent qui joint le studio à travers un mandataire, ou qui ne l'a jamais joint,
+laisse son Ollama sans machine — la règle ne s'y applique alors pas. La bannière
+de démarrage et `/admin` l'écrivent en une ligne (« la règle du prêt ne
+s'applique pas à http://… : je ne sais pas à quelle machine il appartient »), dès
+que le parc compte des machines à agent. Et deux machines vues à la même adresse
+ne rattachent rien, plutôt que la première trouvée.
+
+Quand plus aucun modèle n'est utilisable, l'aiguillage se fait par mots-clés,
+et le fil de la demande dit pourquoi, une fois : « PC (RTX 2080 Ti) : ComfyUI
+n'y tourne pas — son modèle de langage n'est pas utilisé », « … son agent ne
+s'annonce plus… » ou « … est en pause… ». Tant qu'un autre modèle répond, le
+fil n'en dit rien — **pc** est éteint la moitié du temps, et le redire à chaque
+demande serait du bruit ; l'état se lit dans la console d'administration, sur
+la ligne de la machine. Le banc est `banc_pret.py`.
 
 ## Le modèle se choisit par adresse
 

@@ -676,6 +676,19 @@ async def main():
         dit(len(d4) == 1 and "non inspectee" in f4,
             "sans aucun modele de vision joignable, l'image part — et le fil le dit",
             f"au loin {len(d4)}, fil : {f4[-90:]}")
+        # LA MACHINE QUI SAIT VOIR EST FERMEE PAR LA REGLE DU PRET (10 novembre
+        # 2026) : ce n'est pas « personne pour douter ». Le PC ferme la moitie
+        # du temps, la tolerance du cas precedent devenait l'etat ordinaire, et
+        # toute image jointe partait sans avoir ete regardee.
+        d5, g5, f5 = await jugee(S.CerveauFerme(
+            "PC (RTX 2080 Ti) : ComfyUI n'y tourne pas — son modele de langage "
+            "n'est pas utilise"), 5)
+        dit(not d5 and g5 and "non inspectee" in f5
+            and "ne sort pas de la maison" in f5 and "jugee adulte" not in f5,
+            "le modele de vision ferme par la regle du pret : l'image jointe "
+            "ne part PAS au nuage, elle est rendue a la maison, et le fil dit "
+            "qu'elle n'a pas ete inspectee",
+            f"au loin {len(d5)}, a la maison {len(g5)}, fil : {f5[-110:]}")
     finally:
         S.appeler_ollama = vraie_vision
         S.DOSSIER_ENTREE = ancien_dossier

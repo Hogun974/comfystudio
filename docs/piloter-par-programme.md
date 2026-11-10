@@ -376,6 +376,28 @@ curl -s "$STUDIO/api/v1/rendus" \
 | `style_audio` | Pour une musique : les étiquettes de style, en anglais, séparées par des virgules — `"dark ambient, low cello, hurdy-gurdy, 55 BPM"`. 300 caractères au plus. Elles partent **telles quelles** au moteur, avant tout ce que le studio lirait dans la demande ; le BPM s'y ajoute s'il n'y est pas, et jamais « clear vocals ». |
 | `instrumental` | Pour une musique : `true` = sans voix ni paroles, même si la demande parle de chanson. Absent ou `false` : le studio lit la demande. |
 
+**Une demande où tout est déjà décidé peut partir sans analyse — si le studio
+est réglé pour.** C'est un réglage de l'administrateur,
+[`STUDIO_ANALYSE_SANS_OBJET`](reglages.md), **éteint par défaut** : sans lui,
+toute demande est analysée, et rien ici ne change pour un programme. Allumé,
+avec un `moteur` d'image local qui lit toutes les langues (`klein9b`,
+`klein4b`), une `taille` — le champ, ou `1024x1024` écrit dans la demande —,
+au moins quarante mots ([`STUDIO_DEMANDE_DETAILLEE`](reglages.md)), sans
+image, sans `conversation` qui ait déjà un échange, sans texte à écrire dans
+l'image (« un panneau où est écrit… »), dans une langue que le garde-fou lit
+— français, anglais, allemand, espagnol, italien, portugais, reconnue à ses
+mots-outils —, sans aucune lettre non latine et sans mot qui désigne un
+mineur, le studio n'appelle pas le modèle de langage : le moteur imposé
+écrasait déjà ce que l'analyse décidait. Une taille écrite ne compte que si
+c'est celle d'une image, de 512 à 1920 de côté : « capteur 6000x4000 » ou
+« affiche de 400x600 mm » n'en sont pas une. C'est alors ta demande, mot pour
+mot, qui part au moteur, avec le négatif par défaut, et le fil du rendu le dit
+(« pas d'analyse : … »). Relevé du 9 novembre 2026 : 10 à 14 s d'analyse par
+demande sur la carte du PC, 74 s en médiane quand elle partait au NAS.
+Pourquoi il est éteint : en analysant une demande, le modèle la réécrit, et le
+garde-fou relit cette réécriture — un filet de la limite dure que le raccourci
+retire ([Contenu adulte](contenu-adulte.md)).
+
 **Une musique courte, pour un essai, se demande dans la phrase.** Il n'y a pas
 de champ de durée : le studio la lit dans `demande` — « une musique calme de
 30 secondes », « 45 s de piano », « a 30 seconds lofi track », « 30 segundos »,
@@ -502,7 +524,11 @@ requête, pas une place dans la file ni une unité du plafond du jour.
   phrase) : la même demande échouera de la même façon, **ne la relance pas** ;
 - **une machine qui manquait** — `comfy_muet`, `machine_pas_revenue`,
   `vram_trop_petite`, `attente_expiree`… : la même demande peut passer **plus
-  tard**, une fois la machine revenue. Une relance, pas une boucle.
+  tard**, une fois la machine revenue. Une relance, pas une boucle. De la même
+  famille, `langue_non_lue` : la demande est écrite dans une langue que le
+  studio ne sait vérifier qu'avec son modèle de langage, et aucun ne répondait
+  — plus tard, ou réécrite en français ou en anglais, elle passe
+  ([Contenu adulte](contenu-adulte.md)).
 
 Avant le 4 novembre 2026, presque tout se lisait `echec` : le code de
 l'enveloppe, pas celui de la raison. Un workflow qui testait `echec` doit

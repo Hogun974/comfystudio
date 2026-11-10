@@ -300,6 +300,23 @@ jobs:
       - name: Le studio choisit le bon Ollama
         run: python banc_cerveaux.py
 
+      # UNE MACHINE NE PRETE SON MODELE DE LANGAGE QUE SI ELLE PRETE SA CARTE.
+      # Regle de l'utilisateur, le 10 novembre 2026 : « Comfy studio ne devrait
+      # pas avoir le droit d'appeler ollama sur un noeud dont le comfy n'est pas
+      # lance ou en pause (meme s'il est disponible) ». Le 9 novembre, quatre
+      # analyses avaient charge 5,7 Go sur la carte du PC, ComfyUI ferme — la
+      # carte avec laquelle son proprietaire joue. Ce banc lance quatre faux
+      # Ollama et un faux ComfyUI sur la boucle locale (127.0.0.1 et 127.0.0.2,
+      # deux adresses que tout Linux et tout Windows portent) et COMPTE ce
+      # qu'ils recoivent :
+      # aucune generation vers une machine en pause, sans ComfyUI ou dont
+      # l'agent s'est tu — en direct, par l'agent, pour une image, pendant
+      # l'attente d'une carte — ni meme un dechargement : on n'y touche pas du
+      # tout, son proprietaire se sert d'Ollama pour lui-meme. Seules les
+      # lectures (/api/tags, /api/ps) restent.
+      - name: Le studio n'appelle pas l'Ollama d'une machine dont ComfyUI est ferme
+        run: python banc_pret.py
+
       # Le devis annonce, avant de lancer, ce que les rendus precedents ont
       # coute. Deux facons de se tromper, aussi graves l'une que l'autre :
       # promettre un chiffre tire d'un seul rendu, et se taire alors qu'on sait.
@@ -418,6 +435,17 @@ jobs:
       - name: Une demande etrangere n'est pas executee de travers en silence
         run: python banc_multilingue.py
 
+      # AVEC UNE IMAGE JOINTE, LIRE RESTE LIRE ET POSER N'EST PAS DETOURER.
+      # Mesure du 9 novembre 2026, deux modeles d'analyse : « mets-lui un ciel
+      # etoile » est sortie « detourer », « lis cette image et dis-moi ses
+      # couleurs » « retoucher_sujet ». Le modele rendait une CLE de moteur, et
+      # normaliser() en faisait l'intention. Ce banc dicte au modele ces
+      # mauvaises reponses et exige la lecture et la retouche, avec les
+      # temoins qui ne doivent pas bouger : vrai detourage dans les quatre
+      # langues, vraie retouche du sujet, demande sans image.
+      - name: Avec une image jointe, lire reste lire et poser n'est pas detourer
+        run: python banc_image_jointe.py
+
       # UN PLAN LISIBLE NE TUE PAS UNE DEMANDE. Le plan n'est pas demande avec
       # son schema — le decodage contraint coutait dix a vingt fois l'appel —,
       # donc rien n'en garantit les types : du 8 au 9 novembre 2026, sept
@@ -434,6 +462,40 @@ jobs:
       # restent etoffees.
       - name: Une demande deja detaillee n'est pas arretee sur une question
         run: python banc_demande_detaillee.py
+      # ET QUAND TOUT EST DEJA DECIDE, ELLE NE PASSE PLUS PAR L'ANALYSE. Releve
+      # du 9 novembre 2026 : des demandes de programme de 130 a 175 mots,
+      # « moteur: klein9b », payaient 10 a 14 s d'analyse sur le PC (74 s au
+      # NAS) pour un plan que le moteur impose ecrasait, et le modele de
+      # langage chassait klein9b de la carte : 139 s de rendu devenaient 150 a
+      # 176. Ce banc garde la condition garde par garde — chaque cas hors
+      # condition garde son analyse — et que la limite dure garde_fou() refuse
+      # sur ce chemin exactement comme sur les autres.
+      # ET LA LANGUE, depuis la relecture du 10 novembre 2026 : quarante mots
+      # de neerlandais partaient sans appel, alors que garde_fou() ne lit que
+      # six langues et que c'est la reecriture du modele qui fait refuser. Le
+      # banc tient que le raccourci ne s'ouvre que sur preuve d'une langue
+      # lue, qu'une langue prouvee non lue n'est jamais rendue sans modele
+      # (ni analyse coupee, ni repli faute de cerveau), et refait la mesure
+      # sur les corpus du depot : aucune demande francaise, anglaise,
+      # allemande ou espagnole n'est arretee a tort.
+      # ET C'EST UN REGLAGE ETEINT PAR DEFAUT, depuis la seconde relecture du
+      # meme jour : la preuve de langue dit la langue du texte, pas que les
+      # motifs lisent la partie qui compte, et le modele qui reecrit la demande
+      # est un filet de la limite dure. Le banc commence par le defaut — sans
+      # STUDIO_ANALYSE_SANS_OBJET, l'analyse a lieu —, puis allume le reglage.
+      - name: Une demande ou tout est decide ne part sans analyse que si le studio est regle pour
+        run: python banc_analyse_sans_objet.py
+      # SANS MODELE, UNE IMAGE RESTE UNE IMAGE. Mesure du 10 novembre 2026 sur
+      # le chemin de l'analyse coupee, pris 206 fois en 72 h par des demandes
+      # a moteur impose : le repli lisait une musique dans « son tablier », une
+      # video dans « un animal », et klein9b rendait l'image en 512x512 ou en
+      # 1280x704. Ce banc garde le format d'une image sous un moteur impose, et
+      # mesure le repli sur les corpus etiquetes du depot : aucune demande
+      # d'image lue musique ou video, sans perdre les vraies — et, sur le banc
+      # traduit en quatre langues, aucune langue sous son score de main (le
+      # premier resserrage de « anim » n'avait ete mesure qu'en francais).
+      - name: Le repli par mots-cles ne prend pas une image pour une musique ou une video
+        run: python banc_repli_mots_cles.py
 
       # UNE TRADUCTION NE PLANTE PAS, ELLE MENT. Un « {titre} » oublie dans la
       # version anglaise ne leve aucune exception : la phrase s'affiche,

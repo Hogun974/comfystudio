@@ -180,6 +180,7 @@ td .detail{display:block;max-width:34ch}
       <thead><tr><th>machine</th><th>carte</th><th>moteurs</th><th>vue</th><th>file</th><th></th></tr></thead>
       <tbody id="liste"></tbody>
     </table></div>
+    <div id="pretAvertit"></div>
     <div id="languePanne"></div>
     <div id="langueDegenere"></div>
     <div id="langueContexte"></div>
@@ -1027,7 +1028,19 @@ async function rafraichir() {
        elle multiplie une analyse par cent sans qu'une ligne le dise.
        « null » veut dire « pas encore mesuré », et ne s'affiche pas : accuser
        sur une absence de mesure serait pire que se taire. */
-    const cerveau = n.llm_sur_carte === false
+    /* Règle du 10 novembre 2026 : une machine ne prête son modèle de langage
+       que si elle prête sa carte. En pause, ComfyUI fermé ou agent muet, son
+       Ollama a beau répondre, le studio n'y fait rien générer — et cette ligne
+       le dit, sans quoi la console laisserait croire le contraire à côté d'un
+       Ollama joignable. « null » : le studio ne lui connaît aucun modèle de
+       langage, il n'y a rien à dire ; chaîne vide : il sert. Dans cet état, la
+       mesure « sur le processeur » ne s'affiche pas : elle parlerait
+       d'analyses qui ne partent plus. */
+    const pret = { pause: "en pause", ferme: "ComfyUI n’y tourne pas",
+                   muet: "son agent ne s’annonce plus" }[n.cerveau_ferme];
+    const cerveau = pret
+      ? `<div class="perime" data-pret="${ech(n.cerveau_ferme)}">modèle de langage non utilisé — ${pret}</div>`
+      : n.llm_sur_carte === false
       ? '<div class="perime">modèle de langage sur le processeur — analyses lentes</div>'
       : "";
     tr.innerHTML = `
@@ -1100,6 +1113,14 @@ async function rafraichir() {
   const champR = $("#vramReposMin");
   if (champR && document.activeElement !== champR)
     champR.value = d.vram_repos_min ?? 1;
+  /* Un Ollama que le studio ne sait rattacher à aucune machine échappe à la
+     règle du prêt (10 novembre 2026) : il servirait ComfyUI fermé, sans que
+     rien le dise. Une ligne par adresse, écrite par le serveur. */
+  const sansMachine = d.avertissements_pret || [];
+  $("#pretAvertit").innerHTML = !sansMachine.length ? "" : `
+    <div class="carte" style="border-color:var(--rouge)">
+      ${sansMachine.map(l => `<div class="perime">${ech(l)}</div>`).join("")}
+    </div>`;
   $("#languePanne").innerHTML = !casses.length ? "" : `
     <div class="carte" style="border-color:var(--rouge)">
       <h2 style="margin-top:0">modèle de langage qui ne se charge pas</h2>

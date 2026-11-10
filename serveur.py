@@ -634,13 +634,16 @@ def _rivaux_de_carte(cerveaux, depuis, corps, url_attendu, ident_attendu):
     Pas un Ollama SUR PROCESSEUR quand celui qu'on attend est sur sa carte :
     cerveaux_utilisables() le met dernier « libre ou non », et le prendre parce
     qu'il est libre defairait cette regle. Pas une adresse sans machine : elle
-    n'a pas de verrou a attendre. Rend [(rang, url, ident)].
+    n'a pas de verrou a attendre. Pas une machine qui ne prete plus son modele
+    de langage — en pause, ou ComfyUI ferme depuis que la liste a ete dressee
+    (cerveau_ferme, 10 novembre 2026) : on n'attend pas la carte d'une machine
+    sur laquelle on n'a plus le droit de rien lancer. Rend [(rang, url, ident)].
     """
     proc_ = sur_processeur(url_attendu)
     vus_ = {ident_attendu}
     rivaux = []
     for k, (u, i) in enumerate(cerveaux[depuis:], start=depuis):
-        if not i or i in vus_ or (noeud(i) or {}).get("pause"):
+        if not i or i in vus_ or cerveau_ferme(i):
             continue
         if sur_processeur(u) and not proc_:
             continue
@@ -1163,10 +1166,28 @@ def _relever_cerveau(url):
         except OSError:
             ip = None
         if ip:
-            c["noeud"] = next((x["id"] for x in tous_les_noeuds()
-                               if x.get("agent")
-                               and (ETAT_NOEUDS.get(x["id"]) or {}).get("ip") == ip),
-                              c.get("noeud"))
+            memes = [x["id"] for x in tous_les_noeuds()
+                     if x.get("agent")
+                     and (ETAT_NOEUDS.get(x["id"]) or {}).get("ip") == ip]
+            if len(memes) > 1:
+                # DEUX MACHINES VUES A LA MEME ADRESSE — leurs agents passent
+                # par le meme mandataire. On prenait la premiere trouvee : la
+                # pause du PC fermait alors l'Ollama du NAS, et celle du NAS ne
+                # fermait rien (relecture du 10 novembre 2026). On ne rattache
+                # pas au hasard : personne, et la console le dit
+                # (avertissements_du_pret). Une ligne quand cela change, pas a
+                # chaque releve.
+                if c.get("ambigu") != memes:
+                    print(f"  {url} : {' et '.join(memes)} s'annoncent depuis "
+                          f"la meme adresse ({ip}) — cet Ollama n'est rattache "
+                          f"a aucune des deux, la regle du pret ne s'y applique "
+                          f"pas", flush=True)
+                c["ambigu"] = memes
+                c["noeud"] = None
+            else:
+                c.pop("ambigu", None)
+                # Aucune : on garde ce qu'on savait, comme avant.
+                c["noeud"] = memes[0] if memes else c.get("noeud")
     c["quand"] = time.time()
     c["en_cours"] = False
     return c
@@ -1238,12 +1259,402 @@ def _sait_voir_ici(url, modele):
     return False
 
 
+# ══ UNE MACHINE NE PRETE SON MODELE DE LANGAGE QUE SI ELLE PRETE SA CARTE ══
+# LA REGLE, donnee par l'utilisateur le 10 novembre 2026, mot pour mot :
+# « Comfy studio ne devrait pas avoir le droit d'appeler ollama sur un noeud
+# dont le comfy n'est pas lance ou en pause (meme s'il est disponible) ».
+#
+# POURQUOI : sur le PC (RTX 2080 Ti, la carte avec laquelle son proprietaire
+# joue), Ollama tourne en permanence ; ComfyUI et l'agent ne sont lances que
+# le temps de preter la carte au studio. Fermer ComfyUI, ou mettre la machine
+# en pause dans /admin, c'est dire « la carte est a moi ». Le studio continuait
+# pourtant d'appeler cet Ollama en direct : le 9 novembre 2026, quatre
+# « analyse par qwen2.5vl:7b » y ont charge 5,7 Go sur la carte, ComfyUI ferme.
+#
+# C'EST L'INVERSE DU CHOIX D'AVANT, ou l'agent s'annoncait ComfyUI mort « pour
+# preter son modele de langage ». L'annonce « comfy: False » reste — c'est
+# elle qui dit que la carte n'est plus pretee — mais elle ne prete plus rien.
+# La pause etait deja couverte en partie (cerveaux_utilisables, l'attente de
+# la carte) ; ComfyUI ferme ne l'etait nulle part.
+#
+# UNE SEULE FONCTION DE VERITE, cerveau_ferme(), et tout ce que le studio
+# ENVOIE a l'Ollama d'une machine y passe : le choix des cerveaux, la course
+# entre cartes, l'instant qui suit l'attente d'une carte, la reprise apres un
+# dechargement, la relance apres un plantage, la porte de l'appel lui-meme
+# (_ollama_local), le detour par l'agent (noeuds_a_llm, poser_a, la remise
+# de la question a l'agent, l'essai de /admin) — et les DECHARGEMENTS
+# (liberer_modele_a, reparer_degenere).
+#
+# UNE MACHINE FERMEE, ON N'Y TOUCHE PAS DU TOUT : pas meme un dechargement
+# (keep_alive 0). Sur le PC, son proprietaire se sert aussi d'Ollama pour
+# lui-meme, et un dechargement envoye par le studio peut tomber sur le modele
+# qu'il emploie. C'etait deja la regle de la pause (« son proprietaire s'en
+# sert : on ne lui decharge rien, meme casse ») ; elle vaut depuis le
+# 10 novembre 2026 pour ComfyUI ferme et pour l'agent muet. Le modele que le
+# studio y avait charge part tout seul, par son keep_alive.
+#
+# CE QUI RESTE PERMIS : LIRE, et rien d'autre (/api/tags, /api/ps — un
+# inventaire ne charge ni ne decharge rien). Un appel DEJA parti finit : on ne
+# coupe pas une reponse en vol, on n'en lance pas d'autre.
+#
+# UN OLLAMA SANS MACHINE N'EST PAS CONCERNE : un simple serveur de langage,
+# sans carte de rendu, n'a pas de ComfyUI a lancer. Voir noeud_du_cerveau().
+#
+# « ComfyUI FERME » NE VAUT QUE POUR LES MACHINES A AGENT (decision du
+# 10 novembre 2026, apres relecture). Sur une machine a agent, c'est son
+# proprietaire qui lance et ferme ComfyUI : ferme, il dit « la carte est a
+# moi ». Sur la machine DU STUDIO, c'est le studio qui possede le cycle de vie
+# de ComfyUI — relancer_comfy_local() le relance lui-meme pour le rendu — :
+# ferme, il ne dit rien du tout. La premiere version y appliquait la regle
+# quand meme, et elle dependait de l'histoire : carte jamais vue, l'Ollama
+# servait ; carte vue une fois, plus aucun cerveau, et l'analyse partait aux
+# mots-cles juste avant que le studio relance ComfyUI pour le rendu ; Ollama
+# ecrit par l'adresse du reseau, la porte restait ouverte. Sur la machine du
+# studio — comme sur une machine declaree par son adresse — seule la PAUSE
+# ferme donc le cerveau, et de la meme facon quelle que soit l'histoire.
+#
+# ET CE QUI EST VRAI AUJOURD'HUI DE CETTE PAUSE-LA : /admin ne met en pause
+# que les machines A AGENT (api_admin_pause ne connait que REGISTRE), et
+# noeuds.json ne porte pas de champ « pause ». Ni la machine du studio ni une
+# machine declaree par son adresse ne peuvent donc etre mises en pause par
+# l'interface : pour elles, rien ne ferme le cerveau en pratique. Le
+# rattachement existe quand meme — il dit a quelle machine l'Ollama appartient
+# (la console, l'avertissement du pret), et la pause y vaudra sans autre
+# changement le jour ou ces machines pourront l'etre.
+
+# LE SILENCE QUI FERME LE PRET, plus court que SILENCE_MAX. Fermer la fenetre
+# de l'agent arrete l'agent ET ComfyUI ensemble, sans un dernier mot : c'est
+# le scenario meme de la regle, et a SILENCE_MAX le PC pretait encore son
+# Ollama quarante-quatre secondes apres. Ce que l'agent envoie
+# (agent_noeud.py, releve le 10 novembre 2026) : une annonce toutes les 10 s
+# dans son propre fil, meme pendant un rendu, un depot ou un telechargement
+# (20 s quand ComfyUI ne repond pas) ; une demande de question toutes les 3 s
+# dans un autre fil ; une demande de travail toutes les 3 s au repos ; un
+# battement de progression toutes les 2 s pendant un rendu. Quinze secondes
+# laissent donc passer une annonce et demie sans aucun des autres : un agent
+# qui rend ou qui livre ne passe pas pour muet. Et se tromper ne coute qu'une
+# analyse posee ailleurs. SILENCE_MAX garde son role pour tout le reste — le
+# rendu, la console. A tenir AU-DESSUS de l'intervalle d'annonce servi par
+# api_noeud_annonce (10 s).
+SILENCE_PRET = 15
+
+
+def _ollama_de_cette_machine(url):
+    """Cet Ollama tourne-t-il sur la machine du studio, quelle que soit la
+    facon dont son adresse est ECRITE : bouclage, une des adresses de la
+    machine sur le reseau, ou l'hote du ComfyUI local de noeuds.json."""
+    hote = (urllib.parse.urlparse(url).hostname or "").lower()
+    ici = (urllib.parse.urlparse(noeud_local()["url"]).hostname or "").lower()
+    return _ollama_ici(url) or hote in ADRESSES_MACHINE or hote == ici
+
+
+def noeud_du_cerveau(url):
+    """La machine du parc a laquelle cet Ollama appartient, ou None.
+
+    TROIS RATTACHEMENTS, et rien d'autre :
+
+      - une machine A AGENT, reconnue par l'ADRESSE d'ou son agent s'annonce
+        (_relever_cerveau : l'hote de l'adresse Ollama, resolu, compare a
+        ETAT_NOEUDS[...]["ip"], que _parc.json garde d'un redemarrage a
+        l'autre). C'est le « noeud » du cache, celui dont on reserve la carte.
+        Deux machines vues a la meme adresse ne rattachent rien : voir
+        _relever_cerveau et avertissements_du_pret().
+      - la machine DU STUDIO, quand l'Ollama est ici, de quelque facon que son
+        adresse soit ecrite, et que la machine ait une carte ou non.
+      - une machine DECLAREE PAR SON ADRESSE dans noeuds.json, quand l'Ollama
+        a le meme hote que son ComfyUI. Les noms sont compares tels qu'ils
+        sont ecrits, sans rien resoudre. Une adresse de bouclage n'arrive
+        jamais jusqu'ici — elle est celle de la machine du studio —, et c'est
+        voulu : une machine declaree sur 127.0.0.1 peut etre un tunnel vers
+        n'importe ou.
+
+    Ces deux derniers ne reservent aucune carte et ne plafonnent aucun
+    modele. Ils ne servent qu'a la PAUSE (voir cerveau_ferme) et a dire a qui
+    l'Ollama appartient : « ComfyUI ferme » ne vaut que pour les machines a
+    agent. Le troisieme avait ete retire avec la decision sur ComfyUI ferme ;
+    il est revenu le 10 novembre 2026, a la seconde relecture : sans lui une
+    machine declaree, en pause, gardait son Ollama dans la liste alors que les
+    commentaires disaient le contraire, et le studio avertissait qu'il « ne
+    sait pas a quelle machine il appartient » d'un Ollama dont il connait la
+    machine.
+
+    _CERVEAUX en lecture directe, comme _url_du_cerveau : la console appelle
+    cette fonction, et un releve bloquant y arreterait la boucle.
+    """
+    ident = (_CERVEAUX.get(url) or {}).get("noeud")
+    if ident:
+        return ident
+    if _ollama_de_cette_machine(url):
+        return noeud_local()["id"]
+    hote = (urllib.parse.urlparse(url).hostname or "").lower()
+    for x in NOEUDS:
+        if (hote and not x.get("local") and hote
+                == (urllib.parse.urlparse(x["url"]).hostname or "").lower()):
+            return x["id"]
+    return None
+
+
+def _pas_encore_annoncee(ident):
+    """Une machine a agent dont le studio n'a recu AUCUNE annonce depuis son
+    reveil. Elle n'est pas « fermee » : on ne sait rien de son ComfyUI.
+
+    « annonce » est pose par api_noeud_annonce et par elle seule. « vu », lui,
+    est pose aussi par les demandes de travail et de question, que l'agent
+    envoie toutes les trois secondes sans rien dire de ComfyUI : s'y fier
+    faisait prendre un agent qui venait chercher une question pour une machine
+    entendue, « repond » encore faux, donc « ComfyUI ferme » — et les demandes
+    reprises au reveil partaient aux mots-cles en accusant le PC a tort
+    (relecture du 10 novembre 2026). « repond » vrai sans annonce ne s'obtient
+    que d'un battement de progression : ComfyUI rend, il n'y a rien a attendre.
+    """
+    e = ETAT_NOEUDS.get(ident) or {}
+    return est_agent(ident) and not e.get("annonce") and not e.get("repond")
+
+
+def comfy_dit_ferme(ident):
+    """Le dernier mot de cette machine a agent est-il « comfy: False ».
+
+    Une annonce recue depuis le reveil du studio, et « repond » faux : son
+    agent a interroge ComfyUI et ComfyUI n'a pas repondu. Ce n'est NI une
+    machine qui travaille — un rendu bat sa progression, qui remet « repond » a
+    vrai —, NI une machine dont on ne sait encore rien apres un redemarrage
+    (pas d'annonce). C'est une machine dont le proprietaire a ferme ComfyUI.
+    """
+    e = ETAT_NOEUDS.get(ident) or {}
+    return est_agent(ident) and bool(e.get("annonce")) and not e.get("repond")
+
+
+def cerveau_ferme(ident):
+    """Pourquoi cette machine ne prete pas son modele de langage ; "" si elle
+    le prete. LA SEULE REPONSE A LA QUESTION — voir la regle ci-dessus.
+
+      "pause" : son proprietaire l'a mise en pause dans /admin.
+      "muet"  : son agent ne donne plus signe de vie depuis SILENCE_PRET, ou
+                ni annonce ni battement de progression depuis SILENCE_MAX, ou
+                il ne s'est pas encore annonce depuis le reveil du studio.
+                Sans l'un des deux, personne ne dit que ComfyUI tourne : il
+                est tenu pour ferme.
+                C'est le cas du PC dont on a arrete l'agent et ComfyUI en
+                laissant Ollama.
+      "ferme" : l'agent est la, et sa derniere ANNONCE dit « comfy: False ».
+
+    MACHINES A AGENT SEULEMENT, pour ces deux derniers etats. La machine du
+    studio et une machine declaree par son adresse ne connaissent que la
+    pause : voir la decision ecrite au-dessus de SILENCE_PRET.
+
+    Une machine INCONNUE (pas d'identifiant, ou retiree du parc) ne ferme
+    rien : la regle parle des noeuds, pas des adresses.
+    """
+    x = noeud(ident) if ident else None
+    if x is None:
+        return ""
+    if x.get("pause"):
+        return "pause"
+    if not est_agent(ident):
+        return ""
+    e = ETAT_NOEUDS.get(ident) or {}
+    maintenant = time.time()
+    if maintenant - (e.get("vu") or 0) >= SILENCE_PRET:
+        return "muet"
+    # CE QUI DIT QUE ComfyUI TOURNE : une ANNONCE, ou un BATTEMENT DE
+    # PROGRESSION — ComfyUI rend, on ne peut pas mieux le prouver. Seule
+    # l'absence des DEUX depuis SILENCE_MAX retire la permission : l'agent
+    # vient alors encore chercher des questions, mais « repond » n'est plus
+    # que le souvenir d'un oui trop vieux. L'annonce seule ne suffisait pas
+    # (seconde relecture du 10 novembre 2026) : un agent d'avant le fil
+    # d'annonce, ou un fil retenu dans le listage des modeles, passait pour
+    # muet en plein rendu, et l'analyse suivante partait aux mots-cles.
+    parle_ = max(e.get("annonce") or 0, e.get("progres") or 0)
+    if parle_ and maintenant - parle_ >= SILENCE_MAX:
+        return "muet"
+    if e.get("repond"):
+        return ""
+    return "ferme" if e.get("annonce") else "muet"
+
+
+def dire_cerveau_ferme(ident, raison):
+    """La phrase du fil, pour UNE machine. Celle de la pause n'a pas change."""
+    titre = (noeud(ident) or {}).get("titre", ident)
+    if raison == "pause":
+        return f"{titre} est en pause — son modele de langage avec elle"
+    if raison == "muet":
+        return (f"{titre} : son agent ne s'annonce plus, ComfyUI y est tenu "
+                f"pour ferme — son modele de langage n'est pas utilise")
+    return (f"{titre} : ComfyUI n'y tourne pas — son modele de langage "
+            f"n'est pas utilise")
+
+
+def etat_du_pret(ident):
+    """Pour la console : ce que la regle fait du modele de langage de cette
+    machine. None quand le studio ne lui en connait aucun — ni Ollama de
+    OLLAMA_URL rattache a elle, ni modele annonce par son agent : il n'y a
+    alors rien a preter, et rien a dire. Sinon cerveau_ferme(), "" compris.
+
+    Sans ce champ, /admin montrait une machine en pause ou sans ComfyUI a cote
+    d'un Ollama qui repond, et laissait croire que le studio s'en servait.
+    """
+    porte = (any(noeud_du_cerveau(u) == ident for u in OLLAMAS)
+             or bool((ETAT_NOEUDS.get(ident) or {}).get("llm")))
+    return cerveau_ferme(ident) if porte else None
+
+
+def etiquette_du_cerveau(url):
+    """« [PC (RTX 2080 Ti) — …] » pour la banniere de demarrage ; "" pour un
+    Ollama sans machine.
+
+    La banniere annoncait « Ollama : http://… ecrit avec … [PC] », ce qui se
+    lit « le studio ecrit avec l'Ollama du PC ». Ce n'est vrai que si le PC
+    prete sa carte, et la ligne le dit. AU DEMARRAGE AUCUN AGENT N'A ENCORE
+    BATTU : « muet » y est l'etat de tout le monde, et l'ecrire « ComfyUI
+    ferme » accuserait une machine qui s'annoncera dans dix secondes — d'ou la
+    condition plutot que le constat.
+    """
+    ident = noeud_du_cerveau(url)
+    if not ident:
+        return ""
+    etat = {"pause": " — en pause : non utilise",
+            "ferme": " — ComfyUI ferme : non utilise",
+            "muet": " — sert seulement quand son ComfyUI tourne",
+            }.get(cerveau_ferme(ident), "")
+    return f"  [{(noeud(ident) or {}).get('titre', ident)}{etat}]"
+
+
+class CerveauFerme(RuntimeError):
+    """La machine de cet Ollama ne prete pas sa carte : rien n'y est genere.
+
+    RuntimeError, comme les pannes qu'elle cotoie : un appelant qui ne la
+    connait pas se replie exactement comme sur un Ollama injoignable.
+    """
+
+
+def erreur_cerveau_ferme(e=None):
+    """Ce que l'utilisateur lit quand sa demande S'ARRETE parce que la regle
+    du pret a ferme le cerveau qu'il lui fallait : la raison, puis le geste.
+
+    JAMAIS UN CONSEIL D'INSTALLATION. « Il faut un modele qui sache voir, par
+    exemple : ollama pull qwen2.5vl:7b » sous une image que le PC, ferme, aurait
+    tres bien lue ; « relance la demande » sous une chanson que rien n'ecrira
+    tant que ComfyUI n'y tourne pas : les deux envoyaient chercher une panne la
+    ou il y a une regle (relecture du 10 novembre 2026).
+    """
+    raison = str(e or "") or _dire_les_fermes()
+    fermes = cerveaux_fermes()
+    plusieurs = len(fermes) > 1
+    if fermes and all(r == "pause" for _, r in fermes):
+        geste = ("sors l'une d'elles de pause dans l'administration"
+                 if plusieurs else "sors-la de pause dans l'administration")
+    else:
+        geste = ("relance ComfyUI sur l'une de ces machines"
+                 if plusieurs else "relance ComfyUI sur cette machine")
+    return f"{raison} ; {geste}, ou reessaie quand elle sera revenue"
+
+
+def voyant_ferme():
+    """La phrase d'une machine FERMEE par la regle dont l'Ollama porte un
+    modele qui sait voir ; "" s'il n'y en a pas. Pour image_adulte()."""
+    for url in OLLAMAS:
+        ident = noeud_du_cerveau(url)
+        raison = cerveau_ferme(ident)
+        if raison and modele_vision_de(url):
+            return dire_cerveau_ferme(ident, raison)
+    return ""
+
+
+def avertissements_du_pret():
+    """Une ligne par Ollama de OLLAMA_URL auquel la regle du pret ne
+    s'applique PAS faute de savoir a quelle machine il appartient — pour la
+    banniere de demarrage et pour /admin.
+
+    Seulement quand le parc compte des machines a agent : sans elles, un
+    Ollama sans machine est l'etat ordinaire, et il n'y a rien a signaler.
+    Le rattachement se fait par l'adresse d'ou l'agent s'annonce : un agent
+    derriere un mandataire, ou qui n'a jamais joint ce studio, laisse son
+    Ollama sans machine, et le studio l'emploierait ComfyUI ferme sans que
+    rien ne le dise (relecture du 10 novembre 2026).
+    """
+    if not REGISTRE:
+        return []
+    lignes = []
+    for url in OLLAMAS:
+        if noeud_du_cerveau(url):
+            continue
+        memes = (_CERVEAUX.get(url) or {}).get("ambigu") or []
+        if memes:
+            noms = " et ".join((noeud(i) or {}).get("titre", i) for i in memes)
+            lignes.append(f"la regle du pret ne s'applique pas a {url} : "
+                          f"{noms} s'annoncent depuis la meme adresse, je ne "
+                          f"sais pas a laquelle il appartient")
+        else:
+            lignes.append(f"la regle du pret ne s'applique pas a {url} : je "
+                          f"ne sais pas a quelle machine il appartient")
+    return lignes
+
+
+def cerveaux_fermes():
+    """[(identifiant, raison)] des machines dont le modele de langage est
+    ecarte par la regle, chacune une fois : celles d'un Ollama de OLLAMA_URL,
+    dans l'ordre des adresses, puis celles qui n'en pretent un que par leur
+    agent (« llm » a leur derniere annonce)."""
+    vus, fermes = set(), []
+    candidats = [noeud_du_cerveau(url) for url in OLLAMAS]
+    candidats += [x["id"] for x in REGISTRE.values()
+                  if (ETAT_NOEUDS.get(x["id"]) or {}).get("llm")]
+    for ident in candidats:
+        raison = cerveau_ferme(ident)
+        if raison and ident not in vus:
+            vus.add(ident)
+            fermes.append((ident, raison))
+    return fermes
+
+
+# COMBIEN ATTENDRE LES PREMIERES ANNONCES APRES UN REDEMARRAGE DU STUDIO. Les
+# agents battent toutes les dix secondes : pendant ce temps-la, « muet » ne
+# veut pas dire « ferme », il veut dire « pas encore entendu ». Sans cette
+# attente, les demandes que reprendre_file() relance au reveil partiraient
+# toutes aux mots-cles, alors que le NAS allait s'annoncer dans la seconde.
+# TRENTE SECONDES, COMPTEES DEPUIS QUE LE STUDIO SERT, et pas vingt depuis
+# l'import (relecture du 10 novembre 2026). Un agent qui a vu le studio tomber
+# ne le rappelle que toutes les vingt secondes (PAUSE_LONGUE, dans
+# agent_noeud.py) : vingt ne laissaient pas passer un seul de ses essais. Et
+# entre l'import et le service il y a le releve bloquant des Ollama — huit
+# secondes par hote eteint — qui mangeait l'attente avant qu'un seul agent ait
+# pu joindre le studio. Pas davantage : une machine dont l'agent est arrete ne
+# s'annoncera pas, et on ne l'attend pas plus longtemps a chaque redemarrage.
+ATTENTE_ANNONCES = 30
+# L'instant ou le studio s'est mis a servir : pose par demarrer_file(), le
+# premier geste du serveur une fois sa boucle lancee. Zero tant qu'il ne sert
+# pas — un banc qui importe ce module sans le lancer ; DEMARRE en tient lieu.
+SERVI_DEPUIS = [0.0]
+
+
+async def attendre_les_annonces():
+    """Laisse aux agents le temps de leur premiere ANNONCE, au reveil.
+
+    Seulement tant qu'une machine dont le studio emprunterait le modele de
+    langage ne s'est pas encore annoncee (voir _pas_encore_annoncee : une
+    demande de travail ou de question n'est pas une annonce), et jamais
+    au-dela d'ATTENTE_ANNONCES secondes apres le debut du service : ensuite,
+    cette fonction rend la main sans rien attendre, pour toute la vie du
+    studio, et la machine qui ne s'est pas annoncee est tenue pour muette.
+    """
+    while time.time() - (SERVI_DEPUIS[0] or DEMARRE) < ATTENTE_ANNONCES:
+        # Une machine en pause ne s'attend pas : annoncee ou non, elle ne
+        # pretera rien.
+        if not any(r == "muet" and _pas_encore_annoncee(i)
+                   for i, r in cerveaux_fermes()):
+            return
+        await asyncio.sleep(0.5)
+
+
 def cerveaux_utilisables(image=False):
     """Les Ollama qu'on a le droit d'employer, dans l'ordre ou les employer.
 
-    Trois regles, dans cet ordre, et ce sont celles de l'utilisateur :
+    Cinq regles, dans cet ordre, et ce sont celles de l'utilisateur :
 
       - une machine EN PAUSE ne pense pas. Son proprietaire s'en sert.
+      - une machine dont ComfyUI NE TOURNE PAS ne pense pas non plus, meme si
+        son Ollama repond (10 novembre 2026) : elle ne prete son modele de
+        langage que si elle prete sa carte. Voir cerveau_ferme().
       - une carte LIBRE passe devant une carte occupee. Attendre deux minutes
         derriere un rendu quand une autre machine repond tout de suite n'a de
         sens pour personne.
@@ -1274,7 +1685,7 @@ def cerveaux_utilisables(image=False):
     for url in OLLAMAS:
         c = cerveau(url)
         ident = c.get("noeud")
-        if ident and (noeud(ident) or {}).get("pause"):
+        if cerveau_ferme(noeud_du_cerveau(url)):
             continue
         if not c["modeles"]:
             continue
@@ -2011,6 +2422,31 @@ def muettes_capables(cle):
     return trouvees
 
 
+def comfy_fermes_capables(cle):
+    """Les titres des machines a agent qui SAURAIENT faire ce travail et dont
+    ComfyUI est ferme : agent vivant, derniere annonce « comfy: False », hors
+    pause, carte suffisante, moteur porte au dernier releve.
+
+    Pour refus_moteur() : ce sont celles ou le geste est « relance ComfyUI »,
+    pas « rallume-la ». Une machine dont l'agent s'est tu depuis SILENCE_MAX
+    n'en est pas — on ne sait plus rien d'elle, elle reste a muettes_capables.
+    """
+    besoin = CATALOGUE[cle].get("vram", 0)
+    titres = []
+    for x in tous_les_noeuds():
+        ident = x["id"]
+        e = ETAT_NOEUDS.get(ident) or {}
+        if x.get("pause") or not comfy_dit_ferme(ident):
+            continue
+        if time.time() - (e.get("vu") or 0) >= SILENCE_MAX:
+            continue
+        if besoin > _vram_utile(ident):
+            continue
+        if portait(cle, ident):
+            titres.append(x.get("titre", ident))
+    return titres
+
+
 class RefusMoteur(RuntimeError):
     """Un refus qui porte SA CLE, et dont le texte reste la phrase francaise.
 
@@ -2084,6 +2520,19 @@ def refus_moteur(cle, vivantes):
             f"compris) ; aucun autre moteur de ce genre n'y tient.",
             panne_de("panne.moteur_trop_lourd_seul", moteur=titre,
                      vram=f"{lourd:g}", plafond=plafond))
+    # ComfyUI FERME N'EST PAS UNE MACHINE ETEINTE. Son agent repond, il vient
+    # de dire « comfy: False » : « Rallume-la, ou verifie son agent » enverrait
+    # regarder une machine allumee et un agent qui va tres bien. Le geste est
+    # de relancer ComfyUI, et la phrase le dit (10 novembre 2026).
+    fermees = comfy_fermes_capables(cle)
+    if fermees:
+        noms = " et ".join(fermees[:3])
+        return RefusMoteur(
+            f"{CATALOGUE[cle]['titre']} : aucune machine joignable ne sait le "
+            f"faire en ce moment, mais {noms} le sait — ComfyUI n'y tourne "
+            f"pas. Relance ComfyUI sur cette machine, puis redemande.",
+            panne_de("panne.moteur_comfy_ferme",
+                     moteur=CATALOGUE[cle]["titre"], machines=noms))
     absentes = muettes_capables(cle)
     if absentes:
         noms = " et ".join(titre for titre, _age in absentes[:3])
@@ -2304,6 +2753,17 @@ async def patienter_machine(cle, tid):
             if not e.get("vram") or _vram_utile(x["id"]) < besoin:
                 continue
             if manquants(cle, x["id"]):
+                continue
+            # UNE MACHINE DONT ComfyUI EST FERME N'EST PAS « OCCUPEE ». Son
+            # agent vient de dire « comfy: False » : elle ne travaille pas,
+            # son proprietaire a repris sa carte. Depuis la regle du pret
+            # c'est l'etat ordinaire du PC, et le fil disait deux choses
+            # contraires — « PC : ComfyUI n'y tourne pas », puis « PC travaille
+            # — ta demande attend son tour » pendant ATTENTE_CARTE, trente
+            # minutes, avant « Rallume-la » (seconde relecture du 10 novembre
+            # 2026). Elle sort d'ici tout de suite, et refus_moteur() dit quoi
+            # faire : relancer ComfyUI.
+            if comfy_dit_ferme(x["id"]):
                 continue
             # La meme tolerance que _attendre_le_noeud : un agent occupe peut
             # manquer plusieurs battements, un agent mort n'en donne plus aucun.
@@ -3343,7 +3803,11 @@ async def comfy_occupe():
                 d = await r.json()
                 return bool(d.get("queue_running")) or bool(d.get("queue_pending"))
     except Exception:
-        return False        # ComfyUI injoignable : inutile de bloquer le LLM
+        # ComfyUI injoignable : inutile de bloquer le LLM. Et cela reste vrai
+        # sous la regle du pret (10 novembre 2026) : sur la machine du studio,
+        # ComfyUI ferme ne ferme pas le cerveau — c'est le studio qui le
+        # relance (voir la decision au-dessus de SILENCE_PRET).
+        return False
 
 async def attendre_carte_libre(tid=None):
     """Le modele de langage et la diffusion se disputent les memes 11 Go.
@@ -3557,9 +4021,21 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # egalite la plus petite. Le detour par l'agent d'une machine reste en
     # dernier recours — mesure du 31 aout, la meme question coute 3,8 s en
     # direct, 74,8 s au PC par son agent et 162,6 s au NAS.
+    #
+    # AU REVEIL DU STUDIO, on laisse d'abord aux agents leur premier battement :
+    # « pas encore entendue » n'est pas « ComfyUI ferme » (voir
+    # attendre_les_annonces — sans effet passe ATTENTE_ANNONCES secondes).
+    await attendre_les_annonces()
     cerveaux = cerveaux_utilisables(image=bool(corps.get("images")))
+    # LA RAISON N'EST DITE QUE LORSQU'AUCUN CERVEAU N'EST UTILISABLE : c'est
+    # la que l'utilisateur a besoin de comprendre pourquoi sa demande part aux
+    # mots-cles — pause, ComfyUI ferme ou agent muet, chacune avec ses mots
+    # (voir _dire_les_fermes). Quand un autre cerveau repond, rien : le PC est
+    # eteint la moitie du temps, et une ligne par demande pour le redire
+    # serait du bruit (10 novembre 2026) ; l'etat se lit dans /admin.
+    # UNE FOIS PAR DEMANDE, pas a chacun de ses trois ou quatre appels.
     if not cerveaux:
-        journal(tid, _pourquoi_aucun_cerveau())
+        journal_une_fois(tid, _pourquoi_aucun_cerveau())
     panne = None
     # QUI A DEPASSE, sans rien decider encore. La marque « cerveau lent » etait
     # posee ICI MEME, dans le « except » de chaque adresse — et la boucle
@@ -3718,17 +4194,31 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                              f"liberee la premiere — l'analyse y passe")
                 rang_ -= 1
                 continue
-        if verrou_ol is not None:
-            # LA PAUSE A PU ARRIVER PENDANT L'ATTENTE. On a pu patienter une
-            # demi-heure derriere un rendu ; entre-temps son proprietaire a très
-            # bien pu mettre la machine en pause pour jouer, et le filtre du
-            # debut de boucle date d'avant l'attente. Charger un modele
-            # maintenant, ce serait exactement ce que la pause interdit.
-            if (noeud(ident) or {}).get("pause"):
+        # LA PAUSE A PU ARRIVER PENDANT L'ATTENTE. On a pu patienter une
+        # demi-heure derriere un rendu ; entre-temps son proprietaire a très
+        # bien pu mettre la machine en pause pour jouer, et le filtre du
+        # debut de boucle date d'avant l'attente. Charger un modele
+        # maintenant, ce serait exactement ce que la pause interdit.
+        #
+        # ET ComfyUI A PU SE FERMER, ce qui dit la meme chose (10 novembre
+        # 2026) : la carte est reprise. Le meme garde, donc, par la meme
+        # fonction — et pour TOUTE adresse, pas seulement celles dont on a
+        # attendu la carte : l'essai d'une premiere machine peut avoir dure
+        # trois minutes avant qu'on arrive a celle-ci.
+        ident_pret_ = noeud_du_cerveau(url)
+        ferme_attente_ = cerveau_ferme(ident_pret_)
+        if ferme_attente_:
+            if ferme_attente_ == "pause":
                 journal(tid, f"{titre_ol} est passee en pause pendant l'attente "
                              f"— on cherche ailleurs")
+            else:
+                titre_pret_ = (noeud(ident_pret_) or {}).get("titre", ident_pret_)
+                journal(tid, f"{titre_pret_} : ComfyUI n'y tourne plus — ferme "
+                             f"pendant l'attente, son modele de langage n'est "
+                             f"plus utilise ; on cherche ailleurs")
+            if verrou_ol is not None:
                 verrou_ol.release()
-                continue
+            continue
         try:
             # BORNE PLUS COURTE POUR UNE IMAGE. Les neuf cents secondes du
             # delai ordinaire sont la pour qu'une chanson longue aboutisse ;
@@ -3758,7 +4248,7 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
             # Une adresse mise de cote n'est pas un repli : la compter ferait
             # partir la reprise vers une machine que la boucle sautera.
             reste_ = any(corps_ici(corps, u) is not None
-                         and not (i and (noeud(i) or {}).get("pause"))
+                         and not cerveau_ferme(noeud_du_cerveau(u))
                          and not en_quarantaine(
                              u, (corps_ici(corps, u) or {}).get("model") or "")
                          for u, i in cerveaux[rang_ + 1:])
@@ -3888,6 +4378,12 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
                 # pourtant obtenu son plan.
                 lents.append(titre_ol)
                 journal(tid, f"{titre_ol} n'a pas repondu en {delai:.0f} s")
+            elif isinstance(e, CerveauFerme):
+                # LA PORTE DE _ollama_local A REFUSE : la machine a repris sa
+                # carte entre le garde d'apres l'attente et l'appel — le temps
+                # d'un dechargement, d'une relance apres plantage. Ce n'est
+                # pas une panne, et le fil dit ce que c'est.
+                journal(tid, f"{e} — on cherche ailleurs")
             elif len(cerveaux) > 1:
                 journal(tid, f"{titre_ol} n'a pas repondu "
                              f"({type(e).__name__}) — on essaie ailleurs")
@@ -3923,7 +4419,11 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
         journal(tid, f"{', '.join(lents)} n'a pas repondu en {ANALYSE_DELAI} s — "
                      f"le reste de cette demande se fera sans modele")
     if panne is None:
-        panne = RuntimeError(_pourquoi_aucun_cerveau())
+        # FERME PAR LA REGLE N'EST PAS INJOIGNABLE, et l'appelant le lit dans
+        # le nom : « Ollama indisponible (CerveauFerme) — aiguillage par
+        # mots-cles » ne fait chercher aucune panne.
+        panne = (CerveauFerme if cerveaux_fermes() else RuntimeError)(
+            _pourquoi_aucun_cerveau())
     # HORS du verrou. On n'essaie une autre machine QUE si la sienne ne repond
     # pas : un modele distant est plus lent a charger, et la machine qui le porte
     # a peut-etre mieux a faire. Depuis qu'un studio peut vivre sans carte, ce cas
@@ -3935,11 +4435,18 @@ async def _appeler_llm(texte, image_b64=None, systeme=None, json_mode=True,
     # PAR L'AGENT, c'est 75 a 162 s (mesure du 31 aout) : la borne du moteur
     # impose vaut la aussi.
     secondes_ = borne_ - time.time() if borne_ else None
-    journal(tid, f"{_mot_local()} injoignable ({type(panne).__name__}) — "
-                 f"on cherche une machine qui en porte un")
-    rendu = await demander_a_un_noeud(corps, tid, secondes_)
-    if rendu:
-        return rendu
+    # RIEN A CHERCHER quand c'est la regle qui a ferme les cerveaux et
+    # qu'aucune machine ne prete le sien par son agent : « injoignable — on
+    # cherche une machine » mentirait deux fois, et a chaque appel de la
+    # demande. La raison est deja dans le fil, une fois. Et le detour n'est pas
+    # tente non plus : il n'y a personne a qui demander, et pour une image il
+    # ecrirait « aucune machine joignable en direct » sous la vraie raison.
+    if not (isinstance(panne, CerveauFerme) and not noeuds_a_llm()):
+        journal(tid, f"{_mot_local()} injoignable ({type(panne).__name__}) — "
+                     f"on cherche une machine qui en porte un")
+        rendu = await demander_a_un_noeud(corps, tid, secondes_)
+        if rendu:
+            return rendu
     if borne_ and time.time() >= borne_:
         raise _couper_analyse(tid, _mot_local())
     raise panne
@@ -4317,17 +4824,30 @@ def _pourquoi_aucun_cerveau():
     « Le modele local ne repond pas » n'aide personne quand la cause est une
     machine que son proprietaire vient de mettre en pause pour jouer.
     """
-    dorment = []
+    return _dire_les_fermes() or "aucun modele de langage joignable"
+
+
+def _dire_les_fermes():
+    """Les machines dont l'Ollama est ecarte par la regle du pret, en UNE
+    phrase pour le fil ; "" quand aucune ne l'est.
+
+    La pause garde ses mots d'avant. ComfyUI ferme et l'agent muet ont les
+    leurs depuis le 10 novembre 2026 : « le modele local ne repond pas » ferait
+    chercher une panne la ou il y a une regle, et un Ollama qui repond.
+    """
     for url in OLLAMAS:
-        ident = cerveau(url).get("noeud")
-        if ident and (noeud(ident) or {}).get("pause"):
-            dorment.append((noeud(ident) or {}).get("titre", ident))
+        cerveau(url)            # tient le cache a jour, comme avant
+    fermes = cerveaux_fermes()
+    dorment = [(noeud(i) or {}).get("titre", i) for i, r in fermes
+               if r == "pause"]
+    phrases = []
     if dorment:
         quoi = ("sont en pause — leurs modeles de langage avec elles"
                 if len(dorment) > 1 else
                 "est en pause — son modele de langage avec elle")
-        return f"{' et '.join(dorment)} {quoi}"
-    return "aucun modele de langage joignable"
+        phrases.append(f"{' et '.join(dorment)} {quoi}")
+    phrases += [dire_cerveau_ferme(i, r) for i, r in fermes if r != "pause"]
+    return " ; ".join(phrases)
 
 
 # COMBIEN DE TEMPS UNE ANALYSE PEUT ATTENDRE UN MODELE LOCAL. L'appel de
@@ -4379,6 +4899,18 @@ async def _ollama_local(corps, url=None, secondes=900):
     # longtemps que la minute d'un 7B, et une coupure ici rend une chanson
     # muette. L'appelant raccourcit quand il a une machine de rechange sous la
     # main — voir la lecture d'image.
+    #
+    # LA DERNIERE PORTE DE LA REGLE DU PRET (10 novembre 2026, voir
+    # cerveau_ferme). Tout ce qui fait GENERER un Ollama en direct finit ici —
+    # le premier essai, la reprise apres un dechargement, la relance apres un
+    # plantage — et rien n'y part vers une machine en pause ou dont ComfyUI
+    # est ferme, meme si un garde plus haut l'a laisse passer ou date d'avant
+    # une attente. Les dechargements ne passent pas par ici : liberer_modele_a
+    # a son propre garde, qui dit la meme chose.
+    ident_porte_ = noeud_du_cerveau(url or OLLAMA)
+    ferme_porte_ = cerveau_ferme(ident_porte_)
+    if ferme_porte_:
+        raise CerveauFerme(dire_cerveau_ferme(ident_porte_, ferme_porte_))
     to = aiohttp.ClientTimeout(total=secondes)
     async with aiohttp.ClientSession(timeout=to) as s:
         async with s.post(f"{url or OLLAMA}/api/generate", json=corps) as r:
@@ -4564,7 +5096,11 @@ def noeuds_a_llm():
     Les plus GROSSES d'abord, comme cerveaux_utilisables : c'est le meme
     travail, il n'y a aucune raison qu'il suive deux regles selon qu'on parle a
     l'Ollama en direct ou qu'on emprunte le modele par l'agent. Une machine en
-    pause n'en est pas : son proprietaire s'en sert.
+    pause n'en est pas : son proprietaire s'en sert. Une machine dont ComfyUI
+    est ferme, ou dont l'agent s'est tu, non plus : c'est cerveau_ferme() qui
+    le dit, la meme fonction que pour la voie directe (10 novembre 2026). Ce
+    chemin-ci exigeait deja « repond » et un battement recent ; il ne le
+    decide plus a part.
 
     STUDIO_ANALYSE_PETITE=1 remet l'ancien ordre, si la mesure devait un jour
     donner tort a la regle.
@@ -4572,9 +5108,9 @@ def noeuds_a_llm():
     bons = []
     for x in REGISTRE.values():
         e = ETAT_NOEUDS.get(x["id"]) or {}
-        if x.get("pause"):
+        if cerveau_ferme(x["id"]):
             continue
-        if e.get("repond") and e.get("llm") and time.time() - (e.get("vu") or 0) < SILENCE_MAX:
+        if e.get("llm"):
             # LIBRE d'abord, grosse ensuite. L'ordre des deux compte autant que
             # l'ordre lui-meme : prendre la plus grosse sans regarder si elle
             # travaille ferait s'empiler les analyses sur elle pendant que
@@ -4662,6 +5198,14 @@ async def poser_a(ident, corps, tid=None, secondes=900, patience=None):
                 journal(tid, f"{titre} calcule toujours — on cherche ailleurs")
             return "", "carte occupee"
     try:
+        # LA REGLE DU PRET, APRES L'ATTENTE DE LA CARTE et pour tout appelant
+        # (10 novembre 2026) : le repli de l'analyse, mais aussi l'essai lance
+        # depuis /admin. Une machine passee en pause ou dont ComfyUI s'est
+        # ferme pendant qu'on attendait sa carte ne recoit pas la question —
+        # son agent, lui, la servirait sans rien demander a personne.
+        ferme_depot_ = cerveau_ferme(ident)
+        if ferme_depot_:
+            return "", dire_cerveau_ferme(ident, ferme_depot_)
         qid = uuid.uuid4().hex
         futur = asyncio.get_event_loop().create_future()
         REPONSES[qid] = (ident, futur)
@@ -4783,9 +5327,13 @@ async def liberer_modele_a(url, modele):
     apres un dechargement qui n'est pas parti, c'est reposer la question au
     meme modele corrompu.
     """
-    ident = cerveau(url).get("noeud")
-    if ident and (noeud(ident) or {}).get("pause"):
-        # Une machine en pause n'a rien de chaud a nous : on ne s'y adresse plus.
+    if cerveau_ferme(noeud_du_cerveau(url)):
+        # Une machine fermee n'a rien de chaud a nous : on ne s'y adresse plus.
+        # C'etait la regle de la pause ; depuis le 10 novembre 2026 elle vaut
+        # aussi pour ComfyUI ferme et pour l'agent muet (voir cerveau_ferme).
+        # Son proprietaire se sert d'Ollama pour lui-meme, et ce dechargement
+        # pourrait tomber sur le modele qu'il emploie. Ce que le studio y
+        # avait laisse chaud part tout seul, par son keep_alive.
         return False
     try:
         to = aiohttp.ClientTimeout(total=30)
@@ -4990,11 +5538,19 @@ async def reparer_degenere(url, modele, forme, tid, titre, depuis=None):
             "longueur": "une reponse JSON arretee a sa borne avant la fin "
                         "(done_reason length)",
             }.get(forme, "du charabia (un meme caractere repete) sans erreur")
-    ident = cerveau(url).get("noeud")
-    if ident and (noeud(ident) or {}).get("pause"):
+    ferme = cerveau_ferme(noeud_du_cerveau(url))
+    if ferme:
         # Son proprietaire s'en sert : on ne lui decharge rien, meme casse.
+        # LA MACHINE A REPRIS SA CARTE PENDANT L'APPEL. C'etait la regle de la
+        # pause ; depuis le 10 novembre 2026 elle vaut aussi pour ComfyUI
+        # ferme et pour l'agent muet (voir cerveau_ferme). Ni dechargement —
+        # il pourrait tomber sur le modele que son proprietaire emploie —, ni
+        # reprise, qui serait un nouvel appel : « decharge » reste faux, et la
+        # boucle ira ailleurs.
         journal(tid, f"{modele} sur {titre} a rendu {quoi} — "
-                     f"machine en pause, on n'y touche pas")
+                     + ("machine en pause" if ferme == "pause"
+                        else "ComfyUI n'y tourne plus")
+                     + ", on n'y touche pas")
         return trace
     deja = _DECHARGE_DEGENERE.get((url, modele))
     if deja and depuis is not None and deja["numero"] > depuis:
@@ -5363,7 +5919,9 @@ def _cadre_technique(plan):
 # de la page qui aboutissent en font 22. Au-dela de ce seuil : ni appel au
 # modele, ni question. Le prompt du plan part tel quel — sauf si l'analyse a
 # reduit la demande de plus de moitie : c'est alors le texte de l'auteur qui
-# part, ses details n'ont pas a disparaitre dans un resume.
+# part, ses details n'ont pas a disparaitre dans un resume — pourvu que
+# garde_fou() sache le relire (voir enrichir : une langue prouvee lue, aucune
+# lettre non latine), sinon le resume reste.
 DEMANDE_DETAILLEE = int(os.environ.get("STUDIO_DEMANDE_DETAILLEE") or 40)
 
 
@@ -5382,9 +5940,26 @@ async def enrichir(plan, texte, tid):
     mots_ = len((texte or "").split())
     if mots_ >= DEMANDE_DETAILLEE:
         if len(depart.split()) * 2 < mots_:
-            plan["prompt"] = " ".join(texte.split())
-            journal(tid, f"demande deja detaillee ({mots_} mots) : envoyee telle "
-                         f"que tu l'as ecrite, sans le resume de l'analyse")
+            # LE TEXTE DE L'AUTEUR NE REVIENT QUE S'IL PEUT ETRE RELU. Le
+            # resume, lui, l'a ete : garde_fou() vient de le lire. Remettre a
+            # sa place un texte que les motifs ne lisent pas, c'etait envoyer
+            # au moteur ce que rien n'avait lu — en production depuis la
+            # ronde 11. Seconde relecture du 10 novembre 2026 : 79 mots de
+            # neerlandais, un resume francais qui omet un detail, et c'est le
+            # texte entier qui partait. Hors d'une langue prouvee lue, ou des
+            # qu'une lettre n'est pas latine, le resume reste : c'est ce qui
+            # partait avant la ronde 11.
+            if (langue_de_la_demande(texte)[0] == "lue"
+                    and not _lettre_hors_latin(texte)):
+                plan["prompt"] = " ".join(texte.split())
+                journal(tid, f"demande deja detaillee ({mots_} mots) : envoyee "
+                             f"telle que tu l'as ecrite, sans le resume de "
+                             f"l'analyse")
+            else:
+                journal(tid, f"demande deja detaillee ({mots_} mots), que je ne "
+                             f"suis pas sur de savoir relire sans le modele : "
+                             f"c'est le resume de l'analyse qui part, pas ton "
+                             f"texte")
         else:
             journal(tid, f"demande deja detaillee ({mots_} mots) : envoyee sans "
                          f"l'etoffer")
@@ -5739,6 +6314,10 @@ async def _morceau(texte, systeme, tid, maxi, mini, libelle):
                                         temperature=chaleur, tid=tid,
                                         modele=MODELE_POUR_ECRIRE,
                                         garder="5m")
+        except CerveauFerme:
+            # Ferme par la regle du pret : trois essais ne l'ouvriront pas, et
+            # ecrire_paroles() doit pouvoir dire pourquoi.
+            raise
         except Exception as e:
             # Un appel qui casse ne doit pas condamner la chanson : le modele
             # peut avoir simplement mis trop longtemps a se charger.
@@ -5784,6 +6363,12 @@ async def ecrire_paroles(texte, duree, tid, langue_voulue="fr"):
     """
     try:
         return await _ecrire_paroles(texte, duree, tid, langue_voulue)
+    except CerveauFerme as e:
+        # LE MODELE QUI ECRIT EST FERME PAR LA REGLE DU PRET. Rendre "" ferait
+        # dire a l'appelant « relance la demande, ou precise le refrain » :
+        # relancer n'ecrira rien tant que la machine ne prete pas sa carte.
+        raise RuntimeError("les paroles n'ont pas pu etre ecrites — "
+                           + erreur_cerveau_ferme(e)) from None
     finally:
         # Sans ce relachement, les 18 Go du modele d'ecriture restent en
         # memoire et ComfyUI demarre sur une carte deja pleine.
@@ -5808,6 +6393,8 @@ async def _ecrire_paroles(texte, duree, tid, langue_voulue):
                                         tid=tid,
                                         modele=MODELE_POUR_ECRIRE,
                                         garder="5m") or ""
+        except CerveauFerme:
+            raise               # comme pour le refrain : voir _morceau
         except Exception:
             brut = ""
         couplets = _decouper_couplets(brut)
@@ -5917,9 +6504,144 @@ def raccourci_ecrit(texte, a_une_image=False, modele_choisi=False,
     return None
 
 
+# UNE DEMANDE OU TOUT EST DEJA DECIDE PEUT SE PASSER DE L'ANALYSE — ET C'EST
+# UN REGLAGE, ETEINT PAR DEFAUT (STUDIO_ANALYSE_SANS_OBJET, plus bas). Releve de
+# production du 9 novembre 2026 : un programme envoie des demandes d'image de
+# 130 a 175 mots, « moteur: klein9b ». L'analyse y coute 10 a 14 s sur la
+# carte du PC, 74 s en mediane quand elle part au NAS, et, sur le PC entre
+# deux rendus, le modele de langage (5,7 Go) chasse klein9b d'une carte de
+# 11 Go : le rendu suivant passe de 139 s (mediane de 308 rendus enchaines) a
+# 150-176 s. Or il ne lui reste rien a decider. Suivi champ par champ dans
+# executer(), et eprouve par banc_analyse_sans_objet.py :
+#   intention, moteur, raison, etapes, cfg — ecrases par le moteur impose ;
+#   une question ou un refus du modele — ecrases de meme, l'intention etant
+#     reposee avant d'etre lue : sur ce chemin seul garde_fou() refuse, et il
+#     lit la demande elle-meme ;
+#   classement — lu par adulte(), qui ne tranche que le depart au nuage, ou un
+#     moteur LOCAL impose ne va jamais, et par Pony, qui n'est pas multilingue ;
+#   enrichissement — aucun au-dela de DEMANDE_DETAILLEE mots ; traduction —
+#     aucune pour un moteur multilingue ;
+#   largeur et hauteur — ecrasees par une taille choisie ou ecrite ;
+#   prompt et negatif — la reecriture du modele, qui ne partait que si elle
+#     gardait la moitie des mots, et ce qu'il proposait d'eviter. C'est le
+#     texte de l'auteur et NEG_DEFAUT qui partent : ce que font deja les 206
+#     demandes a moteur impose passees sans modele en 72 h (la borne de 45 s),
+#     qui ont rendu leur image.
+#
+# LA CONDITION S'ARRETE A CE QUI EST ETABLI. L'analyse reste :
+#   pour un moteur seulement HERITE de la conversation — il cede aux
+#     raccourcis ecrits, il n'est pas la volonte de cette demande ;
+#   pour un moteur DISTANT impose — le classement y decide si la demande sort
+#     de la maison, et le fournisseur recoit le prompt du plan ;
+#   pour tout moteur qui n'est pas un moteur d'IMAGE multilingue — traduction,
+#     etiquettes, video, musique, retouche ;
+#   avec une piece jointe ; sous DEMANDE_DETAILLEE mots ;
+#   sans taille choisie ni ecrite — le format est alors celui que le modele
+#     propose (caler_taille) ; sans lui, toute image sort en 1216x832. Et une
+#     taille ECRITE n'en est une que dans les bornes d'une image du studio
+#     (voir _taille_ecrite_d_image) : « capteur 6000x4000 », « affiche de
+#     400x600 mm » decrivent autre chose ;
+#   dans une conversation qui a deja un echange ou une sortie — la demande peut
+#     reprendre un tour precedent, que seul le modele relit (bloc_contexte) ;
+#   quand la demande veut du TEXTE dans l'image (_TEXTE_VISIBLE) — le negatif
+#     par defaut commence par « text, letters, writing », et c'est l'analyse
+#     qui en propose un autre pour « un panneau ou est ecrit OUVERT » ;
+#   tant que la langue de la demande n'est pas PROUVEE etre une de celles que
+#     garde_fou() lit (voir langue_de_la_demande) — relecture du 10 novembre
+#     2026 : quarante mots en neerlandais, « met een naakt kind van acht
+#     jaar », partaient sans appel, alors que l'analyse les fait refuser en
+#     les reecrivant en francais. Ecriture non latine, langue voisine, demande
+#     faite d'etiquettes : dans le doute, c'est le modele qui lit ;
+#   des qu'UNE lettre n'est pas latine (_lettre_hors_latin) ou qu'un motif de
+#     mineur mord (_MINEUR), meme sans rien de sexuel : la demande parle d'un
+#     enfant, ou porte un mot que la preuve de langue n'a pas regarde.
+#
+# POURQUOI ETEINT PAR DEFAUT. La seconde relecture du 10 novembre 2026 a montre
+# ce que la preuve de langue ne prouve pas : elle dit dans quelle langue le
+# TEXTE est ecrit, pas que les motifs de garde_fou() lisent la partie qui
+# compte. Un fragment etranger au milieu de quarante mots francais echappe a la
+# fenetre a certaines positions ; le grec, le thai, le devanagari n'etaient
+# pas des ecritures « non latines » pour ce code ; et meme en francais, « une
+# petite fille de huit ans » n'a aucun mot que _MINEUR connaisse. Sur ces
+# textes le raccourci s'ouvrait, et plus rien ne relisait — alors que le
+# modele, en reecrivant la demande en francais courant, donne aux motifs une
+# seconde chance de la lire. Ce filet-la n'a pas ete concu, mais il existe, et
+# il garde la seule limite dure du studio. On ne l'echange pas contre dix
+# secondes sans que quelqu'un l'ait decide : absent ou vide, le raccourci
+# n'existe pas, et ces demandes font ce qu'elles faisaient avant lui.
+ANALYSE_SANS_OBJET = (os.environ.get("STUDIO_ANALYSE_SANS_OBJET") or "") == "1"
+
+
+def _lettre_hors_latin(texte):
+    """Vrai si une lettre du texte n'est pas une lettre latine.
+
+    TOUTES LES ECRITURES, et pas la liste de _PLAGES_NON_LATINES, ecrite pour
+    reconnaitre une traduction ratee : le grec, le thai, le devanagari,
+    l'armenien, le georgien, le bengali n'y sont pas, ni les lettres « pleine
+    chasse » (ｎｕｄｅ), que Unicode ne nomme pas LATIN.
+    """
+    return any(c > "\x7f" and c.isalpha()
+               and not unicodedata.name(c, "").startswith("LATIN")
+               for c in texte or "")
+
+
+_UNITE_DE_LONGUEUR = re.compile(r"\s*(?:mm|cm|m|po|pouces?|in|inch(?:es)?)\b",
+                                re.I)
+
+
+def _taille_ecrite_d_image(texte):
+    """Vrai si la demande ecrit une taille qu'une image du studio peut avoir.
+
+    Les bornes sont celles que caler_taille() donne a une taille proposee,
+    512 a 1920 ; caler_taille() prend la taille ecrite telle quelle, avec ou
+    sans analyse, et ce n'est pas ce qu'on juge ici : on juge si la mention
+    suffit a dire que le format est DECIDE. Une mesure en millimetres ou en
+    centimetres ne decide rien.
+    """
+    m = _TAILLE_EXPLICITE.search(texte or "")
+    if not m or _UNITE_DE_LONGUEUR.match(texte, m.end()):
+        return False
+    return all(512 <= int(cote) <= 1920 for cote in m.groups())
+
+
+def analyse_sans_objet(texte, conv, image, modele_force, modele_choisi,
+                       taille=None, moteur_distant=None):
+    """Vrai si l'analyse n'a plus rien a decider pour cette demande — et que
+    le studio est regle pour s'en passer (STUDIO_ANALYSE_SANS_OBJET=1)."""
+    if not ANALYSE_SANS_OBJET:
+        return False
+    moteur_ = CATALOGUE.get(modele_force) or {}
+    if not modele_choisi or moteur_distant:
+        return False
+    if moteur_.get("type") != "image" or not moteur_.get("multilingue"):
+        return False
+    if image:
+        return False
+    if len((texte or "").split()) < DEMANDE_DETAILLEE:
+        return False
+    if taille not in TAILLES and not _taille_ecrite_d_image(texte):
+        return False
+    if (conv or {}).get("derniere_sortie"):
+        return False
+    if any(t.get("etat") in ("fini", "question")
+           for t in (conv or {}).get("tours") or []):
+        return False
+    if _TEXTE_VISIBLE.search(texte):
+        return False
+    if langue_de_la_demande(texte)[0] != "lue":
+        return False
+    # LE DOUTE LIT CE QUE LIT LE GARDE-FOU : les memes lectures (accents
+    # decomposes, caracteres invisibles, chiffres a la place de lettres). Sur
+    # le texte brut, « enf\u200bant » ne mordait pas, et le raccourci
+    # s'ouvrait sur une demande que garde_fou(), lui, sait lire.
+    if _lettre_hors_latin(texte) or _MINEUR.search(_lectures(texte)):
+        return False
+    return True
+
+
 async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                     modele_force=None, taille=None, priorite="",
-                    modele_choisi=False):
+                    modele_choisi=False, sans_analyse=False):
     pid = (TACHES.get(tid) or {}).get("proprietaire")
     # Un agrandissement se reconnait a l'ecrit et ne demande rien au modele :
     # ni sujet, ni cadrage, ni style. On tranche donc AVANT de l'appeler — dix
@@ -6070,6 +6792,23 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                 "questions_forcees": True, "parametres": {}, "parametres_bruts": {},
                 "raison": "la demande ne contient aucun mot lisible"}
 
+    # RIEN A ANALYSER (voir analyse_sans_objet) : le chemin sans modele, celui
+    # d'un Ollama indisponible, mais pris d'emblee et en le disant. ICI et pas
+    # plus haut : les raccourcis ecrits gardent leur rang, et c'est a cet
+    # endroit exact que le modele allait etre appele.
+    if sans_analyse:
+        titre_ = (CATALOGUE.get(modele_force) or {}).get("titre", modele_force)
+        # ON LE DIT : sans cette ligne, le fil passe de la file au rendu sans
+        # un mot, et rien ne distingue ce chemin d'une analyse perdue.
+        pourquoi_ = (f"pas d'analyse : le moteur est impose ({titre_}), la "
+                     f"taille est donnee et ta demande est deja detaillee "
+                     f"({len(texte.split())} mots) — il n'y a rien a decider, "
+                     f"elle part telle que tu l'as ecrite, sans appel au "
+                     f"modele de langage")
+        journal(tid, pourquoi_)
+        return normaliser(secours(texte, a_une_image), texte, a_une_image,
+                          conv, taille, priorite)
+
     loin = "" if image_b64 else llm_distant_possible(texte, pid, tid)
     # La raison du local n'est plus dite ici : appeler_ollama la dit pour TOUS
     # les appels de la chaine, celui-ci compris. La repeter ferait deux lignes
@@ -6133,12 +6872,18 @@ async def aiguiller(texte, tid, conv, image_b64=None, a_une_image=False,
                     else "reponse mal formee" + (" — seconde tentative" if essai == 1 else "")
                     + f" : « {plat} »")
         except Exception as e:
+            # PAS DE REPLI POUR UNE LANGUE QUE SEUL LE MODELE SAIT LIRE (voir
+            # exiger_un_modele) : les mots-cles la rendraient sans que rien
+            # ne l'ait lue.
+            exiger_un_modele(texte)
             journal(tid, f"Ollama indisponible ({type(e).__name__}) — aiguillage par mots-cles")
             return normaliser(secours(texte, a_une_image), texte,
                               a_une_image, conv, taille, priorite)
     # json.loads peut reussir en renvoyant une liste ou un nombre : normaliser
     # leverait alors AttributeError au lieu de se replier proprement.
     if not isinstance(plan, dict):
+        # Deux reponses mal formees ne sont pas une lecture non plus.
+        exiger_un_modele(texte)
         journal(tid, "aiguillage par mots-cles")
         return normaliser(secours(texte, a_une_image), texte,
                           a_une_image, conv, taille, priorite)
@@ -6645,13 +7390,17 @@ def adulte(texte, plan=None):
 
     Volontairement large : mieux vaut calculer en local une image qui aurait pu
     partir au loin que l'inverse.
+
+    Lu comme le garde-fou le lit, depuis le 10 novembre 2026 : dans les
+    lectures de _lectures(). « nude » ecrit en pleine chasse, ou coupe d'un
+    trait d'union invisible, partait au nuage comme une demande sage.
     """
-    if _SEXUEL.search(texte or ""):
+    if _SEXUEL.search(_lectures(texte)):
         return True
     p = plan or {}
     if p.get("classement") in ("questionable", "explicit"):
         return True
-    if _SEXUEL.search(p.get("prompt") or ""):
+    if _SEXUEL.search(_lectures(p.get("prompt"))):
         return True
     return False
 
@@ -7320,6 +8069,129 @@ _RETOUCHE_JOINTE = re.compile(
     r"retouche|am[eé]liore|nettoie|recadre|recolore|eclaircis|assombris)\b|"
     r"\b(put|add|give|remove|erase|delete|change|replace|turn|make (it|him|her|them))\b",
     re.I)
+# UN DETOURAGE RETIRE, IL NE POSE RIEN. Mesure du 9 novembre 2026, par un
+# studio d'essai : une image jointe, « mets-lui un ciel etoile », et la
+# demande est sortie « detourer » avec qwen2.5vl:7b — le fond rendu
+# transparent a qui demandait un ciel. Le modele avait rendu la CLE
+# « detourer » : c'est le seul chemin qui mene a cette intention apres un
+# appel, normaliser() faisant de la cle d'un moteur qui n'est pas d'image
+# l'intention elle-meme. La regle du 5 novembre, qui attend « image », ne
+# voyait donc plus rien.
+#
+# UN ORDRE, ET NON UN MOT. Relecture du 10 novembre 2026 : chercher un verbe
+# n'importe ou dans la phrase comptait « que FAIT le personnage ? », « dans
+# quel STYLE est peinte cette image ? », « can you GIVE me a description » et
+# « what would MAKE IT better » pour des transformations, et ne voyait ni
+# « mets lui » sans trait d'union, ni « rajoute », ni « Mach den Himmel
+# dunkler ». Un ordre est un IMPERATIF, et il se lit a sa place : en tete de
+# proposition, ou derriere une formule de demande (« peux-tu », « can you »,
+# « i want you to »). Dans les quatre langues de docs/plusieurs-langues.md,
+# parce que ce qui se perd quand on ne le voit pas est une retouche.
+_DEBUT_ORDRE = (
+    r"(?:^\s*|[.!?;,:\xbf\xa1]\s*"
+    r"|\b(?:et|puis|ensuite|mais|alors|maintenant|aussi|stp|svp|plait|bonjour|salut"
+    r"|and|then|please|pls|now|just|also|hello|hi|hey|ok|okay"
+    r"|und|dann|bitte|luego|favor)\s+"
+    r"|\b(?:(?:peux|pourrais|veux|voudrais)[- ]tu|tu\s+(?:peux|pourrais)"
+    r"|il\s+(?:faut|faudrait)|je\s+(?:veux|voudrais)|j.aimerais|merci\s+de)\s+"
+    r"(?:(?:me|lui|leur|la|le|les|y)\s+)?"
+    r"|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?"
+    r"|\b(?:want|like|need)\s+(?:you\s+)?to\s+|\bwanna\s+"
+    r"|\b(?:puedes|podrias|quiero|quisiera)\s+)")
+# Les verbes qui POSENT ou qui CHANGENT. « fais une description », « fais-moi
+# la liste » demandent des mots, pas une image ; « donne » et « give » veulent
+# leur pronom — « donne-moi la couleur », « give me just the dog » ne posent
+# rien.
+_POSE_FR = (
+    r"(?:ajout|rajout|chang|remplac|transform|modifi|recolor|colori|color|corrig"
+    r"|amelior|appliqu|augment|diminu|flout|invers|pos|plac|pass|habill|coiff"
+    r"|maquill|tourn|pivot|retourn|deplac|decal|repar|restaur|dessin|redessin"
+    r"|retouch|incrust|inser|ajust|regl|retravaill)e[rz]?"
+    r"|(?:re)?mets|(?:re)?mettre|rends|rendre|(?:re)?peins|(?:re)?peindre|teins"
+    r"|teindre|refais|refaire|(?:re)?ecris|(?:re)?ecrire|eclaircis|eclaircir"
+    r"|assombris|assombrir|convertis|convertir|adoucis|adoucir"
+    r"|donne[- ](?:lui|leur)"
+    r"|fais(?![- ](?:moi\s+|nous\s+)?(?:une?\s+|la\s+|le\s+)?"
+    r"(?:description|analyse|resume|liste|lecture|commentaire|inventaire|point))")
+_POSE_EN = (
+    r"put|add|change|replace|turn|swap|paint|recolou?r|make|dress|draw|apply"
+    r"|convert|brighten|darken|lighten|blur|sharpen|enhance|fix|rotate|flip|move"
+    r"|invert|rewrite|adjust|tweak|edit|retouch|rework|correct"
+    r"|give\s+(?:it|him|her|them)")
+# L'allemand parle laisse tomber le « e » de l'imperatif : « aender », « fueg ».
+_POSE_DE = (r"mache?|fue?ge?|ae?ndere?|ersetze?|setze|tausche?|verwandle|verdunkle"
+            r"|zeichne|gib\s+(?:ihm|ihr|ihnen|dem|der)")
+_POSE_ES = (r"(?:haz|pon|anade|agrega|cambia|reemplaza|sustituye|pinta|colorea"
+            r"|convierte|transforma|dibuja|mueve)(?:le|lo|la|les|los|las)?|dales?"
+            r"|poner|anadir|agregar|cambiar|pintar")
+# Les verbes qui RETIRENT. Ce sont des ordres, mais ils ne dementent pas un
+# detourage : « delete everything except the character » en est un.
+_RETRAIT = (
+    r"(?:enlev|retir|effac|supprim|vir|rogn|coup|recadr|nettoi|gomm|ot)e[rz]?"
+    r"|remove|erase|delete|crop|cut|clean"
+    r"|entferne?|loe?sche?|schneide|nimm"
+    r"|(?:quita|borra|elimina|recorta)(?:le|lo|la|les|los|las)?"
+    r"|quitar|borrar|eliminar")
+_ORDRE_POSE = re.compile(
+    _DEBUT_ORDRE + r"(?:" + _POSE_FR + r"|" + _POSE_EN + r"|" + _POSE_DE
+    + r"|" + _POSE_ES + r")\b"
+    # « cette photo, passe-la en noir et blanc », « le chat habille-le » : le
+    # pronom accroche au verbe dit l'ordre, ou qu'il soit dans la phrase.
+    r"|\b(?:" + _POSE_FR + r")-(?:la|le|les|lui|leur|y)\b")
+_ORDRE_RETRAIT = re.compile(_DEBUT_ORDRE + r"(?:" + _RETRAIT + r")\b")
+# ET LES ORDRES DONT ON NE CONNAIT PAS LE VERBE : « copie-le a droite »,
+# « traduis-le sur l'image ». Un verbe et son pronom accroche, sauf ceux qui
+# lisent ou qui gardent. « -la » n'y est pas : « cette image-la » n'ordonne
+# rien. « essaie » ouvre un essai, donc une image.
+_ORDRE_AUTRE = re.compile(
+    r"\b(?!(?:decri\w*|lis|lisez|dis|dites|raconte|analyse|commente|explique"
+    r"|regarde|observe|resume|identifie|compte|nomme|montre|garde|conserve"
+    r"|laisse|detoure|isole|extrais|decoupe|vas|allez)-)"
+    r"[a-z]{3,}-(?:le|les|lui|leur|y)\b"
+    r"|" + _DEBUT_ORDRE + r"(?:essa[iy]e[rz]?|tente[rz]?)\b")
+# UNE NEGATION N'ORDONNE PAS. « don't change anything », « sans rien
+# changer » n'ont deja pas leur verbe en tete de proposition ; restent les
+# negations qui SUIVENT le verbe — « change rien, garde juste le chat »,
+# « aendere nichts » — et disent ce qu'il faut laisser.
+_NIE = re.compile(r"\b\w+\s+(?:rien|pas|jamais|nothing|nichts|nada)\b")
+# Les mots d'un detourage : le fond, la transparence, la decoupe, le sujet
+# qu'on isole, l'autocollant. Tant que l'un d'eux est ecrit, la reponse du
+# modele n'est pas touchee — « put it on a transparent background » pose bien
+# quelque chose, et c'est un detourage.
+_MOTS_DETOURAGE = re.compile(
+    r"\bfonds?\b|arriere.?plan|transparen|detour|decoup|\bpng\b"
+    r"|background|backdrop|cut.?out"
+    r"|\bisol|extrai|extract|\balpha\b|sticker|autocollant"
+    r"|hintergrund|freistell|ausschneid|\bfondo\b|recort")
+
+
+def _ordres(texte):
+    """(pose, retire, autre) : ce que la demande ORDONNE, negations otees."""
+    # « _ » et non une espace : ce qu'on ote ne doit pas mettre le mot suivant
+    # en tete de proposition (« le chien, sans rien ajouter »).
+    nu = _NIE.sub(" _ ", sans_accents(texte or "").replace(chr(0x2019), "'"))
+    return (bool(_ORDRE_POSE.search(nu)), bool(_ORDRE_RETRAIT.search(nu)),
+            bool(_ORDRE_AUTRE.search(nu)))
+
+
+def ordonne_une_transformation(texte):
+    """Vrai si la demande ORDONNE de changer l'image, quel que soit l'ordre.
+
+    Deux lecteurs. veut_lire() : le raccourci « lecture sans appel » ne tire
+    que sur une demande qui ne fait QUE lire. normaliser() : une lecture que le
+    modele annonce avec une cle de retouche ne garde la main que si rien, dans
+    la phrase, n'ordonne la retouche.
+    """
+    return any(_ordres(texte))
+
+
+def pose_sans_detourer(texte):
+    """Vrai si la demande ordonne de poser ou de changer quelque chose dans
+    l'image sans un seul mot de detourage : une retouche, pas une decoupe."""
+    return (_ordres(texte)[0]
+            and not _MOTS_DETOURAGE.search(sans_accents(texte or "")))
+
+
 PIXELS_AUTO = 1216 * 832   # au-dela, le temps de rendu explose sans gain reel
 
 # « 2/3 min », « trois minutes », « 1 min 30 », « 45 secondes ». Le petit modele
@@ -7547,6 +8419,25 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
         plan["modele"] = MODELE_IMPOSE[intention]
     elif intention == "audio" and cle not in MODELES_AUDIO:
         plan["modele"] = "audio"
+    # UNE LECTURE N'A PAS DE MOTEUR, DONC AUCUNE CLE NE LA RECOUVRE. Le prompt
+    # systeme exige une cle « coherente avec l'intention » et le catalogue
+    # n'en offre aucune pour lire : le modele en met une au hasard. Mesure du
+    # 9 novembre 2026, image jointe, qwen2.5vl:7b : « qu'est-ce qu'on voit sur
+    # cette image ? » est revenue lecture avec « flux1 » (klein4b le
+    # 4 novembre), et la lecture a tenu parce que c'est un moteur d'image ;
+    # « lis cette image et dis-moi ses couleurs » est sortie
+    # « retoucher_sujet », que seule la cle du meme nom peut donner. Les deux
+    # branches d'en dessous faisaient le reste : une cle qui n'est pas d'image
+    # devenait l'intention, une cle absente ou inconnue partait au secours,
+    # donc en « edition ». La lecture dite par le modele ne tenait qu'au
+    # hasard de sa cle.
+    # SAUF SI LES MOTS ORDONNENT UNE TRANSFORMATION : « analyse cette photo et
+    # corrige les couleurs » rendu lecture avec la cle « edition » reste une
+    # retouche, comme avant.
+    elif (intention == "lecture" and a_une_image == "image"
+          and not ordonne_une_transformation(texte)):
+        if cle not in CATALOGUE or CATALOGUE[cle]["type"] != "image":
+            plan["modele"] = None
     elif cle in CATALOGUE and CATALOGUE[cle]["type"] != "image":
         plan["intention"] = CATALOGUE[cle]["type"]
     # "question" et "refus" doivent traverser : sans eux dans cette liste, une
@@ -7592,6 +8483,16 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
         plan["intention"] = "edition"
         plan["modele"] = "edition"
         plan["raison"] = "image jointe et consigne de retouche"
+        consigne_de_retouche(plan, texte)
+    # ET UN DETOURAGE QUE LES MOTS DEMENTENT (voir pose_sans_detourer) : la meme
+    # image jointe, la meme phrase qui lui parle, mais le modele a rendu la cle
+    # « detourer » au lieu de « image ». Le prompt qu'il a ecrit pour une
+    # decoupe ne dit rien de ce qu'il faut poser : la consigne est la phrase.
+    if (a_une_image == "image" and plan["intention"] == "detourer"
+            and pose_sans_detourer(texte)):
+        plan["intention"] = "edition"
+        plan["modele"] = "edition"
+        plan["raison"] = "image jointe et consigne de retouche, pas un detourage"
         consigne_de_retouche(plan, texte)
     if plan["intention"] in ("edition", "video_image") and not source:
         plan["intention"] = "image"
@@ -7655,22 +8556,106 @@ def normaliser(plan, texte, a_une_image, conv, taille=None, priorite=""):
         plan = caler_taille(plan, texte, taille)
     return plan
 
+# CE QUE LE REPLI LIT DANS UN MOT, ET CE QU'IL N'Y LIT PLUS. Jusqu'au
+# 10 novembre 2026 la musique se reconnaissait a « son  » et la video a
+# « anim », sans frontiere de mot : « son tablier », « une plus grande
+# maison », « un animal », « un marche anime » partaient en musique ou en
+# video. Mesure de ce jour sur les 847 demandes d'image, de video et de
+# musique des corpus du depot, sans piece jointe : 15 images sur 286 rendues
+# en musique ou en video, 0 apres ; et, hors de ces trois familles, « change
+# son chapeau », « isole le musicien de son arriere-plan » en musique.
+#   « son » n'est de la musique que precede d'un article — « un son de
+#     cloche », « le son des vagues » : le possessif n'en porte jamais —, en
+#     tete de demande devant « de » — « son de pluie sur un toit » —, ou dans
+#     « bande son » ;
+#   « anim » n'est une video que la ou il dit ANIMER (_SECOURS_ANIMER) ; ni
+#     « animal », ni « anime par », ni le style « anime », qui va a Pony ;
+#   « clip » est un mot entier : une eclipse n'en est pas un.
+# C'est un repli, pas un second aiguilleur : aucun mot n'y est ajoute, ceux
+# qui y etaient sont lus de plus pres. Ce que la lecture de pres ne reprend
+# pas, sur les memes corpus : « un petit son de notification » (1 musique sur
+# 280).
+_SECOURS_MUSIQUE = re.compile(
+    r"musique|chanson|audio|melodie|instrumental|bande[ -]son\b|"
+    r"\b(?:un|le|du|ce|des|les|ces)\s+sons?\b|"
+    r"^\W*sons?\s+d[e']")
+# ANIMER, DANS LES QUATRE LANGUES DU BANC — et pas seulement en francais.
+# « anim », sans frontiere, lisait aussi « animate », « animiere », « animada » :
+# le resserrer au francais a fait reculer la video ailleurs. Relecture du
+# 10 novembre 2026, sur mesures_langues/banc_langues.py : videos reconnues
+# 7 -> 5 sur 10 en anglais, 7 -> 5 en allemand, 8 -> 5 en espagnol, et
+# « animate this photo of my cat », image jointe, devenu une retouche. Ce
+# motif nomme donc les formes qui disent animer :
+#   le nom — animation, Animationen, animacion, animazione, animacao ;
+#   le verbe — animate/animated/animating, animier…, « anime une scene »,
+#     « anime-la », « anima esta foto » : en francais et en espagnol devant
+#     ce qu'on anime, parce que « anime » y est aussi un style et « anima »
+#     un nom ;
+#   l'adjectif accole a un nom de film — « sequence animee », « un logo
+#     anime », « une boucle animee », « secuencia animada », « teaser
+#     animado » : seul, « une ville animee » n'est pas une video.
+_SECOURS_ANIMER = re.compile(
+    r"\banimations?\b|\banimationen\b|\banimaci[oó]n(?:es)?\b|"
+    r"\banimazion[ei]\b|\banima[cç][aã]o\b|\banima[cç][oõ]es\b|"
+    r"\banimat(?:e|es|ed|ing)\b|\banimier\w*|"
+    r"\b(?:s[ée]quence|secuencia|sequenza|sequenz|film|pub|teaser|gif|boucle|"
+    r"loop|bucle|logo|clip|intro|render|rendu|"
+    r"storyboard)s?\s+anim(?:[eé]e?s?|ad[oa]s?|at[oaie])\b|"
+    r"\banim(?:e|es|ez|er)[ -](?:l'|(?:la|le|les|ce|cet|cette|ces|moi|un|une|"
+    r"des|mon|ma|mes)\b)|"
+    r"\banima(?:r|me|la|lo)?\s+(?:est[aeo]s?|es[aeo]s?|el|la|los|las|un|una|"
+    r"mi|mis|quest[aoie]|il|lo)\b")
+_SECOURS_VIDEO = re.compile(r"vid[ée]o|\bclips?\b(?![- ]art)")
+# AVEC UNE IMAGE JOINTE, l'adjectif seul suffit : « que cette photo devienne
+# animee », « quiero que esta foto se vuelva animada » parlent de la photo.
+_SECOURS_ANIMER_JOINTE = re.compile(
+    r"anim(e|ation)|fais.? bouger|mets.? en mouvement|"
+    r"\banim(?:ad[oa]s?|at[oaie])\b")
+# UN STYLE N'EST PAS UNE ANIMATION. « un chat roux en style dessin anime »,
+# « Pixar animated style portrait », « comme dans un film d'animation »
+# demandent une IMAGE qui ressemble a un dessin anime ; « un logo anime par la
+# passion du vin » ne demande rien d'anime du tout. Seconde relecture du
+# 10 novembre 2026 : 20 demandes d'image de ce genre sur 22 partaient en video
+# chez Wan — six minutes de carte — quand aucun cerveau ne repondait (22 sur
+# 22 sur main), et « transforme cette photo en dessin anime », image jointe,
+# en animation de la photo. Ces tournures sont retirees de la demande AVANT de
+# chercher ce qui dit animer : le nom ou l'adjectif precede de « style »,
+# « facon », « genre », « dessin », « film d' » ; « animated » suivi de
+# « movie », « series », « style »… ; et « anime par », « anime et », qui
+# disent qui ou quoi anime la scene.
+_SECOURS_STYLE_ANIME = re.compile(
+    r"\bdessins?\s+anim[eé]e?s?\b|"
+    r"\b(?:style|fa[cç]on|genre)\s+(?:de\s+|d')?(?:(?:film|s[ée]rie)\s+d')?anim\w*|"
+    r"\b(?:comme\s+dans\s+(?:un|une|les?|des)|d'une?|de)\s+(?:film|s[ée]rie)s?"
+    r"\s+d'animation\b|"
+    r"\banimated\s+(?:\w+\s+)?(?:style|movie|film|series|show|cartoon|"
+    r"character|feature)s?\b|"
+    r"\banimation\s+(?:style|movie|film|studio)s?\b|"
+    r"\banim\w*\s+(?:par|by|et)\b")
+
+
 def secours(texte, a_une_image=False):
     t = texte.lower()
-    if re.search(r"musique|chanson|son |audio|melodie|instrumental", t):
+    if _SECOURS_MUSIQUE.search(t):
         return dict(intention="audio", modele="audio", prompt=texte, tags_audio=texte,
                     paroles="", duree_s=60, negatif="", largeur=0, hauteur=0,
                     raison="musique detectee (mots-cles)")
-    if re.search(r"anim(e|ation)|fais.? bouger|mets.? en mouvement", t) and a_une_image:
+    sans_style = _SECOURS_STYLE_ANIME.sub(" ", t)
+    if a_une_image and (_SECOURS_ANIMER_JOINTE.search(sans_style)
+                        or _SECOURS_ANIMER.search(sans_style)):
         return dict(intention="video_image", modele="wan14b", prompt=texte, negatif="",
                     largeur=1280, hauteur=704, raison="animation d'image (mots-cles)")
-    if re.search(r"vid[ée]o|clip|anim", t):
+    if _SECOURS_VIDEO.search(t) or _SECOURS_ANIMER.search(sans_style):
         return dict(intention="video", modele="wan5b", prompt=texte, negatif="",
                     largeur=1280, hauteur=704, raison="video detectee (mots-cles)")
     if a_une_image:
         return dict(intention="edition", modele="edition", prompt=texte, negatif="",
                     largeur=1216, hauteur=832, raison="image fournie, mode edition")
-    if re.search(r"manga|anime|illustration|dessin|fan.?art", t):
+    # « anime » en mot entier : cette branche n'etait jamais atteinte pour lui
+    # tant que « anim » partait en video, et « animee par le vent » n'est pas
+    # un style. Sans accent ni accord, « un village anime par la foule » y
+    # passe encore : c'est une image de toute facon, sur un autre moteur.
+    if re.search(r"manga|\banime\b|illustration|dessin|fan.?art", t):
         cle, r = "pony", "style illustre (mots-cles)"
     elif re.search(r"photo|r[ée]aliste|portrait", t):
         cle, r = "realvis", "photorealisme (mots-cles)"
@@ -8652,7 +9637,100 @@ _LIRE = re.compile(
     r"|\bqu'?est[- ]ce\s+(que\s+)?(c'est|tu\s+vois|ca\s+represente)"
     r"|\bc'?est\s+quoi\b"
     r"|\bqu'?y\s*a[- ]t[- ]il\b"
-    r"|\bde\s+quoi\s+(s'agit|ca\s+parle)")
+    r"|\bde\s+quoi\s+(s'agit|ca\s+parle)"
+    # LIRE, DIRE, CE QU'ON VOIT, LES COULEURS. Mesure du 9 novembre 2026, par
+    # un studio d'essai, une image jointe : « lis cette image et dis-moi ses
+    # couleurs » est sortie « retoucher_sujet » avec qwen2.5vl:7b et
+    # « edition » avec qwen2.5:7b ; « qu'est-ce qu'on voit sur cette image ? »
+    # une lecture avec le premier, une question en anglais avec le second.
+    # Aucun de ces verbes n'etait ici : la demande partait au modele, et sa
+    # reponse dependait du modele du jour. Le classifieur, lui, les donnait
+    # toutes les deux « lecture » (marges 11,6 et 23,5), mais il n'est pas
+    # consulte quand une image est jointe.
+    # « lis » et « dis-moi » exigent leur COMPLEMENT : « un lis blanc dans un
+    # vase » est une fleur, et « dis-moi si tu peux la rendre plus nette »
+    # demande une retouche — ce qu'on ne reconnait pas part au modele.
+    # ET « lis » SA PLACE DE VERBE, « quelle couleur » SA TOURNURE DE QUESTION.
+    # Relecture du 10 novembre 2026 : « une fleur de lis le long du bord
+    # gauche » et « peins le mur, n'importe quelle couleur » sortaient lecture
+    # sans appel — une retouche perdue, et personne pour le voir. L'imperatif
+    # ouvre la demande ou une proposition ; la question aussi, et elle n'est
+    # suivie ni de « tu veux » ni de « que soit ».
+    r"|(?:(?:^\s*|[.!?;,:]\s*"
+    r"|\b(?:et|puis|ensuite|alors|maintenant|bonjour|salut|stp|svp|plait)\s+)lis"
+    r"|\b(?:(?:peux|pourrais)[- ]tu|tu\s+(?:peux|pourrais))\s+(?:me\s+)?lire)"
+    r"[- ](?:moi|nous|le|la|les|l.|ce|cet|cette|ca|tout)\b"
+    r"|\bdis[- ](?:moi|nous)\s+(?:ce\s+qu|quel|ses\s|les\s|la\s|le\s|combien\b|s.il\s+y\s+a)"
+    r"|\bqu.?est[- ]ce\s+qu.?(?:on\s+voit|il\s+y\s+a)\b"
+    r"|(?:^\s*|[.!?;:]\s*|\b(?:et|puis)\s+)(?:de\s+|c.est\s+)?"
+    r"quelles?\s+(?:sont\s+|est\s+)?(?:les\s+|ses\s+|la\s+)?couleurs?\b"
+    r"(?!\s+(?:tu|vous|on|que|qu.)\b)")
+# LE DOUTE VA AU MODELE. « dis-moi ce que ca donne avec un ciel rouge », « le
+# resultat avec des lunettes », « quelles couleurs iraient mieux » : la phrase
+# a la forme d'une question et demande une image qu'il faut FAIRE pour y
+# repondre. Un appel de plus vaut mieux qu'une retouche perdue. Les
+# conditionnels sont ecrits un par un : « portrait » finit aussi en « rait ».
+_DOUTE_LIRE = re.compile(
+    r"\bca\s+donne\b|\bresultat\b"
+    # « raconte ce que tu vois avec un chapeau sur la tete du monsieur » :
+    # « avec » ajoute, sauf quand il dit COMMENT lire (« avec precision »).
+    r"|\bavec\s+(?!precision|soin|details?\b|le\s+plus\b|beaucoup|quelques"
+    r"|tou(?:s|tes)\b|humour|tes\s+mots|des\s+(?:mots|details)|un\s+maximum|autant)"
+    # « decris la scene plus sombre », « raconte la scene facon Pixar » : un
+    # rendu qu'on reclame, pas une chose a lire.
+    r"|\bplus\s+(?:sombre|claire?|lumineu|contraste|nette?|floue?|grande?|petite?"
+    r"|chaude?|froide?|vi(?:f|ve)|sature|dou(?:x|ce)|joli|beau|belle|realiste)"
+    r"|\bfacon\b|\ben\s+mode\b|\ba\s+la\s+sauce\b"
+    r"|\b(?:donne|ressemble|se|i|rend|fe|pour|dev|au)rai(?:t|ent)\b")
+# UNE SEULE PROPOSITION, ET C'EST UNE LECTURE. Seconde relecture du 10 novembre
+# 2026 : une liste de verbes ne ferme pas la classe des retouches. « decris
+# l'image, je la veux plus lumineuse », « dis-moi ce que tu vois et vieillis le
+# personnage », « decris cette photo, je veux la meme en hiver » sortaient
+# lecture sans appel — 22 demandes composees sur 44, 23 sur main — et, le PC
+# ferme, finissaient en « l'image n'a pas ete lue » au lieu d'une retouche. On
+# ne cherche donc plus ce que la suite ordonne : on exige qu'il n'y ait PAS de
+# suite. La demande est coupee a la ponctuation, aux coordinations et devant
+# « je veux », « i want », « ich will », « quiero » ; chaque morceau doit etre
+# une lecture, une politesse, ou un objet de la meme lecture.
+_COUPE = re.compile(
+    r"(\s*[.!?;:,]+\s*"
+    r"|\s+(?:et|puis|ensuite|mais|sauf|and|then|but)\s+"
+    r"|\s+(?=(?:je|j')\s*(?:(?:la|le|les|l'|en)\s*)?"
+    r"(?:veux|voudrais|souhaite|aimerais|prefere)\b"
+    r"|i\s+want\b|i\s+would\b|ich\s+will\b|ich\s+moe?chte\b|quiero\b|quisiera\b))")
+_POLI = re.compile(
+    r"(?:s.?il\s+(?:te|vous)\s+plait|stp|svp|merci(?:\s+(?:beaucoup|d'avance))?"
+    r"|bonjour|bonsoir|salut|coucou|hello|please|thanks|thank\s+you|pour\s+moi"
+    r"|en\s+details?|en\s+francais|en\s+anglais|precisement|exactement|rapidement"
+    r"|brievement|simplement|en\s+gros|en\s+quelques\s+mots|en\s+une\s+phrase"
+    r"|au\s+juste|a\s+ton\s+avis|selon\s+toi|d'apres\s+toi|maintenant|alors|ok"
+    r"|bon|ben|bah|euh|dis|dis[- ]moi|la|vite"
+    # « regarde cette photo et dis-moi ce qui s'y passe » : regarder ouvre la
+    # lecture, il ne demande rien d'autre.
+    r"|(?:regarde|observe)\b[^.!?;:,]{0,30})")
+# « dis-moi ce qu'on voit sur cette image et ses couleurs » : « et » coordonne
+# deux objets de la MEME lecture, il n'ouvre pas une seconde proposition. Un
+# objet est court, et il se reconnait : un possessif, un mot de question, ou
+# une chose qu'on LIT dans une image (ses couleurs, les formes, le texte).
+# « le ciel en rouge », « le fond flou », « la meme en hiver » commencent de
+# la meme facon et sont des commandes : ce qu'on ne reconnait pas part au
+# modele.
+_OBJET_LU = re.compile(
+    r"(?!(?:la|le|les)\s+memes?\b)"
+    r"(?:(?:ses|son|sa|leurs?|quel(?:le)?s?|combien|pourquoi|comment|ou|qui)\b"
+    r"|ce\s+qu"
+    r"|(?:le|la|les|l')\s*(?:\w+\s+){0,2}?(?:couleurs?|formes?|textes?|details?"
+    r"|objets?|personnages?|personnes?|gens|animaux|ambiance|lumiere|decor"
+    r"|contenu|sujets?|elements?|textures?|emotions?|expressions?|vetements?"
+    r"|visages?|arriere.plan|premier\s+plan|scene|action|lieu|epoque|marque"
+    r"|titre|nombre|taille|position|matieres?|motifs?|symboles?|inscriptions?"
+    r"|legendes?|chiffres?|mots?)\b)"
+    # « le chat doit devenir un chien », « ses cheveux en bleu », « les
+    # couleurs plus vives » : un objet ne porte ni ces verbes ni un rendu.
+    r"(?!.*\b(?:doit|doivent|devient|deviennent|sera|seront|soit|soient"
+    r"|devrait|devraient|faut|plus|moins|sans|avec)\b)"
+    r"(?!.*\ben\s+(?!arriere|premier|haut|bas|fond|detail))")
+_OBJET_LU_MOTS = 7
 # Ce qui trahit une TRANSFORMATION et non une lecture. « decris-la en aquarelle »
 # n'est pas une demande de description, et « analyse et ameliore » non plus.
 _PAS_LIRE = re.compile(
@@ -8672,6 +9750,32 @@ _PAS_LIRE = re.compile(
     r"anime|huile|encre|noir\s+et\s+blanc|couleurs?|sepia)\b")
 
 
+def une_seule_lecture(nu):
+    """Vrai si la demande tient en UNE proposition de lecture : rien de
+    substantiel avant ni apres elle (voir _COUPE).
+
+    « nu » est deja sans accents ni apostrophe typographique. Chaque morceau
+    est une lecture, une formule de politesse ou un objet de la lecture ; que
+    l'un d'eux soit bien une lecture, c'est veut_lire() qui l'exige.
+    """
+    for morceau in _COUPE.split(nu)[::2]:
+        # « qu'est-ce qu'on voit ? et ses couleurs ? » : la coordination reste
+        # en tete du morceau quand la ponctuation a coupe avant elle.
+        morceau = re.sub(r"^et\s+", "", morceau.strip())
+        if not morceau or _POLI.fullmatch(morceau):
+            continue
+        if _LIRE.search(morceau):
+            continue
+        # « analyse cette image et donne-moi les details » : ce qu'on se fait
+        # donner est encore un objet de la lecture.
+        morceau = re.sub(r"^(?:donne|indique|precise)[- ]moi\s+", "", morceau)
+        if (_OBJET_LU.match(morceau)
+                and len(morceau.split()) <= _OBJET_LU_MOTS):
+            continue
+        return False
+    return True
+
+
 def veut_lire(texte):
     """Vrai si la demande porte sur ce que l'image MONTRE.
 
@@ -8688,9 +9792,25 @@ def veut_lire(texte):
     placee avant, l'utilisateur recevait un paragraphe de texte au lieu de son
     image detouree. Une phrase qui reveille deux raccourcis est ambigue : elle
     appartient au modele, pas a une expression reguliere.
+
+    ET ELLE NE FAIT QUE LIRE. Relecture du 10 novembre 2026 : _PAS_LIRE ne
+    connait ni « peins », ni « habille », ni « inverse », ni « reecris » —
+    « dis-moi les couleurs puis inverse-les » et « lis le texte et reecris-le
+    en rouge » rendaient un paragraphe. Des qu'un ordre de transformation est
+    ecrit, ou dans le doute (_DOUTE_LIRE), la demande part au modele.
+
+    ET ELLE TIENT EN UNE SEULE PROPOSITION (une_seule_lecture) : une liste de
+    verbes ne ferme pas la classe des retouches, l'absence de suite si.
     """
-    nu = sans_accents(texte or "")
+    # L'apostrophe typographique des telephones (U+2019) : la question la
+    # plus courte, « qu'est-ce que c'est ? », ne correspondait a aucun motif,
+    # tous ecrits avec celle du clavier.
+    nu = sans_accents(texte or "").replace(chr(0x2019), "'")
     if len(nu) > 90 or _PAS_LIRE.search(nu):
+        return False
+    if ordonne_une_transformation(texte) or _DOUTE_LIRE.search(nu):
+        return False
+    if not une_seule_lecture(nu):
         return False
     if not _LIRE.search(nu):
         return False
@@ -9372,6 +10492,423 @@ def _motif(racines, mots):
         + _FIN, re.I)
 
 
+# ── LIRE CE QUI EST ECRIT, PAS LES OCTETS ────────────────────────────────
+# 10 novembre 2026, relecture de la ronde 12. Les deux motifs lisaient le
+# texte tel qu'il arrive, et il suffisait de l'ecrire autrement pour qu'ils ne
+# lisent rien. Mesure du relecteur sur garde_fou(), SEPT PASSAIENT SUR SEPT :
+# les accents decomposes (« e » puis U+0301 : ce que rend un clavier de Mac,
+# sans la moindre malice), une espace sans chasse ou un trait d'union
+# conditionnel au milieu du mot, les lettres de pleine chasse, un chiffre a la
+# place d'une lettre (« enf4nt »), le mot epele (« e n f a n t ») et le mot
+# coupe d'un tiret (« en-fant »).
+#
+# La reponse n'est pas d'allonger les motifs : c'est de leur donner plusieurs
+# LECTURES du meme texte, chacune defaisant UNE facon de l'ecrire, et de
+# chercher dans toutes. Une lecture n'enleve jamais rien — le texte tel quel
+# reste la premiere —, elle ajoute seulement ce qu'un oeil y lit. C'est ce qui
+# permet d'etre large sans casser ce qui marchait : « nu-pieds » reste lu
+# « nu » et « pieds » dans la premiere, quoi que fasse celle qui recolle.
+
+# Ce qui ne se voit pas et ne se prononce pas. La categorie Unicode « Cf »
+# porte l'espace sans chasse, les liants, le trait d'union conditionnel, les
+# marques de sens d'ecriture, le BOM et les etiquettes ; s'y ajoutent ceux qui
+# sont ranges ailleurs : selecteurs de variante, liant de graphemes, voyelles
+# vides du khmer et « lettres » vides du coreen.
+_INVISIBLES_HORS_CF = frozenset(
+    chr(c) for c in (0x034f, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180b, 0x180c,
+                     0x180d, 0x180f, 0x3164, 0xffa0, *range(0xfe00, 0xfe10)))
+
+
+def _sans_invisibles(t):
+    return "".join(c for c in t if unicodedata.category(c) != "Cf"
+                   and c not in _INVISIBLES_HORS_CF
+                   and not 0xe0100 <= ord(c) <= 0xe01ef)
+
+
+def _sans_marques(t):
+    """Sans accents ni signes poses sur les lettres : « bebe » pour « bébé »,
+    mais surtout « enfant » quand un trema de trop a ete pose sur le « n » —
+    la composition ne sait pas retirer un signe qui n'a pas de lettre a lui."""
+    return unicodedata.normalize("NFC", "".join(
+        c for c in unicodedata.normalize("NFD", t)
+        if unicodedata.category(c) != "Mn"))
+
+
+# UNE TABLE COURTE ET SURE plutot qu'une heuristique : six chiffres, deux
+# signes, et les lettres cyrilliques qui se dessinent comme une lettre latine.
+# Le « 1 » vaut « i » dans une lecture et « l » dans l'autre (« ch1ld »,
+# « 1oli »). Rien pour 2, 6, 8, 9 : aucune lettre ne s'y lit sans effort. Et
+# « 12yo » reste un age : il l'est dans la premiere lecture, que rien n'efface.
+_CHIFFRES_I = str.maketrans("013457", "oieast")
+_CHIFFRES_L = str.maketrans("013457", "oleast")
+# Les sosies sont ecrits par leur numero : dans le source ils ne se
+# distingueraient pas, a l'oeil, des lettres qu'ils imitent.
+_SOSIES = dict(zip(
+    (0x0430, 0x0435, 0x0451, 0x043e, 0x0440, 0x0441, 0x0443, 0x0445, 0x043a,
+     0x0456, 0x0458, 0x0455, 0x0501, 0x04bb, 0x04cf, 0x0131,
+     0x0410, 0x0412, 0x0415, 0x041a, 0x041c, 0x041d, 0x041e, 0x0420, 0x0421,
+     0x0422, 0x0425, 0x0423, 0x0406, 0x0408, 0x0405),
+    "aeeopcyxkijsdhli" "ABEKMHOPCTXYIJS"))
+_JETON = re.compile(r"[^\W_]+")
+_SIGNE_ENTRE_LETTRES = re.compile(r"(?<=[^\W\d_])[@$](?=[^\W\d_])")
+
+
+def _lettres_rendues(t, table):
+    """Rend leurs lettres aux mots ecrits avec des chiffres ou des sosies.
+
+    Un chiffre n'est rendu que dans un jeton qui porte AU MOINS DEUX LETTRES :
+    « enf4nt », « k1d5 », « 5ex », mais ni « 8 ans » (pas de lettre) ni un
+    code de couleur comme « #4d0 » (une seule), qui se lirait « ado ». « @ »
+    et « $ » seulement entre deux lettres.
+    """
+    t = _SIGNE_ENTRE_LETTRES.sub(
+        lambda m: "a" if m.group(0) == "@" else "s", t.translate(_SOSIES))
+
+    def jeton(m):
+        j = m.group(0)
+        if j.isalpha() or sum(c.isalpha() for c in j) < 2:
+            return j
+        return j.translate(table)
+    return _JETON.sub(jeton, t)
+
+
+# Un mot coupe : « en-fant », « en.fant ». On ne retire le signe qu'ENTRE DEUX
+# LETTRES, donc ni « 8-year-old » ni une fin de phrase. Mesure faite avant de
+# l'ecrire : pour qu'un mot du motif naisse du recollage de deux vrais mots,
+# il faut que la coupe tombe DANS ce mot — et alors c'est lui qu'on a ecrit.
+# Gain de passage : « under-age », « school-girl », « top-less », des
+# graphies ordinaires que les motifs ne lisaient pas.
+_COUPE_DANS_UN_MOT = re.compile(
+    r"(?<=[^\W\d_])[-\U00002010-\U00002015.\xb7\U00002022](?=[^\W\d_])")
+# Un mot epele : trois caracteres isoles au moins, separes d'UN seul signe.
+# Deux espaces de suite arretent la suite, ce qui separe deux mots epeles.
+_EPELE = re.compile(
+    r"(?<![^\W_])[^\W_](?:[ ._*/|\-\xb7][^\W_]){2,}(?![^\W_])")
+_SIGNE_D_EPELLATION = re.compile(r"[ ._*/|\-\xb7]")
+_BLANCS = re.compile(r"\s+")
+
+
+def _recolle(t):
+    return _EPELE.sub(lambda m: _SIGNE_D_EPELLATION.sub("", m.group(0)), t)
+
+
+def _lectures(texte):
+    """Le texte, et ce qu'un oeil y lit : une lecture par ligne.
+
+    La premiere est le texte lui-meme, mis en forme canonique : NFKC recompose
+    les accents et ramene la pleine chasse, les lettres cerclees ou grasses a
+    des lettres ordinaires ; les caracteres invisibles sont retires AVANT,
+    pour qu'un accent separe de sa lettre par l'un d'eux s'y recolle. Les
+    suivantes defont chacune une ecriture, la derniere les defait toutes a la
+    fois (« e-n-f-4-n-t »). Chaque lecture n'a qu'UNE espace entre deux mots :
+    les assertions de _pas_apres() comptent dessus.
+
+    Les motifs se cherchent dans le tout. Un texte ordinaire n'a qu'une
+    lecture — toutes les autres lui sont identiques, et elles sont dedoublees.
+
+    LE TEXTE BRUT RESTE LA TOUTE PREMIERE, avant meme la forme canonique : NFKC
+    deplie le signe de marque deposee en « TM », et « nude » suivi de ce signe
+    ne se lirait plus « nude ». Ce qui etait refuse hier doit l'etre encore,
+    sans exception a expliquer.
+    """
+    brut_ = texte or ""
+    t = brut_
+    if not t.isascii():
+        t = unicodedata.normalize("NFKC", _sans_invisibles(t))
+    vues = [brut_, t, _COUPE_DANS_UN_MOT.sub("", t), _recolle(t),
+            _lettres_rendues(t, _CHIFFRES_I), _lettres_rendues(t, _CHIFFRES_L)]
+    tout = t
+    if not t.isascii():
+        tout = _sans_marques(t)
+        vues.append(tout)
+    tout = _COUPE_DANS_UN_MOT.sub("", _recolle(tout))
+    vues += [_lettres_rendues(tout, _CHIFFRES_I),
+             _lettres_rendues(tout, _CHIFFRES_L)]
+    return "\n".join(dict.fromkeys(_BLANCS.sub(" ", v) for v in vues))
+
+
+# ── LES AGES ET LES NOMS QUE LES MOTIFS NE LISAIENT PAS ──────────────────
+# Meme relecture, meme jour. Deux mesures, sur garde_fou() :
+#
+#   - L'AGE N'ETAIT LU QU'EN CHIFFRES SUIVIS D'UNE ESPACE. Passaient : l'age
+#     en lettres dans les six langues (« de huit ans », « eight year old »,
+#     « von acht Jahren », « de ocho años », « di otto anni », « de oito
+#     anos »), l'age a tirets (« 8-year-old », la graphie NORMALE de
+#     l'anglais), « 8yo », « 8 y/o », « aged 8 », « 8 Jahre altes », « 8-
+#     jährig ».
+#   - LES NOMS LES PLUS COURANTS MANQUAIENT : « petite fille », « petit
+#     garçon », « little boy », « baby », « teenage », « bimba », « una nina »
+#     sans tilde, « ein nacktes Kind ».
+#
+# UN AGE N'EST PAS UNE DUREE, et c'est le risque inverse. « marie depuis huit
+# ans », « un whisky de douze ans », « a twelve-year-old scotch », « twenty-
+# eight year old » (ou « eight year old » se lit a l'interieur) ne disent pas
+# un mineur. Les formes NEUVES portent donc trois gardes : pas dans un nombre
+# compose, pas apres un mot qui annonce une duree, pas devant « d'age », « plus
+# tard » ou une bouteille. Les formes d'AVANT (« 8 ans », « 8 years old » en
+# chiffres) ne les portent pas, expres : ce qui etait refuse le reste, a la
+# lettre pres. Le prix — « marie depuis 8 ans » lu comme un age — est celui
+# d'hier ; banc_adulte.py l'affiche (DEFAUTS_CONNUS) au lieu de le cacher.
+
+# Entre deux mots d'une locution : une espace, un trait d'union, un souligne —
+# les moteurs a etiquettes collent tout par des soulignes (« 8_years_old »,
+# « little_girl »). _COLLE accepte aussi qu'il n'y ait rien (« 8yo »).
+_ENTRE = r"[\s_-]+"
+_COLLE = r"[\s_-]*"
+
+
+def _pas_apres(*mots):
+    """« Pas juste apres l'un de ces mots. »
+
+    Une assertion par mot : le moteur d'expressions n'en accepte que de largeur
+    fixe. Et « \\b » devant chacun, sans quoi « en » mordrait sur « chien ».
+    Elles supposent UNE espace entre deux mots, ce que _lectures() garantit.
+    """
+    return "".join(r"(?<!\b" + m + " )" for m in mots)
+
+
+# « vingt-huit ans », « twenty-eight » : le second mot d'un nombre compose.
+_PAS_DANS_UN_COMPOSE = r"(?<![^\W_][-_])"
+_AGE_EN_CHIFFRES = r"(?:\d|1[0-7])"
+_UN_A_DIX_SEPT = dict(
+    fr=r"(?:deux|trois|quatre|cinq|six|sept|huit|neuf|dix[\s_-]sept|dix|onze"
+       r"|douze|treize|quatorze|quinze|seize)",
+    en=r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve"
+       r"|thirteen|fourteen|fifteen|sixteen|seventeen)",
+    de=r"(?:zwei|drei|vier|f(?:ü|ue|u)nf|sechs|sieben|acht|neun|zehn|elf"
+       r"|zw(?:ö|oe|o)lf|dreizehn|vierzehn|f(?:ü|ue|u)nfzehn|sechzehn|siebzehn)",
+    # « dos » a part, et seulement devant « años » AVEC son tilde : « dos
+    # anos » est du portugais et ne dit pas un age (« a moda dos anos 50 »).
+    dos=r"dos",
+    es=r"(?:tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece"
+       r"|catorce|quince|diecis[ée]is|diecisiete"
+       # portugais
+       r"|dois|tr[êe]s|quatro|sete|oito|nove|dez|onze|doze|treze"
+       r"|quatorze|quinze|dezesseis|dezasseis|dezessete|dezassete)",
+    it=r"(?:due|tre|quattro|cinque|sei|sette|otto|nove|dieci|undici|dodici"
+       r"|tredici|quattordici|quindici|sedici|diciassette)")
+_BOUTEILLE = (r"(?:whisk\w*|scotch|bourbon|rum|rhum|malt|single" + _ENTRE
+              + r"malt|cognac|brandy|wine|wein|tequila)" + _FIN)
+
+
+def _age_en_lettres(langue, composes, durees, unite, suites):
+    """Un age ecrit en lettres, avec ses trois gardes (voir plus haut).
+
+    L'assertion avant ouvre le motif : elle l'ecarte en un pas partout ou il
+    n'y a pas de nombre, au lieu d'y derouler trente assertions arriere.
+    """
+    nombre = _UN_A_DIX_SEPT[langue]
+    return ("(?=" + nombre + ")" + _PAS_DANS_UN_COMPOSE + _pas_apres(*composes)
+            + _pas_apres(*durees) + nombre + _ENTRE + unite
+            + "(?!" + _ENTRE + "(?:" + suites + "))")
+
+
+_AGE_ANGLAIS = (
+    "(?:" + _AGE_EN_CHIFFRES + "|(?=" + _UN_A_DIX_SEPT["en"] + ")"
+    + _PAS_DANS_UN_COMPOSE
+    + _pas_apres("twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+                 "eighty", "ninety", "hundred", "hundred and")
+    + _UN_A_DIX_SEPT["en"] + ")")
+_AGE_ALLEMAND = "(?:" + _AGE_EN_CHIFFRES + "|" + _UN_A_DIX_SEPT["de"] + ")"
+
+_AGES_ECRITS = [
+    # francais : « de huit ans », « dix-sept ans »
+    _age_en_lettres(
+        "fr",
+        composes=("dix", "vingt", "vingts", "trente", "quarante", "cinquante",
+                  "soixante", "cent", "cents", "mille", "vingt et",
+                  "trente et", "quarante et", "cinquante et", "soixante et"),
+        durees=("depuis", "pendant", "durant", "dans", "apr[èe]s", "y a", "en",
+                "pour", "fait", "tous les", "bient[ôo]t", "presque",
+                "plus de", "pr[èe]s de", "bout de", "voil[àa]", "ces",
+                "whisky de", "whiskey de",
+                "rhum de", "scotch de", "cognac de", "bourbon de", "malt de",
+                "vin de", "porto de", "armagnac de", "calvados de"),
+        unite=r"ans?",
+        suites=r"plus" + _ENTRE + r"tard|apr[èe]s|auparavant|d[ée]j[àa]"
+               r"|d['\U00002019 ]?[aâ]ge|de" + _ENTRE + r"(?:plus|mariage|garantie"
+               r"|prison|carri[èe]re|m[ée]tier|service|vie" + _ENTRE
+               + r"commune|pratique|exp[ée]rience|travail|recherche|guerre"
+               r"|r[èe]gne)" + _FIN),
+    # espagnol et portugais : « de ocho años », « de oito anos »
+    _age_en_lettres(
+        "es",
+        composes=("veinte y", "treinta y", "cuarenta y", "cincuenta y",
+                  "sesenta y", "setenta y", "ochenta y", "noventa y",
+                  "ciento", "vinte e", "trinta e", "quarenta e",
+                  "cinquenta e", "sessenta e", "setenta e", "oitenta e",
+                  "noventa e", "cento e"),
+        durees=("hace", "desde", "durante", "tras", "por", "cada", "en",
+                "dentro de", "casi", "m[áa]s de", "otros", "estos",
+                "[úu]ltimos", "pr[óo]ximos", "h[áa]", "faz", "em", "ap[óo]s",
+                "daqui a", "quase", "mais de", "outros", "esses",
+                "ron de", "rum de", "whisky de", "vino de", "vinho de",
+                "u[íi]sque de"),
+        unite=r"(?:a[ñn]os?|a[ñn]itos?|aninhos?)",
+        suites=r"despu[ée]s|m[áa]s" + _ENTRE + r"tarde|atr[áa]s|depois"
+               r"|mais" + _ENTRE + r"tarde|de" + _ENTRE + r"(?:casad[oa]s"
+               r"|matrimonio|casamento|garant[íi]a|c[áa]rcel|pris[ãa]o"
+               r"|carrera|carreira|experiencia|experi[êe]ncia|servicio"
+               r"|servi[çc]o)" + _FIN),
+    _age_en_lettres(
+        "dos", composes=("veinte y", "treinta y", "cuarenta y", "cincuenta y",
+                         "sesenta y", "setenta y", "ochenta y", "noventa y",
+                         "ciento"),
+        durees=("hace", "desde", "durante", "tras", "por", "cada", "en",
+                "dentro de", "casi", "m[áa]s de", "otros", "estos",
+                "[úu]ltimos", "pr[óo]ximos"),
+        unite=r"añ(?:os?|itos?)",
+        suites=r"despu[ée]s|m[áa]s" + _ENTRE + r"tarde|atr[áa]s|de" + _ENTRE
+               + r"(?:casad[oa]s|matrimonio|garant[íi]a|c[áa]rcel|carrera"
+               r"|experiencia|servicio)" + _FIN),
+    # italien : « di otto anni » (les nombres composes y sont d'un seul mot)
+    _age_en_lettres(
+        "it", composes=(),
+        durees=("da", "per", "tra", "fra", "dopo", "ogni", "in", "entro",
+                "quasi", "pi[ùu] di", "altri", "questi", "ultimi", "prossimi",
+                "whisky di", "rum di", "vino di"),
+        unite=r"anni",
+        suites=r"fa|dopo|prima|di" + _ENTRE + r"(?:matrimonio|garanzia"
+               r"|carcere|carriera|esperienza|invecchiamento|servizio)"
+               + _FIN),
+    # anglais : « 8-year-old », « eight year old », « 8_years_old », « 8 yrs
+    # old » — sauf devant une bouteille. « 8yo », « 8 y/o », « 8 y.o. ».
+    _AGE_ANGLAIS + _COLLE + r"(?:years?|yrs?)" + _COLLE + r"olds?"
+    + "(?!" + _ENTRE + _BOUTEILLE + ")",
+    _AGE_EN_CHIFFRES + _COLLE + r"y\.?/?o",
+    _AGE_ANGLAIS + _COLLE + r"years?" + _ENTRE + "of" + _ENTRE + "age",
+    # un age en mois, quand il est DIT comme un age (« old », « alt », « âgé
+    # de ») : « six mois » tout court est presque toujours une duree
+    r"(?:\d{1,2}|" + _UN_A_DIX_SEPT["en"] + ")" + _COLLE + r"months?" + _COLLE
+    + r"olds?",
+    r"(?:\d{1,2}|" + _UN_A_DIX_SEPT["de"] + ")" + _COLLE + r"monate?" + _COLLE
+    + r"alt(?:e[rsnm]?)?",
+    r"[aâ]g[ée]e?s?" + _ENTRE + r"d(?:e" + _ENTRE + r"|['\U00002019])"
+    r"\w+" + _ENTRE + r"(?:mois|semaines?|jours?)",
+    # « aged 8 », « age 8 », « at the age of eight » — mais ni « Dragon Age
+    # 2 », ni « whisky aged 12 years », ni « ages 8 and up » sur une boite.
+    _pas_apres("dragon", "ice", "stone", "bronze", "iron", "golden", "dark",
+               "space", "whisky", "whiskey", "scotch", "bourbon", "rum",
+               "malt", "cognac", "brandy", "wine", "barrel", "cask", "oak",
+               "dry")
+    + r"age[ds]?[\s_:-]+(?:of" + _ENTRE + ")?" + _AGE_ANGLAIS + _FIN
+    + "(?!" + _COLLE + r"(?:\+|months?|weeks?|days?|hours?|(?:and|or)"
+    + _ENTRE + r"(?:up|older|over|above))" + _FIN + ")",
+    r"(?:\d{1,2}(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth"
+    r"|seventh|eighth|ninth|tenth|eleventh|twelfth)" + _ENTRE + r"graders?",
+    # les chiffres, avec un tiret ou un souligne : « 12_ans », « 12-anos »
+    _AGE_EN_CHIFFRES + r"[_-]+(?:ans?|a[ñn]os?|anni)",
+    # allemand : « 8 Jahre altes Mädchen » (la forme d'avant s'arretait a
+    # « alt »), « achtjährig », « 8-jährige », « von acht Jahren »
+    _AGE_ALLEMAND + _COLLE + r"jahre?" + _COLLE + r"(?:alt|jung)(?:e[rsnm]?)?"
+    + "(?!" + _ENTRE + _BOUTEILLE + ")",
+    "(?:ein|" + _AGE_EN_CHIFFRES + "|" + _UN_A_DIX_SEPT["de"] + ")" + _COLLE
+    + r"j[äa]hrig\w*",
+    # « von acht Jahren », « mit acht Jahren » — mais ni une peine ni une
+    # garantie (« eine Haftstrafe von zehn Jahren », « mit zehn Jahren
+    # Erfahrung »).
+    _pas_apres("laufe", "verlauf", "zeitraum", "dauer", "haft", "strafe",
+               "haftstrafe", "freiheitsstrafe", "garantie", "innerhalb",
+               "abstand", "pause")
+    + r"(?:von|mit)" + _ENTRE + _AGE_ALLEMAND + _ENTRE + r"jahren"
+    + "(?!" + _ENTRE + r"(?:erfahrung|garantie|haft|gef[äa]ngnis"
+    r"|versp[äa]tung|ehe|abstand|pause|arbeit|dienst)" + _FIN + ")",
+]
+
+# LES NOMS. Le principe d'avant tient toujours : « fille », « girl »,
+# « Mädchen », « menina », « garota », « Junge », « boy » disent un age
+# quelconque et n'y sont pas SEULS. Ils y entrent avec le mot qui dit l'enfant :
+# « petite fille », « little girl », « kleines Mädchen », « pequena menina ».
+# « jeune fille » n'y est pas — une femme de vingt ans en est une, en francais.
+_NOMS_RACINES = [
+    # francais
+    r"nourrisson", r"lyc[ée]en", r"mioche", r"petiot", r"impub[èe]r",
+    r"pubert", r"p(?:ae|e|é|ä)do(?:ph|f)il", r"p[ée]doporn", r"p[ée]docrimin",
+    # anglais — « teenage girl » passait : le mot strict « teen » s'arrete
+    # avant « age », et la racine d'avant exigeait « teenager »
+    r"teenage", r"newborn", r"school[\s_-]girl", r"school[\s_-]boy",
+    r"school[\s_-]?child", r"school[\s_-]?kid", r"pre[\s_]teen",
+    r"under[\s_-]age", r"pr[ée][\s_-]pub", r"pubescent", r"preschooler",
+    # pas « Kindergärtnerin », une adulte, que la lecture sans accents amene ici
+    r"kindergart(?:e)?ner(?!in)", r"jailbait", r"youngster",
+    # les etiquettes des moteurs a etiquettes
+    r"kodomo", r"youjo", r"randoseru",
+    # allemand
+    r"s[äa]ugling", r"knabe", r"schulkind", r"schuljunge", r"grundsch[üu]ler",
+    r"kindlich",
+    # espagnol, italien, portugais
+    r"ni[ñn]it", r"chiquill", r"chamac", r"quincea[ñn]er",
+    r"fanciull", r"n[ée]onat", r"ragazzett", r"lattant", r"liceal",
+    r"moleque", r"pirralh"]
+_NOMS_MOTS = [
+    # francais. « un beau gosse » est un adulte ; « petite-fille » (la fille
+    # du fils) est prise avec, faute de pouvoir les separer.
+    r"p(?:e|['\U00002019])?tite?s?" + _ENTRE + r"(?:filles?|gar[cç]ons?)",
+    r"jeunes?" + _ENTRE + r"gar[cç]ons?",
+    _pas_apres("beau", "beaux", "belle", "belles") + r"gosses?",
+    r"m[ôo]mes?", r"marmots?", r"pr[ée]ados?", r"tout-petits?",
+    # « nouveau ne » sans accent ni tiret n'y est pas : « le nouveau ne vient
+    # pas » est une phrase ordinaire.
+    r"nouveaux?(?:-n[ée]e?s?|[\s_]née?s?)",
+    r"bouts?" + _ENTRE + "de" + _ENTRE + "chou",
+    # anglais. « baby » seul, sauf devant ce qui en fait autre chose : une
+    # nuisette (« baby doll »), une couleur, une garde d'enfants adulte.
+    r"baby(?!" + _COLLE + r"(?:doll|blue|pink|face|faced|oil|tee|hairs?|bump"
+    r"|powder|shower|sitter\w*|sitting|foot|boom\w*|spice)" + _FIN + ")",
+    r"babies", r"babys",
+    r"(?:little|small|young)" + _ENTRE + r"(?:girl|boy)s?",
+    r"tween(?:ager\w*|" + _ENTRE + r"(?:girl|boy)s?)",
+    r"kidd(?:o|os|ie|ies|y)", r"teenies?",
+    r"(?:boy|girl|cub)[\s_-]?scouts?",
+    r"(?:high|middle|elementary|primary|grade|junior" + _ENTRE + r"high)"
+    r"[\s_-]?school(?:ers?|" + _ENTRE + r"(?:girl|boy|student|pupil|kid)s?)",
+    r"aged[\s_-]down", r"kindergarten[\s_-]uniform",
+    # allemand. « Kindern » (le datif, « mit nackten Kindern »), et les
+    # composes qui disent le corps ou l'image — pas « Kindergarten », un lieu,
+    # ni « kinderlos », un adulte.
+    r"kindern", r"kindes", r"kindchen", r"kindlein",
+    r"kinder(?:k[öo]rper|akt|fotos?|bild(?:er)?|model\w*|sex\w*|erotik)",
+    # « eine kleine junge Frau » : la, « junge » est l'adjectif.
+    r"kleine[rnsm]?" + _ENTRE + r"(?:jungen?|jungs|m[äa]dchen|m[äa]dels?"
+    r"|bub(?:e|en)?)(?!" + _ENTRE + r"(?:frau|dame|mann|m[äa]nner|leute"
+    r"|erwachsene|mutter|studentin))",
+    r"sch[üu]ler(?:in|innen|n|s)?",
+    # espagnol, italien, portugais. « bimbo » n'y est pas : en anglais c'est
+    # une adulte. « crío » seulement accentue : « cria » est un verbe portugais.
+    r"ninas", r"crí[oa]s?", r"muchachit[oa]s?",
+    r"reci[ée]n" + _ENTRE + r"nacid[oa]s?",
+    r"bimb[aie]", r"bimbett[oaie]", r"scolar[oaie]",
+    r"pequen[oa]s?" + _ENTRE + r"(?:menin[oa]s?|garot[oa]s?)",
+    r"rec[ée]m" + _ENTRE + r"nascid[oa]s?", r"puberdade",
+]
+
+# DEUX MOTS QUI NE SE LISENT QUE PAR CE QUI LES ENTOURE.
+#
+# « Kind » est l'enfant en allemand et « gentil » en anglais : il etait exclu
+# expres, et « ein nacktes Kind » passait. Il compte quand un determinant ou un
+# adjectif ALLEMAND le precede, ou quand le texte porte un mot allemand du nu —
+# puisque le refus exige de toute facon un terme sexuel, s'il est allemand le
+# texte l'est. « a kind and sexy smile » n'a ni l'un ni l'autre. Le mot du nu
+# est cherche a TROIS CENTS CARACTERES au plus, de part et d'autre : sans
+# borne, cent mille caracteres de « nackt » sans un seul « Kind » se lisaient
+# en un temps qui croit comme le carre de la longueur.
+#
+# « nina » sans tilde est ce que tape un clavier sans « ñ » — et un prenom.
+# Elle compte apres un determinant espagnol : « una nina », jamais « Nina ».
+_NU_ALLEMAND = (r"(?:nackt|erotisch|erotik|titten|br[üu]ste|unbekleidet"
+                r"|entkleidet|sexuell(?:e[nrm])?" + _FIN + ")")
+_PAR_LE_CONTEXTE = [
+    r"(?:ein|einem|eines|kein|keinem|das|dem|des|mein|meinem|dein|deinem"
+    r"|sein|seinem|ihr|ihrem|unser|unserem|jedes|jedem|dieses|diesem|vom|zum"
+    r"|beim|als|kleines|kleinen|kleine|nacktes|nackten|nackte|junges"
+    r"|s(?:ü|ue|u)(?:ß|ss)es|unschuldiges)" + _ENTRE + r"kind",
+    r"kind(?=[\s\S]{0,300}?" + _BORD + _NU_ALLEMAND + ")",
+    _NU_ALLEMAND + r"[\s\S]{0,300}?" + _BORD + r"kind",
+    r"(?:un|una|unos|unas|el|la|los|las|al|del|este|esta|ese|esa|aquel"
+    r"|aquella|mi|tu|su|otro|otra|cada|peque[ñn][oa]s?)" + _ENTRE
+    + r"nin[oa]",
+]
+
 # Volontairement large, et large dans le bon sens : ce motif ne refuse rien a
 # lui seul, il ne refuse qu'en presence de l'autre.
 #
@@ -9384,7 +10921,9 @@ def _motif(racines, mots):
 #
 # Les mots du sens commun et seulement eux, avec le meme soin que l'anglais :
 # « Mädchen » et « menina » (fille, a tout age) n'y sont pas, comme « girl »
-# n'y est pas ; « kind » non plus, qui est un mot anglais. « niñera » (la
+# n'y est pas ; « kind » non plus, qui est un mot anglais (SEUL : depuis le 10
+# novembre 2026 il compte par ce qui l'entoure, voir _PAR_LE_CONTEXTE, et les
+# premiers par le mot qui dit l'enfant, voir _NOMS_MOTS). « niñera » (la
 # nourrice, une adulte) ne mord pas : les formes de « niño » sont ecrites une a
 # une, au lieu d'une racine qui l'aurait prise.
 _MINEUR = _motif(
@@ -9397,13 +10936,28 @@ _MINEUR = _motif(
              r"minderj[äa]hrig", r"kleinkind", r"kinderporn", r"schulm[äa]dchen",
              # espagnol et portugais, puis italien
              r"colegial", r"pr[ée]adolescent", r"crian[çc]a", r"garotinh",
-             r"menininh", r"minorenn", r"ragazzin", r"scolarett"],
+             r"menininh", r"minorenn", r"ragazzin", r"scolarett"]
+            + _NOMS_RACINES,
     mots=[r"kid", r"kids", r"minor", r"minors", r"teen", r"teens", r"ado",
           r"ados", r"(?:\d|1[0-7])\s*ans?", r"(?:\d|1[0-7])\s*years?\s*old",
           r"kinder", r"niño", r"niña", r"niños", r"niñas", r"ninos",
           r"infantil", r"menor(?:es)?\s+de\s+(?:edad|idade)",
           r"(?:\d|1[0-7])\s*(?:años?|anos?|anni)",
-          r"(?:\d|1[0-7])\s*jahre\s*alt"])
+          r"(?:\d|1[0-7])\s*jahre\s*alt"]
+         + _AGES_ECRITS + _NOMS_MOTS + _PAR_LE_CONTEXTE)
+
+# « nudo » RESTE DEHORS du motif tel quel, pour la raison dite plus bas : c'est
+# le noeud en espagnol. Mais c'est aussi « nu » au masculin en italien, et la
+# relecture du 10 novembre 2026 l'a mesure sur garde_fou() : « un bambino
+# nudo » passait, quand « una bambina nuda » etait refusee. Il compte donc par
+# sa place — l'adjectif italien suit le nom (« bambino nudo »), le noeud
+# espagnol suit un determinant (« un nudo », « el nudo ») ou precede ce qui le
+# nomme (« nudo marinero », « nudo de corbata »).
+_NUDO_ITALIEN = (
+    _pas_apres("un", "el", "del", "al", "este", "ese", "su", "mi", "tu",
+               "cada", "otro", "doble", "gran", "il", "a", "hace", "hacer")
+    + r"nudo(?!" + _ENTRE + r"(?:marinero|de|del|en|gordiano|corredizo|celta"
+    r"|simple|doble|ciego|plano|llano|windsor|as|que)" + _FIN + ")")
 
 # Ce qui est adulte ne sort pas de la maison. Le meme motif sert au garde-fou,
 # ou il ne pese qu'avec _MINEUR — d'ou l'importance de ne rien laisser filer
@@ -9431,7 +10985,164 @@ _SEXUEL = _motif(
           r"sexes", r"sexy", r"porn", r"porns", r"seins", r"penis", r"vagina",
           r"nsfw", r"explicit", r"explicite", r"explicites",
           r"nuda", r"nudi", r"nua", r"nuas", r"sexo", r"sesso", r"tetas",
-          r"seios", r"titten", r"brüste", r"expl[ií]cit[oa]s?", r"esplicit[oa]"])
+          r"seios", r"titten", r"brüste", r"expl[ií]cit[oa]s?", r"esplicit[oa]",
+          _NUDO_ITALIEN])
+
+# CE QUE SEUL LE GARDE-FOU LIT. La relecture du 10 novembre 2026 portait sur
+# les mineurs ; en la suivant on a mesure l'autre moitie de la conjonction :
+# TRENTE PAIRES SUR TRENTE passaient, parce que _SEXUEL ne connait que le nu et
+# quelques mots — « child, blowjob », « enfant deshabille », « loli,
+# pantyshot », « enfant, viol ».
+#
+# Ces mots n'entrent PAS dans _SEXUEL, expres. _SEXUEL sert aussi adulte(), ou
+# un mot de trop tient une demande ordinaire en local pendant des minutes : ce
+# qu'adulte() doit connaitre est une decision a part, qui n'a pas ete prise
+# ici. Le garde-fou, lui, ne refuse qu'a cote d'un terme de mineur, et la un
+# mot cru ne laisse pas de doute. La regle reste la meme conjonction.
+#
+# CEUX QU'ON A ECARTES, parce qu'ils auraient refuse une demande innocente des
+# qu'un enfant y figure : « kinky » (des cheveux crepus), « tetons » (les Grand
+# Tetons), « xxx » (des baisers au bas d'une carte), « sinnlich » (aussi
+# « sensoriel », le mot de toute pedagogie allemande), « threesome » (au golf),
+# « sous-vetements » et « maillot » (un catalogue), « cock », « tits », « ass »
+# (un coq, des mesanges, un ane).
+_SEXUEL_GARDE = _motif(
+    racines=[
+        # les actes et les violences
+        r"masturb", r"fellat", r"cunniling", r"blowjob", r"handjob",
+        r"footjob", r"cumshot", r"creampie", r"orgasm", r"gangbang",
+        r"intercourse", r"sodomi", r"incest", r"prostitu", r"vergewaltig",
+        r"stupr", r"estupr",
+        # le corps
+        r"vagin", r"vulv", r"clitor", r"testicul", r"scrot", r"capezzol",
+        r"brustwarze", r"schamlippe", r"geschlechtsteil",
+        # deshabille : les voisins de « nu », que _SEXUEL ne lit pas
+        r"d[ée]shabill", r"d[ée]nud", r"d[ée]v[êe]t[ui]", r"undress",
+        r"unclothed", r"unbekleidet", r"entkleidet", r"svestit",
+        # la pose, et les etiquettes des moteurs a etiquettes
+        r"sensu[ae]l", r"lasci[fv]", r"aguich", r"strip[\s_-]?teas",
+        r"stripper", r"pantyshot", r"upskirt", r"cameltoe", r"ahegao",
+        r"futanari", r"uncensored", r"softcore"],
+    mots=[r"lewd", r"ecchi", r"panties", r"pantsu", r"bdsm", r"bondage",
+          r"fetis(?:h|ch)\w*", r"seductive", r"anal", r"anus", r"boobs?",
+          r"nichons?", r"pez[oó]n(?:es)?", r"mamilos?",
+          r"rape[ds]?", r"raping", r"rapists?", r"viols?", r"viol[ée]e?s?",
+          r"violer", r"molest(?:ed|ing|ation|ers?)",
+          r"spread[\s_-]+legs", r"rating[\s_:-]*questionable",
+          # « sans vetements », dans les six langues — mais un enfant « sans
+          # vetements chauds » a froid, il n'est pas nu
+          r"(?:sans|sin|senza|sem|ohne|without|no)" + _ENTRE
+          + r"(?:v[êe]tements?|habits|ropa|vestiti|roupas?|kleidung|kleider"
+          r"|clothes|clothing)(?!" + _ENTRE + r"(?:chauds?|d['\U00002019]hiver"
+          r"|de" + _ENTRE + r"(?:rechange|pluie|sport)|propres|neufs|warm"
+          r"|winter|spare|clean|warme|pesanti|invernali|de" + _ENTRE
+          + r"(?:abrigo|invierno|inverno)))",
+          # pas le chat (« pussy cat ») ni le saule (« pussy willow »)
+          r"puss(?:y|ies)(?!" + _COLLE + r"(?:cat|willow|foot))"])
+
+# LA OU « NU » NE DIT PAS LA NUDITE. « une petite fille pieds nus sur la
+# plage » est une demande d'illustration ordinaire, et le garde-fou la refusait
+# (10 novembre 2026). Le defaut est plus vieux que la relecture : « enfant
+# pieds nus » l'etait deja, les noms neufs n'ont fait que l'etendre. Mesure sur
+# seize formes de nom de mineur : chacune des locutions ci-dessous faisait
+# refuser les seize.
+#
+# Ces locutions sont RETIREES du texte avant qu'on y cherche la moitie sexuelle
+# de la conjonction — elles, et rien autour : « petite fille nue, pieds nus »
+# reste refusee par son « nue ». Trois precautions, chacune pour un abus :
+#   - L'ACCORD EST STRICT : « pieds nus », jamais « pieds nue », ou l'adjectif
+#     dirait la fillette et non ses pieds.
+#   - « nu-pieds » EXIGE SON TIRET : « un enfant nu pieds dans l'eau » se lit
+#     aussi « nu, les pieds dans l'eau ».
+#   - L'allemand exige l'adjectif DECLINE (« nackte Füße ») et l'anglais son
+#     article (« the naked eye ») : « nackt Füße im Wasser » et « naked eyes
+#     closed » sont des etiquettes posees cote a cote, pas des locutions.
+#
+# N'y sont pas, et restent sexuels pour la garde : « torse nu », « seins nus »,
+# « fesses nues », « jambes nues », « a moitie nu », « nu » seul. « barefoot »,
+# « barfuss », « descalzo », « scalzo » n'y sont pas non plus : aucun motif ne
+# les lisait. adulte() ne s'en sert pas — une demande « pieds nus » reste a la
+# maison comme avant, ce qui ne coute que du temps.
+_NU_SANS_NUDITE = re.compile(
+    _BORD + "(?:"
+    # francais : le nom puis l'adjectif, accorde ; ou le compose a tiret
+    r"pieds?[\s_-]nus?|bras[\s_-]nus?|mains?[\s_-]nues?|t[êe]tes?[\s_-]nues?"
+    r"|nus?-pieds?|nu-t[êe]te|l['\U00002019 ]?(?:\U00000153|oe)il[\s_]nu"
+    # anglais
+    r"|the[\s_]naked[\s_-]eye"
+    # allemand : l'adjectif decline, devant le nom
+    r"|nackte[mnrs]?[\s_](?:f(?:ü|ue|u)(?:ß|ss)(?:e|en|es)?"
+    r"|h(?:ä|ae|a)nd(?:e|en)?|arm(?:e|en)?|aug(?:e|es|en))"
+    # espagnol
+    r"|pies?[\s_]desnudos?|brazos?[\s_]desnudos?|manos?[\s_]desnudas?"
+    r"|ojo[\s_]desnudo"
+    # italien
+    r"|pied[ei][\s_]nud[oi]|man[oi][\s_]nud[ae]|braccia[\s_]nude"
+    r"|braccio[\s_]nudo|occhio[\s_]nudo"
+    # portugais
+    r"|p[ée]s?[\s_]nus?|bra[çc]os?[\s_]nus?|m[ãa]os?[\s_]nuas?|olho[\s_]nu"
+    ")" + _FIN, re.I)
+
+# UNE LOCUTION COORDONNEE A UNE AUTRE PARTIE DU CORPS N'EN EST PLUS UNE. Dans
+# « torse et pieds nus », « nus » vaut aussi pour le torse : la retirer faisait
+# PASSER ce que « torse nu » faisait refuser — un recul de la limite, mesure le
+# 10 novembre 2026 sur la retouche du meme jour. La locution reste donc dans le
+# texte quand un nom du corps la precede sans rien d'autre entre eux que des
+# liaisons, des articles et d'autres noms (« torse, pieds et bras nus », « el
+# torso y los pies desnudos »). En allemand l'adjectif est DEVANT : c'est le
+# nom qui SUIT la liaison qui le partage (« nackte Arme und Brust »).
+#
+# Dans le doute sur la portee de l'adjectif, on ne retire pas : « torse pieds
+# nus », sans rien entre les deux, compte aussi. UNE SEULE FORME EST TENUE
+# POUR SURE, la virgule sans liaison : « un enfant a plat ventre, pieds nus »
+# est une apposition, et l'adjectif n'y remonte pas. « pieds nus et
+# souriante », « pieds nus et cheveux au vent » restent des locutions — la
+# liaison les SUIT, et en francais ce qui suit ne partage pas l'adjectif —,
+# comme « mains et pieds nus », deux noms exemptes.
+#
+# Laisses hors de la liste, pour ce qu'ils disent d'autre : « dos » (deux, en
+# espagnol), « genoux » (« a genoux et pieds nus » est une posture),
+# « costas » (les cotes), « tronco » (un tronc d'arbre).
+_CORPS = (
+    r"(?:torses?|poitrines?|seins?|fesses?|ventres?|jambes?|cuisses?"
+    r"|[ée]paules?|corps|bustes?|sexes?|hanches?|derri[èe]res?"
+    # espagnol, italien, portugais
+    r"|torsos?|pechos?|senos?|nalgas?|vientres?|espaldas?|piernas?|muslos?"
+    r"|hombros?|cuerpos?|caderas?|culos?|traseros?"
+    r"|pett[oi]|sen[oi]|natiche|panc[ie]a|schien[ae]|gamb[ae]|cosc(?:ia|e)"
+    r"|spall[ae]|corp[oi]|fianchi"
+    r"|peitos?|seios?|n[áa]degas?|bundas?|barrigas?|pernas?|coxas?|ombros?"
+    r"|quadris)")
+_CORPS_ALLEMAND = (
+    r"(?:brust|br[üu]sten?|busen|hintern|bauch|r[üu]cken|beine?n?|schenkeln?"
+    r"|schultern?|k[öo]rper|oberk[öo]rper|h[üu]ften?)")
+_LIAISON = r"(?:et|ou|y|o|e|ed|&)"
+_UNE_LIAISON = re.compile(_BORD + _LIAISON + _FIN, re.I)
+_CORPS_PUIS_LIAISONS = re.compile(
+    _BORD + _CORPS + _FIN + r"((?:[\s,]+(?:" + _LIAISON + r"|les?|la|des|du"
+    r"|aux?|ses|los|las|el|sus|il|i|gli|os|as|pieds?|mains?|bras|t[êe]tes?"
+    r"|pies?|manos?|brazos?|pied[ei]|man[oi]|braccia|braccio|p[ée]s?"
+    r"|m[ãa]os?|bra[çc]os?|" + _CORPS + ")" + _FIN + r")*[\s,]*)$", re.I)
+_PUIS_CORPS_ALLEMAND = re.compile(
+    r"[\s,]*(?:und|oder|&)[\s]+(?:(?:die|der|den|das|dem)[\s]+)?"
+    r"(?:nackte[mnrs]?[\s]+)?" + _CORPS_ALLEMAND + _FIN, re.I)
+
+
+def _sans_locutions(t):
+    """Le texte sans les locutions ou « nu » ne dit pas la nudite — sauf
+    celles qu'une liaison attache a une autre partie du corps (voir plus
+    haut). C'est dans ce texte-la que garde_fou() cherche la moitie sexuelle.
+    """
+    def retire(m):
+        lie = _CORPS_PUIS_LIAISONS.search(t[max(0, m.start() - 80):m.start()])
+        if lie and ("," not in lie.group(1)
+                    or _UNE_LIAISON.search(lie.group(1))):
+            return m.group(0)
+        if m.group(0)[:5].lower() == "nackt" \
+                and _PUIS_CORPS_ALLEMAND.match(t, m.end()):
+            return m.group(0)
+        return " "
+    return _NU_SANS_NUDITE.sub(retire, t)
 
 # Fichiers d'entree deja pousses sur un noeud distant : (nom, id) -> nom reel
 # la-bas. ComfyUI renomme en « x (1).png » quand le nom existe deja, il faut
@@ -9640,7 +11351,9 @@ SCHEMA_IMAGE = {"type": "object", "properties": {"adulte": {"type": "boolean"}},
 
 
 async def image_adulte(entree, tid=None):
-    """« adulte », « saine » ou « non jugee » — l'image qui partirait au nuage.
+    """« adulte », « saine », « retenue » ou « non jugee » — l'image qui
+    partirait au nuage. « retenue » : la maison a de quoi la juger, mais la
+    regle du pret ferme la machine qui sait voir ; elle ne sort pas.
 
     UNE TACHE PAR APPEL, et la decision en Python (voir CONTRIBUTING : un
     appel, une question, la verification en code). Le modele rend un booleen ;
@@ -9663,7 +11376,19 @@ async def image_adulte(entree, tid=None):
         brut_ = await appeler_ollama(QUESTION_IMAGE, image_b64=image_b64,
                                      json_mode=SCHEMA_IMAGE, modele=MODELE_VISION,
                                      temperature=0, tid=tid)
-    except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError):
+    except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+        # LA MAISON A DE QUOI JUGER, ET LA REGLE DU PRET LE FERME : « retenue ».
+        # « Non jugee » visait un studio sans carte, tout au nuage — personne
+        # pour douter. Depuis le 10 novembre 2026, le cerveau voyant est ferme
+        # chaque fois que le PC ne prete pas sa carte : la tolerance devenait
+        # l'etat ordinaire, et toute image jointe partait chez le fournisseur
+        # sans avoir ete regardee, contre « ce qui est adulte ne sort pas de la
+        # maison » (relecture du meme jour). Le doute reste donc a la maison,
+        # que l'appel ait ete refuse par la regle ou qu'une autre machine ait
+        # echoue pendant que celle qui sait voir est fermee. Jamais retenu en
+        # memoire : la machine rouvrira.
+        if isinstance(e, CerveauFerme) or voyant_ferme():
+            return "retenue"
         return "non jugee"
     try:
         adulte_ = json.loads(brut_).get("adulte")
@@ -9680,10 +11405,24 @@ def garde_fou(*textes):
 
     UN REFUS QUI SE TRADUIT, depuis le 4 novembre 2026 : il partait en francais
     dans toutes les langues (quoi=str(e) dans le filet d'executer), et c'est le
-    refus que l'utilisateur a le plus besoin de comprendre."""
-    joint = " ".join(t for t in textes if t)
-    if _MINEUR.search(joint) and _SEXUEL.search(joint):
-        lus = {m.group(0).lower() for m in _SEXUEL.finditer(joint)}
+    refus que l'utilisateur a le plus besoin de comprendre.
+
+    LE TEXTE EST MIS EN LECTURES ICI, et pas chez ses appelants (10 novembre
+    2026) : ils sont six, et celui qu'on oublierait serait le trou. Les deux
+    motifs cherchent dans toutes les lectures a la fois — voir _lectures()."""
+    joint = _lectures(" ".join(t for t in textes if t))
+    # La moitie sexuelle se cherche dans le texte SANS les locutions ou « nu »
+    # ne dit pas la nudite (« pieds nus », « a l'oeil nu ») ; le mineur, lui,
+    # se cherche dans le texte entier. Voir _NU_SANS_NUDITE.
+    sans_locutions = _sans_locutions(joint)
+    if _MINEUR.search(joint) and (_SEXUEL.search(sans_locutions)
+                                  or _SEXUEL_GARDE.search(sans_locutions)):
+        # Les mots de _SEXUEL_GARDE comptent parmi ceux qui ont ete lus : sans
+        # eux un refus du a « blowjob » seul n'aurait RIEN lu, et l'ensemble
+        # vide est inclus dans tout — il conseillerait d'ecrire « fille ou
+        # garcon ».
+        lus = {m.group(0).lower() for motif_ in (_SEXUEL, _SEXUEL_GARDE)
+               for m in motif_.finditer(sans_locutions)}
         if lus <= _SEXE_OU_GENRE:
             raise RefusGardeFou(
                 "demande refusee : contenu sexuel impliquant des mineurs. Si tu "
@@ -9693,7 +11432,306 @@ def garde_fou(*textes):
         raise RefusGardeFou("demande refusee : contenu sexuel impliquant des mineurs.",
                             panne_de("panne.refus_mineurs"))
 
-FICHIER_AVIS = os.path.join(DOSSIER_DONNEES, "avis.jsonl")
+
+# ══════════ la langue d'une demande, pour ce que le garde-fou sait lire ══════════
+#
+# LE GARDE-FOU LIT SIX LANGUES, ET UNE DEMANDE ARRIVE DANS N'IMPORTE LAQUELLE.
+# Quand un modele de langage analyse la demande, il la reecrit en francais, et
+# garde_fou() relit cette reecriture : c'est ce qui refuse une demande
+# neerlandaise ou polonaise. Sans modele — l'analyse sans objet, l'analyse
+# coupee, aucun cerveau — il ne reste que les motifs, et ils ne lisent rien
+# dans ces langues-la. Relecture du 10 novembre 2026 : quarante mots en
+# neerlandais finissant par « met een naakt kind van acht jaar », klein9b
+# impose, taille donnee, rendus sans un seul appel.
+#
+# D'ou ce test, qui ne sert qu'a cela : savoir si l'on peut se passer du
+# modele. Il rend trois reponses et non deux, parce que les deux erreurs
+# n'ont pas le meme prix :
+#   « lue »   — PREUVE qu'une des six langues est celle de la demande : six
+#               mots-outils differents au moins, un mot sur cinq, et deux fois
+#               plus de mots propres a elle qu'a n'importe quelle langue
+#               voisine connue ici. Le raccourci sans analyse l'exige, et
+#               enrichir() avant de remettre le texte de l'auteur a la place
+#               d'un resume ; une demande francaise faite d'etiquettes, sans
+#               mots-outils, ne l'obtient pas — c'est le sens voulu ;
+#   « autre » — PREUVE du contraire, et du meme ordre : quatre lettres d'une
+#               ecriture non latine, ou TROIS mots differents propres a une
+#               meme langue voisine, cette langue comptant pour un mot sur
+#               cinq, dans la demande entiere ou dans une fenetre de huit
+#               mots. Cette demande-la n'est jamais rendue sans qu'un modele
+#               l'ait lue (voir exiger_un_modele) ;
+#   « »       — rien de prouve : « un chat roux » n'a pas six mots-outils, et
+#               « naakt kind » n'en a aucun. Le sort d'avant ne change pas.
+#
+# CE QUE « LUE » NE PROUVE PAS (seconde relecture du 10 novembre 2026) : que
+# les motifs lisent la partie de la demande qui compte. Elle dit la langue du
+# texte, et un fragment etranger de trois mots s'y cache. C'est pourquoi le
+# raccourci sans analyse est un reglage eteint par defaut.
+#
+# CE QUE « AUTRE » NE DOIT PAS DIRE A TORT : un refus « ecris-la en francais »
+# a quelqu'un qui ecrit en francais. La premiere version se contentait de deux
+# mots propres, et les noms propres en sont pleins — « Portrait de Dan, torse
+# nu » passait pour du neerlandais (« dan », « nu »), « Majin Bu charging a ki
+# blast » pour du turc, « two men working till dawn » pour du suedois : 14
+# demandes sur 180 de la sonde de relecture. D'ou les trois mots, la part
+# minimale, et _MOTS_AMBIGUS : les mots d'une voisine qui sont aussi un mot ou
+# un nom courant en francais ou en anglais ne prouvent rien.
+#
+# LES MOTS-OUTILS, ET PAS LE VOCABULAIRE : le corpus de l'aiguilleur
+# (AIGUILLEUR.connu) ne connait que le francais des demandes courtes, et
+# docs/plusieurs-langues.md avait ecarte une liste francaise seule parce que
+# l'espagnol en partage trop. La reponse est de compter les mots PROPRES, paire
+# par paire, contre des langues voisines nommees : le catalan et le galicien
+# face a l'espagnol et au portugais, le neerlandais face a l'allemand. Mesure
+# du 10 novembre 2026 (banc_analyse_sans_objet.py) : sur les demandes des
+# corpus du depot regroupees en paves de quarante mots, 599 sur 599 en
+# francais, 20 sur 21 en anglais, 19 sur 19 en allemand et 17 sur 20 en
+# espagnol sont « lues » ; aucune des 3 540 demandes courtes de ces quatre
+# langues n'est « autre » ; et les paves ecrits en neerlandais, afrikaans,
+# suedois, danois, norvegien, polonais, tcheque, croate, turc, roumain,
+# hongrois, finnois, catalan, galicien et indonesien le sont tous.
+#
+# CE QU'IL NE VOIT PAS, et il faut le savoir en le lisant : une langue latine
+# qui n'est pas dans ces listes et ressemble a l'une des six (l'occitan, le
+# corse) peut passer pour « lue » ; une demande courte dans une langue non lue
+# reste « » et part comme avant quand aucun modele ne repond.
+LANGUES_LUES = {"fr": "francais", "en": "anglais", "de": "allemand",
+                "es": "espagnol", "it": "italien", "pt": "portugais"}
+_MOTS_OUTILS = {langue_: frozenset(mots_.split()) for langue_, mots_ in {
+    "fr": "le la les un une des du de d l au aux et ou mais donc car je j tu il elle "
+          "on nous vous ils elles me m te t se s moi toi lui leur y en ce c cet cette "
+          "ces qui que qu quoi dont mon ma mes ton ta tes son sa ses notre votre leurs "
+          "est es sont etre a ai as ont avec sans sur sous dans par pour vers chez "
+          "entre plus moins tres trop tout toute tous toutes meme aussi ne n ni pas "
+          "non ca comme si",
+    "en": "the a an and or but of to in on at by for with without from into over "
+          "under between through is are was were be been being am it its this that "
+          "these those he she they we you i his her their our your my me him them us "
+          "who which what whose there here not no as than then so very more most all "
+          "any some each both such only also just can will would should could may "
+          "might must have has had do does did up down out off about above below "
+          "behind near if",
+    "de": "der die das den dem des ein eine einen einem einer eines und oder aber in "
+          "im an am auf aus bei mit nach von vom zu zum zur uber unter vor hinter "
+          "neben zwischen durch fur ohne um ist sind war waren sein hat haben wird "
+          "werden nicht kein keine auch nur noch sehr mehr als wie so dass ich du er "
+          "sie es wir ihr mich dich sich mir dir mein dein ihre ihren seinem seine "
+          "dieser diese dieses jeder alle da wo",
+    "es": "el la los las un una unos unas de del al a y e o u pero en con sin por "
+          "para sobre bajo entre hacia desde hasta que quien cual como cuando donde "
+          "es son era estar esta estan ser hay no ni si se lo le les me te su sus mi "
+          "mis tu tus yo nuestro este estos estas ese esa aquel muy mas menos tambien "
+          "todo toda todos todas cada otro otra ya contra",
+    "it": "il lo la i gli le un uno una di del dello della dei degli delle a al allo "
+          "alla ai agli alle da dal dalla in nel nello nella nei negli nelle su sul "
+          "sulla con senza per tra fra e ed o ma che chi cui come quando dove non "
+          "piu molto anche si se mi ti ci vi lui lei loro noi voi io tu suo sua suoi "
+          "sue questo questa questi queste quello quella sono era essere ha ho hanno "
+          "ogni tutto tutta tutti tutte",
+    "pt": "o a os as um uma uns umas de do da dos das em no na nos nas ao aos por "
+          "pelo pela para com sem sobre entre ate desde e ou mas que quem como "
+          "quando onde nao nem se me te lhe eles elas ele ela eu tu voce seu sua "
+          "seus suas meu minha este esta esse essa isso aquele muito mais menos "
+          "tambem todo toda todos todas cada outro outra sao era ser estar tem ja "
+          "contra",
+    # ── les voisines, que le garde-fou ne lit pas ──
+    "nl": "de het een en van in op te dat die is was zijn met voor niet aan er om "
+          "ook als bij naar uit over door maar of dan nog wel geen deze dit hij zij "
+          "ze wij je ik haar hun mijn wordt worden heeft hebben onder tussen zonder "
+          "tegen tot me we nu zo al waar wat wie hoe",
+    "af": "die n en van in is het nie vir met op wat dat om te sy hy ek ons julle "
+          "hulle na oor deur maar of ook as by uit tot aan was word onder tussen "
+          "sonder teen waar hoe",
+    "sv": "och i att det som en ett pa ar av for med till den har de inte om men var "
+          "sig fran sa kan nar han hon vi ni jag du min sin eller under mellan utan "
+          "vid over ocksa mycket mot dar hur vad",
+    "da": "og i at det som en et pa er af av for med til den har de ikke om men var "
+          "sig seg fra sa kan nar han hun vi jeg du min sin eller under mellem "
+          "mellom uten uden ved over ogsa meget ei mot mod der hvor ut ud",
+    "pl": "i w z na do nie sie jest to ze o od po za przez dla jak ale lub oraz czy "
+          "ten ta te tym tego jego jej ich sa byl byla pod nad miedzy bez przy "
+          "bardzo tylko tez juz co ktory ktora ktore a gdzie az",
+    "cs": "a v ve s se z ze na do je to o od po za pro jak ale nebo ani ten ta ty "
+          "jeho jeji jsou byl byla pod nad mezi bez pri velmi jen take uz co ktery "
+          "ktera ktere si by kde az pres k i",
+    "hr": "i u na se je da su za od do s sa o ali ili kao koji koja koje nije bio "
+          "bila sam si smo ovo to taj ta te pod nad izmedu bez vrlo samo a gdje sve "
+          "preko iznad",
+    "tr": "bir ve bu icin ile de da ne o gibi cok daha en ama veya ya ki mi var yok "
+          "olan olarak kadar sonra once uzerinde uzerinden altinda arasinda her ben "
+          "sen biz siz onlar orada",
+    "ro": "si in de la cu un o pe care este sunt a al ale lui ei lor din pentru sau "
+          "dar nu se ca mai foarte fara sub peste intre dupa cand unde cum acest "
+          "aceasta fie iar pana",
+    "hu": "a az es egy hogy nem is van volt meg de vagy mint csak ez azt ezt en te o "
+          "mi ti ok alatt felett kozott nelkul nagyon minden ahol amelyek at",
+    "fi": "ja on ei etta se oli han he me te mina sina tama tuo joka kuin mutta tai "
+          "vain myos hyvin kanssa ilman alla paalla valissa olla ovat yli asti ennen",
+    "et": "ja on ei et see oli kui ka aga voi mis ning ta nad me te oma",
+    "lv": "un ir ar uz no par kas ka bet vai tas ta vins vina mes jus",
+    "lt": "ir yra su kad i is ne bet ar tai kaip jis ji mes jus ant po",
+    "ca": "el la els les un una uns unes de del dels al als a i o pero amb sense per "
+          "sobre sota entre fins des que qui com quan on es son era ser no ni si se "
+          "em et li ens us seu seva seus seves meu meva aquest aquesta aquests "
+          "aquestes molt mes menys tambe tot tota tots totes cada en l d contra "
+          "damunt",
+    "gl": "o a os as un unha uns unhas de do da dos das en no na nos nas ao aos con "
+          "sen por para polo pola co coa nun nunha dun dunha e ou pero mais que quen "
+          "como cando onde non nin se me che lle eu ti el ela eles elas seu sua meu "
+          "mina este esta ese esa iso moi moito menos tamen todo toda todos todas "
+          "cada outro outra son era ser estar ten sobre entre ata desde contra",
+    "id": "yang dan di ke dari untuk dengan pada ini itu adalah tidak akan atau juga "
+          "oleh dalam sebuah seorang ada bisa saya anda dia mereka kami kita sangat "
+          "lebih saat atas sampai tempat",
+    "tl": "ang ng sa mga na at ay si ni para kay hindi ito iyan isang",
+    "sw": "na ya wa kwa ni katika la za cha hii huyo",
+    "eo": "la de kaj en estas al ke kun por ne mi vi li gi sur sub inter sen tre",
+}.items()}
+_LANGUES_VOISINES = tuple(l_ for l_ in _MOTS_OUTILS if l_ not in LANGUES_LUES)
+# CE QUI NE PROUVE PAS UNE LANGUE VOISINE : les lettres seules — une initiale,
+# le « Z » de Dragon Ball Z — et les mots qui sont aussi un mot ou un nom
+# courant en francais ou en anglais. Releves sur les corpus du depot et sur les
+# 180 demandes de la sonde de relecture : Dan, Van Gogh, Han Solo, Son Goku,
+# Majin Bu, Jet Li, Po, Ada, Yin et Yang, « men », « till », « door », « vid »,
+# « mint », « once », « word », « teen », « care », « mot », « nu », « mai »…
+# Ils restent dans _MOTS_OUTILS, ou ils rendent « lue » plus difficile ; ils
+# sortent de _MOTS_PROPRES, ou ils rendaient « autre » trop facile.
+_MOTS_AMBIGUS = frozenset(
+    "a c d e i j k l m n o s t u v w y z "
+    "ada aga ale ali ama ang ant ar ben bet bio biz bu ca care cha co cum dan "
+    "dar dia din door ei ez fie gi han hindi hoe hun ile inter ir iso ja jen ji "
+    "jus ka kami kay ki li mai meg men met min mina mint mod mot nu nun ok oli "
+    "om oma once peste po pod polo pro sam see sen sense sin sub tai taj take "
+    "tas teen ten till tot ty vai vain van var vid volt wat word yang".split())
+_MOTS_PROPRES = {
+    v_: _MOTS_OUTILS[v_] - _MOTS_AMBIGUS
+    - frozenset().union(*(_MOTS_OUTILS[l_] for l_ in LANGUES_LUES))
+    for v_ in _LANGUES_VOISINES}
+# Les lettres que la decomposition Unicode ne ramene pas a une lettre nue :
+# sans elles, « słońca » se lirait « s », « o », « ca ».
+_LETTRES_DE_LANGUE = str.maketrans({"ß": "ss", "æ": "ae", "œ": "oe", "ø": "o",
+                                    "ł": "l", "ı": "i", "đ": "d"})
+_MOT_DE_LANGUE = re.compile(r"[a-z0-9]+")
+LANGUE_PART = 0.20      # un mot sur cinq est un mot-outil de la langue
+LANGUE_MOTS = 6         # et il y en a six differents
+LANGUE_MARGE = 2        # deux fois plus de mots propres que la voisine
+LANGUE_FENETRE = 8      # la longueur d'une phrase etrangere qu'on veut voir
+LANGUE_PREUVE = 3       # mots propres differents qui prouvent une voisine
+LANGUE_LETTRES = 4      # lettres non latines qui prouvent une autre ecriture
+
+
+def _mots_de_langue(texte):
+    """Les mots de la demande, sans accents ni chiffres : « 3d » n'est pas
+    l'elision « d' »."""
+    nu = sans_accents((texte or "").lower().translate(_LETTRES_DE_LANGUE))
+    return [m for m in _MOT_DE_LANGUE.findall(nu) if m.isalpha()]
+
+
+def _langue_d_un_passage(mots):
+    """(« lue », code), (« autre », code), (« doute », code) ou (« », « »)
+    pour ces mots-la. « doute » : deux mots propres a une voisine — pas de
+    quoi refuser, assez pour ne pas dire « lue »."""
+    if not mots:
+        return "", ""
+    compte = {l_: sum(1 for m in mots if m in liste_)
+              for l_, liste_ in _MOTS_OUTILS.items()}
+
+    def propres(a, b):
+        return [m for m in mots
+                if m in _MOTS_OUTILS[a] and m not in _MOTS_OUTILS[b]]
+
+    def l_emporte(a, b):
+        # DEUX MOTS PROPRES DIFFERENTS, pas le meme deux fois : « un tableau
+        # de Van Gogh et de Van Dyck » n'est pas du neerlandais.
+        a_ = propres(a, b)
+        return (len(set(a_)) >= 2
+                and len(a_) >= LANGUE_MARGE * len(propres(b, a)))
+
+    for lue in sorted(LANGUES_LUES, key=lambda l_: -compte[l_]):
+        if (compte[lue] >= LANGUE_PART * len(mots)
+                and len({m for m in mots if m in _MOTS_OUTILS[lue]}) >= LANGUE_MOTS
+                and all(l_emporte(lue, v) for v in _LANGUES_VOISINES)):
+            return "lue", lue
+    par_compte = sorted(_LANGUES_VOISINES, key=lambda l_: -compte[l_])
+    for voisine in par_compte:
+        # TROIS MOTS DIFFERENTS, DONT DEUX SANS AMBIGUITE. Un mot ambigu
+        # (« van », « met ») ne prouve rien seul ni a deux ; a cote de « voor »
+        # et de « een », il compte : c'est la phrase de la premiere relecture,
+        # « voor een … met een … van », qui doit rester prouvee.
+        surs = {m for m in mots if m in _MOTS_PROPRES[voisine]}
+        siens = [m for m in mots if m in _MOTS_OUTILS[voisine]
+                 and (m in surs or m in _MOTS_AMBIGUS) and len(m) > 1]
+        if (len(surs) >= LANGUE_PREUVE - 1 and len(set(siens)) >= LANGUE_PREUVE
+                and compte[voisine] >= LANGUE_PART * len(mots)
+                and all(len(siens) >= LANGUE_MARGE * len(propres(l_, voisine))
+                        for l_ in LANGUES_LUES)):
+            return "autre", voisine
+    for voisine in par_compte:
+        if compte[voisine] and all(l_emporte(voisine, l_) for l_ in LANGUES_LUES):
+            return "doute", voisine
+    return "", ""
+
+
+def langue_de_la_demande(texte):
+    """La langue de la demande est-elle une de celles que garde_fou() lit ?
+
+    Rend (« lue », code) quand c'est prouve, (« autre », code ou « ») quand le
+    contraire l'est, (« », « ») quand rien ne l'est. Voir plus haut ce que
+    chaque reponse autorise.
+    """
+    # QUATRE LETTRES, pas une : « le kanji 力 tatoue sur l'epaule » est une
+    # demande francaise, et la refuser faute de modele serait un faux refus.
+    hors_latin = sum(1 for c in texte or "" if _lettre_hors_latin(c))
+    if hors_latin >= LANGUE_LETTRES:
+        return "autre", ""
+    mots = _mots_de_langue(texte)
+    # UNE PHRASE ETRANGERE DANS UNE DEMANDE LUE : la demande entiere reste
+    # « lue », et c'est la phrase que le garde-fou ne lirait pas. Trois mots
+    # propres dans une fenetre la prouvent ; deux la font soupconner, et un
+    # soupcon suffit a ne plus dire « lue ».
+    doute = False
+    fenetres = [mots[i:i + LANGUE_FENETRE]
+                for i in range(0, max(0, len(mots) - LANGUE_FENETRE),
+                               LANGUE_FENETRE // 2)]
+    for passage in fenetres + [mots[-LANGUE_FENETRE:]]:
+        verdict = _langue_d_un_passage(passage)
+        if verdict[0] == "autre":
+            return verdict
+        doute = doute or verdict[0] == "doute"
+    verdict = _langue_d_un_passage(mots)
+    if verdict[0] == "doute" or (verdict[0] == "lue" and doute):
+        return "", ""
+    return verdict
+
+
+# UNE DEMANDE DANS UNE LANGUE QUE LES MOTIFS NE LISENT PAS N'EST JAMAIS RENDUE
+# SANS QU'UN MODELE L'AIT LUE. Le chemin sans modele — un Ollama absent, une
+# analyse coupee par la borne du moteur impose, deux reponses mal formees —
+# rendait la demande telle quelle : pour du neerlandais, garde_fou() n'avait
+# alors rien lu du tout. Et ce chemin s'elargit : un studio dont aucune
+# machine ne porte de cerveau y passe a chaque demande. On s'arrete donc, en
+# disant quoi faire, plutot que de rendre ce que personne n'a lu.
+#
+# SUR PREUVE SEULEMENT (« autre », voir langue_de_la_demande) : une demande
+# courte ou faite d'etiquettes, dont rien ne prouve la langue, garde le sort
+# d'avant. Mesure du 10 novembre 2026 : aucune des 3 540 demandes francaises,
+# anglaises, allemandes et espagnoles des corpus du depot n'est arretee ici.
+PHRASE_LANGUE_NON_LUE = (
+    "je ne peux pas verifier cette demande : elle est ecrite dans une langue "
+    "que je ne sais lire qu'avec un modele de langage, et aucun n'est "
+    "disponible en ce moment. Reessaie plus tard, ou ecris-la en francais, "
+    "anglais, allemand, espagnol, italien ou portugais.")
+
+
+def exiger_un_modele(texte):
+    """Leve le refus d'une demande que seul un modele de langage saurait lire.
+
+    A appeler la ou l'on s'apprete a se passer de lui.
+    """
+    if langue_de_la_demande(texte)[0] == "autre":
+        raise RefusMoteur(PHRASE_LANGUE_NON_LUE, panne_de("panne.langue_non_lue"))
+
+FICHIER_AVIS =os.path.join(DOSSIER_DONNEES, "avis.jsonl")
 
 def noter_avis(pid, conv, tour, avis, note):
     """Consigne un pouce a cote de l'historique, en ligne a ligne.
@@ -11612,12 +13650,24 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             if modele_force and tid in TACHES:
                 TACHES[tid]["analyse_impose_avant"] = (time.time()
                                                        + ANALYSE_IMPOSE_DELAI)
+            # SAUF POUR UNE LANGUE QUE SEUL LE MODELE SAIT LIRE : couper son
+            # analyse, c'etait la rendre sans que rien ne l'ait lue (voir
+            # exiger_un_modele). Elle attend son cerveau comme une demande
+            # sans moteur impose, et le fil dit pourquoi elle attend.
+            if (langue_de_la_demande(texte)[0] == "autre"
+                    and (TACHES.get(tid) or {}).pop("analyse_impose_avant", None)):
+                journal(tid, "cette demande est dans une langue que je ne sais "
+                             "verifier qu'avec le modele de langage : je "
+                             "l'attends, meme s'il est lent")
             plan = await aiguiller(texte, tid, conv, img_b64,
                                    a_une_image=(famille_du_fichier(image) if image
                                                 else False),
                                    modele_force=modele_force, taille=taille,
                                    priorite=priorite,
-                                   modele_choisi=modele_choisi)
+                                   modele_choisi=modele_choisi,
+                                   sans_analyse=analyse_sans_objet(
+                                       texte, conv, image, modele_force,
+                                       modele_choisi, taille, force_loin))
         # UN MOTEUR IMPOSE NE RECOUVRE PAS UNE LECTURE. Decrire une image ne
         # produit rien : aucun moteur ne s'y applique, et lui en coller un
         # ramenait l'intention a « image ». Le raccourci tirait donc bien, et la
@@ -11664,9 +13714,23 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             plan["parametres_bruts"] = brut
             plan = appliquer_parametres(plan)
             # Le plan initial pouvait viser une autre modalite (audio, video) :
-            # dans ce cas caler_taille() n'avait jamais tourne et le plan n'a ni
-            # largeur ni hauteur. On les etablit maintenant.
+            # dans ce cas caler_taille() n'avait jamais tourne. On etablit la
+            # taille maintenant — ET SANS LES DIMENSIONS DE L'AUTRE MODALITE.
+            # Ce commentaire disait que le plan n'avait alors « ni largeur ni
+            # hauteur » : il en a. secours() pose 0x0 sur une musique et
+            # 1280x704 sur une video, et caler_taille() les prenait pour une
+            # proposition : 0 borne a 512. Mesure du 10 novembre 2026, moteur
+            # d'image impose, analyse coupee, aucune taille donnee : 512x512
+            # pour une demande qui disait « son marteau », 1280x704 pour « un
+            # animal » — sur le chemin que 206 demandes ont pris en 72 h. Le
+            # format d'une image dont rien ne dit la taille est celui de
+            # caler_taille(), 1216x832, le meme que secours() donne a une image.
+            # Musique et video seulement : une retouche ou une planche portent
+            # un format d'image, que l'analyse a propose pour cette demande.
             if plan["intention"] == "image":
+                if avant_force in ("audio", "video", "video_image"):
+                    plan.pop("largeur", None)
+                    plan.pop("hauteur", None)
                 plan = caler_taille(plan, texte, taille)
         intention = plan.get("intention", "image")
         # Le dire plutot que de laisser croire. Un brouillon demande sur une
@@ -11855,6 +13919,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
                     texte or "Decris cette image en francais, precisement.",
                     img_b64, "Tu decris des images avec precision, en francais.",
                     json_mode=False, modele=MODELE_VISION, tid=tid)
+            except CerveauFerme as e:
+                # LA MACHINE QUI SAIT LIRE EST FERMEE PAR LA REGLE DU PRET :
+                # la raison et le geste, pas « ollama pull » (voir
+                # erreur_cerveau_ferme).
+                raise RuntimeError("l'image n'a pas ete lue — "
+                                   + erreur_cerveau_ferme(e)) from None
             except Exception as e:
                 # NE PAS nommer MODELE_VISION ici : chaque machine lit avec
                 # SON modele voyant, et l'ancien message envoyait installer un
@@ -11951,7 +14021,18 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             image_loin = None
         if loin and image_loin:
             verdict = await image_adulte(image_loin, tid)
-            if verdict != "saine" and verdict != "non jugee":
+            if verdict == "retenue":
+                # PERSONNE N'A PU LA REGARDER PARCE QUE LA MACHINE QUI SAIT VOIR
+                # NE PRETE PAS SA CARTE : elle ne sort pas, et le rendu se fait
+                # a la maison — ou s'arrete sur le refus ordinaire du moteur
+                # local s'il n'y a personne pour le faire (voir image_adulte).
+                journal(tid, f"image jointe non inspectee — "
+                             f"{_dire_les_fermes() or 'le modele de vision est ferme'}"
+                             f" : dans le doute, elle ne sort pas de la maison")
+                plan["raison"] = ("image non inspectee : repli sur le moteur "
+                                  "local")
+                loin = ""
+            elif verdict != "saine" and verdict != "non jugee":
                 journal(tid, "image jointe jugee adulte par la vision locale : "
                              "elle ne sort pas de la maison")
                 plan["raison"] = "image adulte : repli sur le moteur local"
@@ -12089,6 +14170,12 @@ async def executer(tid, texte, conv, image=None, modele_force=None, taille=None,
             # tournaient.
             vivantes = [x for x in tous_les_noeuds()
                         if ETAT_NOEUDS.get(x["id"], {}).get("repond")]
+            if comfy_fermes_capables(cle):
+                # UNE MACHINE SAURAIT, SON ComfyUI EST FERME : c'est la cause,
+                # et elle passe devant « aucune des machines declarees ne
+                # repond : leur agent tourne-t-il ? » — son agent tourne, c'est
+                # lui qui vient de le dire. Voir refus_moteur().
+                raise refus_moteur(cle, vivantes)
             if not vivantes:
                 # Le bon geste n'est pas le meme selon le montage. Sur une
                 # machine sans carte, il n'y a PAS de ComfyUI a demarrer : la
@@ -15596,12 +17683,25 @@ def noeuds_agents():
         vu = e.get("vu", 0)
         liste.append({"id": x["id"], "titre": x.get("titre") or x["id"],
                       "cree": x.get("cree"), "agent": True,
-                      # « vu » ne suffit plus : depuis que l'agent s'annonce
-                      # meme quand ComfyUI est mort — pour preter son modele de
-                      # langage — une machine restait verte en permanence
-                      # pendant que le repartiteur l'ecartait a juste titre.
+                      # « vu » ne suffit plus : l'agent s'annonce meme quand
+                      # ComfyUI est mort, et une machine restait verte en
+                      # permanence pendant que le repartiteur l'ecartait a
+                      # juste titre. Cette annonce servait a « preter son
+                      # modele de langage » ; DEPUIS LE 10 NOVEMBRE 2026 ELLE
+                      # NE PRETE PLUS RIEN — regle de l'utilisateur : le studio
+                      # n'appelle pas l'Ollama d'une machine dont ComfyUI n'est
+                      # pas lance, parce que fermer ComfyUI veut dire « la
+                      # carte est a moi ». Elle reste utile pour une seule
+                      # chose : dire « comfy: False », donc que la carte n'est
+                      # plus pretee (voir cerveau_ferme).
                       "repond": bool(vu and time.time() - vu < SILENCE_MAX
                                      and e.get("repond")),
+                      # CE QUE LA REGLE DU PRET FAIT DE SON MODELE DE LANGAGE,
+                      # pour la console : "" quand il sert, sinon « pause »,
+                      # « ferme » ou « muet ». None quand le studio ne lui
+                      # connait aucun modele de langage — il n'y a alors rien a
+                      # dire, et la console ne dit rien.
+                      "cerveau_ferme": etat_du_pret(x["id"]),
                       "vu_il_y_a": round(time.time() - vu) if vu else None,
                       "carte": e.get("carte"), "vram": e.get("vram"),
                       # LA VRAM LIBRE ARRIVAIT DEPUIS TOUJOURS et n'etait
@@ -15952,6 +18052,13 @@ async def api_noeud_annonce(req):
     except Exception:
         return web.json_response({"erreur": "corps illisible"}, status=400)
     etat = ETAT_NOEUDS.setdefault(x["id"], {})
+    # L'HEURE DE L'ANNONCE, A PART DE « vu », et posee ICI SEULEMENT. « vu »
+    # est rafraichi aussi par les demandes de travail et de question, qui ne
+    # disent rien de ComfyUI ; la regle du pret a besoin de savoir quand la
+    # machine a PARLE DE SA CARTE pour la derniere fois — et si elle l'a fait
+    # depuis le reveil du studio (voir _pas_encore_annoncee, cerveau_ferme).
+    # Jamais ecrite dans _parc.json : c'est une presence, pas une capacite.
+    etat["annonce"] = time.time()
     # L'empreinte du code qui tourne la-bas. Les agents d'avant le 31 aout n'en
     # envoient pas : absente, on ne conclut rien plutot que de les declarer
     # perimes sur une absence — mais ils le sont, et c'est justement pourquoi ils
@@ -16057,7 +18164,9 @@ async def api_noeud_annonce(req):
     # arrive pendant que ComfyUI se releve. L'enregistrer effacait tout ce
     # qu'on savait de la machine, et pour cinq minutes.
     # Ce que porte la machine cote langage : le studio s'en sert quand le sien
-    # ne repond plus.
+    # ne repond plus — MAIS SEULEMENT TANT QU'ELLE PRETE SA CARTE (10 novembre
+    # 2026, voir cerveau_ferme). L'annonce « comfy: False » porte encore ce
+    # champ : on le note comme un inventaire, on n'en fait rien generer.
     llm = d.get("llm")
     if isinstance(llm, dict):
         ETAT_NOEUDS.setdefault(x["id"], {}).update(
@@ -16159,6 +18268,21 @@ async def api_noeud_question(req):
     ETAT_NOEUDS.setdefault(x["id"], {}).update(vu=time.time())
     file = QUESTIONS.get(x["id"]) or []
     if not file:
+        return web.Response(status=204)
+    # LA REMISE EST LE DERNIER INSTANT OU LE STUDIO DECIDE : passe ce point,
+    # l'agent appelle son Ollama sans rien demander a personne, et un agent
+    # ancien ne connait pas la regle. Une question deposee quand la machine
+    # pretait encore sa carte n'est donc PAS remise si, depuis, elle est passee
+    # en pause ou a ferme ComfyUI (10 novembre 2026, voir cerveau_ferme) : elle
+    # est rendue a son appelant avec la raison, qui cherchera ailleurs.
+    ferme_remise_ = cerveau_ferme(x["id"])
+    if ferme_remise_:
+        raison_ = dire_cerveau_ferme(x["id"], ferme_remise_)
+        for q_ in file:
+            _, futur_ = REPONSES.get(q_["qid"]) or (None, None)
+            if futur_ is not None and not futur_.done():
+                futur_.set_result({"erreur": raison_})
+        QUESTIONS[x["id"]] = []
         return web.Response(status=204)
     # Retiree a la remise, et non au retour de la reponse : si ce retour se perd
     # — reseau, studio qui redemarre — l'agent reprenait la meme question et
@@ -16375,7 +18499,10 @@ async def api_noeud_progres(req):
         # propre rendu restait sinon marquee muette pendant toute la duree de ce
         # rendu, et le repartiteur repondait « aucune machine ne repond » a la
         # demande suivante.
-        etat_.update(vu=time.time(), repond=True, agent=True)
+        etat_.update(vu=time.time(), repond=True, agent=True,
+                     # L'heure du battement, a part de « vu » : pour la regle
+                     # du pret, il vaut une annonce (voir cerveau_ferme).
+                     progres=time.time())
         # Une demande que le studio connait, et pas n'importe laquelle : ce
         # qu'on ecrit ici sert a lui rendre un resultat sans verifier a qui le
         # travail avait ete confie. Une machine ne peut donc pas se declarer
@@ -16606,6 +18733,8 @@ def machines_connues():
                     "vram": e.get("vram"), "libre": e.get("libre"),
                     "vu_il_y_a": 0,
                     "llm_sur_carte": llm_sur_carte(local["id"]),
+                    # Comme pour les machines a agent : voir etat_du_pret().
+                    "cerveau_ferme": etat_du_pret(local["id"]),
                     # Zero en dur : la console affichait « en travail 0 » pendant
                     # qu'un rendu tournait sur cette machine.
                     "en_travail": len(TRAVAUX.get(local["id"], [])),
@@ -16635,6 +18764,11 @@ async def api_admin_noeuds(req):
                               # un modele qui se charge, repond 200, et rend du
                               # vide. Le 4 novembre 2026, personne ne l'a vu.
                               "modeles_degeneres": releve_degenerescences(),
+                              # LES OLLAMA AUXQUELS LA REGLE DU PRET NE
+                              # S'APPLIQUE PAS, faute de savoir a quelle
+                              # machine ils appartiennent : la console le dit,
+                              # sans quoi on les croirait proteges.
+                              "avertissements_pret": avertissements_du_pret(),
                               # CE QUE L'ANALYSE PREND DU CONTEXTE : le voir
                               # monter avant que les plans se coupent.
                               "contexte_analyse": releve_contexte(),
@@ -16744,9 +18878,16 @@ async def api_admin_essai_llm(req):
     if noeud(ident) is None:
         return web.json_response({"erreur": "machine inconnue"}, status=404)
     e = ETAT_NOEUDS.get(ident) or {}
-    if not e.get("repond"):
-        return web.json_response({"erreur": "cette machine ne repond pas"},
-                                 status=409)
+    # LA REGLE DU PRET VAUT AUSSI POUR L'ADMINISTRATEUR (10 novembre 2026, voir
+    # cerveau_ferme). Cet essai fait GENERER le modele de la machine : en
+    # pause, ComfyUI ferme ou agent muet, il n'est pas lance, et la reponse dit
+    # pourquoi. Il ne regardait que « repond » — ni la pause, ni l'age du
+    # dernier battement : sur une machine en pause, il chargeait le modele.
+    ferme_essai_ = cerveau_ferme(ident)
+    if ferme_essai_:
+        return web.json_response(
+            {"erreur": dire_cerveau_ferme(ident, ferme_essai_)
+                       + " : l'essai n'est pas lance"}, status=409)
     # LA MEME CONDITION QUE noeuds_a_llm(), ET NON « elle repond ». Le
     # 9 septembre 2026, pc s'annonçait sans langage : l'essai deposait quand
     # meme sa question dans une file que plus personne ne vidait, attendait ses
@@ -17261,6 +19402,17 @@ def _ligne_cerveau():
         return _ligne("cerveau", "fait",
                       _marque("demarrage.cerveau.oui", n=len(utilisables),
                               modele=modele_ecriture_de(utilisables[0])))
+    # NI ABSENT NI VIDE : ECARTE PAR LA REGLE DU PRET (10 novembre 2026, voir
+    # cerveau_ferme). L'Ollama repond et porte ses modeles ; c'est la machine
+    # qui ne prete pas sa carte. « Aucun modele joignable sur … » enverrait
+    # chercher une panne de reseau la ou il suffit de lancer ComfyUI.
+    fermes = cerveaux_fermes()
+    if fermes:
+        return _ligne("cerveau", "option",
+                      _marque("demarrage.cerveau.ferme",
+                              qui=", ".join((noeud(i) or {}).get("titre", i)
+                                            for i, _ in fermes)),
+                      ou="/admin")
     vides = [u for u in OLLAMAS
              if cerveau(u).get("repond") and not cerveau(u)["modeles"]]
     if vides:
@@ -17555,6 +19707,10 @@ def avancer_dans_l_attente(tid):
 
 async def demarrer_file(a):
     global FILE_ATTENTE
+    # LE STUDIO SERT A PARTIR D'ICI : c'est de cet instant, et non de l'import,
+    # que se compte l'attente des premieres annonces (ATTENTE_ANNONCES) — avant
+    # reprendre_file(), dont les demandes sont justement celles qui attendent.
+    SERVI_DEPUIS[0] = time.time()
     FILE_ATTENTE = FileHumainsDabord()
     # Plusieurs travailleurs, pas un. Chacun prend une demande dans la meme
     # file ; le verrou par machine garantit qu'ils ne se disputent pas une carte.
@@ -20822,10 +22978,13 @@ if __name__ == "__main__":
     # celui du studio — alors que la machine reellement employee est souvent
     # une autre, et qu'elle ne porte pas les memes modeles.
     for i, u in enumerate(OLLAMAS):
-        chez_ = cerveau(u).get("noeud")
-        ou = f"  [{(noeud(chez_) or {}).get('titre', chez_)}]" if chez_ else ""
+        cerveau(u)              # le releve bloquant du demarrage
         print(f"  {'Ollama    :' if i == 0 else '             '} {u}"
-              f"   ecrit avec {modele_ecriture_de(u)}{ou}")
+              f"   ecrit avec {modele_ecriture_de(u)}{etiquette_du_cerveau(u)}")
+    # Un Ollama que le studio ne sait rattacher a aucune machine echappe a la
+    # regle du pret : une ligne ici, la meme que dans /admin.
+    for _ligne_pret in avertissements_du_pret():
+        print(f"  PRET      : {_ligne_pret}")
     print(f"  Modeles   : {RACINE_MODELES}")
     # En conteneur, 127.0.0.1 designe le conteneur : l'adresse n'est utile
     # qu'a lui-meme. Et le port publie sur l'hote n'est pas forcement le notre —
